@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@import "tailwindcss-primeui";
+@import "primeicons/primeicons.css";
+
+@layer base {
+  html, body {
+    @apply size-full;
+  }
+}
