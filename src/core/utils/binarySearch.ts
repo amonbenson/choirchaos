@@ -152,7 +152,7 @@ export class BinarySortedList<T> {
    */
   constructor(items: T[] = [], options: BinarySortedListOptions<T> = {}) {
     this._options = options;
-    this._options.comparator = this._options.comparator || ((a, b) => Number(a) - Number(b));
+    this._options.comparator = this._options.comparator ?? ((a, b) => Number(a) - Number(b));
     this._items = Array.isArray(items) ? items : [];
 
     // Ensure the initial items are sorted
