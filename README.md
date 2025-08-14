@@ -1,45 +1,91 @@
-# choirchaos-ts
+# Choir Chaos
 
-This template should help get you started developing with Vue 3 in Vite.
-
-## Recommended IDE Setup
-
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-## Type Support for `.vue` Imports in TS
-
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
-```sh
-npm install
+## Show Data Structure
 ```
-
-### Compile and Hot-Reload for Development
-
-```sh
-npm run dev
-```
-
-### Type-Check, Compile and Minify for Production
-
-```sh
-npm run build
-```
-
-### Run Unit Tests with [Vitest](https://vitest.dev/)
-
-```sh
-npm run test:unit
-```
-
-### Lint with [ESLint](https://eslint.org/)
-
-```sh
-npm run lint
+export default {
+  show: {
+    id: "1234",
+    title: "Come From Away",
+    thumbnailUrl: "https://...",
+    songs: [
+      {
+        id: "1234",
+        number: "1A",
+        title: "Welcome to the Rock",
+        midiFileUrl: "",
+        tracks: [
+          {
+            index: 0,
+            title: "Piano",
+            classification: "Accompaniment" | "Percussion" | "Vocal",
+            program: 0 | 9,
+            $midi: { // populated from MIDI file
+              note: [
+                {
+                  tick: 0,
+                  duration: 100,
+                  pitch: 60,
+                  velocity: 100,
+                },
+              ],
+              tempo: [
+                {
+                  tick: 0,
+                  bpm: 120,
+                },
+              ],
+              timeSignature: [
+                {
+                  tick: 0,
+                  value: [4, 4],
+                },
+              ],
+            },
+          },
+        ],
+        measures: [
+          {
+            value: "1A",
+            beatTicks: [
+              0,
+              200,
+              300,
+              400,
+            ],
+            layout: null | {
+              page: 0,
+              x: 0.1,
+              y: 0.1,
+              width: 0.1,
+              height: 0.1,
+            },
+          },
+        ],
+        events: {
+          sections: [
+            {
+              measure: ["1A", 0],
+              value: "Intro",
+              $tick: 0,
+            },
+          ],
+          markers: [
+            {
+              measure: ["1A", 0],
+              value: "Start",
+              $tick: 0,
+            },
+          ],
+          vamps: [
+            {
+              measure: ["1A", 0],
+              end: ["1A", 2],
+            },
+          ],
+          segue: false,
+        },
+      },
+    ],
+  },
+};
 ```
