@@ -1,7 +1,7 @@
-import { globalIgnores } from 'eslint/config'
-import { defineConfigWithVueTs, vueTsConfigs } from '@vue/eslint-config-typescript'
-import pluginVue from 'eslint-plugin-vue'
-import pluginVitest from '@vitest/eslint-plugin'
+import { globalIgnores } from "eslint/config";
+import { defineConfigWithVueTs, vueTsConfigs } from "@vue/eslint-config-typescript";
+import pluginVue from "eslint-plugin-vue";
+import pluginVitest from "@vitest/eslint-plugin";
 
 // To allow more languages other than `ts` in `.vue` files, uncomment the following lines:
 // import { configureVueProject } from '@vue/eslint-config-typescript'
@@ -10,17 +10,26 @@ import pluginVitest from '@vitest/eslint-plugin'
 
 export default defineConfigWithVueTs(
   {
-    name: 'app/files-to-lint',
-    files: ['**/*.{ts,mts,tsx,vue}'],
+    name: "app/files-to-lint",
+    files: ["**/*.{ts,mts,tsx,vue}"],
+    rules: {
+      quotes: ["error", "double"],
+      semi: ["error", "always"],
+      "comma-dangle": ["error", "always-multiline"],
+      "eol-last": ["error", "always"],
+      "indent": ["error", 2, { "SwitchCase": 1 }],
+      "no-trailing-spaces": "error",
+      "vue/block-order": ["error", { order: ["script", "template", "style"] }],
+    },
   },
 
-  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**']),
+  globalIgnores(["**/dist/**", "**/dist-ssr/**", "**/coverage/**", "**/public/**"]),
 
-  pluginVue.configs['flat/essential'],
+  pluginVue.configs["flat/essential"],
   vueTsConfigs.recommended,
-  
+
   {
     ...pluginVitest.configs.recommended,
-    files: ['src/**/__tests__/*'],
+    files: ["src/**/__tests__/*"],
   },
-)
+);
