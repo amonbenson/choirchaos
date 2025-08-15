@@ -12,23 +12,23 @@ export type BeatNumber = number;
 export type MeasureReference = [MeasureNumber, BeatNumber];
 
 export default class Measure {
-  public value: MeasureNumber;
-  public beatTicks: number[] = [];
+  public number: MeasureNumber;
+  public beats: number;
   public layout?: MeasureLayout;
 
-  constructor(value: Numbering, beatTicks: number[]) {
-    this.value = value;
-    this.beatTicks = beatTicks;
+  constructor(value: Numbering, beats: number) {
+    this.number = value;
+    this.beats = beats;
   }
 
   public reference(beat: BeatNumber): MeasureReference {
-    return [this.value, beat];
+    return [this.number, beat];
   }
 
   public json() {
     return {
-      value: this.value,
-      beatTicks: this.beatTicks,
+      value: this.number,
+      beats: this.beats,
       layout: this.layout,
     };
   }

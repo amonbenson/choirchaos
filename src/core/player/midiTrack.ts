@@ -6,7 +6,7 @@ export type MidiTrackEvents = {
   timeSignatures: TimeSignatureEvent[],
 }
 
-export class MidiTrack {
+export default class MidiTrack {
   public events: MidiTrackEvents = {
     notes: [],
     tempos: [],

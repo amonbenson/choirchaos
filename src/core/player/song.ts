@@ -16,8 +16,8 @@ export default class Song {
   public id: string;
   public number: SongNumber;
   public title: string = "";
-  public midiFileUrl?: UrlOrFile;
-  public jsonFileUrl?: UrlOrFile;
+  public midiFile?: UrlOrFile;
+  public jsonFile?: UrlOrFile;
   public tracks: Track[] = [];
   public measures: Measure[] = [];
   public events: SongEvents = {
@@ -36,8 +36,8 @@ export default class Song {
       id: this.id,
       number: this.number,
       title: this.title,
-      midiFileUrl: this.midiFileUrl,
-      jsonFileUrl: this.jsonFileUrl,
+      midiFile: this.midiFile,
+      jsonFile: this.jsonFile,
       tracks: this.tracks.map(t => t.json()),
       measures: this.measures.map(m => m.json()),
       events: {

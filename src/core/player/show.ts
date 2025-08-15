@@ -4,7 +4,7 @@ import Song from "./song";
 export default class Show {
   public id: string;
   public title: string = "";
-  public thumbnailUrl?: UrlOrFile;
+  public thumbnail?: UrlOrFile;
   public songs: Song[] = [];
 
   constructor(id: string) {
@@ -15,7 +15,7 @@ export default class Show {
     return {
       id: this.id,
       title: this.title,
-      thumbnailUrl: this.thumbnailUrl,
+      thumbnail: this.thumbnail,
       songs: this.songs.map(s => s.json()),
     };
   }
