@@ -14,7 +14,8 @@
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "bundlemti": "vite-node ./scripts/bundlemti.ts"
   },
   "dependencies": {
     "@primeuix/themes": "^1.2.3",
@@ -25,6 +26,7 @@
     "file-saver": "^2.0.5",
     "midi-json-parser": "^8.1.66",
     "pinia": "^3.0.3",
+    "pocketbase": "^0.26.2",
     "primeicons": "^7.0.0",
     "primevue": "^4.3.7",
     "tailwindcss": "^4.1.11",
@@ -48,6 +50,7 @@
     "npm-run-all2": "^8.0.4",
     "typescript": "~5.8.0",
     "vite": "^7.0.6",
+    "vite-node": "^3.2.4",
     "vite-plugin-vue-devtools": "^8.0.0",
     "vitest": "^3.2.4",
     "vue-tsc": "^3.0.4"

@@ -12,4 +12,5 @@ export class MidiTrack {
     tempos: [],
     timeSignatures: [],
   };
+  public program: number = 0;
 }

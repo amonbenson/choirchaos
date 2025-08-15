@@ -1,9 +1,9 @@
 export type MTISong = {
   songId: string;
-  number: number;
+  number: string;
   title: string;
-  midiFileUrl?: string;
-  jsonFileUrl?: string;
+  midiFileUrl: string;
+  jsonFileUrl: string;
   measures: {
     name: string;
     beats: number;
@@ -25,12 +25,12 @@ export type MTISong = {
     repeats: {
       iterations: number;
       startLocation: {
-        measure: number;
+        measure: string;
         beat: number;
         tick: number;
       };
       endLocation: {
-        measure: number;
+        measure: string;
         beat: number;
         tick: number;
       };
@@ -38,14 +38,14 @@ export type MTISong = {
     markers: {
       text: string;
       location: {
-        measure: number;
+        measure: string;
         beat: number;
         tick: number;
       };
     }[];
     attacca: null | {
       location: {
-        measure: number;
+        measure: string;
         beat: number;
         tick: number;
       };
@@ -54,7 +54,7 @@ export type MTISong = {
       tempo: unknown;
       note: string;
       location: {
-        measure: number;
+        measure: string;
         beat: number;
         tick: number;
       };
@@ -78,7 +78,7 @@ export type MTIShow = {
   showId: string;
   versionNumber: number;
   title: string;
-  thumbnailUrl: string;
+  thumbnailImageUrl: string;
   songs: MTISong[];
   publishDate: string;
   releaseNotes: string;

@@ -24,4 +24,12 @@ export default class Measure {
   public reference(beat: BeatNumber): MeasureReference {
     return [this.value, beat];
   }
+
+  public json() {
+    return {
+      value: this.value,
+      beatTicks: this.beatTicks,
+      layout: this.layout,
+    };
+  }
 }

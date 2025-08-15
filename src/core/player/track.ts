@@ -7,4 +7,12 @@ export default class Track {
   public classification: string = "accompaniment";
   public program: number = 0;
   public $midi?: MidiTrack;
+
+  public json() {
+    return {
+      title: this.title,
+      classification: this.classification,
+      program: this.program,
+    };
+  }
 }
