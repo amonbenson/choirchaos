@@ -21,6 +21,11 @@ export class MarkerEvent extends MeasureEvent {
       start: this.start,
     };
   }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public static fromJson({ start, marker }: any) {
+    return new MarkerEvent(start, marker);
+  }
 }
 
 export class VampEvent extends MeasureEvent {
@@ -35,5 +40,10 @@ export class VampEvent extends MeasureEvent {
       end: this.end,
       iterations: this.iterations,
     };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public static fromJson({ start, end, iterations }: any) {
+    return new VampEvent(start, end, iterations);
   }
 }
