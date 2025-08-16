@@ -1,8 +1,8 @@
 export type BinarySearchOptions<T, K> = {
   comparator?: (a: K, b: T) => number;
   direction?: "forward" | "backward";
-  inclusive?: boolean;
-  includeBounds?: boolean;
+  itemInclusive?: boolean;
+  boundsInclusive?: boolean;
 };
 
 /**
@@ -19,19 +19,19 @@ export type BinarySearchOptions<T, K> = {
  * @param {boolean} rest.includeBounds Whether to include the lowest and highest elements in the search, defaults to false
  * @returns {*} The result of the search, which could be an element from the list or undefined if not found
  */
-export function binarySearch<T, K>(list: T[], key: K, options: BinarySearchOptions<T, K> = {}) {
+export function binarySearch<T, K>(list: T[], key: K, options: BinarySearchOptions<T, K> = {}): number {
   const {
     comparator = (a, b) => Number(a) - Number(b),
     direction = "forward",
-    inclusive = true,
-    includeBounds = false,
+    itemInclusive: inclusive = true,
+    boundsInclusive: includeBounds = false,
   } = options;
 
-  if (!Array.isArray(list) || list.length === 0) return undefined;
+  if (!Array.isArray(list) || list.length === 0) return -1;
 
   let low = 0;
   let high = list.length - 1;
-  let result;
+  let resultIndex = -1;
 
   while (low <= high) {
     const mid = Math.floor((low + high) / 2);
@@ -44,53 +44,57 @@ export function binarySearch<T, K>(list: T[], key: K, options: BinarySearchOptio
 
     if (cmp === 0) {
       if (inclusive) {
-        result = list[mid];
+        resultIndex = mid;
       } else {
         // Find next/previous element depending on direction
         if (direction === "forward") {
-          result = list[mid + 1];
+          resultIndex = mid + 1;
         } else {
-          result = list[mid - 1];
+          resultIndex = mid - 1;
         }
       }
       break;
     } else if (cmp < 0) {
       high = mid - 1;
-      if (direction === "backward") result = list[mid];
+      if (direction === "backward") {
+        resultIndex = mid;
+      }
     } else {
       low = mid + 1;
-      if (direction === "forward") result = list[mid];
+      if (direction === "forward") {
+        resultIndex = mid;
+      }
     }
   }
 
   // Only return bounds if includeBounds is true
-  if (result === undefined && includeBounds) {
+  if (resultIndex === -1 && includeBounds) {
     if (direction === "forward" && low < list.length) {
-      result = list[low];
+      resultIndex = low;
     } else if (direction === "backward" && high >= 0) {
-      result = list[high];
+      resultIndex = high;
     }
   }
 
-  // If result is out of bounds and includeBounds is false, return undefined
+  // If result is out of bounds and includeBounds is false, return -1
   if (!includeBounds) {
     if (
       direction === "forward" &&
-      result === list[list.length - 1] &&
+      resultIndex === list.length - 1 &&
       comparator(key, list[list.length - 1]) > 0
     ) {
-      return undefined;
+      return -1;
     }
     if (
       direction === "backward" &&
-      result === list[0] &&
+      resultIndex === 0 &&
       comparator(key, list[0]) < 0
     ) {
-      return undefined;
+      return -1;
     }
   }
 
-  return result;
+  return resultIndex;
 }
 
 export type InsertSortedOptions<T> = {
@@ -173,8 +177,24 @@ export class BinarySortedList<T> {
    * @param {Object} options Optional settings for the search. These will override the class options.
    * @returns {*} The result of the binary search.
    */
-  search(keyItem: T, options: BinarySearchOptions<T, T> = {}) {
+  searchIndex(keyItem: T, options: BinarySearchOptions<T, T> = {}): number {
     return binarySearch(this._items, keyItem, { ...this._options, ...options });
+  }
+
+  search(keyItem: T, options: BinarySearchOptions<T, T> = {}): T | null {
+    return this._items[this.searchIndex(keyItem, options)] ?? null;
+  }
+
+  searchRange(from: T, to: T) {
+    const startIndex = this.search(from, {
+      itemInclusive: true,
+      boundsInclusive: true,
+    });
+    const endIndex = this.search(to, {
+      itemInclusive: false,
+      boundsInclusive: true,
+    });
+    return this.items().slice(startIndex, endIndex);
   }
 
   sort() {
@@ -183,5 +203,13 @@ export class BinarySortedList<T> {
 
   items() {
     return this._items;
+  }
+
+  first() {
+    return this._items[0];
+  }
+
+  last() {
+    return this._items.at(-1);
   }
 }

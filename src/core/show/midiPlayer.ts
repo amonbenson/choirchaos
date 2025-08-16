@@ -1,0 +1,422 @@
+import axios from "axios";
+import EventEmitter from "events";
+import { parseArrayBuffer as parseMidiBuffer } from "midi-json-parser";
+import { MeasureEvent, MidiEvent, MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "./midiEvents";
+import type { Tick, TimeSignature } from "./midiTypes";
+import type { MeasureReference } from "./measure";
+import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
+import type Song from "./song";
+import { resolveUrl } from "../utils/file";
+import type { BinarySearchOptions } from "../utils/binarySearch";
+
+declare global {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    interface Window { WebAudioFontPlayer: any; }
+}
+
+
+export type MidiPlayerStatus = "idle" | "loading" | "ready";
+
+export type MidiPlayerEvents = {
+  system: {
+    measure: MidiEventList<MeasureEvent>;
+    tempo: MidiEventList<TempoEvent>;
+    timeSignature: MidiEventList<TimeSignatureEvent>;
+  },
+  track: {
+    note: MidiEventList<NoteEvent>;
+  }[];
+}
+
+export default class MidiPlayer extends EventEmitter {
+  private _status: MidiPlayerStatus = "idle";
+  private _playing = false;
+
+  private _ppqn = 480;
+  private _tickDuration = 0;
+
+  private _position: Tick = 0;
+  private _duration: Tick = 0;
+
+  private _currentSong: Song | null = null;
+  private _currentMeasure: MeasureReference = ["1", 0];
+  private _currentTempo: number = 120;
+  private _currentTimeSignature: TimeSignature = [4, 4];
+  private _finalMeasure: MeasureReference = ["1", 0];
+
+  private _events: MidiPlayerEvents = {
+    system: {
+      measure: new MidiEventList(),
+      tempo: new MidiEventList(),
+      timeSignature: new MidiEventList(),
+    },
+    track: [],
+  };
+
+  private _audioContext = new AudioContext();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _player: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _instruments: { [key: number]: any } = {};
+  private _masterInput: AudioNode | null = null;
+
+  private _stepHandle: number | null = null;
+  private _lastStepTime = 0;
+
+  get status() {
+    return this._status;
+  }
+
+  _updateStatus(value: MidiPlayerStatus) {
+    this._status = value;
+    this.emit("statusChanged", value);
+  }
+
+  get playing() {
+    return this._playing;
+  }
+
+  _updatePlaying(value: boolean) {
+    this._playing = value;
+    this.emit("playingChanged", value);
+  }
+
+  get position() {
+    return this._position;
+  }
+
+  _updatePosition(value: Tick) {
+    // TODO: slow down emit rate while playing
+    this._position = value;
+    this.emit("positionChanged", value);
+  }
+
+  get duration() {
+    return this._duration;
+  }
+
+  _updateDuration(value: Tick) {
+    this._duration = value;
+    this.emit("durationChanged", value);
+  }
+
+  get currentMeasure() {
+    return this._currentMeasure;
+  }
+
+  _updateCurrentMeasure(value: MeasureReference) {
+    this._currentMeasure = value;
+    this.emit("currentMeasureChanged", value);
+  }
+
+  get currentTempo() {
+    return this._currentTempo;
+  }
+
+  _updateCurrentTempo(value: number) {
+    this._currentTempo = value;
+    this.emit("currentTempoChanged", value);
+  }
+
+  get currentTimeSignature() {
+    return this._currentTimeSignature;
+  }
+
+  _updateCurrentTimeSignature(value: TimeSignature) {
+    this._currentTimeSignature = value;
+    this.emit("currentTimeSignatureChanged", value);
+  }
+
+  get finalMeasure() {
+    return this._finalMeasure;
+  }
+
+  _updateFinalMeasure(value: MeasureReference) {
+    this._finalMeasure = value;
+    this.emit("finalMeasureChanged", value);
+  }
+
+  get events() {
+    return this._events;
+  }
+
+  get ppqn() {
+    return this._ppqn;
+  }
+
+  _updateTickDuration() {
+    const ticksPerSecond = this._currentTempo / 60 * this._ppqn;
+    this._tickDuration = 1 / ticksPerSecond;
+  }
+
+  _handleEvent(event: MidiEvent) {
+    if (event instanceof NoteEvent) {
+      // play the note
+      const start = (this._position - event.tick) * this._tickDuration;
+      const duration = Math.min(event.duration * this._tickDuration - start, 5);
+      const instrument = this._instruments[event.channel];
+      const pitch = event.pitch;
+      const volume = event.velocity / 127.0;
+      this._player.queueWaveTable(this._audioContext, this._masterInput, window[instrument], start, pitch, duration, volume, []);
+    } else if (event instanceof TempoEvent) {
+      this._updateCurrentTempo(event.bpm);
+      this._updateTickDuration();
+    } else if (event instanceof TimeSignatureEvent) {
+      this._updateCurrentTimeSignature(event.signature);
+      this._updateTickDuration();
+    } else if (event instanceof MeasureEvent) {
+      this._updateCurrentMeasure(event.measure);
+    } else {
+      console.warn(`Unknown event '${event}'`);
+    }
+  }
+
+  _handleStep(deltaTime: number) {
+    // update tick position
+    const p0 = this._position;
+    this._position += deltaTime / this._tickDuration;
+    const p1 = this._position;
+
+    // handle all events within the current region
+    const k0 = { tick: p0 };
+    const k1 = { tick: p1 };
+    this._events.system.measure.searchRange(k0 as MeasureEvent, k1 as MeasureEvent).forEach(event => this._handleEvent(event));
+    this._events.system.tempo.searchRange(k0 as TempoEvent, k1 as TempoEvent).forEach(event => this._handleEvent(event));
+    this._events.system.timeSignature.searchRange(k0 as TimeSignatureEvent, k1 as TimeSignatureEvent).forEach(event => this._handleEvent(event));
+    this._events.track.forEach(track => track.note
+      .searchRange(k0 as NoteEvent, k1 as NoteEvent).forEach(event => this._handleEvent(event)));
+  }
+
+  resume() {
+    // try to resume the audio context
+    if (this._audioContext.state !== "running") {
+      this._audioContext.resume();
+    }
+  }
+
+  play() {
+    if (this._status !== "ready" || this._playing) {
+      return;
+    }
+    this.resume();
+
+    // reset delta time calculation
+    this._lastStepTime = this._audioContext.currentTime;
+
+    const stepWrapper = () => {
+      this._stepHandle = requestAnimationFrame(stepWrapper);
+
+      // calculate delta time
+      const t = this._audioContext.currentTime;
+      const deltaTime = t - this._lastStepTime;
+      this._lastStepTime = t;
+
+      // invoke step handler
+      this._handleStep(deltaTime);
+    };
+
+    this._updatePlaying(true);
+    stepWrapper();
+  }
+
+  pause() {
+    if (this._status !== "ready" || !this._playing) {
+      return;
+    }
+
+    cancelAnimationFrame(this._stepHandle!);
+    this._updatePlaying(false);
+  }
+
+  stop() {
+    this.pause();
+    this.seek(0);
+  }
+
+  seek(position: Tick) {
+    if (this._status !== "ready") {
+      return;
+    }
+    const wasPlaying = this._playing;
+    this.pause();
+
+    // set the new position
+    this._updatePosition(position);
+
+    // invoke event handler to update the measure and transport settings
+    const k = { tick: this._position };
+    const options: BinarySearchOptions<MidiEvent, MidiEvent> = {
+      itemInclusive: true,
+      boundsInclusive: true,
+    };
+    const events = [
+      this._events.system.measure.search(k as MeasureEvent, options)!,
+      this._events.system.tempo.search(k as TempoEvent, options)!,
+      this._events.system.timeSignature.search(k as TimeSignatureEvent, options)!,
+    ];
+    events.forEach(event => this._handleEvent(event));
+
+    // continue playing if activated
+    if (wasPlaying) {
+      this.play();
+    }
+  }
+
+  async load(song: Song) {
+    if (this._status !== "idle") {
+      return;
+    }
+
+    this._updateStatus("loading");
+
+    // download the midi and metadata files
+    if (!song.midiFile) {
+      throw new Error(`Midi file missing from song '${song.title}'`);
+    }
+    if (!song.jsonFile) {
+      throw new Error(`Json file missing from song '${song.title}'`);
+    }
+    const [midiRes, jsonRes] = await Promise.all([
+      axios.get(resolveUrl(song, "midiFile"), {
+        validateStatus: status => status === 200,
+        responseType: "arraybuffer",
+      }),
+      axios.get(resolveUrl(song, "jsonFile"), {
+        validateStatus: status => status === 200,
+        responseType: "json",
+      }),
+    ]);
+
+    this._events = {
+      system: {
+        measure: new MidiEventList(),
+        tempo: new MidiEventList(),
+        timeSignature: new MidiEventList(),
+      },
+      track: [],
+    };
+
+    // parse the system events
+    const midiJson: MTIMidiJson = jsonRes.data;
+    for (const event of midiJson.score.events) {
+      const { type, tickcount, value } = event;
+
+      switch (type) {
+        case "BEAT":
+          this._events.system.measure.insert(new MeasureEvent(tickcount, [value.meas, value.beat]));
+          break;
+        case "TEMPO":
+          this._events.system.tempo.insert(new TempoEvent(tickcount, value.bpm));
+          break;
+        case "TIMESIG":
+          this._events.system.timeSignature.insert(new TimeSignatureEvent(tickcount, [value.numerator, value.denominator]));
+          break;
+        default:
+          console.warn(`Unknown midi event type '${type}'`);
+          break;
+      }
+    }
+
+    song.$midiSystemEvents = this._events.system;
+
+    // parse the midi note events for each track
+    const midiData = await parseMidiBuffer(midiRes.data);
+
+    for (const [t, track] of song.tracks.entries()) {
+      const noteOnIndices = new Int32Array(128).fill(-1);
+      let tick = 0;
+
+      // get all events for this track from the midi file
+      const midiEvents = midiData.tracks.find(events => events.some(event => event.trackName === track.title));
+      if (!midiEvents) {
+        throw new Error(`Midi file does not contain a track named '${track.title}'.`);
+      }
+
+      // parse each event
+      for (let i = 0; i < midiEvents.length; i++) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const midiEvent = midiEvents[i] as any;
+
+        // calculate and store the new position
+        tick += midiEvent.delta;
+
+        // store note on position
+        if (midiEvent.noteOn) {
+          noteOnIndices[midiEvent.noteOn.noteNumber] = i;
+          midiEvent.position = tick; // also store the absolute position inside the original event
+        }
+
+        // store a complete note event when we have received the note off
+        if (midiEvent.noteOff) {
+          // lookup the note on index that we've store previously to set the duration property
+          const noteOnIndex = noteOnIndices[midiEvent.noteOff.noteNumber];
+          if (noteOnIndex === -1) {
+            console.warn("Midi data contains note off without a note on.");
+          } else {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const noteOnEvent = midiEvents[noteOnIndex] as any;
+
+            // store the note event
+            this._events.track[t].note.insert(new NoteEvent(tick,
+              tick - noteOnEvent.tick,
+              noteOnEvent.noteOn.noteNumber,
+              noteOnEvent.noteOn.velocity,
+              track.program,
+            ));
+
+            // clear the note on index
+            noteOnIndices[midiEvent.noteOff.noteNumber] = -1;
+          }
+        }
+      }
+
+      track.$midiTrackEvents = this._events.track[t];
+    }
+
+    // store additional song-specific settings
+    this._currentSong = song;
+    this._ppqn = midiJson.score.ppqn;
+    this._updateDuration(this._events.system.measure.last()?.tick ?? 0);
+
+    // resumt the audio context and create a player
+    this.resume();
+    this._player = new window.WebAudioFontPlayer();
+
+    // setup effects chain
+    const equalizer = this._player.createChannel(this._audioContext);
+    const reverberator = this._player.createReverberator(this._audioContext);
+
+    this._masterInput = equalizer.input;
+    equalizer.output.connect(reverberator.input);
+    reverberator.output.connect(this._audioContext.destination);
+
+    // load soundfonts
+    // TODO: point the url to our own server
+    for (const track of song.tracks) {
+      const nn = this._player.loader.findInstrument(track.program);
+      const info = this._player.loader.instrumentInfo(nn);
+      this._instruments[track.program] = window[info.variable];
+      this._player.loader.startLoad(this._audioContext, info.url, info.variable);
+    }
+
+    // wait until all soundfonts have loaded
+    await new Promise(resolve => this._player.loader.waitLoad(resolve));
+
+    // update status and seek to position 0. This will also intialize the current measure and tick duration
+    this._updateStatus("ready");
+    this.seek(0);
+  }
+
+  unload() {
+    if (this._status !== "ready") {
+      return;
+    }
+
+    this.pause();
+
+    this._player = null;
+    this._updatePosition(0);
+    this._updateDuration(0);
+    this._updateStatus("idle");
+  }
+}

@@ -20,18 +20,18 @@ describe("binarySearch", () => {
   });
 
   it("finds next element when inclusive=false, direction=forward", () => {
-    expect(binarySearch(sortedNumbers, 5, { inclusive: false, direction: "forward" })).toBe(7);
-    expect(binarySearch(sortedNumbers, 11, { inclusive: false, direction: "forward" })).toBeUndefined();
+    expect(binarySearch(sortedNumbers, 5, { itemInclusive: false, direction: "forward" })).toBe(7);
+    expect(binarySearch(sortedNumbers, 11, { itemInclusive: false, direction: "forward" })).toBeUndefined();
   });
 
   it("finds previous element when inclusive=false, direction=backward", () => {
-    expect(binarySearch(sortedNumbers, 5, { inclusive: false, direction: "backward" })).toBe(3);
-    expect(binarySearch(sortedNumbers, 1, { inclusive: false, direction: "backward" })).toBeUndefined();
+    expect(binarySearch(sortedNumbers, 5, { itemInclusive: false, direction: "backward" })).toBe(3);
+    expect(binarySearch(sortedNumbers, 1, { itemInclusive: false, direction: "backward" })).toBeUndefined();
   });
 
   it("returns closest bound when includeBounds=true", () => {
-    expect(binarySearch(sortedNumbers, 0, { includeBounds: true, direction: "forward" })).toBe(1);
-    expect(binarySearch(sortedNumbers, 12, { includeBounds: true, direction: "backward" })).toBe(11);
+    expect(binarySearch(sortedNumbers, 0, { boundsInclusive: true, direction: "forward" })).toBe(1);
+    expect(binarySearch(sortedNumbers, 12, { boundsInclusive: true, direction: "backward" })).toBe(11);
   });
 
   it("uses custom comparator for objects", () => {
@@ -54,8 +54,8 @@ describe("binarySearch", () => {
       { id: 1 }, { id: 3 }, { id: 5 }, { id: 7 },
     ];
     const comparator = (key: TestKey, obj: TestItem) => key - obj.id;
-    expect(binarySearch(objects, 3, { comparator, inclusive: false, direction: "forward" })).toEqual({ id: 5 });
-    expect(binarySearch(objects, 3, { comparator, inclusive: false, direction: "backward" })).toEqual({ id: 1 });
+    expect(binarySearch(objects, 3, { comparator, itemInclusive: false, direction: "forward" })).toEqual({ id: 5 });
+    expect(binarySearch(objects, 3, { comparator, itemInclusive: false, direction: "backward" })).toEqual({ id: 1 });
   });
 
   it("returns bound with custom comparator and includeBounds=true", () => {
@@ -63,8 +63,8 @@ describe("binarySearch", () => {
       { id: 1 }, { id: 3 }, { id: 5 }, { id: 7 },
     ];
     const comparator = (key: TestKey, obj: TestItem) => key - obj.id;
-    expect(binarySearch(objects, 0, { comparator, includeBounds: true, direction: "forward" })).toEqual({ id: 1 });
-    expect(binarySearch(objects, 8, { comparator, includeBounds: true, direction: "backward" })).toEqual({ id: 7 });
+    expect(binarySearch(objects, 0, { comparator, boundsInclusive: true, direction: "forward" })).toEqual({ id: 1 });
+    expect(binarySearch(objects, 8, { comparator, boundsInclusive: true, direction: "backward" })).toEqual({ id: 7 });
   });
 });
 

@@ -4,6 +4,7 @@ import { compareNumberings, type Numbering } from "../utils/numbering";
 import { MarkerEvent, VampEvent } from "./measureEvent";
 import type { UrlOrFile } from "../utils/file";
 import { pb, type PbRecord } from "@/pocketbase";
+import type { MeasureEvent, MidiEventList, TempoEvent, TimeSignatureEvent } from "./midiEvents";
 
 export type SongNumber = Numbering;
 
@@ -26,6 +27,11 @@ export default class Song {
       markers: [],
       vamps: [],
       segue: false,
+    },
+    public $midiSystemEvents?: {
+      measure: MidiEventList<MeasureEvent>;
+      tempo: MidiEventList<TempoEvent>;
+      timeSignature: MidiEventList<TimeSignatureEvent>;
     },
   ) {
     this.measures.sort((a, b) => compareNumberings(a.number, b.number));

@@ -29,11 +29,10 @@ watch(() => project.songId, songId => {
 // fetch show and current song data from pocketbase
 const [show, showLoading] = usePromise(Show.get(route.params.showId as string));
 const songs = computed(() => show.value?.songs ?? null);
-const song = computed(() => songs.value?.find(song => song.id === songId.value) ?? null);
+const song = computed(() => songs.value?.find(song => song.id === project.songId) ?? null);
 
 // automatically select the first song
 watch([songs, () => project.songId], ([songs, songId]) => {
-  console.log("STATE", songs, songId);
   const songIds = songs?.map(song => song.id) ?? [];
 
   // clear project song id
@@ -50,5 +49,5 @@ watch([songs, () => project.songId], ([songs, songId]) => {
 </script>
 
 <template>
-  {{ show }}
+  {{ song }}
 </template>

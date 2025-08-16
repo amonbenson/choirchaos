@@ -1,4 +1,4 @@
-import MidiTrack from "./midiTrack";
+import type { MidiEventList, NoteEvent } from "./midiEvents";
 
 export type TrackClassification = "accompaniment" | "percussion" | "vocal";
 
@@ -7,7 +7,9 @@ export default class Track {
     public title: string,
     public classification: string = "accompaniment",
     public program: number = 0,
-    public $midi?: MidiTrack,
+    public $midiTrackEvents?: {
+      note: MidiEventList<NoteEvent>;
+    },
   ) {}
 
   public json() {

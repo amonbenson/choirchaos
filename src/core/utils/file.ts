@@ -10,7 +10,7 @@ export function resolveFilename(file: UrlOrFile) {
   }
 }
 
-export function resolveUrl<R extends PbRecord, K extends keyof R & string>(record: R, property: R[K] extends R ? K : never) {
+export function resolveUrl<R extends PbRecord, K extends keyof R & string>(record: R, property: K) {
   const file: UrlOrFile = record[property];
 
   if (file instanceof File) {

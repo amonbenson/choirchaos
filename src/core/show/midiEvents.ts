@@ -1,3 +1,5 @@
+import { BinarySortedList } from "../utils/binarySearch";
+import type { MeasureReference } from "./measure";
 import type { Tick, TimeSignature } from "./midiTypes";
 
 export class MidiEvent {
@@ -5,7 +7,13 @@ export class MidiEvent {
 }
 
 export class NoteEvent extends MidiEvent {
-  constructor(public tick: Tick, public duration: Tick, public note: number, public velocity: number) {
+  constructor(public tick: Tick, public duration: Tick, public pitch: number, public velocity: number, public channel: number) {
+    super(tick);
+  }
+}
+
+export class MeasureEvent extends MidiEvent {
+  constructor(public tick: Tick, public measure: MeasureReference) {
     super(tick);
   }
 }
@@ -19,5 +27,13 @@ export class TempoEvent extends MidiEvent {
 export class TimeSignatureEvent extends MidiEvent {
   constructor(public tick: Tick, public signature: TimeSignature) {
     super(tick);
+  }
+}
+
+export class MidiEventList<T extends MidiEvent> extends BinarySortedList<T> {
+  constructor(items?: T[]) {
+    super(items, {
+      comparator: (a, b) => a.tick - b.tick,
+    });
   }
 }
