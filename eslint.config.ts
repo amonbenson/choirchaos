@@ -12,7 +12,27 @@ export default defineConfigWithVueTs(
   {
     name: "app/files-to-lint",
     files: ["**/*.{ts,mts,tsx,vue}"],
+  },
+
+  globalIgnores(["**/dist/**", "**/dist-ssr/**", "**/coverage/**", "**/public/**"]),
+
+  pluginVue.configs["flat/recommended"],
+  vueTsConfigs.recommended,
+
+  {
+    ...pluginVitest.configs.recommended,
+    files: ["src/**/__tests__/*"],
+  },
+
+  {
+    name: "app/overrides",
     rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": ["error", {
+        argsIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+        caughtErrorsIgnorePattern: "^_",
+      }],
       quotes: ["error", "double"],
       semi: ["error", "always"],
       "comma-dangle": ["error", "always-multiline"],
@@ -21,15 +41,5 @@ export default defineConfigWithVueTs(
       "no-trailing-spaces": "error",
       "vue/block-order": ["error", { order: ["script", "template", "style"] }],
     },
-  },
-
-  globalIgnores(["**/dist/**", "**/dist-ssr/**", "**/coverage/**", "**/public/**"]),
-
-  pluginVue.configs["flat/essential"],
-  vueTsConfigs.recommended,
-
-  {
-    ...pluginVitest.configs.recommended,
-    files: ["src/**/__tests__/*"],
   },
 );

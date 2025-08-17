@@ -1,7 +1,6 @@
 
 import { describe, it, expect } from "vitest";
 import { binarySearch, insertSorted, BinarySortedList, type BinarySearchOptions } from "./binarySearch";
-import Measure, { compareMeasures, MeasureList } from "../show/measure";
 
 type TestItem = { p: number };
 

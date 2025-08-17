@@ -43,7 +43,7 @@ export default class Measure {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   public static fromJson({ value, beats, layout }: any) {
     return new Measure(value, beats, layout);
   }

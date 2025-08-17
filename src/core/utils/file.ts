@@ -1,4 +1,4 @@
-import { pb, type PbRecord } from "@/pocketbase";
+import { pb } from "@/pocketbase";
 
 export type UrlOrFile = string | File;
 

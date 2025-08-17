@@ -23,7 +23,7 @@ export class MarkerEvent extends MeasureEvent {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   public static fromJson({ start, marker }: any) {
     return new MarkerEvent(start, marker);
   }
@@ -43,7 +43,7 @@ export class VampEvent extends MeasureEvent {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   public static fromJson({ start, end, iterations }: any) {
     return new VampEvent(start, end, iterations);
   }

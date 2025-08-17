@@ -84,8 +84,8 @@ export const usePlayerStore = defineStore("player", () => {
   });
 
   const events = useEvent(globalPlayer, "statusChanged", {
-    initial: markRaw(globalPlayer.events),
-    getter: (player) => markRaw(player.events),
+    initial: markRaw(globalPlayer.midi_events),
+    getter: (player) => markRaw(player.midi_events),
   });
 
   const ppqn = useEvent(globalPlayer, "statusChanged", {

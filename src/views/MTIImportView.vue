@@ -47,5 +47,8 @@ async function provision() {
 </script>
 
 <template>
-  <Button @click="provision()" label="Provision" />
+  <Button
+    label="Provision"
+    @click="provision()"
+  />
 </template>

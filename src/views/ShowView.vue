@@ -89,6 +89,7 @@ watch(song, async song => {
         aria-label="Play/Pause"
         @click="player.playing ? player.pause() : player.play()"
       />
+      {{ player.status }}
     </div>
     <!-- <section>
       <p>

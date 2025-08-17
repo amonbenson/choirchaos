@@ -11,7 +11,6 @@ import type { BinarySearchOptions } from "../utils/binarySearch";
 import type Measure from "./measure";
 
 declare global {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     interface Window { WebAudioFontPlayer: any; }
 }
 
@@ -49,7 +48,7 @@ export default class MidiPlayer extends EventEmitter {
   private _currentTimeSignature: TimeSignature = [4, 4];
   private _finalMeasure: MeasureReference = ["1", 0];
 
-  private _events: MidiPlayerEvents = {
+  private _midi_events: MidiPlayerEvents = {
     system: {
       measure: new MidiEventList(),
       tempo: new MidiEventList(),
@@ -59,9 +58,7 @@ export default class MidiPlayer extends EventEmitter {
   };
 
   private _audioContext = new AudioContext();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private _player: any = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private _instruments: { [key: number]: any } = {};
   private _masterInput: AudioNode | null = null;
 
@@ -74,7 +71,7 @@ export default class MidiPlayer extends EventEmitter {
 
   _updateStatus(value: MidiPlayerStatus) {
     this._status = value;
-    this.emit("statusChanged", value);
+    this.emit("statusChanged", this._status);
   }
 
   get playing() {
@@ -83,7 +80,7 @@ export default class MidiPlayer extends EventEmitter {
 
   _updatePlaying(value: boolean) {
     this._playing = value;
-    this.emit("playingChanged", value);
+    this.emit("playingChanged", this._playing);
   }
 
   get position() {
@@ -102,7 +99,7 @@ export default class MidiPlayer extends EventEmitter {
 
   _updateDuration(value: Tick) {
     this._duration = value;
-    this.emit("durationChanged", value);
+    this.emit("durationChanged", this._duration);
   }
 
   get currentMeasure() {
@@ -111,7 +108,7 @@ export default class MidiPlayer extends EventEmitter {
 
   _updateCurrentMeasure(value: MeasureReference) {
     this._currentMeasure = value;
-    this.emit("currentMeasureChanged", value);
+    this.emit("currentMeasureChanged", this._currentMeasure);
   }
 
   get currentTempo() {
@@ -120,7 +117,7 @@ export default class MidiPlayer extends EventEmitter {
 
   _updateCurrentTempo(value: number) {
     this._currentTempo = value;
-    this.emit("currentTempoChanged", value);
+    this.emit("currentTempoChanged", this._currentTempo);
   }
 
   get currentTimeSignature() {
@@ -129,7 +126,7 @@ export default class MidiPlayer extends EventEmitter {
 
   _updateCurrentTimeSignature(value: TimeSignature) {
     this._currentTimeSignature = value;
-    this.emit("currentTimeSignatureChanged", value);
+    this.emit("currentTimeSignatureChanged", this._currentTimeSignature);
   }
 
   get finalMeasure() {
@@ -138,11 +135,11 @@ export default class MidiPlayer extends EventEmitter {
 
   _updateFinalMeasure(value: MeasureReference) {
     this._finalMeasure = value;
-    this.emit("finalMeasureChanged", value);
+    this.emit("finalMeasureChanged", this._finalMeasure);
   }
 
-  get events() {
-    return this._events;
+  get midi_events() {
+    return this._midi_events;
   }
 
   get ppqn() {
@@ -162,7 +159,6 @@ export default class MidiPlayer extends EventEmitter {
       const instrument = this._instruments[event.channel];
       const pitch = event.pitch;
       const volume = event.velocity / 127.0;
-      console.log(start, duration);
       this._player.queueWaveTable(this._audioContext, this._masterInput, window[instrument], start, pitch, duration, volume, []);
     } else if (event instanceof TempoEvent) {
       this._updateCurrentTempo(event.bpm);
@@ -186,10 +182,10 @@ export default class MidiPlayer extends EventEmitter {
     // handle all events within the current region
     const k0 = { tick: p0 };
     const k1 = { tick: p1 };
-    this._events.system.measure.searchRange(k0 as MeasureEvent, k1 as MeasureEvent).forEach(event => this._handleEvent(event));
-    this._events.system.tempo.searchRange(k0 as TempoEvent, k1 as TempoEvent).forEach(event => this._handleEvent(event));
-    this._events.system.timeSignature.searchRange(k0 as TimeSignatureEvent, k1 as TimeSignatureEvent).forEach(event => this._handleEvent(event));
-    this._events.track.forEach(track => track.note
+    this._midi_events.system.measure.searchRange(k0 as MeasureEvent, k1 as MeasureEvent).forEach(event => this._handleEvent(event));
+    this._midi_events.system.tempo.searchRange(k0 as TempoEvent, k1 as TempoEvent).forEach(event => this._handleEvent(event));
+    this._midi_events.system.timeSignature.searchRange(k0 as TimeSignatureEvent, k1 as TimeSignatureEvent).forEach(event => this._handleEvent(event));
+    this._midi_events.track.forEach(track => track.note
       .searchRange(k0 as NoteEvent, k1 as NoteEvent).forEach(event => this._handleEvent(event)));
   }
 
@@ -256,9 +252,9 @@ export default class MidiPlayer extends EventEmitter {
       extend: true,
     };
     const events = [
-      this._events.system.measure.search(k as MeasureEvent, options)!,
-      this._events.system.tempo.search(k as TempoEvent, options)!,
-      this._events.system.timeSignature.search(k as TimeSignatureEvent, options)!,
+      this._midi_events.system.measure.search(k as MeasureEvent, options)!,
+      this._midi_events.system.tempo.search(k as TempoEvent, options)!,
+      this._midi_events.system.timeSignature.search(k as TimeSignatureEvent, options)!,
     ];
     events.forEach(event => this._handleEvent(event));
 
@@ -293,7 +289,7 @@ export default class MidiPlayer extends EventEmitter {
       }),
     ]);
 
-    this._events = {
+    this._midi_events = {
       system: {
         measure: new MidiEventList(),
         tempo: new MidiEventList(),
@@ -312,7 +308,7 @@ export default class MidiPlayer extends EventEmitter {
 
       switch (type) {
         case "BEAT":
-          this._events.system.measure.insert(new MeasureEvent(tickcount, [value.meas, value.beat]));
+          this._midi_events.system.measure.insert(new MeasureEvent(tickcount, [value.meas, value.beat]));
 
           // store tick reference in original song measure data
           const songMeasure = song.measures.search({  value: value.meas } as Measure);
@@ -333,10 +329,10 @@ export default class MidiPlayer extends EventEmitter {
 
           break;
         case "TEMPO":
-          this._events.system.tempo.insert(new TempoEvent(tickcount, value.bpm));
+          this._midi_events.system.tempo.insert(new TempoEvent(tickcount, value.bpm));
           break;
         case "TIMESIG":
-          this._events.system.timeSignature.insert(new TimeSignatureEvent(tickcount, [value.numerator, value.denominator]));
+          this._midi_events.system.timeSignature.insert(new TimeSignatureEvent(tickcount, [value.numerator, value.denominator]));
           break;
         default:
           console.warn(`Unknown midi event type '${type}'`);
@@ -346,7 +342,7 @@ export default class MidiPlayer extends EventEmitter {
 
     // store system events in original song data
     // Use assign because the object might already contain other metadata (e.g. from Vue's markRaw())
-    Object.assign(song.$midiSystemEvents, this._events.system);
+    Object.assign(song.$midiSystemEvents, this._midi_events.system);
 
     // parse the midi note events for each track
     const midiData = await parseMidiBuffer(midiRes.data);
@@ -354,7 +350,7 @@ export default class MidiPlayer extends EventEmitter {
     for (const [t, track] of song.tracks.entries()) {
       const noteOnIndices = new Int32Array(128).fill(-1);
       let tick = 0;
-      this._events.track.push({ note: new MidiEventList<NoteEvent>() });
+      this._midi_events.track.push({ note: new MidiEventList<NoteEvent>() });
 
       // get all events for this track from the midi file (track title may start with a "-" ... this is a bug in the original track naming)
       const trackName = track.title.replace(/^-/, "");
@@ -365,7 +361,6 @@ export default class MidiPlayer extends EventEmitter {
 
       // parse each event
       for (let i = 0; i < midiEvents.length; i++) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const midiEvent = midiEvents[i] as any;
 
         // calculate and store the new position
@@ -384,12 +379,11 @@ export default class MidiPlayer extends EventEmitter {
           if (noteOnIndex === -1) {
             console.warn("Midi data contains note off without a note on.");
           } else {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const noteOnEvent = midiEvents[noteOnIndex] as any;
 
             // store the note event
-            this._events.track[t].note.insert(new NoteEvent(
-              tick,
+            this._midi_events.track[t].note.insert(new NoteEvent(
+              noteOnEvent.$tick,
               tick - noteOnEvent.$tick,
               noteOnEvent.noteOn.noteNumber,
               noteOnEvent.noteOn.velocity,
@@ -403,13 +397,13 @@ export default class MidiPlayer extends EventEmitter {
       }
 
       // store track events in original track data
-      Object.assign(track.$midiTrackEvents, this._events.track[t]);
+      Object.assign(track.$midiTrackEvents, this._midi_events.track[t]);
     }
 
     // store additional song-specific settings
     this._currentSong = song;
     this._ppqn = midiJson.score.ppqn;
-    this._updateDuration(this._events.system.measure.last()?.tick ?? 0);
+    this._updateDuration(this._midi_events.system.measure.last()?.tick ?? 0);
 
     // resumt the audio context and create a player
     this.resume();

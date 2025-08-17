@@ -1,14 +1,17 @@
-import type EventEmitter from "events";
 import { ref, computed, onScopeDispose, getCurrentScope } from "vue";
+
+type EventEmitterLike = {
+  on: (eventName: string | symbol, handler: (...args: any) => void) => void;
+  off: (eventName: string | symbol, handler: (...args: any) => void) => void;
+}
 
 export type EventEmitterOptions<E, T> = {
   initial?: T,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getter?: (emitter: E, ...params: any[]) => T;
   setter?: (emitter: E, value: T) => void;
 };
 
-export function useEvent<E extends EventEmitter, T>(emitter: E, event: string, options: EventEmitterOptions<E, T> = {}) {
+export function useEvent<E extends EventEmitterLike, T>(emitter: E, event: string, options: EventEmitterOptions<E, T> = {}) {
   if (!getCurrentScope()) {
     throw new Error("No active effect scope.");
   }
@@ -20,7 +23,6 @@ export function useEvent<E extends EventEmitter, T>(emitter: E, event: string, o
   const receiverValue = ref(initial);
 
   // register emitter -> receiver synchronization
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const syncEmitterToReceiver = (...params: any[]) => {
     receiverValue.value = getter(emitter, ...params);
   };
