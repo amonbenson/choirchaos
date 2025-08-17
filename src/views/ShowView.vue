@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import Show from "@/core/show/show";
-import Song from "@/core/show/song";
-import { useProjectStore } from "@/stores/project";
 import { usePlayerStore } from "@/stores/player";
 import { computed, watch, ref, markRaw, type Ref, type ComputedRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import TransportBar from "./TransportBar.vue";
+import { resolveUrl } from "@/core/utils/file";
+import TransportBar from "@/components/TransportBar.vue";
+import PdfCanvas from "@/components/PdfCanvas.vue";
 
 const player = usePlayerStore();
 const route = useRoute();
@@ -22,6 +22,8 @@ const showLoading = ref(true);
 
 const song: ComputedRef<Show | null> = computed(() => show.value?.songs.find(s => s.id === props.songId) ?? null);
 const songLoading = ref(true);
+
+const pdfUrl = computed(() => song.value ? resolveUrl(song.value.pdfFile, "songs", song.value.id) : null);
 
 function selectSong(songId?: string) {
   // route to the correct song first
@@ -91,10 +93,20 @@ fetchShow();
 <template>
   <div class="fixed left-0 top-0 w-screen h-screen flex flex-col justify-stretch items-stretch gap-2 p-2">
     <TransportBar
+      class="flex-none"
       :model-value="songId"
       :songs="show?.songs ?? null"
       :loading="showLoading || songLoading"
       @update:model-value="selectSong($event)"
     />
+    <div class="flex-1 size-full flex justify-center items-center">
+      <PdfCanvas
+        v-if="song?.pdfFile"
+        class="flex-1"
+        :url="pdfUrl"
+        :page="0"
+        :scale="1.3"
+      />
+    </div>
   </div>
 </template>

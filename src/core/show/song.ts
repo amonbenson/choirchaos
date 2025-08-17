@@ -21,6 +21,7 @@ export default class Song {
     public title: string,
     public midiFile?: UrlOrFile,
     public jsonFile?: UrlOrFile,
+    public pdfFile?: UrlOrFile,
     public tracks: Track[] = [],
     public measures: MeasureList = new MeasureList(),
     public events: SongEvents = {
@@ -30,6 +31,10 @@ export default class Song {
     },
     public $midiSystemEvents: MidiSystemEvents | object = {},
   ) {}
+
+  public findMeasure(value: Numbering) {
+    return this.measures.search({ value } as Measure);
+  }
 
   public toRecord(): PbRecord {
     return {
@@ -47,13 +52,14 @@ export default class Song {
     };
   }
 
-  public static fromRecord({ id, number, title, midiFile, jsonFile, tracks, measures, events }: PbRecord): Song {
+  public static fromRecord({ id, number, title, midiFile, jsonFile, pdfFile, tracks, measures, events }: PbRecord): Song {
     return new Song(
       id,
       number,
       title,
       midiFile,
       jsonFile,
+      pdfFile,
       tracks.map((t: PbRecord) => Track.fromJson(t)),
       new MeasureList(measures.map((m: PbRecord) => Measure.fromJson(m))),
       {

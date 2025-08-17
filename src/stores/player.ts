@@ -8,7 +8,6 @@ const globalPlayer = new MidiPlayer();
 
 function usePlayerPosition(player: MidiPlayer) {
   const playing = useEvent(player, "playingChanged", { initial: player.playing });
-  const emittedPosition = useEvent(player, "position", { initial: player.position });
 
   // keep track of the player's internal position
   const playerPosition = ref(player.position);
@@ -31,6 +30,8 @@ function usePlayerPosition(player: MidiPlayer) {
     }
   });
 
+  // also use the emitted position to update on seek and stop events
+  const emittedPosition = useEvent(player, "positionChanged", { initial: player.position });
   watch(emittedPosition, () => updatePosition());
 
   // inject a setter for seeking

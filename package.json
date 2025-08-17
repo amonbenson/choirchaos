@@ -27,6 +27,7 @@
     "events": "^3.3.0",
     "file-saver": "^2.0.5",
     "midi-json-parser": "^8.1.66",
+    "pdfjs-dist": "^5.4.54",
     "pinia": "^3.0.3",
     "pocketbase": "^0.26.2",
     "primeicons": "^7.0.0",
