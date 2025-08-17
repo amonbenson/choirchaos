@@ -8,6 +8,7 @@ import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
 import type Song from "./song";
 import { resolveUrl } from "../utils/file";
 import type { BinarySearchOptions } from "../utils/binarySearch";
+import type Measure from "./measure";
 
 declare global {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -17,15 +18,19 @@ declare global {
 
 export type MidiPlayerStatus = "idle" | "loading" | "ready";
 
+export type MidiSystemEvents = {
+  measure: MidiEventList<MeasureEvent>;
+  tempo: MidiEventList<TempoEvent>;
+  timeSignature: MidiEventList<TimeSignatureEvent>;
+};
+
+export type MidiTrackEvents = {
+  note: MidiEventList<NoteEvent>;
+};
+
 export type MidiPlayerEvents = {
-  system: {
-    measure: MidiEventList<MeasureEvent>;
-    tempo: MidiEventList<TempoEvent>;
-    timeSignature: MidiEventList<TimeSignatureEvent>;
-  },
-  track: {
-    note: MidiEventList<NoteEvent>;
-  }[];
+  system: MidiSystemEvents;
+  track: MidiTrackEvents[];
 }
 
 export default class MidiPlayer extends EventEmitter {
@@ -277,11 +282,11 @@ export default class MidiPlayer extends EventEmitter {
       throw new Error(`Json file missing from song '${song.title}'`);
     }
     const [midiRes, jsonRes] = await Promise.all([
-      axios.get(resolveUrl(song, "midiFile"), {
+      axios.get(resolveUrl(song.midiFile, "songs", song.id), {
         validateStatus: status => status === 200,
         responseType: "arraybuffer",
       }),
-      axios.get(resolveUrl(song, "jsonFile"), {
+      axios.get(resolveUrl(song.jsonFile, "songs", song.id), {
         validateStatus: status => status === 200,
         responseType: "json",
       }),
@@ -304,6 +309,24 @@ export default class MidiPlayer extends EventEmitter {
       switch (type) {
         case "BEAT":
           this._events.system.measure.insert(new MeasureEvent(tickcount, [value.meas, value.beat]));
+
+          // store tick reference in original song measure data
+          const songMeasure = song.measures.search({  value: value.meas } as Measure);
+          if (songMeasure?.value === value.meas) {
+            // store the tick data
+            if (songMeasure.$beatTicks.length === 0) {
+              // "fill" the array without destroying its reference
+              while (songMeasure.$beatTicks.length < songMeasure.beats) {
+                songMeasure.$beatTicks.push(tickcount);
+              }
+            } else {
+              // set the beat's tick value
+              songMeasure.$beatTicks[value.beat - 1] = tickcount;
+            }
+          } else {
+            console.warn(`Midi measure ${value.meas} does not exist in the song data. This will lead to inconsistencies when seeking to that measure.`);
+          }
+
           break;
         case "TEMPO":
           this._events.system.tempo.insert(new TempoEvent(tickcount, value.bpm));
@@ -317,7 +340,9 @@ export default class MidiPlayer extends EventEmitter {
       }
     }
 
-    song.$midiSystemEvents = this._events.system;
+    // store system events in original song data
+    // Use assign because the object might already contain other metadata (e.g. from Vue's markRaw())
+    Object.assign(song.$midiSystemEvents, this._events.system);
 
     // parse the midi note events for each track
     const midiData = await parseMidiBuffer(midiRes.data);
@@ -325,11 +350,13 @@ export default class MidiPlayer extends EventEmitter {
     for (const [t, track] of song.tracks.entries()) {
       const noteOnIndices = new Int32Array(128).fill(-1);
       let tick = 0;
+      this._events.track.push({ note: new MidiEventList<NoteEvent>() });
 
-      // get all events for this track from the midi file
-      const midiEvents = midiData.tracks.find(events => events.some(event => event.trackName === track.title));
+      // get all events for this track from the midi file (track title may start with a "-" ... this is a bug in the original track naming)
+      const trackName = track.title.replace(/^-/, "");
+      const midiEvents = midiData.tracks.find(events => events.some(event => event.trackName === trackName));
       if (!midiEvents) {
-        throw new Error(`Midi file does not contain a track named '${track.title}'.`);
+        throw new Error(`Midi file does not contain a track named '${track.title}' (Song: #${song.number} ${song.title}).`);
       }
 
       // parse each event
@@ -370,7 +397,8 @@ export default class MidiPlayer extends EventEmitter {
         }
       }
 
-      track.$midiTrackEvents = this._events.track[t];
+      // store track events in original track data
+      Object.assign(track.$midiTrackEvents, this._events.track[t]);
     }
 
     // store additional song-specific settings

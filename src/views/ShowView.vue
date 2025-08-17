@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { usePromise } from "@/composables/promise";
 import Show from "@/core/show/show";
 import Song from "@/core/show/song";
-import { compareNumberings } from "@/core/utils/numbering";
 import { useProjectStore } from "@/stores/project";
 import { usePlayerStore } from "@/stores/player";
-import { computed, nextTick, onMounted, ref, watch, type Ref } from "vue";
+import { computed, watch, ref, markRaw, type Ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 const project = useProjectStore();
@@ -29,8 +27,9 @@ watch(() => project.songId, songId => {
   router.replace({ path });
 });
 
-// fetch show and current song data from pocketbase
-const [show]: [Ref<Show | null>] = usePromise(Show.get(route.params.showId as string));
+// store show and current song data from pocketbase
+const show: Ref<Show | null> = ref(null);
+const showLoading = ref(true);
 const songs: Ref<Song[] | null> = computed(() => show.value?.songs ?? null);
 const song: Ref<Song | null> = computed(() => songs.value?.find(song => song.id === project.songId) ?? null);
 
@@ -51,12 +50,30 @@ watch([songs, () => project.songId], ([songs, songId]) => {
 });
 
 // load the selected song into the player
-// watch(song, async song => {
-//   if (song) {
-//     console.log("LOADING SONG...");
-//     await player.load(song);
-//   }
-// });
+watch(song, async song => {
+  if (song) {
+    await player.load(song);
+  }
+});
+
+// fetch the show data from pocketbase on create
+(async () => {
+  try {
+    const showObj = await Show.get(route.params.showId as string);
+
+    // mark expensive/large reference properties as raw so vue doesn't try to make them reactive
+    for (const song of showObj.songs) {
+      song.$midiSystemEvents = markRaw(song.$midiSystemEvents);
+    }
+
+    show.value = showObj;
+  } catch (err) {
+    console.error(err);
+    // showError.value = err;
+  } finally {
+    showLoading.value = false;
+  }
+})();
 </script>
 
 <template>

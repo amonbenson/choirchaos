@@ -4,7 +4,11 @@
     <meta charset="UTF-8">
     <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Choir Chaoss</title>
+    <title>Choir Chaos</title>
+
+    <!-- load webaudiofont globally -->
+    <!-- TODO: node_modules cannot be bundled like this. Probably need to convert the required script to a module manually or copy them into public/ -->
+    <script src="/js/WebAudioFontPlayer.js"></script>
   </head>
   <body>
     <div id="app"></div>

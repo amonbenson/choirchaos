@@ -28,6 +28,7 @@ export default class Measure {
     public value: MeasureNumber,
     public beats: number,
     public layout?: MeasureLayout,
+    public $beatTicks: number[] = [],
   ) {}
 
   public reference(beat: BeatNumber): MeasureReference {

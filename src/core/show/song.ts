@@ -4,7 +4,7 @@ import type { Numbering } from "../utils/numbering";
 import { MarkerEvent, MeasureEventList, VampEvent } from "./measureEvent";
 import type { UrlOrFile } from "../utils/file";
 import { pb, type PbRecord } from "@/pocketbase";
-import type { MeasureEvent, MidiEventList, TempoEvent, TimeSignatureEvent } from "./midiEvents";
+import type { MidiSystemEvents } from "./midiPlayer";
 
 export type SongNumber = Numbering;
 
@@ -28,11 +28,7 @@ export default class Song {
       vamps: new MeasureEventList<VampEvent>(),
       segue: false,
     },
-    public $midiSystemEvents?: {
-      measure: MidiEventList<MeasureEvent>;
-      tempo: MidiEventList<TempoEvent>;
-      timeSignature: MidiEventList<TimeSignatureEvent>;
-    },
+    public $midiSystemEvents: MidiSystemEvents | object = {},
   ) {}
 
   public toRecord(): PbRecord {

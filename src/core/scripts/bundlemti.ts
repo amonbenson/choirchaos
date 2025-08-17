@@ -61,7 +61,7 @@ export async function parseData(mtiShow: MTILicenseCheck, mtiChanges: MTIShowCha
     // create a new song
     const song = new Song(mtiSong.songId, mtiSong.number);
     song.title = mtiSong.title;
-    song.midiFile = await loadBlob(mtiSong.midiFileUrl, cloudfrontUrl);
+    song.midiFile = await loadBlob(mtiSong.midiFileUrl, cloudfrontUrl); // TODO: this breaks the file contents! probably need to specify to load in raw binary format somehow...
     song.jsonFile = await loadBlob(mtiSong.jsonFileUrl, cloudfrontUrl);
 
     // generate tracks

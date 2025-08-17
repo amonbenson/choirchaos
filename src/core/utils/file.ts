@@ -10,12 +10,10 @@ export function resolveFilename(file: UrlOrFile) {
   }
 }
 
-export function resolveUrl<R extends PbRecord, K extends keyof R & string>(record: R, property: K) {
-  const file: UrlOrFile = record[property];
-
+export function resolveUrl(file: UrlOrFile, collectionIdOrName: string, recordId: string) {
   if (file instanceof File) {
     return URL.createObjectURL(file);
   } else {
-    return pb.files.getURL(record, file);
+    return pb.buildURL(`/api/files/${collectionIdOrName}/${recordId}/${file}`);
   }
 }
