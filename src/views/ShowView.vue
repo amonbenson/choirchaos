@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { usePromise } from "@/composables/promise";
 import Show from "@/core/show/show";
+import Song from "@/core/show/song";
 import { compareNumberings } from "@/core/utils/numbering";
 import { useProjectStore } from "@/stores/project";
+import { usePlayerStore } from "@/stores/player";
 import { computed, nextTick, onMounted, ref, watch, type Ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 const project = useProjectStore();
+const player = usePlayerStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -27,9 +30,9 @@ watch(() => project.songId, songId => {
 });
 
 // fetch show and current song data from pocketbase
-const [show, showLoading] = usePromise(Show.get(route.params.showId as string));
-const songs = computed(() => show.value?.songs ?? null);
-const song = computed(() => songs.value?.find(song => song.id === project.songId) ?? null);
+const [show]: [Ref<Show | null>] = usePromise(Show.get(route.params.showId as string));
+const songs: Ref<Song[] | null> = computed(() => show.value?.songs ?? null);
+const song: Ref<Song | null> = computed(() => songs.value?.find(song => song.id === project.songId) ?? null);
 
 // automatically select the first song
 watch([songs, () => project.songId], ([songs, songId]) => {
@@ -46,6 +49,14 @@ watch([songs, () => project.songId], ([songs, songId]) => {
     project.songId = songs?.[0]?.id ?? null;
   }
 });
+
+// load the selected song into the player
+// watch(song, async song => {
+//   if (song) {
+//     console.log("LOADING SONG...");
+//     await player.load(song);
+//   }
+// });
 </script>
 
 <template>

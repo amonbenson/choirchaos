@@ -21,7 +21,7 @@ export default class Show {
   }
 
   public static fromRecord({ id, title, thumbnail, expand }: PbRecord): Show {
-    return new Show(id, title, thumbnail, expand.songs_via_show);
+    return new Show(id, title, thumbnail, expand.songs_via_show.map((s: Song) => Song.fromRecord(s)));
   }
 
   public async create(): Promise<PbRecord> {

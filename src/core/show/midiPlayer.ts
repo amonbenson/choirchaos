@@ -87,8 +87,8 @@ export default class MidiPlayer extends EventEmitter {
 
   _updatePosition(value: Tick) {
     // TODO: slow down emit rate while playing
-    this._position = value;
-    this.emit("positionChanged", value);
+    this._position = Math.max(0, Math.min(this._duration, value));
+    this.emit("positionChanged", this._position);
   }
 
   get duration() {

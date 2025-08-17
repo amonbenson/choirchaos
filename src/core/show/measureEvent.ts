@@ -1,4 +1,5 @@
-import type { MeasureReference } from "./measure";
+import { BinarySortedList } from "../utils/binarySearch";
+import { compareMeasureReferences, type MeasureReference } from "./measure";
 
 export class MeasureEvent {
   public $tick?: number;
@@ -45,5 +46,13 @@ export class VampEvent extends MeasureEvent {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public static fromJson({ start, end, iterations }: any) {
     return new VampEvent(start, end, iterations);
+  }
+}
+
+export class MeasureEventList<T extends MeasureEvent> extends BinarySortedList<T> {
+  constructor(items?: T[]) {
+    super(items, {
+      comparator: (a, b) => compareMeasureReferences(a.start, b.start),
+    });
   }
 }

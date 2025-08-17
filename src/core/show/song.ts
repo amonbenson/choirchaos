@@ -1,7 +1,7 @@
 import Track from "./track";
-import Measure from "./measure";
-import { compareNumberings, type Numbering } from "../utils/numbering";
-import { MarkerEvent, VampEvent } from "./measureEvent";
+import Measure, { MeasureList } from "./measure";
+import type { Numbering } from "../utils/numbering";
+import { MarkerEvent, MeasureEventList, VampEvent } from "./measureEvent";
 import type { UrlOrFile } from "../utils/file";
 import { pb, type PbRecord } from "@/pocketbase";
 import type { MeasureEvent, MidiEventList, TempoEvent, TimeSignatureEvent } from "./midiEvents";
@@ -9,8 +9,8 @@ import type { MeasureEvent, MidiEventList, TempoEvent, TimeSignatureEvent } from
 export type SongNumber = Numbering;
 
 export type SongEvents = {
-  markers: MarkerEvent[];
-  vamps: VampEvent[];
+  markers: MeasureEventList<MarkerEvent>;
+  vamps: MeasureEventList<VampEvent>;
   segue: boolean;
 }
 
@@ -22,10 +22,10 @@ export default class Song {
     public midiFile?: UrlOrFile,
     public jsonFile?: UrlOrFile,
     public tracks: Track[] = [],
-    public measures: Measure[] = [],
+    public measures: MeasureList = new MeasureList(),
     public events: SongEvents = {
-      markers: [],
-      vamps: [],
+      markers: new MeasureEventList<MarkerEvent>(),
+      vamps: new MeasureEventList<VampEvent>(),
       segue: false,
     },
     public $midiSystemEvents?: {
@@ -33,9 +33,7 @@ export default class Song {
       tempo: MidiEventList<TempoEvent>;
       timeSignature: MidiEventList<TimeSignatureEvent>;
     },
-  ) {
-    this.measures.sort((a, b) => compareNumberings(a.number, b.number));
-  }
+  ) {}
 
   public toRecord(): PbRecord {
     return {
@@ -44,10 +42,10 @@ export default class Song {
       midiFile: this.midiFile,
       jsonFile: this.jsonFile,
       tracks: this.tracks.map(t => t.json()),
-      measures: this.measures.map(m => m.json()),
+      measures: this.measures.items().map(m => m.json()),
       events: {
-        markers: this.events.markers.map(m => m.json()),
-        vamps: this.events.vamps.map(v => v.json()),
+        markers: this.events.markers.items().map(m => m.json()),
+        vamps: this.events.vamps.items().map(v => v.json()),
         segue: this.events.segue,
       },
     };
@@ -61,10 +59,10 @@ export default class Song {
       midiFile,
       jsonFile,
       tracks.map((t: PbRecord) => Track.fromJson(t)),
-      measures.map((r: PbRecord) => Measure.fromJson(r)),
+      new MeasureList(measures.map((m: PbRecord) => Measure.fromJson(m))),
       {
-        markers: events.markers.map((m: PbRecord) => MarkerEvent.fromJson(m)),
-        vamps: events.vamps.map((v: PbRecord) => VampEvent.fromJson(v)),
+        markers: new MeasureEventList<MarkerEvent>(events.markers.map((m: PbRecord) => MarkerEvent.fromJson(m))),
+        vamps: new MeasureEventList<VampEvent>(events.vamps.map((v: PbRecord) => VampEvent.fromJson(v))),
         segue: events.segue,
       },
     );

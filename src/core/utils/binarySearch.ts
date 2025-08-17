@@ -186,11 +186,11 @@ export class BinarySortedList<T> {
   }
 
   searchRange(from: T, to: T) {
-    const startIndex = this.search(from, {
+    const startIndex = this.searchIndex(from, {
       itemInclusive: true,
       boundsInclusive: true,
     });
-    const endIndex = this.search(to, {
+    const endIndex = this.searchIndex(to, {
       itemInclusive: false,
       boundsInclusive: true,
     });
