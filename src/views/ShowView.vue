@@ -22,6 +22,7 @@ const showLoading = ref(true);
 
 const song: ComputedRef<Show | null> = computed(() => show.value?.songs.find(s => s.id === props.songId) ?? null);
 const songLoading = ref(true);
+const pdfLoading = ref(true);
 
 const pdfUrl = computed(() => song.value ? resolveUrl(song.value.pdfFile, "songs", song.value.id) : null);
 
@@ -43,6 +44,7 @@ watch([show, song], async () => {
   if (show.value) {
     try {
       songLoading.value = true;
+      pdfLoading.value = true;
       await player.load(song.value);
     } catch (err) {
       console.error(err);
@@ -103,9 +105,11 @@ fetchShow();
       <PdfCanvas
         v-if="song?.pdfFile"
         class="flex-1"
+        :class="{ 'hidden': pdfLoading }"
         :url="pdfUrl"
         :page="0"
         :scale="1.3"
+        @ready="pdfLoading = false"
       />
     </div>
   </div>
