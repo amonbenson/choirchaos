@@ -3,101 +3,98 @@ import Show from "@/core/show/show";
 import Song from "@/core/show/song";
 import { useProjectStore } from "@/stores/project";
 import { usePlayerStore } from "@/stores/player";
-import { computed, watch, ref, markRaw, type Ref } from "vue";
+import { computed, watch, ref, markRaw, type Ref, type ComputedRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import Button from "primevue/button";
+import TransportBar from "./TransportBar.vue";
 
-const project = useProjectStore();
 const player = usePlayerStore();
 const route = useRoute();
 const router = useRouter();
 
-// set initial project params from the router
-project.showId = route.params.showId as string;
-project.songId = route.params.songId as string ?? null;
-
-// continonusly sync router path with the project's song and track ids
-watch(() => project.songId, songId => {
-  // construct path
-  let path = `/show/${project.showId}`;
-  if (songId) {
-    path += `/song/${songId}`;
-  }
-
-  // update path
-  router.replace({ path });
-});
+const props = defineProps<{
+  showId: string,
+  songId?: string,
+}>();
 
 // store show and current song data from pocketbase
 const show: Ref<Show | null> = ref(null);
 const showLoading = ref(true);
-const songs: Ref<Song[] | null> = computed(() => show.value?.songs ?? null);
-const song: Ref<Song | null> = computed(() => songs.value?.find(song => song.id === project.songId) ?? null);
 
-// automatically select the first song
-watch([songs, () => project.songId], ([songs, songId]) => {
-  const songIds = songs?.map(song => song.id) ?? [];
+const song: ComputedRef<Show | null> = computed(() => show.value?.songs.find(s => s.id === props.songId) ?? null);
+const songLoading = ref(true);
 
-  // clear project song id
-  if (songIds.length === 0) {
-    project.songId = null;
-    return;
+function selectSong(songId?: string) {
+  // route to the correct song first
+  if (songId && songId !== props.songId) {
+    router.replace({
+      name: "song",
+      params: {
+        showId: props.showId,
+        songId,
+      },
+    });
   }
+}
 
-  // select the first song if no other valid song is selected already
-  if (!(songId && songIds.includes(songId))) {
-    project.songId = songs?.[0]?.id ?? null;
-  }
-});
-
-// load the selected song into the player
-watch(song, async song => {
-  if (song) {
-    await player.load(song);
+// reload when the show id changes
+watch([show, song], async () => {
+  if (show.value) {
+    try {
+      songLoading.value = true;
+      await player.load(song.value);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      songLoading.value = false;
+    }
   }
 });
 
 // fetch the show data from pocketbase on setup
-(async () => {
+async function fetchShow() {
   try {
+    showLoading.value = true;
     const showObj = await Show.get(route.params.showId as string);
 
-    // mark expensive/large reference properties as raw so vue doesn't try to make them reactive
+    // mark expensive/large reference properties as raw so vue doesn't try to make them reactive.
+    // They cannot be changed anyway unless the whole show object is replaced
     for (const song of showObj.songs) {
       song.$midiSystemEvents = markRaw(song.$midiSystemEvents);
+
+      for (const track of song.tracks) {
+        track.$midiTrackEvents = markRaw(track.$midiTrackEvents);
+      }
+
+      for (const measure of song.measures.items()) {
+        measure.$beatTicks = markRaw(measure.$beatTicks);
+      }
     }
 
+    // set the show
     show.value = showObj;
+
+    const songObj = showObj.songs.find(s => s.id === props.songId) ?? null;
+    if (!songObj) {
+      // if no valid song is selected, route to the first song
+      selectSong(showObj.songs[0].id);
+    }
   } catch (err) {
     console.error(err);
-    // showError.value = err;
   } finally {
     showLoading.value = false;
   }
-})();
+}
+
+fetchShow();
 </script>
 
 <template>
-  <div>
-    <h1>{{ show?.title }}</h1>
-    <h2>#{{ song?.number }} {{ song?.title }}</h2>
-    <div class="flex justify-stretch items-center">
-      <Button
-        :icon="`pi ${player.playing ? 'pi-pause' : 'pi-play'}`"
-        variant="text"
-        rounded
-        aria-label="Play/Pause"
-        @click="player.playing ? player.pause() : player.play()"
-      />
-      {{ player.status }}
-    </div>
-    <!-- <section>
-      <p>
-        Tracks:
-      </p>
-      <ul>
-        <li v-for="track in song.tracks" :key="track.name">{{ track.title }} ({{ track.classification }})</li>
-      </ul>
-    </section> -->
+  <div class="fixed left-0 top-0 w-screen h-screen flex flex-col justify-stretch items-stretch gap-2 p-2">
+    <TransportBar
+      :model-value="songId"
+      :songs="show?.songs ?? null"
+      :loading="showLoading || songLoading"
+      @update:model-value="selectSong($event)"
+    />
   </div>
 </template>

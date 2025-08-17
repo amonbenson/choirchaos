@@ -15,7 +15,7 @@ onMounted(async () => {
   }
 
   // auto-select show
-  if (route.path === "/" && import.meta.env["VITE_PB_AUTOLOGIN_SHOW"]) {
+  if (route.name === "home" && import.meta.env["VITE_PB_AUTOLOGIN_SHOW"]) {
     router.push(`/show/${import.meta.env["VITE_PB_AUTOLOGIN_SHOW"]}`);
   }
 });

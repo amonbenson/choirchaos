@@ -10,6 +10,8 @@ import { resolveUrl } from "../utils/file";
 import type { BinarySearchOptions } from "../utils/binarySearch";
 import type Measure from "./measure";
 
+const STEP_DURATION = 1 / 50;
+
 declare global {
     interface Window { WebAudioFontPlayer: any; }
 }
@@ -62,7 +64,7 @@ export default class MidiPlayer extends EventEmitter {
   private _instruments: { [key: number]: any } = {};
   private _masterInput: AudioNode | null = null;
 
-  private _stepHandle: number | null = null;
+  private _stepHandle: NodeJS.Timeout | null = null;
   private _lastStepTime = 0;
 
   get status() {
@@ -206,7 +208,6 @@ export default class MidiPlayer extends EventEmitter {
     this._lastStepTime = this._audioContext.currentTime;
 
     const stepWrapper = () => {
-      this._stepHandle = requestAnimationFrame(stepWrapper);
 
       // calculate delta time
       const t = this._audioContext.currentTime;
@@ -218,6 +219,7 @@ export default class MidiPlayer extends EventEmitter {
     };
 
     this._updatePlaying(true);
+    this._stepHandle = setInterval(stepWrapper, STEP_DURATION);
     stepWrapper();
   }
 
@@ -226,7 +228,7 @@ export default class MidiPlayer extends EventEmitter {
       return;
     }
 
-    cancelAnimationFrame(this._stepHandle!);
+    clearInterval(this._stepHandle!);
     this._updatePlaying(false);
   }
 
@@ -266,7 +268,7 @@ export default class MidiPlayer extends EventEmitter {
 
   async load(song: Song) {
     if (this._status !== "idle") {
-      return;
+      this.unload();
     }
 
     this._updateStatus("loading");
@@ -308,7 +310,7 @@ export default class MidiPlayer extends EventEmitter {
 
       switch (type) {
         case "BEAT":
-          this._midi_events.system.measure.insert(new MeasureEvent(tickcount, [value.meas, value.beat]));
+          this._midi_events.system.measure.insert(new MeasureEvent(tickcount, [value.meas, value.beat - 1]));
 
           // store tick reference in original song measure data
           const songMeasure = song.measures.search({  value: value.meas } as Measure);
@@ -403,7 +405,12 @@ export default class MidiPlayer extends EventEmitter {
     // store additional song-specific settings
     this._currentSong = song;
     this._ppqn = midiJson.score.ppqn;
-    this._updateDuration(this._midi_events.system.measure.last()?.tick ?? 0);
+
+    const finalMeasureEvent = this._midi_events.system.measure.last();
+    if (finalMeasureEvent) {
+      this._updateDuration(finalMeasureEvent.tick ?? 0);
+      this._updateFinalMeasure(finalMeasureEvent.measure);
+    }
 
     // resumt the audio context and create a player
     this.resume();

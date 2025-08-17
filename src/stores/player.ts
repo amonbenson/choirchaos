@@ -7,7 +7,8 @@ import type Song from "@/core/show/song";
 const globalPlayer = new MidiPlayer();
 
 function usePlayerPosition(player: MidiPlayer) {
-  const playing = useEvent(globalPlayer, "playingChanged", { initial: globalPlayer.playing });
+  const playing = useEvent(player, "playingChanged", { initial: player.playing });
+  const emittedPosition = useEvent(player, "position", { initial: player.position });
 
   // keep track of the player's internal position
   const playerPosition = ref(player.position);
@@ -29,6 +30,8 @@ function usePlayerPosition(player: MidiPlayer) {
       updatePosition();
     }
   });
+
+  watch(emittedPosition, () => updatePosition());
 
   // inject a setter for seeking
   const position = computed({
