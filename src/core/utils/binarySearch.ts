@@ -1,40 +1,59 @@
 export type BinarySearchOptions<T, K> = {
   comparator?: (a: K, b: T) => number;
   direction?: "forward" | "backward";
-  itemInclusive?: boolean;
-  boundsInclusive?: boolean;
+  inclusive?: boolean;
+  extend?: boolean;
 };
 
-/**
- * Performs a binary search on a sorted array with customizable options.
- * Allows for custom comparison, search direction, inclusivity, and boundary inclusion.
- * Returns the found element or undefined if not found.
- *
- * @param {Array} list The list to search through
- * @param {*} key The key to search for, can be a number or an object with a target property. Must match the type used in the comparator.
- * @param {Object} rest Options for the search
- * @param {Function} rest.comparator Function to compare the given key to an element in the list, defaults to numeric comparison
- * @param {string} rest.direction Direction of a match, either "forward" or "backward", defaults to "forward"
- * @param {boolean} rest.inclusive Whether to include a direct match in the search or to find the next/previous element, defaults to true
- * @param {boolean} rest.includeBounds Whether to include the lowest and highest elements in the search, defaults to false
- * @returns {*} The result of the search, which could be an element from the list or undefined if not found
- */
 export function binarySearch<T, K>(list: T[], key: K, options: BinarySearchOptions<T, K> = {}): number {
   const {
     comparator = (a, b) => Number(a) - Number(b),
     direction = "forward",
-    itemInclusive: inclusive = true,
-    boundsInclusive: includeBounds = false,
+    inclusive = true,
+    extend = true,
   } = options;
 
-  if (!Array.isArray(list) || list.length === 0) return -1;
+  // check if list is invalid or empty
+  if (!Array.isArray(list)) {
+    throw new TypeError(`Cannot insert into type ${typeof list}`);
+  }
+  if (list.length === 0) {
+    return -1;
+  }
 
+  // check lower bound
+  const cmpLow = comparator(key, list[0]);
+  if (cmpLow < 0) {
+    return extend ? 0 : -1;
+  } else if (cmpLow === 0) {
+    if (inclusive) {
+      return 0;
+    } else if (direction === "forward") {
+      return list.length > 1 ? 1 : -1;
+    } else {
+      return extend ? 0 : -1;
+    }
+  }
+
+  // check upper bound
+  const cmpHigh = comparator(key, list[list.length - 1]);
+  if (cmpHigh > 0) {
+    return extend ? list.length - 1 : -1;
+  } else if (cmpHigh === 0) {
+    if (inclusive) {
+      return list.length - 1;
+    } else if (direction === "forward") {
+      return extend ? list.length - 1 : -1;
+    } else {
+      return list.length > 1 ? list.length - 2 : -1;
+    }
+  }
+
+  // search the list for an exact match
   let low = 0;
   let high = list.length - 1;
-  let resultIndex = -1;
-
   while (low <= high) {
-    const mid = Math.floor((low + high) / 2);
+    const mid = low + Math.floor((high - low) / 2);
     const cmp = comparator(key, list[mid]);
 
     // validate the comparator result
@@ -43,97 +62,77 @@ export function binarySearch<T, K>(list: T[], key: K, options: BinarySearchOptio
     }
 
     if (cmp === 0) {
+      // exact match found. Return mid or next/previous item depending on the direction
       if (inclusive) {
-        resultIndex = mid;
+        return mid;
+      } else if (direction === "forward") {
+        return mid < list.length - 1 ? mid + 1 : -1;
       } else {
-        // Find next/previous element depending on direction
-        if (direction === "forward") {
-          resultIndex = mid + 1;
-        } else {
-          resultIndex = mid - 1;
-        }
+        return mid > 0 ? mid - 1 : -1;
       }
-      break;
     } else if (cmp < 0) {
+      // discard upper half
       high = mid - 1;
-      if (direction === "backward") {
-        resultIndex = mid;
-      }
     } else {
+      // discard lower half
       low = mid + 1;
-      if (direction === "forward") {
-        resultIndex = mid;
-      }
     }
   }
 
-  // Only return bounds if includeBounds is true
-  if (resultIndex === -1 && includeBounds) {
-    if (direction === "forward" && low < list.length) {
-      resultIndex = low;
-    } else if (direction === "backward" && high >= 0) {
-      resultIndex = high;
-    }
+  // no exact match found.
+  // "low" now refers to the element after the key and "high" to the one before.
+  // the bounds have already been checked, so we can return the appropriate element depending on the direction
+  if (direction === "forward") {
+    return low;
+  } else {
+    return high;
   }
-
-  // If result is out of bounds and includeBounds is false, return -1
-  if (!includeBounds) {
-    if (
-      direction === "forward" &&
-      resultIndex === list.length - 1 &&
-      comparator(key, list[list.length - 1]) > 0
-    ) {
-      return -1;
-    }
-    if (
-      direction === "backward" &&
-      resultIndex === 0 &&
-      comparator(key, list[0]) < 0
-    ) {
-      return -1;
-    }
-  }
-
-  return resultIndex;
 }
 
 export type InsertSortedOptions<T> = {
   comparator?: (a: T, b: T) => number;
 };
 
-/**
- * Inserts an item into a sorted array, maintaining the sort order.
- * Uses binary search to find the correct insertion index efficiently.
- *
- * @param {Array} listThe sorted array to insert the item into.
- * @param {*} itemThe item to insert.
- * @param {Object} rest Optional settings.
- * @param {Function} rest.comparator A function to compare two items. Should return a negative number if first argument is less, zero if equal, and positive if greater.
- * @returns {Array} The array with the item inserted at the correct position.
- */
-export function insertSorted<T>(list: T[], item: T, options: InsertSortedOptions<T> = {}) {
+export function insertSorted<T>(list: T[], item: T, options: InsertSortedOptions<T> = {}): T[] {
   const {
     comparator = (a, b) => Number(a) - Number(b),
   } = options;
 
-  if (!Array.isArray(list)) return [item];
-
-  let low = 0;
-  let high = list.length - 1;
-
-  while (low <= high) {
-    const mid = Math.floor((low + high) / 2);
-    const cmp = comparator(item, list[mid]);
-
-    if (cmp < 0) {
-      high = mid - 1;
-    } else {
-      low = mid + 1;
-    }
+  // check if list is invalid or empty
+  if (!Array.isArray(list)) {
+    throw new TypeError(`Cannot insert into type ${typeof list}`);
+  }
+  if (list.length === 0) {
+    list.splice(0, 0, item);
+    return list;
   }
 
-  // Insert item at the correct position
-  list.splice(low, 0, item);
+  let pos = undefined;
+
+  // check lower bound
+  const cmpLow = comparator(item, list[0]);
+  if (cmpLow < 0) {
+    pos = 0;
+  } else if (cmpLow === 0) {
+    pos = 1;
+  }
+
+  // check upper bound
+  const cmpHigh = comparator(item, list[list.length - 1]);
+  if (cmpHigh >= 0) {
+    pos = list.length;
+  }
+
+  // lookup position via binary search
+  if (pos === undefined) {
+    pos = binarySearch(list, item, {
+      comparator,
+      inclusive: false,
+      extend: false,
+    });
+  }
+
+  list.splice(pos, 0, item);
   return list;
 }
 
@@ -187,12 +186,12 @@ export class BinarySortedList<T> {
 
   searchRange(from: T, to: T) {
     const startIndex = this.searchIndex(from, {
-      itemInclusive: true,
-      boundsInclusive: true,
+      inclusive: false,
+      extend: true,
     });
     const endIndex = this.searchIndex(to, {
-      itemInclusive: false,
-      boundsInclusive: true,
+      inclusive: false,
+      extend: true,
     });
     return this.items().slice(startIndex, endIndex);
   }

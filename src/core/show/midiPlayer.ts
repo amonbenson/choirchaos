@@ -162,6 +162,7 @@ export default class MidiPlayer extends EventEmitter {
       const instrument = this._instruments[event.channel];
       const pitch = event.pitch;
       const volume = event.velocity / 127.0;
+      console.log(start, duration);
       this._player.queueWaveTable(this._audioContext, this._masterInput, window[instrument], start, pitch, duration, volume, []);
     } else if (event instanceof TempoEvent) {
       this._updateCurrentTempo(event.bpm);
@@ -251,8 +252,8 @@ export default class MidiPlayer extends EventEmitter {
     // invoke event handler to update the measure and transport settings
     const k = { tick: this._position };
     const options: BinarySearchOptions<MidiEvent, MidiEvent> = {
-      itemInclusive: true,
-      boundsInclusive: true,
+      inclusive: true,
+      extend: true,
     };
     const events = [
       this._events.system.measure.search(k as MeasureEvent, options)!,
@@ -300,6 +301,9 @@ export default class MidiPlayer extends EventEmitter {
       },
       track: [],
     };
+
+    // TODO: calling BinarySortedList.insert is very inefficient here.
+    // Generate a normal array and pass it to the constructor to sort it in one go instead.
 
     // parse the system events
     const midiJson: MTIMidiJson = jsonRes.data;
@@ -370,7 +374,7 @@ export default class MidiPlayer extends EventEmitter {
         // store note on position
         if (midiEvent.noteOn) {
           noteOnIndices[midiEvent.noteOn.noteNumber] = i;
-          midiEvent.position = tick; // also store the absolute position inside the original event
+          midiEvent.$tick = tick; // also store the absolute position inside the original event
         }
 
         // store a complete note event when we have received the note off
@@ -384,8 +388,9 @@ export default class MidiPlayer extends EventEmitter {
             const noteOnEvent = midiEvents[noteOnIndex] as any;
 
             // store the note event
-            this._events.track[t].note.insert(new NoteEvent(tick,
-              tick - noteOnEvent.tick,
+            this._events.track[t].note.insert(new NoteEvent(
+              tick,
+              tick - noteOnEvent.$tick,
               noteOnEvent.noteOn.noteNumber,
               noteOnEvent.noteOn.velocity,
               track.program,
@@ -423,7 +428,7 @@ export default class MidiPlayer extends EventEmitter {
     for (const track of song.tracks) {
       const nn = this._player.loader.findInstrument(track.program);
       const info = this._player.loader.instrumentInfo(nn);
-      this._instruments[track.program] = window[info.variable];
+      this._instruments[track.program] = info.variable;
       this._player.loader.startLoad(this._audioContext, info.url, info.variable);
     }
 

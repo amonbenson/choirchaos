@@ -30,7 +30,7 @@ describe("compareMeasures", () => {
     expect(compareNumberings("9", "9")).toBe(0);
   });
 
-  it("returns 0 for invalid measures", () => {
+  it("throws an error for invalid measures", () => {
     expect(() => compareNumberings("foo", "bar")).toThrow(TypeError);
     expect(() => compareNumberings("1", "bar")).toThrow(TypeError);
     expect(() => compareNumberings("foo", "1")).toThrow(TypeError);
@@ -43,5 +43,11 @@ describe("compareMeasures", () => {
     expect(compareNumberings("2", "10")).toBeLessThan(0);
     expect(compareNumberings("10a", "10b")).toBeLessThan(0);
     expect(compareNumberings("10b", "10a")).toBeGreaterThan(0);
+  });
+
+  it("handles iteration suffixes for measures", () => {
+    expect(compareNumberings("10a-2", "10a-1")).toBeGreaterThan(0);
+    expect(compareNumberings("10a-1", "10a")).toBeGreaterThan(0);
+    expect(compareNumberings("11a-1", "11b")).toBeGreaterThan(0);
   });
 });

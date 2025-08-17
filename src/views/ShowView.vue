@@ -5,6 +5,7 @@ import { useProjectStore } from "@/stores/project";
 import { usePlayerStore } from "@/stores/player";
 import { computed, watch, ref, markRaw, type Ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import Button from "primevue/button";
 
 const project = useProjectStore();
 const player = usePlayerStore();
@@ -56,7 +57,7 @@ watch(song, async song => {
   }
 });
 
-// fetch the show data from pocketbase on create
+// fetch the show data from pocketbase on setup
 (async () => {
   try {
     const showObj = await Show.get(route.params.showId as string);
@@ -77,5 +78,25 @@ watch(song, async song => {
 </script>
 
 <template>
-  {{ song }}
+  <div>
+    <h1>{{ show?.title }}</h1>
+    <h2>#{{ song?.number }} {{ song?.title }}</h2>
+    <div class="flex justify-stretch items-center">
+      <Button
+        :icon="`pi ${player.playing ? 'pi-pause' : 'pi-play'}`"
+        variant="text"
+        rounded
+        aria-label="Play/Pause"
+        @click="player.playing ? player.pause() : player.play()"
+      />
+    </div>
+    <!-- <section>
+      <p>
+        Tracks:
+      </p>
+      <ul>
+        <li v-for="track in song.tracks" :key="track.name">{{ track.title }} ({{ track.classification }})</li>
+      </ul>
+    </section> -->
+  </div>
 </template>

@@ -20,6 +20,6 @@ export default class Track {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public static fromJson({ title, classification, program }: any) {
-    return new Track(title, classification, program);
+    return new Track(title, classification, program === 9 ? 116 : 0);
   }
 }

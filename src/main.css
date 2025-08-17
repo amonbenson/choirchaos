@@ -6,4 +6,12 @@
   html, body {
     @apply size-full;
   }
+
+  h1 {
+    @apply font-bold text-2xl;
+  }
+
+  h2 {
+    @apply font-bold text-xl;
+  }
 }

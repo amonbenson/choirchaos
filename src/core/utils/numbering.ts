@@ -1,4 +1,4 @@
-const NUMBERING_REGEX = /^(\d+)?(-(\d+))?([a-zA-Z])?/;
+const NUMBERING_REGEX = /^(\d+)?([a-zA-Z])?(-(\d+))?$/;
 
 export type Numbering = string;
 
@@ -18,7 +18,7 @@ export function compareNumberings(a: Numbering, b: Numbering): number {
   a = asNumbering(a);
   b = asNumbering(b);
 
-  // group 1: number, group 2: /, group 3: iteration, group 4: letter
+  // group 1: number, group 2: letter, group 3: /, group 4: letter
   const matchA = a.match(NUMBERING_REGEX) as RegExpMatchArray;
   const matchB = b.match(NUMBERING_REGEX) as RegExpMatchArray;
 
@@ -30,18 +30,17 @@ export function compareNumberings(a: Numbering, b: Numbering): number {
     return numA - numB;
   }
 
-  // If numeric parts are equal, compare iterations (if any)
-  if (matchA[3] && matchB[3]) {
-    const iterA = parseInt(matchA[3] ?? 0, 10);
-    const iterB = parseInt(matchA[3] ?? 0, 10);
-    if (iterA !== iterB) {
-      return iterA - iterB;
-    }
+  // If numeric parts are equal, compare iterations
+  const iterA = parseInt(matchA[4] ?? 0, 10);
+  const iterB = parseInt(matchB[4] ?? 0, 10);
+
+  if (iterA !== iterB) {
+    return iterA - iterB;
   }
 
-  // If numeric parts are equal, compare the letter parts
-  const letterA = matchA[4] ?? "";
-  const letterB = matchB[4] ?? "";
+  // If iterations are equal, compare the letter parts
+  const letterA = matchA[2] ?? "";
+  const letterB = matchB[2] ?? "";
 
   return letterA.localeCompare(letterB);
 };
