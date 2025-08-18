@@ -42,6 +42,7 @@ export default class Song {
       title: this.title,
       midiFile: this.midiFile,
       jsonFile: this.jsonFile,
+      pdfFile: this.pdfFile,
       tracks: this.tracks.map(t => t.json()),
       measures: this.measures.items().map(m => m.json()),
       events: {

@@ -1,11 +1,11 @@
 import type { MidiTrackEvents } from "./midiPlayer";
 
-export type TrackClassification = "accompaniment" | "percussion" | "vocal";
+export type TrackClassification = "Accompaniment" | "Percussion" | "Vocal";
 
 export default class Track {
   constructor(
     public title: string,
-    public classification: string = "accompaniment",
+    public classification: string = "Accompaniment",
     public program: number = 0,
     public $midiTrackEvents: MidiTrackEvents | object = {},
   ) {}
@@ -20,6 +20,6 @@ export default class Track {
 
 
   public static fromJson({ title, classification, program }: any) {
-    return new Track(title, classification, program === 9 ? 116 : 0);
+    return new Track(title, classification, program);
   }
 }

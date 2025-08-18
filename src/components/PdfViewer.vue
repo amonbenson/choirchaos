@@ -12,6 +12,7 @@ const player = usePlayerStore();
 
 const props = defineProps<{
   song?: Song,
+  edit?: boolean,
 }>();
 
 const pdfUrl = computed(() => props.song?.pdfFile ? resolveUrl(props.song.pdfFile, "songs", props.song.id) : undefined);
@@ -37,6 +38,9 @@ watch(ready, () => {
 
 // keep track of currently playing measure
 const currentMeasure = computed(() => props.song?.findMeasure(player.currentMeasure[0]));
+const currentMeasureProgress = computed(() => currentMeasure.value?.layout && currentMeasure.value.$beatTicks
+  ? (player.position - currentMeasure.value.$beatTicks[0]) / (currentMeasure.value.$beatTicks[currentMeasure.value.beats - 1] - currentMeasure.value.$beatTicks[0]) / currentMeasure.value.beats * (currentMeasure.value.beats - 1)
+  : 0);
 
 // automatic page sync
 const currentPage = ref(0);
@@ -52,6 +56,11 @@ watch(() => currentMeasure.value, () => {
   // }
 });
 
+async function uploadMeasureLayout() {
+  await props.song?.update();
+  console.log("Update successful");
+}
+
 </script>
 
 <template>
@@ -59,13 +68,17 @@ watch(() => currentMeasure.value, () => {
     <PdfCanvas
       v-if="pdfUrl"
       class="absolute left-1/2 top-1/2 -translate-1/2"
-      :class="{ 'hidden': !ready }"
+      :class="{
+        'hidden': !ready,
+        'cursor-crosshair': props.edit,
+      }"
       :url="pdfUrl"
       :page="currentPage"
       :scale="1.3"
       @update:status="pdfStatus = $event"
       @ready="numPages = $event.numPages"
     >
+      <!-- Measure highlights -->
       <template
         v-for="measure in Object.values(pageMeasures[currentPage] ?? {})"
         :key="measure.value"
@@ -74,18 +87,29 @@ watch(() => currentMeasure.value, () => {
           v-if="measure.layout"
           class="absolute transition-colors cursor-pointer"
           :class="{
-            'bg-primary/50': measure.value === currentMeasure?.value,
-            'bg-primary/0 hover:bg-primary/25': measure.value !== currentMeasure?.value,
+            'bg-primary/40': false /* measure.value === currentMeasure?.value */,
+            'bg-primary/0 hover:bg-primary/25': true /* measure.value !== currentMeasure?.value */,
           }"
           :style="{
-            left: `calc(${measure.layout.x} * 100%)`,
-            top: `calc(${measure.layout.y} * 100%)`,
-            width: `calc(${measure.layout.width} * 100%)`,
-            height: `calc(${measure.layout.height} * 100%)`,
+            left: `${measure.layout.x * 100}%`,
+            top: `${measure.layout.y * 100}%`,
+            width: `${measure.layout.width * 100}%`,
+            height: `${measure.layout.height * 100}%`,
           }"
           @click="player.setMeasure(measure.value)"
         />
       </template>
+
+      <!-- Playbar -->
+      <div
+        v-if="currentMeasure?.layout && currentMeasure.layout.page === currentPage"
+        class="absolute bg-primary rounded-full shadow-[0_0_0.75rem] shadow-primary/25 w-1 -translate-x-1/2"
+        :style="{
+          left: `${(currentMeasure.layout.x + currentMeasureProgress * currentMeasure.layout.width) * 100}%`,
+          top: `${currentMeasure.layout.y * 100}%`,
+          height: `${currentMeasure.layout.height * 100}%`,
+        }"
+      />
     </PdfCanvas>
 
     <div class="absolute left-1/2 bottom-2 -translate-x-1/2 flex justify-stretch items-stretch gap-1 bg-surface-950 rounded-full">
@@ -93,7 +117,7 @@ watch(() => currentMeasure.value, () => {
         :disabled="!ready || currentPage <= 0"
         icon="pi pi-chevron-left"
         severity="secondary"
-        aria-label="Stop"
+        aria-label="Previous Page"
         rounded
         text
         @click="currentPage--"
@@ -102,10 +126,19 @@ watch(() => currentMeasure.value, () => {
         :disabled="!ready || currentPage >= numPages - 1"
         icon="pi pi-chevron-right"
         severity="secondary"
-        aria-label="Stop"
+        aria-label="Next Page"
         rounded
         text
         @click="currentPage++"
+      />
+      <Button
+        :disabled="!ready || currentPage >= numPages - 1"
+        icon="pi pi-upload"
+        severity="secondary"
+        aria-label="Stop"
+        rounded
+        text
+        @click="uploadMeasureLayout()"
       />
     </div>
   </div>

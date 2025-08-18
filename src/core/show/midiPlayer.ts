@@ -162,7 +162,7 @@ export default class MidiPlayer extends EventEmitter {
       // play the note
       const start = (this._position - event.tick) * this._tickDuration;
       const duration = Math.min(event.duration * this._tickDuration - start, 5);
-      const instrument = this._instruments[event.channel];
+      const instrument = this._instruments[event.channel === 9 ? 116 : 0];
       const pitch = event.pitch;
       const volume = event.velocity / 127.0;
       this._player.queueWaveTable(this._audioContext, this._masterInput, window[instrument], start, pitch, duration, volume, []);
@@ -431,9 +431,9 @@ export default class MidiPlayer extends EventEmitter {
     // load soundfonts
     // TODO: point the url to our own server
     for (const track of song.tracks) {
-      const nn = this._player.loader.findInstrument(track.program);
+      const nn = this._player.loader.findInstrument(track.program === 9 ? 116 : 0);
       const info = this._player.loader.instrumentInfo(nn);
-      this._instruments[track.program] = info.variable;
+      this._instruments[track.program === 9 ? 116 : 0] = info.variable;
       this._player.loader.startLoad(this._audioContext, info.url, info.variable);
     }
 
