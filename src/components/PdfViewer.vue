@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch, type ShallowRef } from "vue";
+import { computed, onMounted, ref, shallowRef, watch, type Ref, type ShallowRef } from "vue";
 import { resolveUrl } from "@/core/utils/file";
 import Song from "@/core/show/song";
 import Button from "primevue/button";
@@ -7,13 +7,15 @@ import PdfCanvas from "@/components/PdfCanvas.vue";
 import { usePlayerStore } from "@/stores/player";
 import type Measure from "@/core/show/measure";
 import type { MeasureNumber } from "@/core/show/measure";
+import { compareNumberings } from "@/core/utils/numbering";
 
 const player = usePlayerStore();
 
 const props = defineProps<{
   song?: Song,
-  edit?: boolean,
 }>();
+
+const editing = ref(false);
 
 const pdfUrl = computed(() => props.song?.pdfFile ? resolveUrl(props.song.pdfFile, "songs", props.song.id) : undefined);
 const pdfStatus = ref("idle");
@@ -21,20 +23,26 @@ const ready = computed(() => pdfStatus.value === "ready");
 const numPages = ref(0);
 
 // store all measures grouped by page
-const pageMeasures: ShallowRef<{ [key: MeasureNumber]: Measure }[]> = shallowRef([]);
-watch(ready, () => {
+const pageMeasures: ShallowRef<Measure[][]> = shallowRef([]);
+function updatePageMeasures() {
   if (!ready.value || !props.song) {
     return;
   }
 
   // split all measures into individual pages
-  pageMeasures.value = Array(numPages.value).fill(null).map(() => ({}));
+  pageMeasures.value = Array(numPages.value).fill(null).map(() => ([]));
   for (const measure of props.song.measures.items()) {
     if (measure.layout) {
-      pageMeasures.value[measure.layout.page][measure.value] = measure;
+      pageMeasures.value[measure.layout.page].push(measure);
     }
   }
-});
+
+  // sort each page by measure value
+  for (const page of pageMeasures.value) {
+    page.sort((a, b) => compareNumberings(a.value, b.value));
+  }
+}
+watch(ready, () => updatePageMeasures());
 
 // keep track of currently playing measure
 const currentMeasure = computed(() => props.song?.findMeasure(player.currentMeasure[0]));
@@ -45,7 +53,10 @@ const currentMeasureProgress = computed(() => currentMeasure.value?.layout && cu
 // automatic page sync
 const currentPage = ref(0);
 watch(() => currentMeasure.value, () => {
-  currentPage.value = currentMeasure.value?.layout?.page ?? 0;
+  const measurePage = currentMeasure.value?.layout?.page;
+  if (measurePage !== undefined) {
+    currentPage.value = measurePage;
+  }
 
   // // if this is the last measure on the page and we are playing, already switch to the next page in advance
   // if (player.playing
@@ -56,10 +67,186 @@ watch(() => currentMeasure.value, () => {
   // }
 });
 
-// async function uploadMeasureLayout() {
-//   await props.song?.update();
-//   console.log("Update successful");
-// }
+// EDITOR SPECIFIC STUFF
+
+const editorPlane = ref();
+
+type StaffType = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+const editStaff: Ref<StaffType | undefined> = ref();
+
+function startEditorDraw(event: MouseEvent) {
+  // start a new edit staff
+  const t = event.target as Element;
+  editStaff.value = {
+    x: event.offsetX / t.clientWidth,
+    y: event.offsetY / t.clientHeight,
+    width: 0,
+    height: 0,
+  };
+  console.log(event.clientX, t.clientWidth);
+}
+
+function moveEditorDraw(event: MouseEvent) {
+  if (!editStaff.value) {
+    return;
+  }
+
+  // update the staff size
+  const t = event.target as Element;
+  editStaff.value.width = event.offsetX / t.clientWidth - editStaff.value.x;
+  editStaff.value.height = event.offsetY / t.clientHeight - editStaff.value.y;
+}
+
+function endEditorDraw(_event: MouseEvent) {
+  if (!editStaff.value || !props.song) {
+    return;
+  }
+
+  // ask the user how many measures to insert
+  const input = prompt("Number of measures to insert:");
+  const numMeasures = parseInt(input ?? "");
+
+  // cancel on invalid input
+  if (!Number.isFinite(numMeasures) || numMeasures < 1 || numMeasures > 100) {
+    editStaff.value = undefined;
+    return;
+  }
+
+  // generate measure layouts
+  const layouts = [];
+  for (let i = 0; i < numMeasures; i++) {
+    layouts.push({
+      page: currentPage.value ?? 0,
+      x: editStaff.value.x + i * editStaff.value.width / numMeasures,
+      y: editStaff.value.y,
+      width: editStaff.value.width / numMeasures,
+      height: editStaff.value.height,
+    });
+  }
+
+  // apply measure layouts in order to all empty measures
+  let l = 0;
+  for (const measure of props.song.measures.items()) {
+    if (!measure.layout) {
+      // skip if measure is a repeat (it will receive no layout)
+      if (measure.value.includes("-") && !measure.value.endsWith("-1")) {
+        continue;
+      }
+
+      // stop if all layouts were placed
+      if (l >= layouts.length) {
+        break;
+      }
+
+      // set the layout
+      measure.layout = layouts[l];
+
+      l++;
+    }
+  }
+
+  // clear edit staff and update
+  editStaff.value = undefined;
+  updatePageMeasures();
+}
+
+type HandleDirection = "top" | "right" | "bottom" | "left";
+type DragOperation = {
+  eventTarget: EventTarget;
+  handle: HandleDirection;
+  measures: Measure[];
+}
+const editDragOperation: Ref<DragOperation | undefined> = ref();
+
+function isSimilar(a: number, b: number) {
+  return Math.abs(a - b) < 0.01;
+}
+
+function startMeasureDrag(event: MouseEvent, measure: Measure, handle: HandleDirection) {
+  // find related measures
+  const samePageMeasures = Object.values(pageMeasures.value[measure.layout!.page] ?? {});
+  const sameStaffMeasures = samePageMeasures.filter(other => isSimilar(other.layout!.y, measure.layout!.y) && isSimilar(other.layout!.y + other.layout!.height, measure.layout!.y + other.layout!.height));
+  let targetMeasures: Measure[] = [];
+
+  switch (handle) {
+    case "top":
+    case "bottom":
+      targetMeasures = sameStaffMeasures;
+      break;
+    case "left":
+      const left = sameStaffMeasures[sameStaffMeasures.indexOf(measure) - 1] ?? null;
+      targetMeasures = [left, measure];
+      break;
+    case "right":
+      const right = sameStaffMeasures[sameStaffMeasures.indexOf(measure) + 1] ?? null;
+      targetMeasures = [measure, right];
+      break;
+    default:
+      break;
+  }
+
+  editDragOperation.value = {
+    eventTarget: event.target!,
+    handle,
+    measures: targetMeasures,
+  };
+}
+
+function moveMeasureDrag(event: MouseEvent) {
+  if (!editDragOperation.value || editDragOperation.value.eventTarget !== event.target) {
+    return;
+  }
+
+  const dx = event.movementX / editorPlane.value!.clientWidth;
+  const dy = event.movementY / editorPlane.value!.clientHeight;
+
+  switch (editDragOperation.value.handle) {
+    case "top":
+      editDragOperation.value.measures.forEach(measure => {
+        measure.layout!.y += dy;
+        measure.layout!.height -= dy;
+      });
+      break;
+    case "bottom":
+      editDragOperation.value.measures.forEach(measure => {
+        measure.layout!.height += dy;
+      });
+      break;
+    case "left":
+    case "right": {
+      const [l, r] = editDragOperation.value.measures;
+      if (l) {
+        l.layout!.width += dx;
+      }
+      if (r) {
+        r.layout!.x += dx;
+        r.layout!.width -= dx;
+      }
+      break;
+    }
+  }
+}
+
+async function endMeasureDrag(_event: MouseEvent) {
+  // stop drag operation
+  editDragOperation.value = undefined;
+}
+
+function clearMeasureLayout(measure: Measure) {
+  measure.layout = undefined;
+  updatePageMeasures();
+}
+
+async function uploadMeasureLayout() {
+  await props.song?.update();
+  console.log("Update successful");
+}
 
 </script>
 
@@ -67,10 +254,10 @@ watch(() => currentMeasure.value, () => {
   <div class="relative overflow-hidden">
     <PdfCanvas
       v-if="pdfUrl"
-      class="absolute left-1/2 top-1/2 -translate-1/2"
+      class="absolute left-1/2 top-1/2 -translate-1/2 group"
       :class="{
         'hidden': !ready,
-        'cursor-crosshair': props.edit,
+        'cursor-crosshair': editing,
       }"
       :url="pdfUrl"
       :page="currentPage"
@@ -78,17 +265,38 @@ watch(() => currentMeasure.value, () => {
       @update:status="pdfStatus = $event"
       @ready="numPages = $event.numPages"
     >
-      <!-- Measure highlights -->
+      <!-- Editor plane -->
+      <div
+        v-if="editing"
+        ref="editorPlane"
+        class="absolute inset-0"
+        @mousedown="startEditorDraw($event)"
+        @mousemove="moveEditorDraw($event)"
+        @mouseup="endEditorDraw($event)"
+      >
+        <div
+          v-if="editStaff"
+          class="absolute bg-primary/25 border-primary border-1 pointer-events-none"
+          :style="{
+            left: `${editStaff.x * 100}%`,
+            top: `${editStaff.y * 100}%`,
+            width: `${editStaff.width * 100}%`,
+            height: `${editStaff.height * 100}%`,
+          }"
+        />
+      </div>
+
+      <!-- Measure boxes -->
       <template
         v-for="measure in Object.values(pageMeasures[currentPage] ?? {})"
         :key="measure.value"
       >
         <div
           v-if="measure.layout"
-          class="absolute transition-colors cursor-pointer"
+          class="absolute transition-colors group/measure"
           :class="{
-            'bg-primary/40': false /* measure.value === currentMeasure?.value */,
-            'bg-primary/0 hover:bg-primary/25': true /* measure.value !== currentMeasure?.value */,
+            'bg-primary/0 hover:bg-primary/25 cursor-pointer': !editing,
+            'bg-primary/25 border-primary border-1 cursor-default': editing,
           }"
           :style="{
             left: `${measure.layout.x * 100}%`,
@@ -96,19 +304,85 @@ watch(() => currentMeasure.value, () => {
             width: `${measure.layout.width * 100}%`,
             height: `${measure.layout.height * 100}%`,
           }"
-          @click="player.setMeasure(measure.value)"
-        />
+          @click="!editing && player.setMeasure(measure.value)"
+        >
+          <template v-if="editing">
+            <!-- Measure number -->
+            <div class="absolute left-1/2 top-1/2 -translate-1/2 text-black text-2xl font-bold group-hover/measure:opacity-0 transition-opacity">
+              {{ measure.value }}
+            </div>
+            <Button
+              class="absolute left-1/2 top-1/2 -translate-1/2 opacity-0 group-hover/measure:opacity-100 transition-opacity"
+              icon="pi pi-trash"
+              severity="danger"
+              rounded
+              @click="clearMeasureLayout(measure)"
+            />
+
+            <!-- Resize handles -->
+            <Button
+              class="absolute left-1/2 top-0 -translate-1/2 cursor-ns-resize"
+              icon="pi pi-arrows-v"
+              severity="secondary"
+              size="small"
+              rounded
+              @mousedown="startMeasureDrag($event, measure, 'top')"
+              @mousemove="moveMeasureDrag($event)"
+              @mouseup="endMeasureDrag($event)"
+            />
+            <Button
+              class="absolute left-full top-1/2 -translate-1/2 cursor-ew-resize"
+              icon="pi pi-arrows-h"
+              severity="secondary"
+              size="small"
+              rounded
+              @mousedown="startMeasureDrag($event, measure, 'right')"
+              @mousemove="moveMeasureDrag($event)"
+              @mouseup="endMeasureDrag($event)"
+            />
+            <Button
+              class="absolute left-1/2 top-full -translate-1/2 cursor-ns-resize"
+              icon="pi pi-arrows-v"
+              severity="secondary"
+              size="small"
+              rounded
+              @mousedown="startMeasureDrag($event, measure, 'bottom')"
+              @mousemove="moveMeasureDrag($event)"
+              @mouseup="endMeasureDrag($event)"
+            />
+            <Button
+              class="absolute left-0 top-1/2 -translate-1/2 cursor-ew-resize"
+              icon="pi pi-arrows-h"
+              severity="secondary"
+              size="small"
+              rounded
+              @mousedown="startMeasureDrag($event, measure, 'left')"
+              @mousemove="moveMeasureDrag($event)"
+              @mouseup="endMeasureDrag($event)"
+            />
+          </template>
+        </div>
       </template>
 
       <!-- Playbar -->
       <div
-        v-if="currentMeasure?.layout && currentMeasure.layout.page === currentPage"
+        v-if="!editing && currentMeasure?.layout && currentMeasure.layout.page === currentPage"
         class="absolute bg-primary rounded-full shadow-[0_0_0.75rem] shadow-primary/25 w-1 -translate-x-1/2"
         :style="{
           left: `${(currentMeasure.layout.x + currentMeasureProgress * currentMeasure.layout.width) * 100}%`,
           top: `${currentMeasure.layout.y * 100}%`,
           height: `${currentMeasure.layout.height * 100}%`,
         }"
+      />
+
+      <!-- Edit button -->
+      <Button
+        class="absolute right-4 top-4"
+        :class="{ 'opacity-0 group-hover:opacity-100 transition-opacity': !editing }"
+        :icon="`pi ${editing ? 'pi-times' : 'pi-pencil'}`"
+        severity="secondary"
+        rounded
+        @click="editing = !editing"
       />
     </PdfCanvas>
 
@@ -131,15 +405,17 @@ watch(() => currentMeasure.value, () => {
         text
         @click="currentPage++"
       />
-      <!-- <Button
-        :disabled="!ready || currentPage >= numPages - 1"
+      <Button
+        v-if="editing"
+        class="ml-8"
+        label="Upload Changes"
         icon="pi pi-upload"
         severity="secondary"
         aria-label="Stop"
         rounded
         text
         @click="uploadMeasureLayout()"
-      /> -->
+      />
     </div>
   </div>
 </template>

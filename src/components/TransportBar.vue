@@ -60,38 +60,51 @@ const player = usePlayerStore();
       </template>
 
       <template #end>
-        <div class="w-64 flex justify-stretch items-center">
-          <InputText
-            :model-value="player.currentMeasure[0]"
-            :disabled="!player.ready"
-            class="basis-1/3 rounded-r-none text-center"
-            size="small"
-            placeholder="1"
-            aria-label="Measure"
-            fluid
-            @update:model-value="player.setMeasure($event ?? '')"
-          />
-          <InputNumber
-            :model-value="player.currentMeasure[1] + 1"
-            :disabled="!player.ready"
-            class="basis-1/3"
-            pt:pcinputtext:root:class="rounded-l-none text-center"
-            size="small"
-            placeholder="1"
-            aria-label="Beat"
-            fluid
-            @update:model-value="player.setBeat($event)"
-          />
-          <div>&ensp;/&ensp;</div>
-          <InputText
-            :model-value="player.finalMeasure[0]"
-            :disabled="!player.ready"
-            class="basis-1/3 text-center"
-            size="small"
-            placeholder="1"
-            aria-label="Measure"
-            fluid
-          />
+        <div class="flex justify-stretch items-center gap-8">
+          <!-- Measure display -->
+          <div class="flex justify-stretch items-center gap-1">
+            <InputText
+              :model-value="player.currentMeasure[0]"
+              :disabled="!player.ready"
+              class="w-12 rounded-r-none text-center border-none"
+              size="small"
+              placeholder="1"
+              aria-label="Measure"
+              fluid
+              @update:model-value="player.setMeasure($event ?? '')"
+            />
+            <InputNumber
+              :model-value="player.currentMeasure[1] + 1"
+              :disabled="!player.ready"
+              class="w-12"
+              pt:pcinputtext:root:class="rounded-l-none text-center border-none"
+              size="small"
+              placeholder="1"
+              aria-label="Beat"
+              fluid
+              @update:model-value="player.setBeat($event)"
+            />
+            <div class="flex-none">
+              /&nbsp;{{ player.finalMeasure[0] }}
+            </div>
+          </div>
+
+          <!-- Tempo -->
+          <div class="flex justify-stretch items-center">
+            <div class="flex-none">
+              T&nbsp;=&nbsp;
+            </div>
+            <InputNumber
+              :model-value="player.currentTempo"
+              :disabled="!player.ready"
+              class="w-12"
+              pt:pcinputtext:root:class="text-center border-none"
+              size="small"
+              placeholder="1"
+              aria-label="Beat"
+              fluid
+            />
+          </div>
         </div>
       </template>
     </Toolbar>

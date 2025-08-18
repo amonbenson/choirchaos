@@ -80,16 +80,24 @@ export const usePlayerStore = defineStore("player", () => {
 
   const duration = useEvent(globalPlayer, "durationChanged", { initial: globalPlayer.duration });
 
+  const currentTempo = useEvent(globalPlayer, "currentTempoChanged", {
+    initial: globalPlayer.currentTempo,
+  });
+
+  const currentTimeSignature = useEvent(globalPlayer, "currentTimeSignatureChanged", {
+    initial: globalPlayer.currentTimeSignature,
+  });
+
+  const currentVamp = useEvent(globalPlayer, "currentVampChanged", {
+    initial: globalPlayer.currentVamp,
+  });
+
   const currentMeasure = useEvent(globalPlayer, "currentMeasureChanged", {
     initial: globalPlayer.currentMeasure,
   });
 
   const finalMeasure = useEvent(globalPlayer, "finalMeasureChanged", {
     initial: globalPlayer.finalMeasure,
-  });
-
-  const currentVamp = useEvent(globalPlayer, "currentVampChanged", {
-    initial: globalPlayer.currentVamp,
   });
 
   const events = useEvent(globalPlayer, "statusChanged", {
@@ -157,9 +165,11 @@ export const usePlayerStore = defineStore("player", () => {
     playing,
     position,
     duration,
+    currentTempo,
+    currentTimeSignature,
+    currentVamp,
     currentMeasure,
     finalMeasure,
-    currentVamp,
     events,
     ppqn,
     player: globalPlayer,
