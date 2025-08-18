@@ -201,12 +201,19 @@ export default class MidiPlayer extends EventEmitter {
 
   _handleEvent(event: MidiEvent) {
     if (event instanceof NoteEvent) {
+      const track = this._currentSong!.tracks[event.trackIndex];
+
+      // skip if the track is muted
+      if (track.mixer.mute || track.mixer.gain <= 0) {
+        return;
+      }
+
       // play the note
       const start = (this._position - event.tick) * this._tickDuration;
       const duration = Math.min(event.duration * this._tickDuration - start, 5);
-      const instrument = this._instruments[event.channel === 9 ? 116 : 0];
+      const instrument = this._instruments[track.program === 9 ? 116 : 0];
       const pitch = event.pitch;
-      const volume = event.velocity / 127.0;
+      const volume = event.velocity / 127.0 * track.mixer.gain;
       this._player.queueWaveTable(this._audioContext, this._masterInput, window[instrument], start, pitch, duration, volume, []);
     } else if (event instanceof TempoEvent) {
       this._updateCurrentTempo(event.bpm);
@@ -477,7 +484,7 @@ export default class MidiPlayer extends EventEmitter {
               tick - noteOnEvent.$tick,
               noteOnEvent.noteOn.noteNumber,
               noteOnEvent.noteOn.velocity,
-              track.program,
+              t,
             ));
 
             // clear the note on index

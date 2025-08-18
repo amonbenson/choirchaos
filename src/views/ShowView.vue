@@ -6,6 +6,7 @@ import { useRoute, useRouter } from "vue-router";
 import TransportBar from "@/components/TransportBar.vue";
 import type Song from "@/core/show/song";
 import PdfViewer from "@/components/PdfViewer.vue";
+import MixerPanel from "@/components/MixerPanel.vue";
 
 const player = usePlayerStore();
 const route = useRoute();
@@ -108,9 +109,15 @@ fetchShow();
       :loading="showLoading || songLoading"
       @update:model-value="selectSong($event)"
     />
-    <PdfViewer
-      class="flex-1 size-full"
-      :song="song"
-    />
+    <div class="flex-1 size-full flex justify-stretch items-stretch">
+      <PdfViewer
+        class="flex-1"
+        :song="song"
+      />
+      <MixerPanel
+        class="w-96 h-0"
+        :song="song"
+      />
+    </div>
   </div>
 </template>

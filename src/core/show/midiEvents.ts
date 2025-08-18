@@ -7,7 +7,7 @@ export class MidiEvent {
 }
 
 export class NoteEvent extends MidiEvent {
-  constructor(public tick: Tick, public duration: Tick, public pitch: number, public velocity: number, public channel: number) {
+  constructor(public tick: Tick, public duration: Tick, public pitch: number, public velocity: number, public trackIndex: number) {
     super(tick);
   }
 }

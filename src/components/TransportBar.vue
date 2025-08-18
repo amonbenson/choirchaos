@@ -23,11 +23,11 @@ const player = usePlayerStore();
       <template #start>
         <Select
           v-model="songId"
+          class="w-64 border-none"
           :options="songs"
           option-value="id"
           :option-label="song => `#${song.number} ${song.title}`"
           :loading="loading"
-          class="w-64"
           size="small"
           placeholder="Auswahl"
         />
@@ -60,7 +60,7 @@ const player = usePlayerStore();
       </template>
 
       <template #end>
-        <div class="flex justify-stretch items-center gap-8">
+        <div class="flex justify-between items-center gap-8">
           <!-- Measure display -->
           <div class="flex justify-stretch items-center gap-1">
             <InputText
