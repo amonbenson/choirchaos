@@ -109,13 +109,13 @@ fetchShow();
       :loading="showLoading || songLoading"
       @update:model-value="selectSong($event)"
     />
-    <div class="flex-1 size-full flex justify-stretch items-stretch">
+    <div class="flex-1 min-h-0 flex justify-stretch items-stretch">
       <PdfViewer
         class="flex-1"
         :song="song"
       />
       <MixerPanel
-        class="w-96 h-0"
+        class="w-96 min-h-0"
         :song="song"
       />
     </div>
