@@ -36,6 +36,16 @@ export default class Song {
     return this.measures.search({ value } as Measure);
   }
 
+  public findFollowingMeasure(value: Numbering) {
+    const i = this.measures.searchIndex({ value } as Measure);
+    return this.measures.items()[i + 1] ?? this.measures.last();
+  }
+
+  public findPreceedingMeasure(value: Numbering) {
+    const i = this.measures.searchIndex({ value } as Measure);
+    return this.measures.items()[i - 1] ?? this.measures.first();
+  }
+
   public toRecord(): PbRecord {
     return {
       number: this.number,

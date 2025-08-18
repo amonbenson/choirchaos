@@ -19,6 +19,17 @@ declare global {
 
 export type MidiPlayerStatus = "idle" | "loading" | "ready";
 
+export type MidiPlayerVamp = {
+  start: Tick,
+  end: Tick,
+  iterations: number
+};
+
+export type MidiPlayerVampState = MidiPlayerVamp & {
+  currentIteration: number;
+  manualExit: boolean;
+}
+
 export type MidiSystemEvents = {
   measure: MidiEventList<MeasureEvent>;
   tempo: MidiEventList<TempoEvent>;
@@ -58,6 +69,9 @@ export default class MidiPlayer extends EventEmitter {
     },
     track: [],
   };
+
+  private _vamps: MidiPlayerVamp[] = [];
+  private _currentVamp?: MidiPlayerVampState;
 
   private _audioContext = new AudioContext();
   private _player: any = null;
@@ -140,6 +154,15 @@ export default class MidiPlayer extends EventEmitter {
     this.emit("finalMeasureChanged", this._finalMeasure);
   }
 
+  get currentVamp() {
+    return this._currentVamp;
+  }
+
+  _updateCurrentVamp(value: MidiPlayerVampState | undefined) {
+    this._currentVamp = value;
+    this.emit("currentVampChanged", this._currentVamp);
+  }
+
   get midi_events() {
     return this._midi_events;
   }
@@ -155,6 +178,25 @@ export default class MidiPlayer extends EventEmitter {
   _updateTickDuration() {
     const ticksPerSecond = this._currentTempo / 60 * this._ppqn;
     this._tickDuration = 1 / ticksPerSecond;
+  }
+
+  _checkEnterVamp(tick: Tick) {
+    // check if any vamp should be entered
+    let newCurrentVamp = undefined;
+    for (const vamp of this._vamps) {
+      if (tick >= vamp.start && tick < vamp.end) {
+        newCurrentVamp = {
+          ...vamp,
+          currentIteration: 0,
+          manualExit: false,
+        };
+      }
+    }
+
+    // update current vamp
+    if (newCurrentVamp?.start !== this._currentVamp?.start) {
+      this._updateCurrentVamp(newCurrentVamp);
+    }
   }
 
   _handleEvent(event: MidiEvent) {
@@ -181,9 +223,32 @@ export default class MidiPlayer extends EventEmitter {
 
   _handleStep(deltaTime: number) {
     // update tick position
-    const p0 = this._position;
+    let p0 = this._position;
     this._position += deltaTime / this._tickDuration;
-    const p1 = this._position;
+    let p1 = this._position;
+
+    // update the current vamp
+    this._checkEnterVamp(p0);
+
+    // repeat or exit vamp if we pass its end point
+    if (this._currentVamp && p1 > this._currentVamp.end) {
+      const maxIterationsReached = this._currentVamp.iterations > 0 && this._currentVamp.currentIteration >= this._currentVamp.iterations;
+      if (this._currentVamp.manualExit || maxIterationsReached) {
+        // exit
+        this._updateCurrentVamp(undefined);
+      } else {
+        // repeat
+        const vampLength = this._currentVamp.end - this._currentVamp.start;
+        this._position -= vampLength;
+        p0 -= vampLength;
+        p1 -= vampLength;
+
+        this._updateCurrentVamp({
+          ...this._currentVamp,
+          currentIteration: this._currentVamp.currentIteration + 1,
+        });
+      }
+    }
 
     // handle all events within the current region
     const k0 = { tick: p0 };
@@ -264,9 +329,21 @@ export default class MidiPlayer extends EventEmitter {
     ];
     events.forEach(event => this._handleEvent(event));
 
+    // update the current vamp
+    this._checkEnterVamp(this._position);
+
     // continue playing if activated
     if (wasPlaying) {
       this.play();
+    }
+  }
+
+  exitVamp() {
+    if (this._currentVamp) {
+      this._updateCurrentVamp({
+        ...this._currentVamp,
+        manualExit: true,
+      });
     }
   }
 
@@ -404,6 +481,30 @@ export default class MidiPlayer extends EventEmitter {
 
       // store track events in original track data
       Object.assign(track.$midiTrackEvents, this._midi_events.track[t]);
+    }
+
+    // handle song measure events
+    this._vamps = [];
+    this._currentVamp = undefined;
+
+    for (const markerEvent of song.events.markers.items()) {
+      markerEvent.$startTick = song.findMeasure(markerEvent.start[0])?.$beatTicks[0];
+      markerEvent.$endTick = song.findMeasure(markerEvent.end[0])?.$beatTicks[0];
+    }
+    for (const vampEvent of song.events.vamps.items()) {
+      vampEvent.$startTick = song.findMeasure(vampEvent.start[0])?.$beatTicks[0];
+      vampEvent.$endTick = song.findMeasure(vampEvent.end[0])?.$beatTicks[0];
+
+      // store vamp definition
+      if (vampEvent.$startTick !== undefined && vampEvent.$endTick !== undefined) {
+        this._vamps.push({
+          start: vampEvent.$startTick,
+          end: vampEvent.$endTick,
+          iterations: vampEvent.iterations,
+        });
+      } else {
+        console.error("Could not resolve location of Vamp:", vampEvent);
+      }
     }
 
     // store additional song-specific settings

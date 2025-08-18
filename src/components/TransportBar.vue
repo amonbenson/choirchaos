@@ -51,6 +51,12 @@ const player = usePlayerStore();
           text
           @click="player.stop()"
         />
+        <Button
+          :disabled="!player.ready || !player.currentVamp"
+          label="Exit Vamp"
+          :severity="player.ready && player.currentVamp && !player.currentVamp.manualExit ? 'primary' : 'secondary'"
+          @click="player.exitVamp()"
+        />
       </template>
 
       <template #end>

@@ -88,6 +88,10 @@ export const usePlayerStore = defineStore("player", () => {
     initial: globalPlayer.finalMeasure,
   });
 
+  const currentVamp = useEvent(globalPlayer, "currentVampChanged", {
+    initial: globalPlayer.currentVamp,
+  });
+
   const events = useEvent(globalPlayer, "statusChanged", {
     initial: markRaw(globalPlayer.midi_events),
     getter: (player) => markRaw(player.midi_events),
@@ -138,6 +142,7 @@ export const usePlayerStore = defineStore("player", () => {
     play: () => globalPlayer.play(),
     pause: () => globalPlayer.pause(),
     stop: () => globalPlayer.stop(),
+    exitVamp: () => globalPlayer.exitVamp(),
     setMeasure,
     setBeat,
     status,
@@ -148,6 +153,7 @@ export const usePlayerStore = defineStore("player", () => {
     duration,
     currentMeasure,
     finalMeasure,
+    currentVamp,
     events,
     ppqn,
     player: globalPlayer,

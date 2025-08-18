@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch, type Ref, type ShallowRef } from "vue";
+import { computed, ref, shallowRef, watch, type ShallowRef } from "vue";
 import { resolveUrl } from "@/core/utils/file";
 import Song from "@/core/show/song";
 import Button from "primevue/button";
@@ -56,10 +56,10 @@ watch(() => currentMeasure.value, () => {
   // }
 });
 
-async function uploadMeasureLayout() {
-  await props.song?.update();
-  console.log("Update successful");
-}
+// async function uploadMeasureLayout() {
+//   await props.song?.update();
+//   console.log("Update successful");
+// }
 
 </script>
 
@@ -131,7 +131,7 @@ async function uploadMeasureLayout() {
         text
         @click="currentPage++"
       />
-      <Button
+      <!-- <Button
         :disabled="!ready || currentPage >= numPages - 1"
         icon="pi pi-upload"
         severity="secondary"
@@ -139,7 +139,7 @@ async function uploadMeasureLayout() {
         rounded
         text
         @click="uploadMeasureLayout()"
-      />
+      /> -->
     </div>
   </div>
 </template>

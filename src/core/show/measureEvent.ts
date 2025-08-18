@@ -2,7 +2,8 @@ import { BinarySortedList } from "../utils/binarySearch";
 import { compareMeasureReferences, type MeasureReference } from "./measure";
 
 export class MeasureEvent {
-  public $tick?: number;
+  public $startTick?: number;
+  public $endTick?: number;
 
   constructor(public start: MeasureReference, public end: MeasureReference = start) {}
 }
