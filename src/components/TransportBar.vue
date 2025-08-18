@@ -4,46 +4,17 @@ import Button from "primevue/button";
 import InputText from "primevue/inputtext";
 import InputNumber from "primevue/inputnumber";
 import Select from "primevue/select";
-import { computed } from "vue";
 import { usePlayerStore } from "@/stores/player";
-import { isNumbering } from "@/core/utils/numbering";
 import Song from "@/core/show/song";
 
-const props = defineProps<{
-  songs: Song[] | null,
+defineProps<{
+  songs?: Song[],
   loading?: boolean,
 }>();
 
 const songId = defineModel<string>();
 
 const player = usePlayerStore();
-
-const song = computed(() => props.songs?.find(s => s.id === songId.value));
-
-function setMeasure(value: string) {
-  // validate input
-  if (!isNumbering(value)) {
-    value = "1";
-  }
-
-  // find the measure and seek to its starting beat position
-  const measure = song.value.findMeasure(value);
-  player.position = measure.$beatTicks[0];
-}
-
-function setBeat(value: number) {
-  // convert to zero-indexd number
-  value -= 1;
-
-  // find the measure, validate input range, and seek
-  const measure = song.value.findMeasure(player.currentMeasure[0]);
-  if (value < 0) {
-    value = 0;
-  } else if (value >= measure.beats) {
-    value = measure.beats - 1;
-  }
-  player.position = measure.$beatTicks[value];
-}
 </script>
 
 <template>
@@ -92,7 +63,7 @@ function setBeat(value: number) {
             placeholder="1"
             aria-label="Measure"
             fluid
-            @update:model-value="setMeasure($event)"
+            @update:model-value="player.setMeasure($event ?? '')"
           />
           <InputNumber
             :model-value="player.currentMeasure[1] + 1"
@@ -103,7 +74,7 @@ function setBeat(value: number) {
             placeholder="1"
             aria-label="Beat"
             fluid
-            @update:model-value="setBeat($event)"
+            @update:model-value="player.setBeat($event)"
           />
           <div>&ensp;/&ensp;</div>
           <InputText

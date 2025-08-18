@@ -1,11 +1,11 @@
-export type BinarySearchOptions<T, K> = {
+export type BinarySearchOptions<K, T> = {
   comparator?: (a: K, b: T) => number;
   direction?: "forward" | "backward";
   inclusive?: boolean;
   extend?: boolean;
 };
 
-export function binarySearch<T, K>(list: T[], key: K, options: BinarySearchOptions<T, K> = {}): number {
+export function binarySearch<K, T>(list: T[], key: K, options: BinarySearchOptions<K, T> = {}): number {
   const {
     comparator = (a, b) => Number(a) - Number(b),
     direction = "forward",
@@ -176,24 +176,31 @@ export class BinarySortedList<T> {
    * @param {Object} options Optional settings for the search. These will override the class options.
    * @returns {*} The result of the binary search.
    */
-  searchIndex(keyItem: T, options: BinarySearchOptions<T, T> = {}): number {
-    return binarySearch(this._items, keyItem, { ...this._options, ...options });
+  searchIndex<K = T>(keyItem: K, options: BinarySearchOptions<K, T> = {}): number {
+    return binarySearch(this._items, keyItem, { ...this._options as any, ...options });
   }
 
-  search(keyItem: T, options: BinarySearchOptions<T, T> = {}): T | null {
+  search<K = T>(keyItem: K, options: BinarySearchOptions<K, T> = {}): T | null {
     return this._items[this.searchIndex(keyItem, options)] ?? null;
   }
 
-  searchRange(from: T, to: T) {
-    const startIndex = this.searchIndex(from, {
+  searchIndexRange<K = T>(from: K, to: K, options: BinarySearchOptions<K, T> = {}) {
+    const a = this.searchIndex(from, {
+      ...options,
       inclusive: false,
       extend: true,
     });
-    const endIndex = this.searchIndex(to, {
+    const b = this.searchIndex(to, {
+      ...options,
       inclusive: false,
       extend: true,
     });
-    return this.items().slice(startIndex, endIndex);
+    return [a, b];
+  }
+
+  searchRange<K = T>(from: K, to: K, options: BinarySearchOptions<K, T> = {}) {
+    const [a, b] = this.searchIndexRange(from, to, options);
+    return this.items().slice(a, b);
   }
 
   sort() {

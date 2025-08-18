@@ -148,6 +148,10 @@ export default class MidiPlayer extends EventEmitter {
     return this._ppqn;
   }
 
+  get currentSong() {
+    return this._currentSong;
+  }
+
   _updateTickDuration() {
     const ticksPerSecond = this._currentTempo / 60 * this._ppqn;
     this._tickDuration = 1 / ticksPerSecond;

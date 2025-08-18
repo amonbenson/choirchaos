@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, watch } from "vue";
+import { ref, shallowRef, watch, type Ref } from "vue";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "/js/pdf.worker.min.mjs?url";
 
@@ -7,7 +7,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 const props = withDefaults(defineProps<{
   url: string,
-  page: string,
+  page: number,
   scale?: number,
 }>(), {
   scale: 1.0,
@@ -22,8 +22,8 @@ const canvas = ref();
 
 const status = ref("idle");
 const pdf: any = shallowRef(null);
-const pageWidth: number = ref(0);
-const pageHeight: number = ref(0);
+const pageWidth: Ref<number> = ref(0);
+const pageHeight: Ref<number> = ref(0);
 
 watch(status, (value) => {
   emit("update:status", value);
@@ -32,6 +32,8 @@ watch(status, (value) => {
   if (value === "ready") {
     emit("ready", {
       numPages: pdf.value.numPages,
+      pageWidth: pageWidth.value,
+      pageHeight: pageHeight.value,
     });
   }
 });

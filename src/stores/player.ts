@@ -3,6 +3,7 @@ import { useEvent } from "@/composables/event";
 import MidiPlayer from "@/core/show/midiPlayer";
 import { computed, markRaw, ref, watch } from "vue";
 import type Song from "@/core/show/song";
+import { isNumbering } from "@/core/utils/numbering";
 
 const globalPlayer = new MidiPlayer();
 
@@ -97,12 +98,48 @@ export const usePlayerStore = defineStore("player", () => {
     getter: (player) => player.ppqn,
   });
 
+  function setMeasure(value: string) {
+    if (!globalPlayer.currentSong) {
+      return;
+    }
+
+    // validate input
+    if (!isNumbering(value)) {
+      value = "1";
+    }
+
+    // find the measure and seek to its starting beat position
+    const measure = globalPlayer.currentSong.findMeasure(value);
+    globalPlayer.seek(measure?.$beatTicks[0] ?? 0);
+  }
+
+  function setBeat(value: number) {
+    if (!globalPlayer.currentSong) {
+      return;
+    }
+
+    // convert to zero-indexd number
+    value -= 1;
+
+    // find the current measure, validate input range, and seek
+    const measure = globalPlayer.currentSong.findMeasure(globalPlayer.currentMeasure[0]);
+    const beats = measure?.beats ?? 1;
+    if (value < 0) {
+      value = 0;
+    } else if (value >= beats) {
+      value = beats - 1;
+    }
+    globalPlayer.seek(measure?.$beatTicks[value] ?? 0);
+  }
+
   return {
     load: (song: Song) => globalPlayer.load(song),
     unload: () => globalPlayer.unload(),
     play: () => globalPlayer.play(),
     pause: () => globalPlayer.pause(),
     stop: () => globalPlayer.stop(),
+    setMeasure,
+    setBeat,
     status,
     loading,
     ready,

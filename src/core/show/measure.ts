@@ -2,6 +2,7 @@ import { BinarySortedList } from "../utils/binarySearch";
 import { compareNumberings, type Numbering } from "../utils/numbering";
 
 export type MeasureLayout = {
+  page: number;
   x: number;
   y: number;
   width: number;
