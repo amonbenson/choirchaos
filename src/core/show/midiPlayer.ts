@@ -222,6 +222,13 @@ export default class MidiPlayer extends EventEmitter {
   }
 
   _handleStep(deltaTime: number) {
+    // stop when the end is reached
+    if (this._position >= this._duration) {
+      this.pause();
+      this.emit("endOfSong");
+      return;
+    }
+
     // update tick position
     let p0 = this._position;
     this._position += deltaTime / this._tickDuration;

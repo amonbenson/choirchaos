@@ -50,6 +50,17 @@ watch([show, song], async () => {
   }
 });
 
+// handle segue
+// player.onEndOfSong(() => {
+//   if (show.value && song.value?.events.segue) {
+//     const currentIndex = show.value.songs.findIndex(s => s.id === props.songId) ?? -1;
+//     const nextSong = show.value.songs[currentIndex + 1];
+//     if (nextSong) {
+//       selectSong(nextSong.id);
+//     }
+//   }
+// });
+
 // fetch the show data from pocketbase on setup
 async function fetchShow() {
   try {

@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { useEvent } from "@/composables/event";
 import MidiPlayer from "@/core/show/midiPlayer";
-import { computed, markRaw, ref, watch } from "vue";
+import { computed, markRaw, onScopeDispose, ref, watch } from "vue";
 import type Song from "@/core/show/song";
 import { isNumbering } from "@/core/utils/numbering";
 
@@ -136,6 +136,11 @@ export const usePlayerStore = defineStore("player", () => {
     globalPlayer.seek(measure?.$beatTicks[value] ?? 0);
   }
 
+  function onEndOfSong(callback: () => void) {
+    globalPlayer.on("endOfSong", callback);
+    onScopeDispose(() => globalPlayer.off("endOfSong", callback));
+  }
+
   return {
     load: (song: Song) => globalPlayer.load(song),
     unload: () => globalPlayer.unload(),
@@ -145,6 +150,7 @@ export const usePlayerStore = defineStore("player", () => {
     exitVamp: () => globalPlayer.exitVamp(),
     setMeasure,
     setBeat,
+    onEndOfSong,
     status,
     loading,
     ready,
