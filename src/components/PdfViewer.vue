@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from "vue";
+import { computed, ref, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from "vue";
 import { resolveUrl } from "@/core/utils/file";
 import Song from "@/core/show/song";
 import Button from "primevue/button";
 import PdfCanvas from "@/components/PdfCanvas.vue";
 import { usePlayerStore } from "@/stores/player";
 import type Measure from "@/core/show/measure";
-import type { MeasureNumber } from "@/core/show/measure";
 import { compareNumberings } from "@/core/utils/numbering";
+import Draggable from "@/components/Draggable.vue";
 
 const player = usePlayerStore();
 
@@ -21,6 +21,9 @@ const pdfUrl = computed(() => props.song?.pdfFile ? resolveUrl(props.song.pdfFil
 const pdfStatus = ref("idle");
 const ready = computed(() => pdfStatus.value === "ready");
 const numPages = ref(0);
+
+const viewportScale = ref(1);
+const viewportOffset = ref({ x: 0, y: 0 });
 
 // store all measures grouped by page
 const pageMeasures: ShallowRef<Measure[][]> = shallowRef([]);
@@ -248,174 +251,198 @@ async function uploadMeasureLayout() {
   console.log("Update successful");
 }
 
+function handleViewportDrag(event: any) {
+  viewportOffset.value.x += event.delta.x;
+  viewportOffset.value.y += event.delta.y;
+}
+
+function handleViewportWheel(event: WheelEvent) {
+  viewportScale.value *= Math.exp(event.deltaY * -0.001);
+}
+
 </script>
 
 <template>
-  <div class="relative overflow-hidden">
-    <PdfCanvas
-      v-if="pdfUrl"
-      class="absolute left-1/2 top-1/2 -translate-1/2 group"
-      :class="{
-        'hidden': !ready,
-        'cursor-crosshair': editing,
-      }"
-      :url="pdfUrl"
-      :page="currentPage"
-      :scale="1.3"
-      @update:status="pdfStatus = $event"
-      @ready="numPages = $event.numPages"
+  <div>
+    <Draggable
+      v-slot="{ passRef, dragging }"
+      @drag="handleViewportDrag($event)"
     >
-      <!-- Editor plane -->
       <div
-        v-if="editing"
-        ref="editorPlane"
-        class="absolute inset-0"
-        @mousedown="startEditorDraw($event)"
-        @mousemove="moveEditorDraw($event)"
-        @mouseup="endEditorDraw($event)"
+        :ref="passRef"
+        class="relative size-full overflow-hidden"
+        :class="dragging ? 'cursor-grabbing' : 'cursor-grab'"
+        @wheel="handleViewportWheel($event)"
       >
-        <div
-          v-if="editStaff"
-          class="absolute bg-primary/25 border-primary border-1 pointer-events-none"
-          :style="{
-            left: `${editStaff.x * 100}%`,
-            top: `${editStaff.y * 100}%`,
-            width: `${editStaff.width * 100}%`,
-            height: `${editStaff.height * 100}%`,
-          }"
-        />
-      </div>
-
-      <!-- Measure boxes -->
-      <template
-        v-for="measure in Object.values(pageMeasures[currentPage] ?? {})"
-        :key="measure.value"
-      >
-        <div
-          v-if="measure.layout"
-          class="absolute transition-colors group/measure"
+        <PdfCanvas
+          v-if="pdfUrl"
+          class="absolute left-1/2 top-1/2 group"
           :class="{
-            'bg-primary/0 hover:bg-primary/25 cursor-pointer': !editing,
-            'bg-primary/25 border-primary border-1 cursor-default': editing,
+            'hidden': !ready,
+            'cursor-crosshair': editing,
           }"
           :style="{
-            left: `${measure.layout.x * 100}%`,
-            top: `${measure.layout.y * 100}%`,
-            width: `${measure.layout.width * 100}%`,
-            height: `${measure.layout.height * 100}%`,
+            'transform': `translate(calc(${viewportOffset.x}px - 50%), calc(${viewportOffset.y}px - 50%)) scale(${viewportScale})`
           }"
-          @click="!editing && player.setMeasure(measure.value)"
+          :url="pdfUrl"
+          :page="currentPage"
+          :scale="2"
+          @update:status="pdfStatus = $event"
+          @ready="numPages = $event.numPages"
         >
-          <template v-if="editing">
-            <!-- Measure number -->
-            <div class="absolute left-1/2 top-1/2 -translate-1/2 text-black text-2xl font-bold group-hover/measure:opacity-0 transition-opacity">
-              {{ measure.value }}
+          <!-- Editor plane -->
+          <div
+            v-if="editing"
+            ref="editorPlane"
+            class="absolute inset-0"
+            @mousedown="startEditorDraw($event)"
+            @mousemove="moveEditorDraw($event)"
+            @mouseup="endEditorDraw($event)"
+          >
+            <div
+              v-if="editStaff"
+              class="absolute bg-primary/25 border-primary border-1 pointer-events-none"
+              :style="{
+                left: `${editStaff.x * 100}%`,
+                top: `${editStaff.y * 100}%`,
+                width: `${editStaff.width * 100}%`,
+                height: `${editStaff.height * 100}%`,
+              }"
+            />
+          </div>
+
+          <!-- Measure boxes -->
+          <template
+            v-for="measure in Object.values(pageMeasures[currentPage] ?? {})"
+            :key="measure.value"
+          >
+            <div
+              v-if="measure.layout"
+              class="absolute transition-colors group/measure"
+              :class="{
+                'bg-primary/0 hover:bg-primary/25 cursor-pointer': !editing,
+                'bg-primary/25 border-primary border-1 cursor-default': editing,
+              }"
+              :style="{
+                left: `${measure.layout.x * 100}%`,
+                top: `${measure.layout.y * 100}%`,
+                width: `${measure.layout.width * 100}%`,
+                height: `${measure.layout.height * 100}%`,
+              }"
+              @click.stop="!editing && player.setMeasure(measure.value)"
+            >
+              <template v-if="editing">
+                <!-- Measure number -->
+                <div class="absolute left-1/2 top-1/2 -translate-1/2 text-black text-2xl font-bold group-hover/measure:opacity-0 transition-opacity">
+                  {{ measure.value }}
+                </div>
+                <Button
+                  class="absolute left-1/2 top-1/2 -translate-1/2 opacity-0 group-hover/measure:opacity-100 transition-opacity"
+                  icon="pi pi-trash"
+                  severity="danger"
+                  rounded
+                  @click="clearMeasureLayout(measure)"
+                />
+
+                <!-- Resize handles -->
+                <Button
+                  class="absolute left-1/2 top-0 -translate-1/2 cursor-ns-resize"
+                  icon="pi pi-arrows-v"
+                  severity="secondary"
+                  size="small"
+                  rounded
+                  @mousedown="startMeasureDrag($event, measure, 'top')"
+                  @mousemove="moveMeasureDrag($event)"
+                  @mouseup="endMeasureDrag($event)"
+                />
+                <Button
+                  class="absolute left-full top-1/2 -translate-1/2 cursor-ew-resize"
+                  icon="pi pi-arrows-h"
+                  severity="secondary"
+                  size="small"
+                  rounded
+                  @mousedown="startMeasureDrag($event, measure, 'right')"
+                  @mousemove="moveMeasureDrag($event)"
+                  @mouseup="endMeasureDrag($event)"
+                />
+                <Button
+                  class="absolute left-1/2 top-full -translate-1/2 cursor-ns-resize"
+                  icon="pi pi-arrows-v"
+                  severity="secondary"
+                  size="small"
+                  rounded
+                  @mousedown="startMeasureDrag($event, measure, 'bottom')"
+                  @mousemove="moveMeasureDrag($event)"
+                  @mouseup="endMeasureDrag($event)"
+                />
+                <Button
+                  class="absolute left-0 top-1/2 -translate-1/2 cursor-ew-resize"
+                  icon="pi pi-arrows-h"
+                  severity="secondary"
+                  size="small"
+                  rounded
+                  @mousedown="startMeasureDrag($event, measure, 'left')"
+                  @mousemove="moveMeasureDrag($event)"
+                  @mouseup="endMeasureDrag($event)"
+                />
+              </template>
             </div>
-            <Button
-              class="absolute left-1/2 top-1/2 -translate-1/2 opacity-0 group-hover/measure:opacity-100 transition-opacity"
-              icon="pi pi-trash"
-              severity="danger"
-              rounded
-              @click="clearMeasureLayout(measure)"
-            />
-
-            <!-- Resize handles -->
-            <Button
-              class="absolute left-1/2 top-0 -translate-1/2 cursor-ns-resize"
-              icon="pi pi-arrows-v"
-              severity="secondary"
-              size="small"
-              rounded
-              @mousedown="startMeasureDrag($event, measure, 'top')"
-              @mousemove="moveMeasureDrag($event)"
-              @mouseup="endMeasureDrag($event)"
-            />
-            <Button
-              class="absolute left-full top-1/2 -translate-1/2 cursor-ew-resize"
-              icon="pi pi-arrows-h"
-              severity="secondary"
-              size="small"
-              rounded
-              @mousedown="startMeasureDrag($event, measure, 'right')"
-              @mousemove="moveMeasureDrag($event)"
-              @mouseup="endMeasureDrag($event)"
-            />
-            <Button
-              class="absolute left-1/2 top-full -translate-1/2 cursor-ns-resize"
-              icon="pi pi-arrows-v"
-              severity="secondary"
-              size="small"
-              rounded
-              @mousedown="startMeasureDrag($event, measure, 'bottom')"
-              @mousemove="moveMeasureDrag($event)"
-              @mouseup="endMeasureDrag($event)"
-            />
-            <Button
-              class="absolute left-0 top-1/2 -translate-1/2 cursor-ew-resize"
-              icon="pi pi-arrows-h"
-              severity="secondary"
-              size="small"
-              rounded
-              @mousedown="startMeasureDrag($event, measure, 'left')"
-              @mousemove="moveMeasureDrag($event)"
-              @mouseup="endMeasureDrag($event)"
-            />
           </template>
+
+          <!-- Playbar -->
+          <div
+            v-if="!editing && currentMeasure?.layout && currentMeasure.layout.page === currentPage"
+            class="absolute bg-primary rounded-full shadow-[0_0_0.75rem] shadow-primary/25 w-1 -translate-x-1/2"
+            :style="{
+              left: `${(currentMeasure.layout.x + currentMeasureProgress * currentMeasure.layout.width) * 100}%`,
+              top: `${currentMeasure.layout.y * 100}%`,
+              height: `${currentMeasure.layout.height * 100}%`,
+            }"
+          />
+
+          <!-- Edit button -->
+          <Button
+            class="absolute right-4 top-4"
+            :class="{ 'opacity-0 group-hover:opacity-100 transition-opacity': !editing }"
+            :icon="`pi ${editing ? 'pi-times' : 'pi-pencil'}`"
+            severity="secondary"
+            rounded
+            @click="editing = !editing"
+          />
+        </PdfCanvas>
+
+        <div class="absolute left-1/2 bottom-2 -translate-x-1/2 flex justify-stretch items-stretch gap-1 bg-surface-950 rounded-full">
+          <Button
+            :disabled="!ready || currentPage <= 0"
+            icon="pi pi-chevron-left"
+            severity="secondary"
+            aria-label="Previous Page"
+            rounded
+            text
+            @click="currentPage--"
+          />
+          <Button
+            :disabled="!ready || currentPage >= numPages - 1"
+            icon="pi pi-chevron-right"
+            severity="secondary"
+            aria-label="Next Page"
+            rounded
+            text
+            @click="currentPage++"
+          />
+          <Button
+            v-if="editing"
+            class="ml-8"
+            label="Upload Changes"
+            icon="pi pi-upload"
+            severity="secondary"
+            aria-label="Stop"
+            rounded
+            text
+            @click="uploadMeasureLayout()"
+          />
         </div>
-      </template>
-
-      <!-- Playbar -->
-      <div
-        v-if="!editing && currentMeasure?.layout && currentMeasure.layout.page === currentPage"
-        class="absolute bg-primary rounded-full shadow-[0_0_0.75rem] shadow-primary/25 w-1 -translate-x-1/2"
-        :style="{
-          left: `${(currentMeasure.layout.x + currentMeasureProgress * currentMeasure.layout.width) * 100}%`,
-          top: `${currentMeasure.layout.y * 100}%`,
-          height: `${currentMeasure.layout.height * 100}%`,
-        }"
-      />
-
-      <!-- Edit button -->
-      <Button
-        class="absolute right-4 top-4"
-        :class="{ 'opacity-0 group-hover:opacity-100 transition-opacity': !editing }"
-        :icon="`pi ${editing ? 'pi-times' : 'pi-pencil'}`"
-        severity="secondary"
-        rounded
-        @click="editing = !editing"
-      />
-    </PdfCanvas>
-
-    <div class="absolute left-1/2 bottom-2 -translate-x-1/2 flex justify-stretch items-stretch gap-1 bg-surface-950 rounded-full">
-      <Button
-        :disabled="!ready || currentPage <= 0"
-        icon="pi pi-chevron-left"
-        severity="secondary"
-        aria-label="Previous Page"
-        rounded
-        text
-        @click="currentPage--"
-      />
-      <Button
-        :disabled="!ready || currentPage >= numPages - 1"
-        icon="pi pi-chevron-right"
-        severity="secondary"
-        aria-label="Next Page"
-        rounded
-        text
-        @click="currentPage++"
-      />
-      <Button
-        v-if="editing"
-        class="ml-8"
-        label="Upload Changes"
-        icon="pi pi-upload"
-        severity="secondary"
-        aria-label="Stop"
-        rounded
-        text
-        @click="uploadMeasureLayout()"
-      />
-    </div>
+      </div>
+    </Draggable>
   </div>
 </template>
