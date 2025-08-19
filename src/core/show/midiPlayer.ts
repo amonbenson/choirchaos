@@ -13,6 +13,7 @@ import { type Updater, SetIntervalUpdater, AnimationFrameUpdater } from "../util
 
 const STEP_DURATION = 1 / 50;
 const POSITION_UPDATE_DURATION = 1 / 50;
+const AUDIO_CLOCK_OFFSET = 0.1;
 
 declare global {
     interface Window { WebAudioFontPlayer: any; }
@@ -80,9 +81,14 @@ export default class MidiPlayer extends EventEmitter {
   private _instruments: { [key: number]: any } = {};
   private _masterInput: AudioNode | null = null;
 
+  private _audioClockReference: {
+    seconds: number;
+    ticks: number;
+  } = { seconds: 0, ticks: 0 };
+
   private _updater: Updater = new SetIntervalUpdater((delta) => this._handleStep(delta), {
     interval: STEP_DURATION,
-    maximumLag: 1.5,
+    maximumLag: 5.0,
     timeProvider: () => this._audioContext.currentTime,
   });
   private _timeSinceLastPositionUpdate = 0;
@@ -91,7 +97,7 @@ export default class MidiPlayer extends EventEmitter {
     return this._status;
   }
 
-  _updateStatus(value: MidiPlayerStatus) {
+  private _updateStatus(value: MidiPlayerStatus) {
     this._status = value;
     this.emit("statusChanged", this._status);
   }
@@ -100,7 +106,7 @@ export default class MidiPlayer extends EventEmitter {
     return this._playing;
   }
 
-  _updatePlaying(value: boolean) {
+  private _updatePlaying(value: boolean) {
     this._playing = value;
     this.emit("playingChanged", this._playing);
   }
@@ -109,7 +115,7 @@ export default class MidiPlayer extends EventEmitter {
     return this._position;
   }
 
-  _updatePosition(value: Tick) {
+  private _updatePosition(value: Tick) {
     // TODO: slow down emit rate while playing
     this._position = Math.max(0, Math.min(this._duration, value));
     this.emit("positionChanged", this._position);
@@ -119,7 +125,7 @@ export default class MidiPlayer extends EventEmitter {
     return this._duration;
   }
 
-  _updateDuration(value: Tick) {
+  private _updateDuration(value: Tick) {
     this._duration = value;
     this.emit("durationChanged", this._duration);
   }
@@ -128,7 +134,7 @@ export default class MidiPlayer extends EventEmitter {
     return this._currentMeasure;
   }
 
-  _updateCurrentMeasure(value: MeasureReference) {
+  private _updateCurrentMeasure(value: MeasureReference) {
     this._currentMeasure = value;
     this.emit("currentMeasureChanged", this._currentMeasure);
   }
@@ -137,7 +143,7 @@ export default class MidiPlayer extends EventEmitter {
     return this._currentTempo;
   }
 
-  _updateCurrentTempo(value: number) {
+  private _updateCurrentTempo(value: number) {
     this._currentTempo = value;
     this.emit("currentTempoChanged", this._currentTempo);
   }
@@ -146,7 +152,7 @@ export default class MidiPlayer extends EventEmitter {
     return this._currentTimeSignature;
   }
 
-  _updateCurrentTimeSignature(value: TimeSignature) {
+  private _updateCurrentTimeSignature(value: TimeSignature) {
     this._currentTimeSignature = value;
     this.emit("currentTimeSignatureChanged", this._currentTimeSignature);
   }
@@ -155,7 +161,7 @@ export default class MidiPlayer extends EventEmitter {
     return this._finalMeasure;
   }
 
-  _updateFinalMeasure(value: MeasureReference) {
+  private _updateFinalMeasure(value: MeasureReference) {
     this._finalMeasure = value;
     this.emit("finalMeasureChanged", this._finalMeasure);
   }
@@ -164,7 +170,7 @@ export default class MidiPlayer extends EventEmitter {
     return this._currentVamp;
   }
 
-  _updateCurrentVamp(value: MidiPlayerVampState | undefined) {
+  private _updateCurrentVamp(value: MidiPlayerVampState | undefined) {
     this._currentVamp = value;
     this.emit("currentVampChanged", this._currentVamp);
   }
@@ -181,12 +187,21 @@ export default class MidiPlayer extends EventEmitter {
     return this._currentSong;
   }
 
-  _updateTickDuration() {
-    const ticksPerSecond = this._currentTempo / 60 * this._ppqn;
-    this._tickDuration = 1 / ticksPerSecond;
+  private _resetAudioClockReference() {
+    this._audioClockReference = {
+      seconds: this._audioContext.currentTime,
+      ticks: this._position,
+    };
   }
 
-  _getVampAt(tick: Tick): MidiPlayerVampState | undefined {
+  private _updateTickDuration() {
+    const ticksPerSecond = this._currentTempo / 60 * this._ppqn;
+    this._tickDuration = 1 / ticksPerSecond;
+
+    this._resetAudioClockReference();
+  }
+
+  private _getVampAt(tick: Tick): MidiPlayerVampState | undefined {
     // search for a vamp at the provided tick position
     for (const vamp of this._vamps) {
       if (tick >= vamp.start && tick < vamp.end) {
@@ -201,7 +216,7 @@ export default class MidiPlayer extends EventEmitter {
     return undefined;
   }
 
-  _handleEvent(event: MidiEvent) {
+  private _handleEvent(event: MidiEvent) {
     if (event instanceof NoteEvent) {
       const track = this._currentSong!.tracks[event.trackIndex];
 
@@ -211,12 +226,31 @@ export default class MidiPlayer extends EventEmitter {
       }
 
       // play the note
-      const start = (this._position - event.tick) * this._tickDuration;
-      const duration = Math.min(event.duration * this._tickDuration - start, 5);
+      const timeSinceReference = this._audioContext.currentTime - this._audioClockReference.seconds;
+      const ticksSinceReference = timeSinceReference / this._tickDuration;
+      const preciseTickPosition = this._audioClockReference.ticks + ticksSinceReference;
+
+      const start = (event.tick - preciseTickPosition) * this._tickDuration + AUDIO_CLOCK_OFFSET;
+      const duration = Math.min(event.duration * this._tickDuration, 5);
       const instrument = this._instruments[track.program === 9 ? 116 : 0];
       const pitch = event.pitch;
       const volume = event.velocity / 127.0 * track.mixer.gain;
-      this._player.queueWaveTable(this._audioContext, this._masterInput, window[instrument], start, pitch, duration, volume, []);
+
+      // check if events lie in the past
+      if (start < 0) {
+        console.warn(`Clock offset to small! Event scheduled ${-start}s in the past. This will lead to audible timing glitches!`);
+      }
+
+      this._player.queueWaveTable(
+        this._audioContext,
+        this._masterInput,
+        window[instrument],
+        this._audioContext.currentTime + start,
+        pitch,
+        duration,
+        volume,
+        [],
+      );
     } else if (event instanceof TempoEvent) {
       this._updateCurrentTempo(event.bpm);
       this._updateTickDuration();
@@ -230,7 +264,7 @@ export default class MidiPlayer extends EventEmitter {
     }
   }
 
-  _handleStep(deltaTime: number) {
+  private _handleStep(deltaTime: number) {
     // stop when the end is reached
     if (this._position >= this._duration) {
       this.pause();

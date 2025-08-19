@@ -11,17 +11,18 @@ export type UpdaterOptions = {
 }
 
 export abstract class Updater {
-  protected readonly _options: UpdaterOptions = {
-    interval: 1 / 50,
-    maximumLag: 1.5,
-    timeProvider: () => new Date().getTime() / 1000,
-  };
+  protected readonly _options: UpdaterOptions;
   private _updateCallback: UpdateCallback;
   private _lastUpdate: number = 0;
   private _running: boolean = false;
 
   constructor(updateCallback: UpdateCallback, options: Partial<UpdaterOptions> = {}) {
-    Object.assign(this._options, {}, options);
+    this._options = {
+      interval: 1 / 50,
+      maximumLag: 1.5,
+      timeProvider: () => new Date().getTime() / 1000,
+    };
+    Object.assign(this._options, options);
     this._updateCallback = updateCallback;
   }
 
@@ -85,7 +86,7 @@ export class SetIntervalUpdater extends Updater {
 
   protected _startImpl(): void {
     // setup a regular interval update handler
-    this._intervalHandle = setInterval(() => this._update(), this._options.interval);
+    this._intervalHandle = setInterval(() => this._update(), this._options.interval * 1000);
   }
 
   protected _stopImpl(): void {

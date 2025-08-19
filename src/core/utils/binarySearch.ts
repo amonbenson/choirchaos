@@ -3,6 +3,7 @@ export type BinarySearchOptions<K, T> = {
   direction?: "forward" | "backward";
   inclusive?: boolean;
   extend?: boolean;
+  upperBoundReturnsLength?: boolean;
 };
 
 export function binarySearch<K, T>(list: T[], key: K, options: BinarySearchOptions<K, T> = {}): number {
@@ -11,6 +12,7 @@ export function binarySearch<K, T>(list: T[], key: K, options: BinarySearchOptio
     direction = "forward",
     inclusive = true,
     extend = true,
+    upperBoundReturnsLength = false,
   } = options;
 
   // check if list is invalid or empty
@@ -29,7 +31,7 @@ export function binarySearch<K, T>(list: T[], key: K, options: BinarySearchOptio
     if (inclusive) {
       return 0;
     } else if (direction === "forward") {
-      return list.length > 1 ? 1 : -1;
+      return list.length > 1 ? 1 : (upperBoundReturnsLength ? list.length : -1);
     } else {
       return extend ? 0 : -1;
     }
@@ -38,12 +40,12 @@ export function binarySearch<K, T>(list: T[], key: K, options: BinarySearchOptio
   // check upper bound
   const cmpHigh = comparator(key, list[list.length - 1]);
   if (cmpHigh > 0) {
-    return extend ? list.length - 1 : -1;
+    return extend ? list.length - 1 : (upperBoundReturnsLength ? list.length : -1);
   } else if (cmpHigh === 0) {
     if (inclusive) {
       return list.length - 1;
     } else if (direction === "forward") {
-      return extend ? list.length - 1 : -1;
+      return extend ? list.length - 1 : (upperBoundReturnsLength ? list.length : -1);
     } else {
       return list.length > 1 ? list.length - 2 : -1;
     }
@@ -185,23 +187,26 @@ export class BinarySortedList<T> {
   }
 
   searchIndexRange<K = T>(from: K, to: K, options: BinarySearchOptions<K, T> = {}) {
+
     const a = this.searchIndex(from, {
       ...options,
       inclusive: true,
       extend: true,
+      upperBoundReturnsLength: true,
     });
-    let b = this.searchIndex(to, {
+    const b = this.searchIndex(to, {
       ...options,
       inclusive: true,
       extend: true,
+      upperBoundReturnsLength: true,
     });
 
-    // one special case we need to handle is if b is higher than the last element, we must return the length of the array
+    // one special case we need to handle is if the position is higher than the last element, we must return the length of the array
     // instead of the index of the last item (length - 1), because the slice expectes its second argument to be exclusive.
-    const comparator = options.comparator ?? this._options.comparator as any ?? ((a: K, b: T) => Number(a) - Number(b));
-    if (this._items.length > 0 && b === this._items.length - 1 && comparator(to, this.last()) > 0) {
-      b = this._items.length; // increase b by one to include the last item in the search
-    }
+    // const comparator = options.comparator ?? this._options.comparator as any ?? ((a: K, b: T) => Number(a) - Number(b));
+    // if (this._items.length > 0 && b === this._items.length - 1 && comparator(to, this.last()) > 0) {
+    //   b = this._items.length; // increase b by one to include the last item in the search
+    // }
 
     return [a, b];
   }
