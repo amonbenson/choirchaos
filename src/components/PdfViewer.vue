@@ -51,9 +51,9 @@ function updatePageMeasures() {
   }
 }
 
-// keep track of currently playing measure
-const currentMeasure: ComputedRef<Measure | undefined> = computed(() => player.ready ? props.song?.findMeasure(player.currentMeasure[0]) : undefined);
-const currentMeasureProgress = computed(() => currentMeasure.value?.layout && currentMeasure.value.$beatTicks
+// keep track of currently playing measure.
+const currentMeasure: ComputedRef<Measure | undefined> = computed(() => player.ready ? props.song?.findMeasure(player.currentMeasure[0].split("-")[0]) : undefined);
+const currentMeasureProgress = computed(() => currentMeasure.value && currentMeasure.value?.layout && currentMeasure.value.$beatTicks
   ? (player.position - currentMeasure.value.$beatTicks[0]) / (currentMeasure.value.$beatTicks[currentMeasure.value.beats - 1] - currentMeasure.value.$beatTicks[0]) / currentMeasure.value.beats * (currentMeasure.value.beats - 1)
   : 0);
 

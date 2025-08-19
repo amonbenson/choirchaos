@@ -92,6 +92,21 @@ async function render() {
   await task.promise;
 
   status.value = "ready";
+
+  // already pre-render the next page
+  if (props.page < pdf.value.numPages - 1) {
+    setTimeout(async () => {
+      const page = await pdf.value.getPage(props.page + 2);
+      const viewport = page.getViewport({ scale: props.scale });
+      const dummyCanvas = document.createElement("canvas");
+      const canvasContext = dummyCanvas.getContext("2d");
+      const task = page.render({
+        canvasContext,
+        viewport,
+      });
+      await task.promise;
+    }, 100);
+  }
 }
 
 </script>
