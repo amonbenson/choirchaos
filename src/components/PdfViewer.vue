@@ -17,10 +17,15 @@ const props = defineProps<{
 
 const editing = ref(false);
 
+const viewportRef: Ref<HTMLElement> = ref();
+
 const pdfUrl = computed(() => props.song?.pdfFile ? resolveUrl(props.song.pdfFile, "songs", props.song.id) : undefined);
 const pdfStatus = ref("idle");
 const ready = computed(() => pdfStatus.value === "ready");
+
 const numPages = ref(0);
+const pageWidth = ref(0);
+const pageHeight = ref(0);
 
 const viewportScale = ref(1);
 const viewportOffset = ref({ x: 0, y: 0 });
@@ -45,7 +50,6 @@ function updatePageMeasures() {
     page.sort((a, b) => compareNumberings(a.value, b.value));
   }
 }
-watch(ready, () => updatePageMeasures());
 
 // keep track of currently playing measure
 const currentMeasure: ComputedRef<Measure | undefined> = computed(() => player.ready ? props.song?.findMeasure(player.currentMeasure[0]) : undefined);
@@ -69,6 +73,31 @@ watch(() => currentMeasure.value, () => {
   //   currentPage.value++;
   // }
 });
+
+function handleCanvasReady(event: any) {
+  numPages.value = event.numPages;
+  pageWidth.value = event.pageWidth;
+  pageHeight.value = event.pageHeight;
+
+  updatePageMeasures();
+  fitViewport();
+}
+
+function handleViewportDrag(event: any) {
+  viewportOffset.value.x += event.delta.x;
+  viewportOffset.value.y += event.delta.y;
+}
+
+function handleViewportWheel(event: WheelEvent) {
+  viewportScale.value *= Math.exp(event.deltaY * -0.001);
+}
+
+function fitViewport() {
+  const scale = Math.min(viewportRef.value.clientWidth / pageWidth.value, viewportRef.value.clientHeight / pageHeight.value) * 0.9;
+
+  viewportOffset.value = { x: 0, y: 0 };
+  viewportScale.value = scale;
+}
 
 // EDITOR SPECIFIC STUFF
 
@@ -251,15 +280,6 @@ async function uploadMeasureLayout() {
   console.log("Update successful");
 }
 
-function handleViewportDrag(event: any) {
-  viewportOffset.value.x += event.delta.x;
-  viewportOffset.value.y += event.delta.y;
-}
-
-function handleViewportWheel(event: WheelEvent) {
-  viewportScale.value *= Math.exp(event.deltaY * -0.001);
-}
-
 </script>
 
 <template>
@@ -269,7 +289,7 @@ function handleViewportWheel(event: WheelEvent) {
       @drag="handleViewportDrag($event)"
     >
       <div
-        :ref="passRef"
+        :ref="ref => { passRef(ref); viewportRef = ref; }"
         class="relative size-full overflow-hidden"
         :class="dragging ? 'cursor-grabbing' : 'cursor-grab'"
         @wheel="handleViewportWheel($event)"
@@ -288,7 +308,7 @@ function handleViewportWheel(event: WheelEvent) {
           :page="currentPage"
           :scale="2"
           @update:status="pdfStatus = $event"
-          @ready="numPages = $event.numPages"
+          @ready="handleCanvasReady($event)"
         >
           <!-- Editor plane -->
           <div
@@ -411,7 +431,7 @@ function handleViewportWheel(event: WheelEvent) {
           />
         </PdfCanvas>
 
-        <div class="absolute left-1/2 bottom-2 -translate-x-1/2 flex justify-stretch items-stretch gap-1 bg-surface-950 rounded-full">
+        <div class="absolute left-1/2 bottom-2 -translate-x-1/2 flex justify-stretch items-stretch gap-1 bg-surface-950 rounded-full shadow-md">
           <Button
             :disabled="!ready || currentPage <= 0"
             icon="pi pi-chevron-left"
