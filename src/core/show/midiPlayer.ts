@@ -85,6 +85,7 @@ export default class MidiPlayer extends EventEmitter {
     seconds: number;
     ticks: number;
   } = { seconds: 0, ticks: 0 };
+  private _audioClockTickPosition: number = 0;
 
   private _updater: Updater = new SetIntervalUpdater((delta) => this._handleStep(delta), {
     interval: STEP_DURATION,
@@ -225,22 +226,19 @@ export default class MidiPlayer extends EventEmitter {
         return;
       }
 
-      // play the note
-      const timeSinceReference = this._audioContext.currentTime - this._audioClockReference.seconds;
-      const ticksSinceReference = timeSinceReference / this._tickDuration;
-      const preciseTickPosition = this._audioClockReference.ticks + ticksSinceReference;
-
-      const start = (event.tick - preciseTickPosition) * this._tickDuration + AUDIO_CLOCK_OFFSET;
+      // calculate note parameters
+      const start = (event.tick - this._audioClockTickPosition) * this._tickDuration + AUDIO_CLOCK_OFFSET;
       const duration = Math.min(event.duration * this._tickDuration, 5);
       const instrument = this._instruments[track.program === 9 ? 116 : 0];
       const pitch = event.pitch;
       const volume = event.velocity / 127.0 * track.mixer.gain;
 
-      // check if events lie in the past
+      // check if we've underrun the clock offset
       if (start < 0) {
         console.warn(`Clock offset to small! Event scheduled ${-start}s in the past. This will lead to audible timing glitches!`);
       }
 
+      // queue the midi event
       this._player.queueWaveTable(
         this._audioContext,
         this._masterInput,
@@ -251,14 +249,23 @@ export default class MidiPlayer extends EventEmitter {
         volume,
         [],
       );
+
+      // emit the note event
+      this.emit("note", event);
     } else if (event instanceof TempoEvent) {
-      this._updateCurrentTempo(event.bpm);
-      this._updateTickDuration();
+      if (this._currentTempo !== event.bpm) {
+        this._updateCurrentTempo(event.bpm);
+        this._updateTickDuration();
+      }
     } else if (event instanceof TimeSignatureEvent) {
-      this._updateCurrentTimeSignature(event.signature);
-      this._updateTickDuration();
+      if (this._currentTimeSignature !== event.signature) {
+        this._updateCurrentTimeSignature(event.signature);
+        this._updateTickDuration();
+      }
     } else if (event instanceof MeasureEvent) {
-      this._updateCurrentMeasure(event.measure);
+      if (this._currentMeasure !== event.measure) {
+        this._updateCurrentMeasure(event.measure);
+      }
     } else {
       console.warn(`Unknown event '${event}'`);
     }
@@ -296,6 +303,9 @@ export default class MidiPlayer extends EventEmitter {
         p0 -= vampLength;
         p1 -= vampLength;
 
+        // also adjust the clock reference. We don't need to reset it, because the timeSignature did not change (Resetting would cause audible glitches)
+        this._audioClockReference.ticks -= vampLength;
+
         this._updateCurrentVamp({
           ...this._currentVamp,
           currentIteration: this._currentVamp.currentIteration + 1,
@@ -309,6 +319,12 @@ export default class MidiPlayer extends EventEmitter {
       this._timeSinceLastPositionUpdate = 0;
       this.emit("positionChanged", this._position);
     }
+
+    // calculate the tick position in audio clock space. This will give much more precise timing, but we need to manually
+    // reset the reference point whenever the scaling factor between audio clock and tick position changes (the tick duration)
+    const timeSinceReference = this._audioContext.currentTime - this._audioClockReference.seconds;
+    const ticksSinceReference = timeSinceReference / this._tickDuration;
+    this._audioClockTickPosition = this._audioClockReference.ticks + ticksSinceReference;
 
     // handle all events within the current region
     const k0 = { tick: p0 };
@@ -337,6 +353,7 @@ export default class MidiPlayer extends EventEmitter {
 
     this.emit("positionChanged", this._position);
     this._updatePlaying(true);
+    this._resetAudioClockReference();
     this._updater.start();
   }
 
@@ -348,11 +365,13 @@ export default class MidiPlayer extends EventEmitter {
     this._updater.stop();
     this.emit("positionChanged", this._position);
     this._updatePlaying(false);
+    this._resetAudioClockReference();
   }
 
   stop() {
     this.pause();
     this.seek(0);
+    this._resetAudioClockReference();
   }
 
   seek(position: Tick) {
@@ -384,6 +403,9 @@ export default class MidiPlayer extends EventEmitter {
     if (newVamp?.start !== this._currentVamp?.start) {
       this._updateCurrentVamp(newVamp);
     }
+
+    // reset clock reference
+    this._resetAudioClockReference();
 
     // continue playing if activated
     if (wasPlaying) {

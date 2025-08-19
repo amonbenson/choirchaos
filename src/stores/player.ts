@@ -4,6 +4,7 @@ import MidiPlayer from "@/core/show/midiPlayer";
 import { computed, markRaw, onScopeDispose, ref, watch } from "vue";
 import type Song from "@/core/show/song";
 import { isNumbering } from "@/core/utils/numbering";
+import type { NoteEvent } from "@/core/show/midiEvents";
 
 const globalPlayer = new MidiPlayer();
 
@@ -94,6 +95,11 @@ export const usePlayerStore = defineStore("player", () => {
     onScopeDispose(() => globalPlayer.off("endOfSong", callback));
   }
 
+  function onNote(callback: (event: NoteEvent) => void) {
+    globalPlayer.on("note", callback);
+    onScopeDispose(() => globalPlayer.off("note", callback));
+  }
+
   return {
     load: (song: Song) => globalPlayer.load(song),
     unload: () => globalPlayer.unload(),
@@ -103,6 +109,7 @@ export const usePlayerStore = defineStore("player", () => {
     exitVamp: () => globalPlayer.exitVamp(),
     setMeasure,
     setBeat,
+    onNote,
     onEndOfSong,
     status,
     loading,

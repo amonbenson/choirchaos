@@ -8,10 +8,12 @@ export default class Track {
     public classification: TrackClassification = "Accompaniment",
     public program: number = 0,
     public mixer: {
+      index: number;
       mute: boolean;
       solo: boolean;
       gain: number;
     } = {
+      index: 0,
       mute: false,
       solo: false,
       gain: 1.0,

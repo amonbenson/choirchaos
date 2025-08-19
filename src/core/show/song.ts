@@ -30,7 +30,10 @@ export default class Song {
       segue: false,
     },
     public $midiSystemEvents: MidiSystemEvents | object = {},
-  ) {}
+  ) {
+    // set track indices
+    this.tracks.forEach((track, i) => track.mixer.index = i);
+  }
 
   public findMeasure(value: Numbering) {
     return this.measures.search({ value } as Measure);

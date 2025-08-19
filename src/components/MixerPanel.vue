@@ -5,9 +5,12 @@ import ScrollPanel from "primevue/scrollpanel";
 import ButtonGroup from "primevue/buttongroup";
 import Button from "primevue/button";
 import Slider from "primevue/slider";
-import { computed } from "vue";
+import { computed, nextTick } from "vue";
 import type { TrackClassification } from "@/core/show/track";
 import type Track from "@/core/show/track";
+import { usePlayerStore } from "@/stores/player";
+
+const player = usePlayerStore();
 
 const props = defineProps<{
   song: Song | undefined;
@@ -27,6 +30,17 @@ const trackByClassification = computed(() => {
   }
 
   return groups;
+});
+
+player.onNote(event => {
+  // trigger the flash event
+  nextTick(() => {
+    const sliderEl = document.getElementById(`mixer-track-slider-${event.trackIndex}`)!;
+    if (sliderEl.classList.contains("mixer-background-flash")) {
+      sliderEl.classList.remove("mixer-background-flash");
+    }
+    setTimeout(() => sliderEl.classList.add("mixer-background-flash"), 1);
+  });
 });
 </script>
 
@@ -82,6 +96,8 @@ const trackByClassification = computed(() => {
                 :min="0"
                 :max="1"
                 :step="0.001"
+                pt:range:class="bg-surface-700"
+                :pt:range:id="`mixer-track-slider-${track.mixer.index}`"
               />
             </div>
           </div>
@@ -90,3 +106,16 @@ const trackByClassification = computed(() => {
     </div>
   </Panel>
 </template>
+
+<style>
+@keyframes mixer-background-flash {
+  0% { background-color: var(--color-primary-500); }
+  10% { background-color: var(--color-primary-500); }
+  100% { background-color: var(--color-surface-700); }
+}
+
+.mixer-background-flash {
+  background: var(--color-surface-700);
+  animation: mixer-background-flash 1s linear;
+}
+</style>
