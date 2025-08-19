@@ -24,11 +24,16 @@ const song = computed(() => props.songs?.find(s => s.id === songId.value));
 
 <template>
   <div class="relative">
-    <Toolbar class="relative">
+    <Toolbar
+      class="relative flex justify-stretch items-stretch flex-nowrap"
+      pt:start="basis-1/3 flex justify-start items-center gap-8"
+      pt:center="basis-1/3 flex justify-center items-center gap-0"
+      pt:end="basis-1/3 flex justify-end items-center gap-8"
+    >
       <template #start>
         <Select
           v-model="songId"
-          class="w-72 border-none"
+          class="w-96 border-none"
           :options="songs"
           option-value="id"
           :option-label="song => `#${song.number} ${song.title}`"
@@ -58,58 +63,56 @@ const song = computed(() => props.songs?.find(s => s.id === songId.value));
       </template>
 
       <template #end>
-        <div class="flex justify-between items-center gap-8">
-          <!-- Measure -->
-          <div class="w-26 max-w-26 flex justify-end items-center gap-1">
-            <Button
-              class="min-w-8"
-              severity="secondary"
-            >
-              {{ player.currentMeasure[0] }}
-            </Button>
-            .
-            <Button
-              class="min-w-8"
-              severity="secondary"
-            >
-              {{ player.currentMeasure[1] + 1 }}
-            </Button>
-          </div>
-
-          <!-- Tempo -->
-          <Button severity="secondary">
-            <QuarterNoteSvg class="inline size-6 -mx-1.5 fill-current" />=&nbsp;{{ player.currentTempo }}
-          </Button>
-
-          <!-- Signature -->
-          <Button severity="secondary">
-            {{ player.currentTimeSignature[0] }}&nbsp;/&nbsp;{{ Math.pow(2, player.currentTimeSignature[1]) }}
-          </Button>
-
-          <!-- Vamp -->
+        <!-- Measure -->
+        <div class="w-26 max-w-26 flex justify-end items-center gap-1">
           <Button
-            class="min-w-24"
-            :disabled="vampState === 'none'"
-            :label="{
-              'none': 'Vamp',
-              'vamping': player.currentVamp?.iterations
-                ? `Vamp ${player.currentVamp?.currentIteration + 1}/${player.currentVamp?.iterations}`
-                : `Vamp ${player.currentVamp?.currentIteration + 1}`,
-              'exiting': 'Exiting...'
-            }[vampState]"
-            :severity="vampState === 'vamping' ? 'primary': 'secondary'"
-            @click="player.exitVamp()"
-          />
-
-          <!-- Segue -->
+            class="min-w-8"
+            severity="secondary"
+          >
+            {{ player.ready ? player.currentMeasure[0] : "-" }}
+          </Button>
+          .
           <Button
-            class="w-24"
-            :disabled="!song?.events.segue"
-            label="Segue"
-            :severity="song?.events.segue ? 'primary': 'secondary'"
-            @click="player.exitVamp()"
-          />
+            class="min-w-8"
+            severity="secondary"
+          >
+            {{ player.ready ? player.currentMeasure[1] + 1 : "-" }}
+          </Button>
         </div>
+
+        <!-- Tempo -->
+        <Button severity="secondary">
+          <QuarterNoteSvg class="inline size-6 -mx-1.5 fill-current" />=&nbsp;{{ player.ready ? player.currentTempo : "-" }}
+        </Button>
+
+        <!-- Signature -->
+        <Button severity="secondary">
+          {{ player.currentTimeSignature[0] }}&nbsp;/&nbsp;{{ Math.pow(2, player.currentTimeSignature[1]) }}
+        </Button>
+
+        <!-- Vamp -->
+        <Button
+          class="min-w-24"
+          :disabled="vampState === 'none'"
+          :label="{
+            'none': 'Vamp',
+            'vamping': player.currentVamp?.iterations
+              ? `Vamp ${player.currentVamp?.currentIteration + 1}/${player.currentVamp?.iterations}`
+              : `Vamp ${player.currentVamp?.currentIteration + 1}`,
+            'exiting': 'Exiting...'
+          }[vampState]"
+          :severity="vampState === 'vamping' ? 'primary': 'secondary'"
+          @click="player.exitVamp()"
+        />
+
+        <!-- Segue -->
+        <Button
+          class="w-24"
+          :disabled="!song?.events.segue"
+          label="Segue"
+          :severity="song?.events.segue ? 'primary': 'secondary'"
+          @click="player.exitVamp()"
+        />
       </template>
     </Toolbar>
 

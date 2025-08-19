@@ -7,61 +7,6 @@ import { isNumbering } from "@/core/utils/numbering";
 
 const globalPlayer = new MidiPlayer();
 
-function usePlayerPosition(player: MidiPlayer) {
-  const playing = useEvent(player, "playingChanged", { initial: player.playing });
-
-  // keep track of the player's internal position
-  const playerPosition = ref(player.position);
-  const updatePosition = () => {
-    playerPosition.value = player.position;
-  };
-
-  // update position in a regular interval while playing
-  let positionUpdateInterval: NodeJS.Timeout | null = null;
-  watch(playing, (value) => {
-    if (value && !positionUpdateInterval) {
-      positionUpdateInterval = setInterval(updatePosition, 1 / 20);
-      updatePosition();
-    }
-
-    if (!value && positionUpdateInterval) {
-      clearInterval(positionUpdateInterval);
-      positionUpdateInterval = null;
-      updatePosition();
-    }
-  });
-
-  // also use the emitted position to update on seek and stop events
-  const emittedPosition = useEvent(player, "positionChanged", { initial: player.position });
-  watch(emittedPosition, () => updatePosition());
-
-  // inject a setter for seeking
-  const position = computed({
-    get: () => playerPosition.value,
-    set: (value) => player.seek(value),
-  });
-
-  return position;
-}
-
-// function formatTracks(player: MidiPlayer) {
-//   // return emptry tracks
-//   if (player.status !== "ready") {
-//     return {
-//       measures: [],
-//       transport: [],
-//       midi: [],
-//     };
-//   }
-
-//   // unpack event lists and return a deep copy
-//   return JSON.parse(JSON.stringify({
-//     measures: player.tracks.measures.items(),
-//     transport: player.tracks.transport.items(),
-//     midi: player.tracks.midi.map(({ events, name, program }) => ({ events: events.items(), name, program })),
-//   }));
-// }
-
 export const usePlayerStore = defineStore("player", () => {
   const status = useEvent(globalPlayer, "statusChanged", { initial: globalPlayer.status });
   const playing = useEvent(globalPlayer, "playingChanged", { initial: globalPlayer.playing });
@@ -76,7 +21,7 @@ export const usePlayerStore = defineStore("player", () => {
     getter: (player) => player.status === "ready",
   });
 
-  const position = usePlayerPosition(globalPlayer);
+  const position = useEvent(globalPlayer, "positionChanged", { initial: globalPlayer.position });
 
   const duration = useEvent(globalPlayer, "durationChanged", { initial: globalPlayer.duration });
 

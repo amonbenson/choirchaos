@@ -11,6 +11,7 @@ import type { BinarySearchOptions } from "../utils/binarySearch";
 import type Measure from "./measure";
 
 const STEP_DURATION = 1 / 50;
+const POSITION_UPDATE_DURATION = 1 / 50;
 
 declare global {
     interface Window { WebAudioFontPlayer: any; }
@@ -58,7 +59,7 @@ export default class MidiPlayer extends EventEmitter {
   private _currentSong: Song | null = null;
   private _currentMeasure: MeasureReference = ["1", 0];
   private _currentTempo: number = 120;
-  private _currentTimeSignature: TimeSignature = [4, 4];
+  private _currentTimeSignature: TimeSignature = [4, 2];
   private _finalMeasure: MeasureReference = ["1", 0];
 
   private _midi_events: MidiPlayerEvents = {
@@ -80,6 +81,8 @@ export default class MidiPlayer extends EventEmitter {
 
   private _stepHandle: NodeJS.Timeout | null = null;
   private _lastStepTime = 0;
+
+  private _timeSinceLastPositionUpdate = 0;
 
   get status() {
     return this._status;
@@ -180,12 +183,11 @@ export default class MidiPlayer extends EventEmitter {
     this._tickDuration = 1 / ticksPerSecond;
   }
 
-  _checkEnterVamp(tick: Tick) {
-    // check if any vamp should be entered
-    let newCurrentVamp = undefined;
+  _getVampAt(tick: Tick): MidiPlayerVampState | undefined {
+    // search for a vamp at the provided tick position
     for (const vamp of this._vamps) {
       if (tick >= vamp.start && tick < vamp.end) {
-        newCurrentVamp = {
+        return {
           ...vamp,
           currentIteration: 0,
           manualExit: false,
@@ -193,10 +195,7 @@ export default class MidiPlayer extends EventEmitter {
       }
     }
 
-    // update current vamp
-    if (newCurrentVamp?.start !== this._currentVamp?.start) {
-      this._updateCurrentVamp(newCurrentVamp);
-    }
+    return undefined;
   }
 
   _handleEvent(event: MidiEvent) {
@@ -241,8 +240,11 @@ export default class MidiPlayer extends EventEmitter {
     this._position += deltaTime / this._tickDuration;
     let p1 = this._position;
 
-    // update the current vamp
-    this._checkEnterVamp(p0);
+    // enter a new vamp if any
+    const newVamp = this._getVampAt(p0);
+    if (newVamp && !this._currentVamp) {
+      this._updateCurrentVamp(newVamp);
+    }
 
     // repeat or exit vamp if we pass its end point
     if (this._currentVamp && p1 > this._currentVamp.end) {
@@ -262,6 +264,13 @@ export default class MidiPlayer extends EventEmitter {
           currentIteration: this._currentVamp.currentIteration + 1,
         });
       }
+    }
+
+    // fire position update events in regular intervals (but not on every step)
+    this._timeSinceLastPositionUpdate += deltaTime;
+    if (this._timeSinceLastPositionUpdate >= POSITION_UPDATE_DURATION) {
+      this._timeSinceLastPositionUpdate = 0;
+      this.emit("positionChanged", this._position);
     }
 
     // handle all events within the current region
@@ -289,6 +298,7 @@ export default class MidiPlayer extends EventEmitter {
 
     // reset delta time calculation
     this._lastStepTime = this._audioContext.currentTime;
+    this._timeSinceLastPositionUpdate = 0;
 
     const stepWrapper = () => {
 
@@ -301,6 +311,7 @@ export default class MidiPlayer extends EventEmitter {
       this._handleStep(deltaTime);
     };
 
+    this.emit("positionChanged", this._position);
     this._updatePlaying(true);
     this._stepHandle = setInterval(stepWrapper, STEP_DURATION);
     stepWrapper();
@@ -312,6 +323,7 @@ export default class MidiPlayer extends EventEmitter {
     }
 
     clearInterval(this._stepHandle!);
+    this.emit("positionChanged", this._position);
     this._updatePlaying(false);
   }
 
@@ -333,6 +345,7 @@ export default class MidiPlayer extends EventEmitter {
     // invoke event handler to update the measure and transport settings
     const k = { tick: this._position };
     const options: BinarySearchOptions<MidiEvent, MidiEvent> = {
+      direction: "backward",
       inclusive: true,
       extend: true,
     };
@@ -344,7 +357,10 @@ export default class MidiPlayer extends EventEmitter {
     events.forEach(event => this._handleEvent(event));
 
     // update the current vamp
-    this._checkEnterVamp(this._position);
+    const newVamp = this._getVampAt(this._position);
+    if (newVamp?.start !== this._currentVamp?.start) {
+      this._updateCurrentVamp(newVamp);
+    }
 
     // continue playing if activated
     if (wasPlaying) {

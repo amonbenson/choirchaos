@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef, watch, type Ref, type ShallowRef } from "vue";
+import { computed, onMounted, ref, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from "vue";
 import { resolveUrl } from "@/core/utils/file";
 import Song from "@/core/show/song";
 import Button from "primevue/button";
@@ -45,7 +45,7 @@ function updatePageMeasures() {
 watch(ready, () => updatePageMeasures());
 
 // keep track of currently playing measure
-const currentMeasure = computed(() => props.song?.findMeasure(player.currentMeasure[0]));
+const currentMeasure: ComputedRef<Measure | undefined> = computed(() => player.ready ? props.song?.findMeasure(player.currentMeasure[0]) : undefined);
 const currentMeasureProgress = computed(() => currentMeasure.value?.layout && currentMeasure.value.$beatTicks
   ? (player.position - currentMeasure.value.$beatTicks[0]) / (currentMeasure.value.$beatTicks[currentMeasure.value.beats - 1] - currentMeasure.value.$beatTicks[0]) / currentMeasure.value.beats * (currentMeasure.value.beats - 1)
   : 0);

@@ -180,21 +180,29 @@ export class BinarySortedList<T> {
     return binarySearch(this._items, keyItem, { ...this._options as any, ...options });
   }
 
-  search<K = T>(keyItem: K, options: BinarySearchOptions<K, T> = {}): T | null {
-    return this._items[this.searchIndex(keyItem, options)] ?? null;
+  search<K = T>(keyItem: K, options: BinarySearchOptions<K, T> = {}): T | undefined {
+    return this._items[this.searchIndex(keyItem, options)];
   }
 
   searchIndexRange<K = T>(from: K, to: K, options: BinarySearchOptions<K, T> = {}) {
     const a = this.searchIndex(from, {
       ...options,
-      inclusive: false,
+      inclusive: true,
       extend: true,
     });
-    const b = this.searchIndex(to, {
+    let b = this.searchIndex(to, {
       ...options,
-      inclusive: false,
+      inclusive: true,
       extend: true,
     });
+
+    // one special case we need to handle is if b is higher than the last element, we must return the length of the array
+    // instead of the index of the last item (length - 1), because the slice expectes its second argument to be exclusive.
+    const comparator = options.comparator ?? this._options.comparator as any ?? ((a: K, b: T) => Number(a) - Number(b));
+    if (this._items.length > 0 && b === this._items.length - 1 && comparator(to, this.last()) > 0) {
+      b = this._items.length; // increase b by one to include the last item in the search
+    }
+
     return [a, b];
   }
 
