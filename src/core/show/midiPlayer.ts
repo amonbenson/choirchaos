@@ -9,6 +9,7 @@ import type Song from "./song";
 import { resolveUrl } from "../utils/file";
 import type { BinarySearchOptions } from "../utils/binarySearch";
 import type Measure from "./measure";
+import { type Updater, SetIntervalUpdater, AnimationFrameUpdater } from "../utils/updater";
 
 const STEP_DURATION = 1 / 50;
 const POSITION_UPDATE_DURATION = 1 / 50;
@@ -79,9 +80,11 @@ export default class MidiPlayer extends EventEmitter {
   private _instruments: { [key: number]: any } = {};
   private _masterInput: AudioNode | null = null;
 
-  private _stepHandle: NodeJS.Timeout | null = null;
-  private _lastStepTime = 0;
-
+  private _updater: Updater = new SetIntervalUpdater((delta) => this._handleStep(delta), {
+    interval: STEP_DURATION,
+    maximumLag: 1.5,
+    timeProvider: () => this._audioContext.currentTime,
+  });
   private _timeSinceLastPositionUpdate = 0;
 
   get status() {
@@ -294,27 +297,13 @@ export default class MidiPlayer extends EventEmitter {
     if (this._status !== "ready" || this._playing) {
       return;
     }
+
+    // try to resume the audio context
     this.resume();
-
-    // reset delta time calculation
-    this._lastStepTime = this._audioContext.currentTime;
-    this._timeSinceLastPositionUpdate = 0;
-
-    const stepWrapper = () => {
-
-      // calculate delta time
-      const t = this._audioContext.currentTime;
-      const deltaTime = t - this._lastStepTime;
-      this._lastStepTime = t;
-
-      // invoke step handler
-      this._handleStep(deltaTime);
-    };
 
     this.emit("positionChanged", this._position);
     this._updatePlaying(true);
-    this._stepHandle = setInterval(stepWrapper, STEP_DURATION);
-    stepWrapper();
+    this._updater.start();
   }
 
   pause() {
@@ -322,7 +311,7 @@ export default class MidiPlayer extends EventEmitter {
       return;
     }
 
-    clearInterval(this._stepHandle!);
+    this._updater.stop();
     this.emit("positionChanged", this._position);
     this._updatePlaying(false);
   }
