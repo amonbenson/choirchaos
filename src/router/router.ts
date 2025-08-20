@@ -6,7 +6,7 @@ const routes = [
   { name: "home", path: "/", component: HomeView },
   { name: "show", path: "/show/:showId", component: ShowView, props: true },
   { name: "song", path: "/show/:showId/song/:songId", component: ShowView, props: true },
-  { name: "mti", path: "/mti", component: () => import("@/views/MTIImportView.vue") },
+  // { name: "mti", path: "/mti", component: () => import("@/views/MTIImportView.vue") },
 ];
 
 export const router = createRouter({

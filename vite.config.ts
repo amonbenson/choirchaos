@@ -7,7 +7,7 @@ import tailwindcss from "@tailwindcss/vite";
 import svgLoader from "vite-svg-loader";
 
 // load vite environment variables
-const viteEnv = loadEnv(process.env.NODE_ENV, process.cwd());
+const viteEnv = loadEnv(process.env.NODE_ENV as string, process.cwd());
 
 // https://vite.dev/config/
 export default defineConfig({
