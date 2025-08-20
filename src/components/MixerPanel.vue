@@ -60,12 +60,15 @@ player.onNote(event => {
 
 <template>
   <Panel
-    header="Tracks"
+    header="Mixer"
     pt:root="flex flex-col"
     pt:header="flex-none"
     pt:content-container="flex-1 overflow-y-scroll mb-2"
   >
-    <div class="flex flex-col justify-stretch items-stretch gap-12">
+    <div
+      v-if="tracks.length > 0"
+      class="flex flex-col justify-stretch items-stretch gap-12"
+    >
       <div
         v-for="trackGroup, classification in trackByClassification"
         :key="classification"
@@ -119,6 +122,13 @@ player.onNote(event => {
           </div>
         </div>
       </div>
+    </div>
+
+    <div
+      v-else
+      class="italic text-center"
+    >
+      No tracks available.
     </div>
   </Panel>
 </template>

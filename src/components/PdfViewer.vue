@@ -94,7 +94,7 @@ function handleViewportWheel(event: WheelEvent) {
 }
 
 function fitViewport() {
-  const scale = Math.min(viewportRef.value!.clientWidth / pageWidth.value, viewportRef.value!.clientHeight / pageHeight.value) * 0.9;
+  const scale = Math.min(viewportRef.value!.clientWidth / pageWidth.value, viewportRef.value!.clientHeight / pageHeight.value) * 0.95;
 
   viewportOffset.value = { x: 0, y: 0 };
   viewportScale.value = scale;

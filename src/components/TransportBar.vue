@@ -25,7 +25,7 @@ const song = computed(() => props.songs?.find(s => s.id === songId.value));
 <template>
   <div class="relative">
     <Toolbar
-      class="relative grid grid-cols-[auto_1fr] lg:grid-cols-[repeat(3,minmax(auto,1fr))]"
+      class="relative px-4 grid grid-cols-[auto_1fr] lg:grid-cols-[repeat(3,minmax(auto,1fr))]"
       pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-8"
       pt:center="flex justify-center items-center gap-0"
       pt:end="flex justify-end items-center gap-2 sm:gap-8"
@@ -33,7 +33,7 @@ const song = computed(() => props.songs?.find(s => s.id === songId.value));
       <template #start>
         <Select
           v-model="songId"
-          class="w-full lg:w-96 border-none"
+          class="w-full lg:w-88 border-none"
           :options="songs"
           option-value="id"
           :option-label="song => `#${song.number} ${song.title}`"

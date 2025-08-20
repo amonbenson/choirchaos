@@ -21,11 +21,12 @@ export class MarkerEvent extends MeasureEvent {
     return {
       type: "marker",
       start: this.start,
+      marker: this.marker,
     };
   }
 
 
-  public static fromJson({ start, marker }: any) {
+  public static fromJson({ start, marker, ...rest }: any) {
     return new MarkerEvent(start, marker);
   }
 }

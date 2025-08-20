@@ -6,7 +6,9 @@ import { useRoute, useRouter } from "vue-router";
 import TransportBar from "@/components/TransportBar.vue";
 import type Song from "@/core/show/song";
 import PdfViewer from "@/components/PdfViewer.vue";
+import MarkerPanel from "@/components/MarkerPanel.vue";
 import MixerPanel from "@/components/MixerPanel.vue";
+import axios from "axios";
 
 const player = usePlayerStore();
 const route = useRoute();
@@ -82,6 +84,24 @@ async function fetchShow() {
       }
     }
 
+    // // inject missing marker information
+    // const res = await axios.get("/test/mti/license_activate.json");
+    // for (const song of showObj.songs) {
+    //   const mtiSong = res.data.show.songs.find((s: any) => s.title === song.title);
+    //   for (const marker of song.events.markers.items()) {
+    //     const mtiMarker = mtiSong.changes.markers.find((m: any) => m.location.measure === marker.start[0] && m.location.beat === marker.start[1]+1);
+    //     if (!mtiMarker) {
+    //       console.error("missing mti marker!");
+    //       continue;
+    //     }
+
+    //     marker.marker = mtiMarker.text;
+    //   }
+
+    //   // await song.update();
+    //   // console.log("update!", song.title);
+    // }
+
     // set the show
     show.value = showObj;
 
@@ -101,23 +121,24 @@ fetchShow();
 </script>
 
 <template>
-  <div class="fixed left-0 top-0 w-screen h-screen flex flex-col justify-stretch items-stretch gap-2 p-2">
+  <div class="fixed left-0 top-0 w-screen h-screen grid grid-cols-1 lg:grid-cols-[auto_1fr_auto] gap-2 p-2">
     <TransportBar
-      class="flex-none"
+      class="lg:col-span-3"
       :model-value="songId"
       :songs="show?.songs"
       :loading="showLoading || songLoading"
       @update:model-value="selectSong($event)"
     />
-    <div class="flex-1 min-h-0 flex justify-stretch items-stretch">
-      <PdfViewer
-        class="flex-1"
-        :song="song"
-      />
-      <MixerPanel
-        class="w-96 min-h-0 hidden lg:block"
-        :song="song"
-      />
-    </div>
+    <MarkerPanel
+      class="w-full lg:w-96 min-h-0"
+      :song="song"
+    />
+    <PdfViewer
+      :song="song"
+    />
+    <MixerPanel
+      class="w-full lg:w-96 min-h-0"
+      :song="song"
+    />
   </div>
 </template>
