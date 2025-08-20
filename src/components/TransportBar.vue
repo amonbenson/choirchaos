@@ -25,15 +25,15 @@ const song = computed(() => props.songs?.find(s => s.id === songId.value));
 <template>
   <div class="relative">
     <Toolbar
-      class="relative flex justify-stretch items-stretch flex-nowrap"
-      pt:start="basis-1/3 flex justify-start items-center gap-8"
-      pt:center="basis-1/3 flex justify-center items-center gap-0"
-      pt:end="basis-1/3 flex justify-end items-center gap-8"
+      class="relative grid grid-cols-[auto_1fr] lg:grid-cols-[repeat(3,minmax(auto,1fr))]"
+      pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-8"
+      pt:center="flex justify-center items-center gap-0"
+      pt:end="flex justify-end items-center gap-2 sm:gap-8"
     >
       <template #start>
         <Select
           v-model="songId"
-          class="w-96 border-none"
+          class="w-full lg:w-96 border-none"
           :options="songs"
           option-value="id"
           :option-label="song => `#${song.number} ${song.title}`"
@@ -92,7 +92,7 @@ const song = computed(() => props.songs?.find(s => s.id === songId.value));
 
         <!-- Vamp -->
         <Button
-          class="min-w-24"
+          class="min-w-24 hidden sm:block"
           :disabled="vampState === 'none'"
           :label="{
             'none': 'Vamp',
@@ -107,7 +107,7 @@ const song = computed(() => props.songs?.find(s => s.id === songId.value));
 
         <!-- Segue -->
         <Button
-          class="w-24"
+          class="w-24 hidden md:block"
           :disabled="!song?.events.segue"
           label="Segue"
           :severity="song?.events.segue ? 'primary': 'secondary'"

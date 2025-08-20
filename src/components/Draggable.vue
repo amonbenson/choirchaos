@@ -3,6 +3,7 @@ import { onBeforeUnmount, ref, toRaw, type Ref } from "vue";
 
 type DraggableEvent = {
   active: boolean;
+  status: "start" | "move" | "end";
   start: {
     x: number;
     y: number;
@@ -15,6 +16,7 @@ type DraggableEvent = {
     x: number;
     y: number;
   };
+  target: HTMLElement,
   events: {
     mousedown: MouseEvent | undefined;
     mousemove: MouseEvent | undefined;
@@ -31,6 +33,7 @@ const target: Ref<HTMLElement | undefined> = ref();
 
 const state: Ref<DraggableEvent> = ref({
   active: false,
+  status: "start",
   start: {
     x: 0,
     y: 0,
@@ -43,6 +46,7 @@ const state: Ref<DraggableEvent> = ref({
     x: 0,
     y: 0,
   },
+  target: target.value as HTMLElement,
   events: {
     mousedown: undefined,
     mousemove: undefined,
@@ -64,6 +68,7 @@ function handleMouseDown(event: MouseEvent) {
 
   state.value = {
     active: true,
+    status: "start",
     start: {
       x: event.offsetX,
       y: event.offsetY,
@@ -76,6 +81,7 @@ function handleMouseDown(event: MouseEvent) {
       x: 0,
       y: 0,
     },
+    target: target.value as HTMLElement,
     events: {
       mousedown: event,
       mousemove: undefined,
@@ -93,6 +99,7 @@ function handleMouseMove(event: MouseEvent) {
     return;
   }
 
+  state.value.status = "move";
   state.value.end = {
     x: event.offsetX,
     y: event.offsetY,
@@ -111,6 +118,7 @@ function handleMouseUp(event: MouseEvent) {
   }
 
   state.value.active = false;
+  state.value.status = "end";
   state.value.end = {
     x: event.offsetX,
     y: event.offsetY,
@@ -130,6 +138,7 @@ function handleTouchStart(event: TouchEvent) {
 
   state.value = {
     active: true,
+    status: "start",
     start: {
       x: event.touches[0].clientX,
       y: event.touches[0].clientY,
@@ -142,6 +151,7 @@ function handleTouchStart(event: TouchEvent) {
       x: 0,
       y: 0,
     },
+    target: target.value as HTMLElement,
     events: {
       mousedown: undefined,
       mousemove: undefined,
@@ -160,6 +170,7 @@ function handleTouchMove(event: TouchEvent) {
     return;
   }
 
+  state.value.status = "move";
   state.value.end = {
     x: event.touches[0].clientX,
     y: event.touches[0].clientY,
@@ -179,6 +190,7 @@ function handleTouchEnd(event: TouchEvent) {
   }
 
   state.value.active = false;
+  state.value.status = "end";
   state.value.delta = {
     x: 0,
     y: 0,
@@ -188,27 +200,27 @@ function handleTouchEnd(event: TouchEvent) {
 }
 
 function registerListeners() {
-  target.value!.addEventListener("mousedown", handleMouseDown);
+  target.value?.addEventListener("mousedown", handleMouseDown);
   window.addEventListener("mousemove", handleMouseMove);
   window.addEventListener("mouseup", handleMouseUp);
   window.addEventListener("mouseleave", handleMouseUp);
 
-  target.value!.addEventListener("touchstart", handleTouchStart);
-  target.value!.addEventListener("touchmove", handleTouchMove);
-  target.value!.addEventListener("touchend", handleTouchEnd);
-  target.value!.addEventListener("touchcancel", handleTouchEnd);
+  target.value?.addEventListener("touchstart", handleTouchStart);
+  target.value?.addEventListener("touchmove", handleTouchMove);
+  target.value?.addEventListener("touchend", handleTouchEnd);
+  target.value?.addEventListener("touchcancel", handleTouchEnd);
 }
 
 function unregisterListeners() {
-  target.value!.removeEventListener("mousedown", handleMouseDown);
+  target.value?.removeEventListener("mousedown", handleMouseDown);
   window.removeEventListener("mousemove", handleMouseMove);
   window.removeEventListener("mouseup", handleMouseUp);
   window.removeEventListener("mouseleave", handleMouseUp);
 
-  target.value!.removeEventListener("touchstart", handleTouchStart);
-  target.value!.removeEventListener("touchmove", handleTouchMove);
-  target.value!.removeEventListener("touchend", handleTouchEnd);
-  target.value!.removeEventListener("touchcancel", handleTouchEnd);
+  target.value?.removeEventListener("touchstart", handleTouchStart);
+  target.value?.removeEventListener("touchmove", handleTouchMove);
+  target.value?.removeEventListener("touchend", handleTouchEnd);
+  target.value?.removeEventListener("touchcancel", handleTouchEnd);
 }
 
 function passRef(el: any) {

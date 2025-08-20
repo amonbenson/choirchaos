@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import type Song from "@/core/show/song";
 import Panel from "primevue/panel";
-import ScrollPanel from "primevue/scrollpanel";
 import ButtonGroup from "primevue/buttongroup";
 import Button from "primevue/button";
 import Slider from "primevue/slider";
-import { computed, nextTick } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from "vue";
 import type { TrackClassification } from "@/core/show/track";
 import type Track from "@/core/show/track";
 import { usePlayerStore } from "@/stores/player";
+import gsap from "gsap";
 
 const player = usePlayerStore();
 
@@ -17,7 +17,6 @@ const props = defineProps<{
 }>();
 
 const tracks = computed(() => props.song?.tracks ?? []);
-
 const trackByClassification = computed(() => {
   const groups: Record<TrackClassification, Track[]> = {
     "Accompaniment": [],
@@ -32,15 +31,30 @@ const trackByClassification = computed(() => {
   return groups;
 });
 
+const trackTweens: Ref<GSAPTween[]> = ref([]);
+watch(tracks, () => {
+  // configure animations
+  if (tracks.value.length !== trackTweens.value.length) {
+    trackTweens.value = [];
+    for (let i = 0; i < tracks.value.length; i++) {
+      const tween = gsap.to(`#mixer-track-slider-${i}`, {
+        background: "var(--color-surface-700)",
+        duration: 1.0,
+      });
+      tween.seek(tween.endTime()); // start at the end
+      trackTweens.value.push(tween);
+    }
+  }
+}, { immediate: true, flush: "post" });
+
+
+function triggerEventAnimation(trackIndex: number) {
+  trackTweens.value[trackIndex].restart();
+}
+
 player.onNote(event => {
   // trigger the flash event
-  nextTick(() => {
-    const sliderEl = document.getElementById(`mixer-track-slider-${event.trackIndex}`)!;
-    if (sliderEl.classList.contains("mixer-background-flash")) {
-      sliderEl.classList.remove("mixer-background-flash");
-    }
-    setTimeout(() => sliderEl.classList.add("mixer-background-flash"), 1);
-  });
+  triggerEventAnimation(event.trackIndex);
 });
 </script>
 
@@ -98,7 +112,7 @@ player.onNote(event => {
                 :min="0"
                 :max="1"
                 :step="0.001"
-                pt:range:class="bg-surface-700"
+                pt:range:class="bg-primary"
                 :pt:range:id="`mixer-track-slider-${track.mixer.index}`"
               />
             </div>
@@ -108,16 +122,3 @@ player.onNote(event => {
     </div>
   </Panel>
 </template>
-
-<style>
-@keyframes mixer-background-flash {
-  0% { background-color: var(--color-primary-500); }
-  10% { background-color: var(--color-primary-500); }
-  100% { background-color: var(--color-surface-700); }
-}
-
-.mixer-background-flash {
-  background: var(--color-surface-700);
-  animation: mixer-background-flash 1s linear;
-}
-</style>

@@ -115,7 +115,7 @@ fetchShow();
         :song="song"
       />
       <MixerPanel
-        class="w-96 min-h-0"
+        class="w-96 min-h-0 hidden lg:block"
         :song="song"
       />
     </div>

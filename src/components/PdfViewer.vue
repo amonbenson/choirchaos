@@ -3,6 +3,7 @@ import { computed, ref, shallowRef, watch, type ComputedRef, type Ref, type Shal
 import { resolveUrl } from "@/core/utils/file";
 import Song from "@/core/show/song";
 import Button from "primevue/button";
+import ButtonGroup from "primevue/buttongroup";
 import PdfCanvas from "@/components/PdfCanvas.vue";
 import { usePlayerStore } from "@/stores/player";
 import type Measure from "@/core/show/measure";
@@ -99,6 +100,14 @@ function fitViewport() {
   viewportScale.value = scale;
 }
 
+function zoomViewportIn() {
+  viewportScale.value *= 1.2;
+}
+
+function zoomViewportOut() {
+  viewportScale.value /= 1.2;
+}
+
 // EDITOR SPECIFIC STUFF
 
 const editorPlane = ref();
@@ -112,30 +121,29 @@ type StaffType = {
 
 const editStaff: Ref<StaffType | undefined> = ref();
 
-function startEditorDraw(event: MouseEvent) {
+function handleEditorDragStart(event: any) {
   // start a new edit staff
   const t = event.target as Element;
   editStaff.value = {
-    x: event.offsetX / t.clientWidth,
-    y: event.offsetY / t.clientHeight,
+    x: event.start.x / t.clientWidth,
+    y: event.start.y / t.clientHeight,
     width: 0,
     height: 0,
   };
-  console.log(event.clientX, t.clientWidth);
 }
 
-function moveEditorDraw(event: MouseEvent) {
+function handleEditorDrag(event: any) {
   if (!editStaff.value) {
     return;
   }
 
   // update the staff size
   const t = event.target as Element;
-  editStaff.value.width = event.offsetX / t.clientWidth - editStaff.value.x;
-  editStaff.value.height = event.offsetY / t.clientHeight - editStaff.value.y;
+  editStaff.value.width = event.end.x / t.clientWidth - editStaff.value.x;
+  editStaff.value.height = event.end.y / t.clientHeight - editStaff.value.y;
 }
 
-function endEditorDraw(_event: MouseEvent) {
+function handleEditorDragEnd(_event: any) {
   if (!editStaff.value || !props.song) {
     return;
   }
@@ -189,85 +197,50 @@ function endEditorDraw(_event: MouseEvent) {
 }
 
 type HandleDirection = "top" | "right" | "bottom" | "left";
-type DragOperation = {
-  eventTarget: EventTarget;
-  handle: HandleDirection;
-  measures: Measure[];
-}
-const editDragOperation: Ref<DragOperation | undefined> = ref();
 
 function isSimilar(a: number, b: number) {
   return Math.abs(a - b) < 0.01;
 }
 
-function startMeasureDrag(event: MouseEvent, measure: Measure, handle: HandleDirection) {
+function handleMeasureDrag(event: any, measure: Measure, handle: HandleDirection) {
+  const dx = event.delta.x / editorPlane.value!.clientWidth / viewportScale.value;
+  const dy = event.delta.y / editorPlane.value!.clientHeight / viewportScale.value;
+
   // find related measures
   const samePageMeasures = Object.values(pageMeasures.value[measure.layout!.page] ?? {});
   const sameStaffMeasures = samePageMeasures.filter(other => isSimilar(other.layout!.y, measure.layout!.y) && isSimilar(other.layout!.y + other.layout!.height, measure.layout!.y + other.layout!.height));
-  let targetMeasures: Measure[] = [];
 
   switch (handle) {
     case "top":
-    case "bottom":
-      targetMeasures = sameStaffMeasures;
-      break;
-    case "left":
-      const left = sameStaffMeasures[sameStaffMeasures.indexOf(measure) - 1] ?? null;
-      targetMeasures = [left, measure];
-      break;
-    case "right":
-      const right = sameStaffMeasures[sameStaffMeasures.indexOf(measure) + 1] ?? null;
-      targetMeasures = [measure, right];
-      break;
-    default:
-      break;
-  }
-
-  editDragOperation.value = {
-    eventTarget: event.target!,
-    handle,
-    measures: targetMeasures,
-  };
-}
-
-function moveMeasureDrag(event: MouseEvent) {
-  if (!editDragOperation.value || editDragOperation.value.eventTarget !== event.target) {
-    return;
-  }
-
-  const dx = event.movementX / editorPlane.value!.clientWidth;
-  const dy = event.movementY / editorPlane.value!.clientHeight;
-
-  switch (editDragOperation.value.handle) {
-    case "top":
-      editDragOperation.value.measures.forEach(measure => {
+      sameStaffMeasures.forEach(measure => {
         measure.layout!.y += dy;
         measure.layout!.height -= dy;
       });
       break;
     case "bottom":
-      editDragOperation.value.measures.forEach(measure => {
+      sameStaffMeasures.forEach(measure => {
         measure.layout!.height += dy;
       });
       break;
     case "left":
-    case "right": {
-      const [l, r] = editDragOperation.value.measures;
-      if (l) {
-        l.layout!.width += dx;
+      const left = sameStaffMeasures[sameStaffMeasures.indexOf(measure) - 1] ?? null;
+      if (left) {
+        left.layout!.width += dx;
       }
-      if (r) {
-        r.layout!.x += dx;
-        r.layout!.width -= dx;
+      measure.layout!.x += dx;
+      measure.layout!.width -= dx;
+      break;
+    case "right":
+      const right = sameStaffMeasures[sameStaffMeasures.indexOf(measure) + 1] ?? null;
+      measure.layout!.width += dx;
+      if (right) {
+        right.layout!.x += dx;
+        right.layout!.width -= dx;
       }
       break;
-    }
+    default:
+      break;
   }
-}
-
-async function endMeasureDrag(_event: MouseEvent) {
-  // stop drag operation
-  editDragOperation.value = undefined;
 }
 
 function clearMeasureLayout(measure: Measure) {
@@ -311,25 +284,29 @@ async function uploadMeasureLayout() {
           @ready="handleCanvasReady($event)"
         >
           <!-- Editor plane -->
-          <div
+          <Draggable
             v-if="editing"
-            ref="editorPlane"
-            class="absolute inset-0 pointer-events-auto"
-            @mousedown="startEditorDraw($event)"
-            @mousemove="moveEditorDraw($event)"
-            @mouseup="endEditorDraw($event)"
+            v-slot="{ passRef }"
+            @dragstart="handleEditorDragStart($event)"
+            @drag="handleEditorDrag($event)"
+            @dragend="handleEditorDragEnd($event)"
           >
             <div
-              v-if="editStaff"
-              class="absolute bg-primary/25 border-primary border-1 pointer-events-none"
-              :style="{
-                left: `${editStaff.x * 100}%`,
-                top: `${editStaff.y * 100}%`,
-                width: `${editStaff.width * 100}%`,
-                height: `${editStaff.height * 100}%`,
-              }"
-            />
-          </div>
+              :ref="ref => { passRef(ref); editorPlane = ref; }"
+              class="absolute inset-0 pointer-events-auto"
+            >
+              <div
+                v-if="editStaff"
+                class="absolute bg-primary/25 border-primary border-1 pointer-events-none"
+                :style="{
+                  left: `${editStaff.x * 100}%`,
+                  top: `${editStaff.y * 100}%`,
+                  width: `${editStaff.width * 100}%`,
+                  height: `${editStaff.height * 100}%`,
+                }"
+              />
+            </div>
+          </Draggable>
 
           <!-- Measure boxes -->
           <template
@@ -365,46 +342,62 @@ async function uploadMeasureLayout() {
                 />
 
                 <!-- Resize handles -->
-                <Button
-                  class="absolute left-1/2 top-0 -translate-1/2 cursor-ns-resize"
-                  icon="pi pi-arrows-v"
-                  severity="secondary"
-                  size="small"
-                  rounded
-                  @mousedown="startMeasureDrag($event, measure, 'top')"
-                  @mousemove="moveMeasureDrag($event)"
-                  @mouseup="endMeasureDrag($event)"
-                />
-                <Button
-                  class="absolute left-full top-1/2 -translate-1/2 cursor-ew-resize"
-                  icon="pi pi-arrows-h"
-                  severity="secondary"
-                  size="small"
-                  rounded
-                  @mousedown="startMeasureDrag($event, measure, 'right')"
-                  @mousemove="moveMeasureDrag($event)"
-                  @mouseup="endMeasureDrag($event)"
-                />
-                <Button
-                  class="absolute left-1/2 top-full -translate-1/2 cursor-ns-resize"
-                  icon="pi pi-arrows-v"
-                  severity="secondary"
-                  size="small"
-                  rounded
-                  @mousedown="startMeasureDrag($event, measure, 'bottom')"
-                  @mousemove="moveMeasureDrag($event)"
-                  @mouseup="endMeasureDrag($event)"
-                />
-                <Button
-                  class="absolute left-0 top-1/2 -translate-1/2 cursor-ew-resize"
-                  icon="pi pi-arrows-h"
-                  severity="secondary"
-                  size="small"
-                  rounded
-                  @mousedown="startMeasureDrag($event, measure, 'left')"
-                  @mousemove="moveMeasureDrag($event)"
-                  @mouseup="endMeasureDrag($event)"
-                />
+                <Draggable
+                  v-slot="{ passRef }"
+                  @drag="handleMeasureDrag($event, measure, 'top')"
+                >
+                  <Button
+                    :ref="(c: any) => passRef(c?.$el)"
+                    class="absolute left-1/2 top-0 -translate-1/2 cursor-ns-resize"
+                    icon="pi pi-arrows-v"
+                    severity="secondary"
+                    size="small"
+                    rounded
+                    pt:icon:class="pointer-events-none"
+                  />
+                </Draggable>
+                <Draggable
+                  v-slot="{ passRef }"
+                  @drag="handleMeasureDrag($event, measure, 'right')"
+                >
+                  <Button
+                    :ref="(c: any) => passRef(c?.$el)"
+                    class="absolute left-full top-1/2 -translate-1/2 cursor-ew-resize"
+                    icon="pi pi-arrows-h"
+                    severity="secondary"
+                    size="small"
+                    rounded
+                    pt:icon:class="pointer-events-none"
+                  />
+                </Draggable>
+                <Draggable
+                  v-slot="{ passRef }"
+                  @drag="handleMeasureDrag($event, measure, 'bottom')"
+                >
+                  <Button
+                    :ref="(c: any) => passRef(c?.$el)"
+                    class="absolute left-1/2 top-full -translate-1/2 cursor-ns-resize"
+                    icon="pi pi-arrows-v"
+                    severity="secondary"
+                    size="small"
+                    rounded
+                    pt:icon:class="pointer-events-none"
+                  />
+                </Draggable>
+                <Draggable
+                  v-slot="{ passRef }"
+                  @drag="handleMeasureDrag($event, measure, 'left')"
+                >
+                  <Button
+                    :ref="(c: any) => passRef(c?.$el)"
+                    class="absolute left-0 top-1/2 -translate-1/2 cursor-ew-resize"
+                    icon="pi pi-arrows-h"
+                    severity="secondary"
+                    size="small"
+                    rounded
+                    pt:icon:class="pointer-events-none"
+                  />
+                </Draggable>
               </template>
             </div>
           </template>
@@ -421,46 +414,85 @@ async function uploadMeasureLayout() {
           />
 
           <!-- Edit button -->
-          <Button
+          <!-- <Button
             class="absolute right-4 top-4 pointer-events-auto"
             :class="{ 'opacity-0 group-hover/viewport:opacity-100 transition-opacity': !editing }"
             :icon="`pi ${editing ? 'pi-times' : 'pi-pencil'}`"
             severity="secondary"
             rounded
             @click="editing = !editing"
-          />
+          /> -->
         </PdfCanvas>
 
-        <div class="absolute left-1/2 bottom-2 -translate-x-1/2 flex justify-stretch items-stretch gap-1 bg-surface-950 rounded-full shadow-md">
-          <Button
-            :disabled="!ready || currentPage <= 0"
-            icon="pi pi-chevron-left"
-            severity="secondary"
-            aria-label="Previous Page"
-            rounded
-            text
-            @click="currentPage--"
-          />
-          <Button
-            :disabled="!ready || currentPage >= numPages - 1"
-            icon="pi pi-chevron-right"
-            severity="secondary"
-            aria-label="Next Page"
-            rounded
-            text
-            @click="currentPage++"
-          />
-          <Button
-            v-if="editing"
-            class="ml-8"
-            label="Upload Changes"
-            icon="pi pi-upload"
-            severity="secondary"
-            aria-label="Stop"
-            rounded
-            text
-            @click="uploadMeasureLayout()"
-          />
+        <div
+          v-if="ready"
+          class="absolute left-1/2 bottom-2 -translate-x-1/2 flex justify-center items-center gap-8 bg-surface-950 rounded-full shadow-md"
+        >
+          <ButtonGroup>
+            <Button
+              icon="pi pi-expand"
+              severity="secondary"
+              aria-label="Fit Page to Viewport"
+              rounded
+              text
+              @click="fitViewport()"
+            />
+            <Button
+              icon="pi pi-search-minus"
+              severity="secondary"
+              aria-label="Fit Page to Viewport"
+              rounded
+              text
+              @click="zoomViewportOut()"
+            />
+            <Button
+              icon="pi pi-search-plus"
+              severity="secondary"
+              aria-label="Fit Page to Viewport"
+              rounded
+              text
+              @click="zoomViewportIn()"
+            />
+          </ButtonGroup>
+          <ButtonGroup>
+            <Button
+              :disabled="currentPage <= 0"
+              icon="pi pi-chevron-left"
+              severity="secondary"
+              aria-label="Previous Page"
+              rounded
+              text
+              @click="currentPage--"
+            />
+            <Button
+              :disabled="currentPage >= numPages - 1"
+              icon="pi pi-chevron-right"
+              severity="secondary"
+              aria-label="Next Page"
+              rounded
+              text
+              @click="currentPage++"
+            />
+          </ButtonGroup>
+          <ButtonGroup>
+            <Button
+              icon="pi pi-pencil"
+              :severity="editing ? 'primary' : 'secondary'"
+              aria-label="Edit Measures"
+              rounded
+              text
+              @click="editing = !editing"
+            />
+            <Button
+              v-if="editing"
+              label="Save Changes"
+              severity="secondary"
+              aria-label="Save Changes"
+              rounded
+              text
+              @click="uploadMeasureLayout()"
+            />
+          </ButtonGroup>
         </div>
       </div>
     </Draggable>
