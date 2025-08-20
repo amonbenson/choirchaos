@@ -113,7 +113,7 @@ async function render() {
 
 <template>
   <div
-    class="absolute"
+    class="absolute pointer-events-none"
     :style="{
       width: `${pageWidth}px`,
       height: `${pageHeight}px`,

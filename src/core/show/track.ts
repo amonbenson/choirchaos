@@ -12,11 +12,15 @@ export default class Track {
       mute: boolean;
       solo: boolean;
       gain: number;
+      effectiveMute: boolean,
+      effectiveGain: number,
     } = {
       index: 0,
       mute: false,
       solo: false,
       gain: 1.0,
+      effectiveMute: false,
+      effectiveGain: 1.0,
     },
     public $midiTrackEvents: MidiTrackEvents | object = {},
   ) {}

@@ -49,6 +49,28 @@ export default class Song {
     return this.measures.items()[i - 1] ?? this.measures.first();
   }
 
+  private _updateEffectiveParameters() {
+    const soloing = this.tracks.some(track => track.mixer.solo);
+
+    this.tracks.forEach(track => track.mixer.effectiveMute = soloing ? !track.mixer.solo : track.mixer.mute);
+    this.tracks.forEach(track => track.mixer.effectiveGain = track.mixer.effectiveMute ? 0.0 : track.mixer.gain);
+  }
+
+  public setTrackMute(trackIndex: number, value: boolean) {
+    this.tracks[trackIndex].mixer.mute = value;
+    this._updateEffectiveParameters();
+  }
+
+  public setTrackSolo(trackIndex: number, value: boolean) {
+    this.tracks[trackIndex].mixer.solo = value;
+    this._updateEffectiveParameters();
+  }
+
+  public setTrackGain(trackIndex: number, value: number) {
+    this.tracks[trackIndex].mixer.gain = Math.max(0, Math.min(1, value));
+    this._updateEffectiveParameters();
+  }
+
   public toRecord(): PbRecord {
     return {
       number: this.number,

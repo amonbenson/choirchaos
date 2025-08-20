@@ -58,6 +58,10 @@ const lastPosition = ref({
 });
 
 function handleMouseDown(event: MouseEvent) {
+  if (event.target !== target.value) {
+    return;
+  }
+
   state.value = {
     active: true,
     start: {
@@ -120,6 +124,10 @@ function handleMouseUp(event: MouseEvent) {
 }
 
 function handleTouchStart(event: TouchEvent) {
+  if (event.target !== target.value) {
+    return;
+  }
+
   state.value = {
     active: true,
     start: {
@@ -228,6 +236,6 @@ onBeforeUnmount(() => {
 <template>
   <slot
     :pass-ref="passRef"
-    :dragging="state.active"
+    :drag-state="state"
   />
 </template>

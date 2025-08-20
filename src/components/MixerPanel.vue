@@ -72,26 +72,28 @@ player.onNote(event => {
             >
               {{ track.title.replace(/^-*/, '') }}
             </div>
-            <div class="flex justify-stretch items-center gap-4">
+            <div
+              class="flex justify-stretch items-center gap-4"
+              :class="{ 'opacity-50': track.mixer.effectiveMute }"
+            >
               <ButtonGroup>
                 <Button
                   label="M"
                   class="w-8"
                   :severity="track.mixer.mute ? 'primary' : 'secondary'"
                   size="small"
-                  @click="track.mixer.mute = !track.mixer.mute"
+                  @click="song?.setTrackMute(track.mixer.index, !track.mixer.mute)"
                 />
                 <Button
                   label="S"
                   class="w-8"
                   :severity="track.mixer.solo ? 'warn' : 'secondary'"
                   size="small"
-                  @click="track.mixer.solo = !track.mixer.solo"
+                  @click="song?.setTrackSolo(track.mixer.index, !track.mixer.solo)"
                 />
               </ButtonGroup>
               <Slider
                 v-model="track.mixer.gain"
-                :disabled="track.mixer.mute"
                 class="flex-1 mx-2"
                 :min="0"
                 :max="1"

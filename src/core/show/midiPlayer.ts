@@ -222,7 +222,7 @@ export default class MidiPlayer extends EventEmitter {
       const track = this._currentSong!.tracks[event.trackIndex];
 
       // skip if the track is muted
-      if (track.mixer.mute || track.mixer.gain <= 0) {
+      if (track.mixer.effectiveGain <= 0) {
         return;
       }
 
@@ -231,7 +231,7 @@ export default class MidiPlayer extends EventEmitter {
       const duration = Math.min(event.duration * this._tickDuration, 5);
       const instrument = this._instruments[track.program === 9 ? 116 : 0];
       const pitch = event.pitch;
-      const volume = event.velocity / 127.0 * track.mixer.gain;
+      const volume = event.velocity / 127.0 * track.mixer.effectiveGain;
 
       // check if we've underrun the clock offset
       if (start < 0) {

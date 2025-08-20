@@ -17,7 +17,7 @@ const props = defineProps<{
 
 const editing = ref(false);
 
-const viewportRef: Ref<HTMLElement> = ref();
+const viewportRef: Ref<Element | undefined> = ref();
 
 const pdfUrl = computed(() => props.song?.pdfFile ? resolveUrl(props.song.pdfFile, "songs", props.song.id) : undefined);
 const pdfStatus = ref("idle");
@@ -93,7 +93,7 @@ function handleViewportWheel(event: WheelEvent) {
 }
 
 function fitViewport() {
-  const scale = Math.min(viewportRef.value.clientWidth / pageWidth.value, viewportRef.value.clientHeight / pageHeight.value) * 0.9;
+  const scale = Math.min(viewportRef.value!.clientWidth / pageWidth.value, viewportRef.value!.clientHeight / pageHeight.value) * 0.9;
 
   viewportOffset.value = { x: 0, y: 0 };
   viewportScale.value = scale;
@@ -285,18 +285,18 @@ async function uploadMeasureLayout() {
 <template>
   <div>
     <Draggable
-      v-slot="{ passRef, dragging }"
+      v-slot="{ passRef, dragState }"
       @drag="handleViewportDrag($event)"
     >
       <div
-        :ref="ref => { passRef(ref); viewportRef = ref; }"
-        class="relative size-full overflow-hidden"
-        :class="dragging ? 'cursor-grabbing' : 'cursor-grab'"
+        :ref="ref => { passRef(ref); viewportRef = ref as HTMLElement; }"
+        class="relative size-full overflow-hidden group/viewport"
+        :class="dragState.active ? 'cursor-grabbing' : 'cursor-grab'"
         @wheel="handleViewportWheel($event)"
       >
         <PdfCanvas
           v-if="pdfUrl"
-          class="absolute left-1/2 top-1/2 group"
+          class="absolute left-1/2 top-1/2"
           :class="{
             'hidden': !ready,
             'cursor-crosshair': editing,
@@ -314,7 +314,7 @@ async function uploadMeasureLayout() {
           <div
             v-if="editing"
             ref="editorPlane"
-            class="absolute inset-0"
+            class="absolute inset-0 pointer-events-auto"
             @mousedown="startEditorDraw($event)"
             @mousemove="moveEditorDraw($event)"
             @mouseup="endEditorDraw($event)"
@@ -338,7 +338,7 @@ async function uploadMeasureLayout() {
           >
             <div
               v-if="measure.layout"
-              class="absolute transition-colors group/measure"
+              class="absolute transition-colors group/measure pointer-events-auto"
               :class="{
                 'bg-primary/0 hover:bg-primary/25 cursor-pointer': !editing,
                 'bg-primary/25 border-primary border-1 cursor-default': editing,
@@ -422,8 +422,8 @@ async function uploadMeasureLayout() {
 
           <!-- Edit button -->
           <Button
-            class="absolute right-4 top-4"
-            :class="{ 'opacity-0 group-hover:opacity-100 transition-opacity': !editing }"
+            class="absolute right-4 top-4 pointer-events-auto"
+            :class="{ 'opacity-0 group-hover/viewport:opacity-100 transition-opacity': !editing }"
             :icon="`pi ${editing ? 'pi-times' : 'pi-pencil'}`"
             severity="secondary"
             rounded
