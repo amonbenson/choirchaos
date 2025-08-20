@@ -118,13 +118,13 @@ const song = computed(() => props.songs?.find(s => s.id === songId.value));
 
     <!-- Progress Bar -->
     <div
-      class="absolute left-0 -bottom-0.5 h-1 bg-primary rounded-full shadow-[0_0_0.75rem] shadow-primary/10"
+      class="absolute left-2 -bottom-0.5 h-1 bg-primary rounded-full shadow-[0_0_0.75rem] shadow-primary/10"
       :class="{
         'hidden': !player.ready,
         'transition-all': !player.playing,
       }"
       :style="{
-        width: `${player.position / player.duration * 100}%`
+        width: `calc(${player.position / player.duration * 100}% - 1rem)`
       }"
     />
   </div>

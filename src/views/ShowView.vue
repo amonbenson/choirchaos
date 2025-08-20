@@ -5,6 +5,8 @@ import { computed, watch, ref, markRaw, type Ref, type ComputedRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import TransportBar from "@/components/TransportBar.vue";
 import type Song from "@/core/show/song";
+import ButtonGroup from "primevue/buttongroup";
+import Button from "primevue/button";
 import PdfViewer from "@/components/PdfViewer.vue";
 import MarkerPanel from "@/components/MarkerPanel.vue";
 import MixerPanel from "@/components/MixerPanel.vue";
@@ -25,6 +27,8 @@ const showLoading = ref(true);
 
 const song: ComputedRef<Song | undefined> = computed(() => show.value?.songs.find(s => s.id === props.songId));
 const songLoading = ref(true);
+
+const selectedTab: Ref<"markers" | "pdf" | "mixer"> = ref("pdf");
 
 function selectSong(songId?: string) {
   // route to the correct song first
@@ -121,7 +125,7 @@ fetchShow();
 </script>
 
 <template>
-  <div class="fixed left-0 top-0 w-screen h-screen grid grid-cols-1 lg:grid-cols-[auto_1fr_auto] gap-2 p-2">
+  <div class="fixed left-0 top-0 w-screen h-screen grid grid-cols-1 grid-rows-[auto_auto_1fr] lg:grid-cols-[auto_1fr_auto] lg:grid-rows-[auto_1fr] gap-2 p-2">
     <TransportBar
       class="lg:col-span-3"
       :model-value="songId"
@@ -129,15 +133,33 @@ fetchShow();
       :loading="showLoading || songLoading"
       @update:model-value="selectSong($event)"
     />
+    <ButtonGroup class="w-full">
+      <Button
+        v-for="name, tab in {
+          markers: 'Markers',
+          pdf: 'PDF',
+          mixer: 'Mixer',
+        }"
+        :key="tab"
+        :label="name"
+        :severity="selectedTab === tab ? 'primary' : 'secondary'"
+        fluid
+        @click="selectedTab = tab"
+      />
+    </ButtonGroup>
     <MarkerPanel
-      class="w-full lg:w-96 min-h-0"
+      class="w-full lg:w-96 h-full min-h-0"
+      :class="selectedTab === 'markers' ? 'flex' : 'hidden lg:flex'"
       :song="song"
     />
     <PdfViewer
+      class="w-full h-full"
+      :class="selectedTab === 'pdf' ? 'flex' : 'hidden lg:flex'"
       :song="song"
     />
     <MixerPanel
-      class="w-full lg:w-96 min-h-0"
+      class="w-full lg:w-96 h-full min-h-0"
+      :class="selectedTab === 'mixer' ? 'flex' : 'hidden lg:flex'"
       :song="song"
     />
   </div>
