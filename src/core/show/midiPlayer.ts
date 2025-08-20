@@ -9,7 +9,7 @@ import type Song from "./song";
 import { resolveUrl } from "../utils/file";
 import type { BinarySearchOptions } from "../utils/binarySearch";
 import type Measure from "./measure";
-import { type Updater, SetIntervalUpdater, AnimationFrameUpdater } from "../utils/updater";
+import { type Updater, SetIntervalUpdater } from "../utils/updater";
 
 const STEP_DURATION = 1 / 50;
 const POSITION_UPDATE_DURATION = 1 / 50;

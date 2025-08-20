@@ -286,13 +286,13 @@ async function uploadMeasureLayout() {
           <!-- Editor plane -->
           <Draggable
             v-if="editing"
-            v-slot="{ passRef }"
+            v-slot="{ passRef: passRefInner }"
             @dragstart="handleEditorDragStart($event)"
             @drag="handleEditorDrag($event)"
             @dragend="handleEditorDragEnd($event)"
           >
             <div
-              :ref="ref => { passRef(ref); editorPlane = ref; }"
+              :ref="ref => { passRefInner(ref); editorPlane = ref; }"
               class="absolute inset-0 pointer-events-auto"
             >
               <div
@@ -343,11 +343,11 @@ async function uploadMeasureLayout() {
 
                 <!-- Resize handles -->
                 <Draggable
-                  v-slot="{ passRef }"
+                  v-slot="{ passRef: passRefInner }"
                   @drag="handleMeasureDrag($event, measure, 'top')"
                 >
                   <Button
-                    :ref="(c: any) => passRef(c?.$el)"
+                    :ref="(c: any) => passRefInner(c?.$el)"
                     class="absolute left-1/2 top-0 -translate-1/2 cursor-ns-resize"
                     icon="pi pi-arrows-v"
                     severity="secondary"
@@ -357,11 +357,11 @@ async function uploadMeasureLayout() {
                   />
                 </Draggable>
                 <Draggable
-                  v-slot="{ passRef }"
+                  v-slot="{ passRef: passRefInner }"
                   @drag="handleMeasureDrag($event, measure, 'right')"
                 >
                   <Button
-                    :ref="(c: any) => passRef(c?.$el)"
+                    :ref="(c: any) => passRefInner(c?.$el)"
                     class="absolute left-full top-1/2 -translate-1/2 cursor-ew-resize"
                     icon="pi pi-arrows-h"
                     severity="secondary"
@@ -371,11 +371,11 @@ async function uploadMeasureLayout() {
                   />
                 </Draggable>
                 <Draggable
-                  v-slot="{ passRef }"
+                  v-slot="{ passRef: passRefInner }"
                   @drag="handleMeasureDrag($event, measure, 'bottom')"
                 >
                   <Button
-                    :ref="(c: any) => passRef(c?.$el)"
+                    :ref="(c: any) => passRefInner(c?.$el)"
                     class="absolute left-1/2 top-full -translate-1/2 cursor-ns-resize"
                     icon="pi pi-arrows-v"
                     severity="secondary"
@@ -385,11 +385,11 @@ async function uploadMeasureLayout() {
                   />
                 </Draggable>
                 <Draggable
-                  v-slot="{ passRef }"
+                  v-slot="{ passRef: passRefInner }"
                   @drag="handleMeasureDrag($event, measure, 'left')"
                 >
                   <Button
-                    :ref="(c: any) => passRef(c?.$el)"
+                    :ref="(c: any) => passRefInner(c?.$el)"
                     class="absolute left-0 top-1/2 -translate-1/2 cursor-ew-resize"
                     icon="pi pi-arrows-h"
                     severity="secondary"

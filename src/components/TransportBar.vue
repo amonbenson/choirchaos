@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import Toolbar from "primevue/toolbar";
 import Button from "primevue/button";
-import InputText from "primevue/inputtext";
-import InputNumber from "primevue/inputnumber";
 import Select from "primevue/select";
 import { usePlayerStore } from "@/stores/player";
 import Song from "@/core/show/song";

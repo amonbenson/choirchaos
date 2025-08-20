@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { useEvent } from "@/composables/event";
 import MidiPlayer from "@/core/show/midiPlayer";
-import { computed, markRaw, onScopeDispose, ref, watch } from "vue";
+import { markRaw, onScopeDispose } from "vue";
 import type Song from "@/core/show/song";
 import { isNumbering } from "@/core/utils/numbering";
 import type { NoteEvent } from "@/core/show/midiEvents";

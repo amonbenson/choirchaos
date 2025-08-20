@@ -26,7 +26,7 @@ export class MarkerEvent extends MeasureEvent {
   }
 
 
-  public static fromJson({ start, marker, ...rest }: any) {
+  public static fromJson({ start, marker }: any) {
     return new MarkerEvent(start, marker);
   }
 }

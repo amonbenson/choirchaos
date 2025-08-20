@@ -1,3 +1,4 @@
+<!-- eslint-disable vue/multi-word-component-names -->
 <script setup lang="ts">
 import { onBeforeUnmount, ref, toRaw, type Ref } from "vue";
 

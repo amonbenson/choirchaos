@@ -10,7 +10,6 @@ import Button from "primevue/button";
 import PdfViewer from "@/components/PdfViewer.vue";
 import MarkerPanel from "@/components/MarkerPanel.vue";
 import MixerPanel from "@/components/MixerPanel.vue";
-import axios from "axios";
 
 const player = usePlayerStore();
 const route = useRoute();
@@ -133,7 +132,7 @@ fetchShow();
       :loading="showLoading || songLoading"
       @update:model-value="selectSong($event)"
     />
-    <ButtonGroup class="w-full">
+    <ButtonGroup class="w-full lg:hidden">
       <Button
         v-for="name, tab in {
           markers: 'Markers',

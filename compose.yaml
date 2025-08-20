@@ -1,0 +1,9 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        VITE_BASE_URL: "http://localhost:8080/"
+        VITE_PB_URL: "https://choirchaos-pb.goatlessband.com"
+    ports:
+      - "8080:80"

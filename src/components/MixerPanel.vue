@@ -4,7 +4,7 @@ import Panel from "primevue/panel";
 import ButtonGroup from "primevue/buttongroup";
 import Button from "primevue/button";
 import Slider from "primevue/slider";
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from "vue";
+import { computed, ref, watch, type Ref } from "vue";
 import type { TrackClassification } from "@/core/show/track";
 import type Track from "@/core/show/track";
 import { usePlayerStore } from "@/stores/player";
