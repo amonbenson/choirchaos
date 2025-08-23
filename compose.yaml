@@ -4,6 +4,6 @@ services:
       context: .
       args:
         VITE_BASE_URL: "http://localhost:8080/"
-        VITE_PB_URL: "https://choirchaos-pb.goatlessband.com"
+        VITE_PB_URL: "https://api.choirchaos.com"
     ports:
       - "8080:80"
