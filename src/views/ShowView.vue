@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Show from "@/core/show/show";
+import { useSettingsStore } from "@/stores/settings";
 import { usePlayerStore } from "@/stores/player";
 import { computed, watch, ref, markRaw, type Ref, type ComputedRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -11,6 +12,7 @@ import PdfViewer from "@/components/PdfViewer.vue";
 import MarkerPanel from "@/components/MarkerPanel.vue";
 import MixerPanel from "@/components/MixerPanel.vue";
 
+const settings = useSettingsStore();
 const player = usePlayerStore();
 const route = useRoute();
 const router = useRouter();
@@ -26,11 +28,6 @@ const showLoading = ref(true);
 
 const song: ComputedRef<Song | undefined> = computed(() => show.value?.songs.find(s => s.id === props.songId));
 const songLoading = ref(true);
-
-// ui visibility states
-const smSelectedTab: Ref<"markers" | "pdf" | "mixer"> = ref("pdf");
-const lgMarkerPanelVisible = ref(true);
-const lgMixerPanelVisible = ref(true);
 
 function selectSong(songId?: string) {
   // route to the correct song first
@@ -144,62 +141,62 @@ fetchShow();
         }"
         :key="tab"
         :label="name"
-        :severity="smSelectedTab === tab ? 'primary' : 'secondary'"
+        :severity="settings.current.ui.selectedTab === tab ? 'primary' : 'secondary'"
         fluid
-        @click="smSelectedTab = tab"
+        @click="settings.updateSelectedTab(tab)"
       />
     </ButtonGroup>
     <div
       class="w-full h-full relative transition-all"
       :class="[
-        smSelectedTab === 'markers' ? 'block' : 'hidden lg:block',
-        lgMarkerPanelVisible ? 'lg:w-96' : 'lg:w-0'
+        settings.current.ui.selectedTab === 'markers' ? 'block' : 'hidden lg:block',
+        settings.current.ui.panelVisible.markers ? 'lg:w-96' : 'lg:w-0'
       ]"
     >
       <MarkerPanel
         class="absolute inset-0 min-h-0"
         :class="[
-          lgMarkerPanelVisible ? 'lg:opacity-100' : 'lg:opacity-0',
+          settings.current.ui.panelVisible.markers ? 'lg:opacity-100' : 'lg:opacity-0',
         ]"
         :song="song"
       />
       <Button
         class="absolute left-full top-2 z-10 transition-all hidden lg:block"
-        :class="lgMarkerPanelVisible ? 'rounded-l-none' : ''"
+        :class="settings.current.ui.panelVisible.markers ? 'rounded-l-none' : ''"
         aria-label="Show Markers Panel"
-        :icon="`pi ${lgMarkerPanelVisible ? 'pi-chevron-left' : 'pi-chevron-right'}`"
+        :icon="`pi ${settings.current.ui.panelVisible.markers ? 'pi-chevron-left' : 'pi-chevron-right'}`"
         severity="secondary"
         rounded
-        @click="lgMarkerPanelVisible = !lgMarkerPanelVisible"
+        @click="settings.togglePanelVisible('markers')"
       />
     </div>
     <PdfViewer
       class="w-full h-full"
-      :class="smSelectedTab === 'pdf' ? 'flex' : 'hidden lg:flex'"
+      :class="settings.current.ui.selectedTab === 'pdf' ? 'flex' : 'hidden lg:flex'"
       :song="song"
     />
     <div
       class="w-full h-full relative transition-all"
       :class="[
-        smSelectedTab === 'mixer' ? 'block' : 'hidden lg:block',
-        lgMixerPanelVisible ? 'lg:w-96' : 'lg:w-0',
+        settings.current.ui.selectedTab === 'mixer' ? 'block' : 'hidden lg:block',
+        settings.current.ui.panelVisible.mixer ? 'lg:w-96' : 'lg:w-0',
       ]"
     >
       <MixerPanel
         class="absolute inset-0 min-h-0"
         :class="[
-          lgMixerPanelVisible ? 'lg:opacity-100' : 'lg:opacity-0',
+          settings.current.ui.panelVisible.mixer ? 'lg:opacity-100' : 'lg:opacity-0',
         ]"
         :song="song"
       />
       <Button
         class="absolute right-full top-2 z-10 transition-all hidden lg:block"
-        :class="lgMixerPanelVisible ? 'rounded-r-none' : ''"
+        :class="settings.current.ui.panelVisible.mixer ? 'rounded-r-none' : ''"
         aria-label="Show Markers Panel"
-        :icon="`pi ${lgMixerPanelVisible ? 'pi-chevron-right' : 'pi-chevron-left'}`"
+        :icon="`pi ${settings.current.ui.panelVisible.mixer ? 'pi-chevron-right' : 'pi-chevron-left'}`"
         severity="secondary"
         rounded
-        @click="lgMixerPanelVisible = !lgMixerPanelVisible"
+        @click="settings.togglePanelVisible('mixer')"
       />
     </div>
   </div>
