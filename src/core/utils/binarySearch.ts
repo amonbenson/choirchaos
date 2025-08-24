@@ -212,7 +212,10 @@ export class BinarySortedList<T> {
 
   searchRange<K = T>(from: K, to: K, options: BinarySearchOptions<K, T> = {}) {
     const [a, b] = this.searchIndexRange(from, to, options);
-    return this.items().slice(a, b);
+    if (a === -1 && b === 1) {
+      return [this._items[0]]; // edge case, where slice(-1, 1) returns no items, although it should return the first item
+    }
+    return this._items.slice(a, b);
   }
 
   sort() {
