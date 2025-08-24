@@ -187,17 +187,16 @@ export class BinarySortedList<T> {
   }
 
   searchIndexRange<K = T>(from: K, to: K, options: BinarySearchOptions<K, T> = {}) {
-
     const a = this.searchIndex(from, {
       ...options,
       inclusive: true,
-      extend: true,
+      extend: false,
       upperBoundReturnsLength: true,
     });
     const b = this.searchIndex(to, {
       ...options,
       inclusive: true,
-      extend: true,
+      extend: false,
       upperBoundReturnsLength: true,
     });
 
