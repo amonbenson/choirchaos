@@ -2,10 +2,14 @@
 import Toolbar from "primevue/toolbar";
 import Button from "primevue/button";
 import Select from "primevue/select";
+import Popover from "primevue/popover";
+import Slider from "primevue/slider";
 import { usePlayerStore } from "@/stores/player";
 import Song from "@/core/show/song";
 import QuarterNoteSvg from "./svg/QuarterNoteSvg.vue";
-import { computed } from "vue";
+import { computed, ref } from "vue";
+import InputNumber from "primevue/inputnumber";
+import InputText from "primevue/inputtext";
 
 const props = defineProps<{
   songs?: Song[],
@@ -16,8 +20,19 @@ const songId = defineModel<string>();
 
 const player = usePlayerStore();
 
+// popover ui elements
+const measurePopover = ref();
+const beatPopover = ref();
+const transpositionPopover = ref();
+const tempoPopover = ref();
+
 const vampState = computed(() => player.ready && player.currentVamp ? (player.currentVamp.manualExit ? "exiting" : "vamping") : "none");
 const song = computed(() => props.songs?.find(s => s.id === songId.value));
+
+const playbackSpeedPercentage = computed({
+  get: () => player.playbackSpeed * 100,
+  set: (value) => player.playbackSpeed = value / 100,
+});
 </script>
 
 <template>
@@ -66,25 +81,107 @@ const song = computed(() => props.songs?.find(s => s.id === songId.value));
           <Button
             class="min-w-8"
             severity="secondary"
-          >
-            {{ player.ready ? player.currentMeasure[0] : "-" }}
-          </Button>
+            :label="player.ready ? player.currentMeasure[0] : '-'"
+            @click="measurePopover.toggle($event)"
+          />
+          <Popover ref="measurePopover">
+            <InputText
+              :model-value="player.currentMeasure[0]"
+              class="w-16"
+              fluid
+              @update:model-value="player.setMeasure($event ?? '')"
+            />
+          </Popover>
           .
           <Button
             class="min-w-8"
             severity="secondary"
-          >
-            {{ player.ready ? player.currentMeasure[1] + 1 : "-" }}
-          </Button>
+            :label="player.ready ? String(player.currentMeasure[1]) : '-'"
+            @click="beatPopover.toggle($event)"
+          />
+          <Popover ref="beatPopover">
+            <InputNumber
+              :model-value="player.currentMeasure[1] + 1"
+              class="w-16"
+              fluid
+              @update:model-value="player.setBeat($event - 1)"
+            />
+          </Popover>
         </div>
 
+        <!-- Transposition -->
+        <Button
+          :label="`${player.playbackTransposition > 0 ? '+' : ''}${player.playbackTransposition}&nbsp;HT`"
+          :severity="Math.round(playbackSpeedPercentage) !== 100 ? 'primary' : 'secondary'"
+          @click="transpositionPopover.toggle($event)"
+        />
+        <Popover
+          ref="transpositionPopover"
+          pt:content:class="flex justify-stretch items-center gap-1"
+        >
+          <Button
+            icon="pi pi-minus"
+            severity="secondary"
+            size="small"
+            rounded
+            text
+            @click="player.playbackTransposition--"
+          />
+          <InputNumber
+            v-model="player.playbackTransposition"
+            class="w-18"
+            :min="-11"
+            :max="11"
+            :step="1"
+            :prefix="player.playbackTransposition > 0 ? '+' : ''"
+            suffix=" HT"
+            fluid
+          />
+          <Button
+            icon="pi pi-plus"
+            severity="secondary"
+            size="small"
+            rounded
+            text
+            @click="player.playbackTransposition++"
+          />
+        </Popover>
+
         <!-- Tempo -->
-        <Button severity="secondary">
-          <QuarterNoteSvg class="inline size-6 -mx-1.5 fill-current" />=&nbsp;{{ player.ready ? player.currentTempo : "-" }}
+        <Button
+          :severity="Math.round(playbackSpeedPercentage) !== 100 ? 'primary' : 'secondary'"
+          @click="tempoPopover.toggle($event)"
+        >
+          <QuarterNoteSvg class="inline size-6 -mx-1.5 fill-current" />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * player.currentTempo) : "-" }}
         </Button>
+        <Popover
+          ref="tempoPopover"
+          pt:content:class="flex justify-stretch items-center gap-4"
+        >
+          <InputNumber
+            v-model="playbackSpeedPercentage"
+            class="w-18"
+            :min="10"
+            :max="300"
+            :step="1"
+            suffix=" %"
+            fluid
+          />
+          <Slider
+            v-model="playbackSpeedPercentage"
+            :min="10"
+            :max="300"
+            :step="1"
+            class="w-32"
+            fluid
+          />
+        </Popover>
 
         <!-- Signature -->
-        <Button severity="secondary">
+        <Button
+          class="cursor-default"
+          severity="secondary"
+        >
           {{ player.currentTimeSignature[0] }}&nbsp;/&nbsp;{{ Math.pow(2, player.currentTimeSignature[1]) }}
         </Button>
 

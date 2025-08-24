@@ -81,6 +81,9 @@ export default class MidiPlayer extends EventEmitter {
   private _instruments: { [key: number]: any } = {};
   private _masterInput: AudioNode | null = null;
 
+  private _playbackSpeed: number = 1.0;
+  private _playbackTransposition: number = 0;
+
   private _audioClockReference: {
     seconds: number;
     ticks: number;
@@ -188,6 +191,25 @@ export default class MidiPlayer extends EventEmitter {
     return this._currentSong;
   }
 
+  get playbackSpeed() {
+    return this._playbackSpeed;
+  }
+
+  set playbackSpeed(value: number) {
+    this._playbackSpeed = Math.max(0.1, Math.min(3.0, value));
+    this._updateTickDuration(); // will also reset the audio clock
+    this.emit("playbackSpeedChanged", this._playbackSpeed);
+  }
+
+  get playbackTransposition() {
+    return this._playbackTransposition;
+  }
+
+  set playbackTransposition(value: number) {
+    this._playbackTransposition = Math.floor(Math.max(-11, Math.min(11, value)));
+    this.emit("playbackTranspositionChanged", this._playbackTransposition);
+  }
+
   private _resetAudioClockReference() {
     this._audioClockReference = {
       seconds: this._audioContext.currentTime,
@@ -196,7 +218,7 @@ export default class MidiPlayer extends EventEmitter {
   }
 
   private _updateTickDuration() {
-    const ticksPerSecond = this._currentTempo / 60 * this._ppqn;
+    const ticksPerSecond = this._currentTempo / 60 * this._ppqn * this._playbackSpeed;
     this._tickDuration = 1 / ticksPerSecond;
 
     this._resetAudioClockReference();
@@ -227,7 +249,7 @@ export default class MidiPlayer extends EventEmitter {
         const start = (event.tick - this._audioClockTickPosition) * this._tickDuration + AUDIO_CLOCK_OFFSET;
         const duration = Math.min(event.duration * this._tickDuration, 5);
         const instrument = this._instruments[track.program === 9 ? 116 : 0];
-        const pitch = event.pitch;
+        const pitch = event.pitch + (track.program === 9 ? 0 : this._playbackTransposition);
         const volume = event.velocity / 127.0 * track.mixer.effectiveGain;
 
         // check if we've underrun the clock offset

@@ -56,6 +56,18 @@ export const usePlayerStore = defineStore("player", () => {
     getter: (player) => player.ppqn,
   });
 
+  const playbackSpeed = useEvent(globalPlayer, "playbackSpeedChanged", {
+    initial: globalPlayer.playbackSpeed,
+    getter: (player) => player.playbackSpeed,
+    setter: (player, value) => player.playbackSpeed = value,
+  });
+
+  const playbackTransposition = useEvent(globalPlayer, "playbackTranspositionChanged", {
+    initial: globalPlayer.playbackTransposition,
+    getter: (player) => player.playbackTransposition,
+    setter: (player, value) => player.playbackTransposition = value,
+  });
+
   function setMeasure(value: string) {
     if (!globalPlayer.currentSong) {
       return;
@@ -75,9 +87,6 @@ export const usePlayerStore = defineStore("player", () => {
     if (!globalPlayer.currentSong) {
       return;
     }
-
-    // convert to zero-indexd number
-    value -= 1;
 
     // find the current measure, validate input range, and seek
     const measure = globalPlayer.currentSong.findMeasure(globalPlayer.currentMeasure[0]);
@@ -124,6 +133,8 @@ export const usePlayerStore = defineStore("player", () => {
     finalMeasure,
     events,
     ppqn,
+    playbackSpeed,
+    playbackTransposition,
     player: globalPlayer,
   };
 });
