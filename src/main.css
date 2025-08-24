@@ -3,7 +3,7 @@
 @import "primeicons/primeicons.css";
 
 @layer base {
-  html, body {
+  html, body, #app {
     @apply size-full select-none;
   }
 }

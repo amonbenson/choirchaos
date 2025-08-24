@@ -124,7 +124,7 @@ fetchShow();
 </script>
 
 <template>
-  <div class="fixed left-0 top-0 w-screen h-screen grid grid-cols-1 grid-rows-[auto_auto_1fr] lg:grid-cols-[auto_1fr_auto] lg:grid-rows-[auto_1fr] gap-2 p-2">
+  <div class="size-full grid grid-cols-1 grid-rows-[auto_auto_1fr] lg:grid-cols-[auto_1fr_auto] lg:grid-rows-[auto_1fr] gap-2 p-2 overflow-hidden">
     <TransportBar
       class="lg:col-span-3"
       :model-value="songId"

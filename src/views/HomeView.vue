@@ -15,7 +15,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="fixed left-0 top-0 w-screen h-screen flex justify-center items-center">
+  <div class="size-full flex justify-center items-center overflow-hidden">
     <Card
       v-for="show in shows"
       :key="show.id"
