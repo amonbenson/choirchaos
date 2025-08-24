@@ -112,7 +112,7 @@ const playbackSpeedPercentage = computed({
         <!-- Transposition -->
         <Button
           :label="`${player.playbackTransposition > 0 ? '+' : ''}${player.playbackTransposition}&nbsp;HT`"
-          :severity="Math.round(playbackSpeedPercentage) !== 100 ? 'primary' : 'secondary'"
+          :severity="player.playbackTransposition !== 0 ? 'primary' : 'secondary'"
           @click="transpositionPopover.toggle($event)"
         />
         <Popover
