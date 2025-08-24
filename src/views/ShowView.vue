@@ -11,6 +11,8 @@ import Button from "primevue/button";
 import PdfViewer from "@/components/PdfViewer.vue";
 import MarkerPanel from "@/components/MarkerPanel.vue";
 import MixerPanel from "@/components/MixerPanel.vue";
+import PdfViewerV2 from "@/components/PdfViewerV2.vue";
+import { resolveUrl } from "@/core/utils/file";
 
 const settings = useSettingsStore();
 const player = usePlayerStore();
@@ -170,10 +172,14 @@ fetchShow();
         @click="settings.togglePanelVisible('markers')"
       />
     </div>
-    <PdfViewer
+    <!-- <PdfViewer
       class="w-full h-full"
       :class="settings.current.ui.selectedTab === 'pdf' ? 'flex' : 'hidden lg:flex'"
       :song="song"
+    /> -->
+    <PdfViewerV2
+      class="w-full h-full"
+      :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
     />
     <div
       class="w-full h-full relative transition-all"
