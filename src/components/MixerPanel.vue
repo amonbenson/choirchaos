@@ -74,53 +74,52 @@ player.onNote(event => {
         :key="classification"
         class="flex flex-col justify-stretch items-stretch gap-2"
       >
-        <div class="font-bold">
-          {{ classification }}
-        </div>
-        <div class="flex flex-col justify-stretch items-stretch gap-4">
-          <div
-            v-for="track in trackGroup"
-            :key="track.title"
-            class="flex flex-col justify-stretch items-stretch gap-2"
-          >
+        <template v-if="trackGroup.length > 0">
+          <h3 class="font-bold">
+            {{ classification }}
+          </h3>
+          <div class="flex flex-col justify-stretch items-stretch gap-4">
             <div
-              v-if="track.title !== classification"
-              class=""
+              v-for="track in trackGroup"
+              :key="track.title"
+              class="flex flex-col justify-stretch items-stretch gap-2"
             >
-              {{ track.title.replace(/^-*/, '') }}
-            </div>
-            <div
-              class="flex justify-stretch items-center gap-4"
-              :class="{ 'opacity-50': track.mixer.effectiveMute }"
-            >
-              <ButtonGroup>
-                <Button
-                  label="M"
-                  class="w-8"
-                  :severity="track.mixer.mute ? 'primary' : 'secondary'"
-                  size="small"
-                  @click="song?.setTrackMute(track.mixer.index, !track.mixer.mute)"
+              <h4 v-if="track.title !== classification">
+                {{ track.title.replace(/^-*/, '') }}
+              </h4>
+              <div
+                class="flex justify-stretch items-center gap-4"
+                :class="{ 'opacity-50': track.mixer.effectiveMute }"
+              >
+                <ButtonGroup>
+                  <Button
+                    label="M"
+                    class="w-8"
+                    :severity="track.mixer.mute ? 'primary' : 'secondary'"
+                    size="small"
+                    @click="song?.setTrackMute(track.mixer.index, !track.mixer.mute)"
+                  />
+                  <Button
+                    label="S"
+                    class="w-8"
+                    :severity="track.mixer.solo ? 'warn' : 'secondary'"
+                    size="small"
+                    @click="song?.setTrackSolo(track.mixer.index, !track.mixer.solo)"
+                  />
+                </ButtonGroup>
+                <Slider
+                  v-model="track.mixer.gain"
+                  class="flex-1 mx-2"
+                  :min="0"
+                  :max="1"
+                  :step="0.001"
+                  pt:range:class="bg-primary"
+                  :pt:range:id="`mixer-track-slider-${track.mixer.index}`"
                 />
-                <Button
-                  label="S"
-                  class="w-8"
-                  :severity="track.mixer.solo ? 'warn' : 'secondary'"
-                  size="small"
-                  @click="song?.setTrackSolo(track.mixer.index, !track.mixer.solo)"
-                />
-              </ButtonGroup>
-              <Slider
-                v-model="track.mixer.gain"
-                class="flex-1 mx-2"
-                :min="0"
-                :max="1"
-                :step="0.001"
-                pt:range:class="bg-primary"
-                :pt:range:id="`mixer-track-slider-${track.mixer.index}`"
-              />
+              </div>
             </div>
           </div>
-        </div>
+        </template>
       </div>
     </div>
 

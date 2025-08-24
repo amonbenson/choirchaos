@@ -27,7 +27,10 @@ const showLoading = ref(true);
 const song: ComputedRef<Song | undefined> = computed(() => show.value?.songs.find(s => s.id === props.songId));
 const songLoading = ref(true);
 
-const selectedTab: Ref<"markers" | "pdf" | "mixer"> = ref("pdf");
+// ui visibility states
+const smSelectedTab: Ref<"markers" | "pdf" | "mixer"> = ref("pdf");
+const lgMarkerPanelVisible = ref(true);
+const lgMixerPanelVisible = ref(true);
 
 function selectSong(songId?: string) {
   // route to the correct song first
@@ -141,25 +144,63 @@ fetchShow();
         }"
         :key="tab"
         :label="name"
-        :severity="selectedTab === tab ? 'primary' : 'secondary'"
+        :severity="smSelectedTab === tab ? 'primary' : 'secondary'"
         fluid
-        @click="selectedTab = tab"
+        @click="smSelectedTab = tab"
       />
     </ButtonGroup>
-    <MarkerPanel
-      class="w-full lg:w-96 h-full min-h-0"
-      :class="selectedTab === 'markers' ? 'flex' : 'hidden lg:flex'"
-      :song="song"
-    />
+    <div
+      class="w-full h-full relative transition-all"
+      :class="[
+        smSelectedTab === 'markers' ? 'block' : 'hidden lg:block',
+        lgMarkerPanelVisible ? 'lg:w-96' : 'lg:w-0'
+      ]"
+    >
+      <MarkerPanel
+        class="absolute inset-0 min-h-0"
+        :class="[
+          lgMarkerPanelVisible ? 'lg:opacity-100' : 'lg:opacity-0',
+        ]"
+        :song="song"
+      />
+      <Button
+        class="absolute left-full top-2 z-10 transition-all hidden lg:block"
+        :class="lgMarkerPanelVisible ? 'rounded-l-none' : ''"
+        aria-label="Show Markers Panel"
+        :icon="`pi ${lgMarkerPanelVisible ? 'pi-chevron-left' : 'pi-chevron-right'}`"
+        severity="secondary"
+        rounded
+        @click="lgMarkerPanelVisible = !lgMarkerPanelVisible"
+      />
+    </div>
     <PdfViewer
       class="w-full h-full"
-      :class="selectedTab === 'pdf' ? 'flex' : 'hidden lg:flex'"
+      :class="smSelectedTab === 'pdf' ? 'flex' : 'hidden lg:flex'"
       :song="song"
     />
-    <MixerPanel
-      class="w-full lg:w-96 h-full min-h-0"
-      :class="selectedTab === 'mixer' ? 'flex' : 'hidden lg:flex'"
-      :song="song"
-    />
+    <div
+      class="w-full h-full relative transition-all"
+      :class="[
+        smSelectedTab === 'mixer' ? 'block' : 'hidden lg:block',
+        lgMixerPanelVisible ? 'lg:w-96' : 'lg:w-0',
+      ]"
+    >
+      <MixerPanel
+        class="absolute inset-0 min-h-0"
+        :class="[
+          lgMixerPanelVisible ? 'lg:opacity-100' : 'lg:opacity-0',
+        ]"
+        :song="song"
+      />
+      <Button
+        class="absolute right-full top-2 z-10 transition-all hidden lg:block"
+        :class="lgMixerPanelVisible ? 'rounded-r-none' : ''"
+        aria-label="Show Markers Panel"
+        :icon="`pi ${lgMixerPanelVisible ? 'pi-chevron-right' : 'pi-chevron-left'}`"
+        severity="secondary"
+        rounded
+        @click="lgMixerPanelVisible = !lgMixerPanelVisible"
+      />
+    </div>
   </div>
 </template>

@@ -36,7 +36,7 @@ function isMarkerActive(marker: MarkerEvent) {
         class="relative"
       >
         <Button
-          class="relative flex justify-between items-center"
+          class="relative flex justify-between items-center truncate"
           :severity="isMarkerActive(marker) ? 'primary' : 'secondary'"
           fluid
           @click="player.setMeasure(marker.start[0]); player.setBeat(marker.start[1])"
