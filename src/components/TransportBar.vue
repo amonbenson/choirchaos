@@ -38,15 +38,15 @@ const playbackSpeedPercentage = computed({
 <template>
   <div class="relative">
     <Toolbar
-      class="relative px-4 grid grid-cols-[auto_1fr] lg:grid-cols-[repeat(3,minmax(auto,1fr))]"
+      class="relative px-4 grid grid-cols-[auto_auto] lg:grid-cols-[repeat(3,minmax(auto,1fr))]"
       pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-8"
       pt:center="flex justify-center items-center gap-0"
-      pt:end="flex justify-end items-center gap-2 sm:gap-8"
+      pt:end="overflow-x-auto lg:overflow-x-visible"
     >
       <template #start>
         <Select
           v-model="songId"
-          class="w-full lg:w-88 border-none"
+          class="w-full lg:max-w-88 border-none"
           :options="songs"
           option-value="id"
           :option-label="song => `#${song.number} ${song.title}`"
@@ -76,138 +76,152 @@ const playbackSpeedPercentage = computed({
       </template>
 
       <template #end>
-        <!-- Measure -->
-        <div class="w-26 max-w-26 flex justify-end items-center gap-1">
-          <Button
-            class="min-w-8"
-            severity="secondary"
-            :label="player.ready ? player.currentMeasure[0] : '-'"
-            @click="measurePopover.toggle($event)"
-          />
-          <Popover ref="measurePopover">
-            <InputText
-              :model-value="player.currentMeasure[0]"
-              class="w-16"
-              fluid
-              @update:model-value="player.setMeasure($event ?? '')"
+        <div class="flex justify-end items-center gap-4 sm:gap-8">
+          <!-- Measure -->
+          <div class="sm:w-24 max-w-24 flex justify-end items-center gap-1">
+            <Button
+              class="min-w-8"
+              severity="secondary"
+              :label="player.ready ? player.currentMeasure[0] : '-'"
+              @click="measurePopover.toggle($event)"
             />
-          </Popover>
-          .
+            <Popover ref="measurePopover">
+              <InputText
+                :model-value="player.currentMeasure[0]"
+                class="w-16"
+                fluid
+                @update:model-value="player.setMeasure($event ?? '')"
+              />
+            </Popover>
+            .
+            <Button
+              class="min-w-8"
+              severity="secondary"
+              :label="player.ready ? String(player.currentMeasure[1]) : '-'"
+              @click="beatPopover.toggle($event)"
+            />
+            <Popover ref="beatPopover">
+              <InputNumber
+                :model-value="player.currentMeasure[1] + 1"
+                class="w-16"
+                fluid
+                @update:model-value="player.setBeat($event - 1)"
+              />
+            </Popover>
+          </div>
+
+          <!-- Transposition -->
           <Button
-            class="min-w-8"
-            severity="secondary"
-            :label="player.ready ? String(player.currentMeasure[1]) : '-'"
-            @click="beatPopover.toggle($event)"
+            :label="`${player.playbackTransposition > 0 ? '+' : ''}${player.playbackTransposition}&nbsp;HT`"
+            :severity="player.playbackTransposition !== 0 ? 'primary' : 'secondary'"
+            @click="transpositionPopover.toggle($event)"
           />
-          <Popover ref="beatPopover">
+          <Popover
+            ref="transpositionPopover"
+            pt:content:class="flex justify-stretch items-center gap-1"
+          >
+            <Button
+              icon="pi pi-minus"
+              severity="secondary"
+              size="small"
+              rounded
+              text
+              :disabled="player.playbackTransposition <= -11"
+              @click="player.playbackTransposition--"
+            />
             <InputNumber
-              :model-value="player.currentMeasure[1] + 1"
-              class="w-16"
+              v-model="player.playbackTransposition"
+              class="w-20"
+              :min="-11"
+              :max="11"
+              :step="1"
+              :prefix="player.playbackTransposition > 0 ? '+' : ''"
+              suffix=" HT"
               fluid
-              @update:model-value="player.setBeat($event - 1)"
+            />
+            <Button
+              icon="pi pi-plus"
+              severity="secondary"
+              size="small"
+              rounded
+              text
+              :disabled="player.playbackTransposition >= 11"
+              @click="player.playbackTransposition++"
             />
           </Popover>
+
+          <!-- Tempo -->
+          <Button
+            :severity="Math.round(playbackSpeedPercentage) !== 100 ? 'primary' : 'secondary'"
+            @click="tempoPopover.toggle($event)"
+          >
+            <QuarterNoteSvg class="inline size-6 -mx-1.5 fill-current" />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * player.currentTempo) : "-" }}
+          </Button>
+          <Popover
+            ref="tempoPopover"
+            pt:content:class="flex justify-stretch items-center gap-4"
+          >
+            <Button
+              icon="pi pi-minus"
+              severity="secondary"
+              size="small"
+              rounded
+              text
+              :disabled="playbackSpeedPercentage <= 10"
+              @click="playbackSpeedPercentage--"
+            />
+            <InputNumber
+              v-model="playbackSpeedPercentage"
+              class="w-18"
+              :min="10"
+              :max="300"
+              :step="1"
+              suffix=" %"
+              fluid
+            />
+            <Button
+              icon="pi pi-plus"
+              severity="secondary"
+              size="small"
+              rounded
+              text
+              :disabled="playbackSpeedPercentage >= 300"
+              @click="playbackSpeedPercentage++"
+            />
+          </Popover>
+
+          <!-- Signature -->
+          <Button
+            class="cursor-default"
+            severity="secondary"
+          >
+            {{ player.currentTimeSignature[0] }}&nbsp;/&nbsp;{{ Math.pow(2, player.currentTimeSignature[1]) }}
+          </Button>
+
+          <!-- Vamp -->
+          <Button
+            class="min-w-24"
+            :disabled="vampState === 'none'"
+            :label="{
+              'none': 'Vamp',
+              'vamping': player.currentVamp?.iterations
+                ? `Vamp ${player.currentVamp?.currentIteration + 1}/${player.currentVamp?.iterations}`
+                : `Vamp ${player.currentVamp?.currentIteration + 1}`,
+              'exiting': 'Exiting...'
+            }[vampState]"
+            :severity="vampState === 'vamping' ? 'primary': 'secondary'"
+            @click="player.exitVamp()"
+          />
+
+          <!-- Segue -->
+          <Button
+            class="w-24"
+            :disabled="!song?.events.segue"
+            label="Segue"
+            :severity="song?.events.segue ? 'primary': 'secondary'"
+            @click="player.exitVamp()"
+          />
         </div>
-
-        <!-- Transposition -->
-        <Button
-          :label="`${player.playbackTransposition > 0 ? '+' : ''}${player.playbackTransposition}&nbsp;HT`"
-          :severity="player.playbackTransposition !== 0 ? 'primary' : 'secondary'"
-          @click="transpositionPopover.toggle($event)"
-        />
-        <Popover
-          ref="transpositionPopover"
-          pt:content:class="flex justify-stretch items-center gap-1"
-        >
-          <Button
-            icon="pi pi-minus"
-            severity="secondary"
-            size="small"
-            rounded
-            text
-            @click="player.playbackTransposition--"
-          />
-          <InputNumber
-            v-model="player.playbackTransposition"
-            class="w-18"
-            :min="-11"
-            :max="11"
-            :step="1"
-            :prefix="player.playbackTransposition > 0 ? '+' : ''"
-            suffix=" HT"
-            fluid
-          />
-          <Button
-            icon="pi pi-plus"
-            severity="secondary"
-            size="small"
-            rounded
-            text
-            @click="player.playbackTransposition++"
-          />
-        </Popover>
-
-        <!-- Tempo -->
-        <Button
-          :severity="Math.round(playbackSpeedPercentage) !== 100 ? 'primary' : 'secondary'"
-          @click="tempoPopover.toggle($event)"
-        >
-          <QuarterNoteSvg class="inline size-6 -mx-1.5 fill-current" />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * player.currentTempo) : "-" }}
-        </Button>
-        <Popover
-          ref="tempoPopover"
-          pt:content:class="flex justify-stretch items-center gap-4"
-        >
-          <InputNumber
-            v-model="playbackSpeedPercentage"
-            class="w-18"
-            :min="10"
-            :max="300"
-            :step="1"
-            suffix=" %"
-            fluid
-          />
-          <Slider
-            v-model="playbackSpeedPercentage"
-            :min="10"
-            :max="300"
-            :step="1"
-            class="w-32"
-            fluid
-          />
-        </Popover>
-
-        <!-- Signature -->
-        <Button
-          class="cursor-default"
-          severity="secondary"
-        >
-          {{ player.currentTimeSignature[0] }}&nbsp;/&nbsp;{{ Math.pow(2, player.currentTimeSignature[1]) }}
-        </Button>
-
-        <!-- Vamp -->
-        <Button
-          class="min-w-24 hidden sm:block"
-          :disabled="vampState === 'none'"
-          :label="{
-            'none': 'Vamp',
-            'vamping': player.currentVamp?.iterations
-              ? `Vamp ${player.currentVamp?.currentIteration + 1}/${player.currentVamp?.iterations}`
-              : `Vamp ${player.currentVamp?.currentIteration + 1}`,
-            'exiting': 'Exiting...'
-          }[vampState]"
-          :severity="vampState === 'vamping' ? 'primary': 'secondary'"
-          @click="player.exitVamp()"
-        />
-
-        <!-- Segue -->
-        <Button
-          class="w-24 hidden md:block"
-          :disabled="!song?.events.segue"
-          label="Segue"
-          :severity="song?.events.segue ? 'primary': 'secondary'"
-          @click="player.exitVamp()"
-        />
       </template>
     </Toolbar>
 
