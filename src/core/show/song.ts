@@ -5,6 +5,8 @@ import { MarkerEvent, MeasureEventList, VampEvent } from "./measureEvent";
 import type { UrlOrFile } from "../utils/file";
 import { pb, type PbRecord } from "@/pocketbase";
 import type { MidiSystemEvents } from "./midiPlayer";
+import type { Tick } from "./midiTypes";
+import { binarySearch } from "../utils/binarySearch";
 
 export type SongNumber = Numbering;
 
@@ -49,6 +51,16 @@ export default class Song {
     return this.measures.items()[i - 1] ?? this.measures.first();
   }
 
+  public findMeasureByTick(tick: Tick) {
+    const index = binarySearch<number, Measure>(this.measures.items(), tick, {
+      comparator: (tick, measure) => tick - measure.$beatTicks[0],
+      direction: "backward",
+      inclusive: true,
+      extend: true,
+    });
+    return this.measures.items()[index];
+  }
+
   private _updateEffectiveParameters() {
     const soloing = this.tracks.some(track => track.mixer.solo);
 
@@ -64,6 +76,10 @@ export default class Song {
   public setTrackSolo(trackIndex: number, value: boolean) {
     this.tracks[trackIndex].mixer.solo = value;
     this._updateEffectiveParameters();
+  }
+
+  public setTrackHighlight(trackIndex: number, value: boolean) {
+    this.tracks[trackIndex].mixer.highlight = value;
   }
 
   public setTrackGain(trackIndex: number, value: number) {

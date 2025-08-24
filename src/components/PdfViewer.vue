@@ -52,6 +52,23 @@ function updatePageMeasures() {
   }
 }
 
+// measure highlighting
+const highlighting = computed(() => props.song?.tracks.some(track => track.mixer.highlight) ?? false);
+function isMeasureHighlighted(measure: Measure) {
+  if (!highlighting.value) {
+    return false;
+  }
+
+  // check if any track playing in the given measure is highlighted
+  for (const trackIndex of measure.$activeTrackIndices) {
+    if (props.song!.tracks[trackIndex].mixer.highlight) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // keep track of currently playing measure.
 const currentMeasure: ComputedRef<Measure | undefined> = computed(() => player.ready ? props.song?.findMeasure(player.currentMeasure[0].split("-")[0]) : undefined);
 const currentMeasureProgress = computed(() => currentMeasure.value && currentMeasure.value?.layout && currentMeasure.value.$beatTicks
@@ -315,10 +332,11 @@ async function uploadMeasureLayout() {
           >
             <div
               v-if="measure.layout"
-              class="absolute transition-colors group/measure pointer-events-auto"
+              class="absolute transition-colors group/measure bg-blend-screen pointer-events-auto"
               :class="{
                 'bg-primary/0 hover:bg-primary/25 cursor-pointer': !editing,
                 'bg-primary/25 border-primary border-1 cursor-default': editing,
+                'bg-sky-300/50': isMeasureHighlighted(measure),
               }"
               :style="{
                 left: `${measure.layout.x * 100}%`,

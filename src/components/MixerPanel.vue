@@ -94,6 +94,7 @@ player.onNote(event => {
                 <ButtonGroup>
                   <Button
                     label="M"
+                    aria-label="Mute"
                     class="w-8"
                     :severity="track.mixer.mute ? 'primary' : 'secondary'"
                     size="small"
@@ -101,10 +102,19 @@ player.onNote(event => {
                   />
                   <Button
                     label="S"
+                    aria-label="Solo"
                     class="w-8"
                     :severity="track.mixer.solo ? 'warn' : 'secondary'"
                     size="small"
                     @click="song?.setTrackSolo(track.mixer.index, !track.mixer.solo)"
+                  />
+                  <Button
+                    icon="pi pi-eye"
+                    aria-label="Highlight"
+                    class="w-8"
+                    :severity="track.mixer.highlight ? 'info' : 'secondary'"
+                    size="small"
+                    @click="song?.setTrackHighlight(track.mixer.index, !track.mixer.highlight)"
                   />
                 </ButtonGroup>
                 <Slider

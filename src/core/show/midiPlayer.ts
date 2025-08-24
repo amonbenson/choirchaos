@@ -7,7 +7,7 @@ import type { MeasureReference } from "./measure";
 import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
 import type Song from "./song";
 import { resolveUrl } from "../utils/file";
-import type { BinarySearchOptions } from "../utils/binarySearch";
+import { type BinarySearchOptions } from "../utils/binarySearch";
 import type Measure from "./measure";
 import { type Updater, SetIntervalUpdater } from "../utils/updater";
 
@@ -548,6 +548,14 @@ export default class MidiPlayer extends EventEmitter {
 
             // clear the note on index
             noteOnIndices[midiEvent.noteOff.noteNumber] = -1;
+
+            // store active track indices for the corresponding measure
+            const measure = song.findMeasureByTick(noteOnEvent.$tick);
+            if (measure) {
+              measure.$activeTrackIndices.add(t);
+            } else {
+              console.warn(`Could not find measure for tick ${noteOnEvent.$tick}. Measure highlighting might not work as expected.`);
+            }
           }
         }
       }
