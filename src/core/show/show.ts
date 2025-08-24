@@ -21,7 +21,7 @@ export default class Show {
   }
 
   public static fromRecord({ id, title, thumbnail, expand }: PbRecord): Show {
-    return new Show(id, title, thumbnail, expand.songs_via_show.map((s: Song) => Song.fromRecord(s)));
+    return new Show(id, title, thumbnail, expand?.songs_via_show?.map((s: Song) => Song.fromRecord(s)) ?? []);
   }
 
   public async create(): Promise<PbRecord> {
@@ -33,9 +33,7 @@ export default class Show {
   }
 
   public static async list(): Promise<Show[]> {
-    const records = await pb.collection("shows").getFullList({
-      expand: "songs_via_show",
-    });
+    const records = await pb.collection("shows").getFullList();
     return records.map(record => Show.fromRecord(record));
   }
 
