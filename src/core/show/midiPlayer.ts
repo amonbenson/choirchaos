@@ -221,34 +221,32 @@ export default class MidiPlayer extends EventEmitter {
     if (event instanceof NoteEvent) {
       const track = this._currentSong!.tracks[event.trackIndex];
 
-      // skip if the track is muted
-      if (track.mixer.effectiveGain <= 0) {
-        return;
+      // only process if the track is not muted (event will still be fired)
+      if (track.mixer.effectiveGain > 0) {
+        // calculate note parameters
+        const start = (event.tick - this._audioClockTickPosition) * this._tickDuration + AUDIO_CLOCK_OFFSET;
+        const duration = Math.min(event.duration * this._tickDuration, 5);
+        const instrument = this._instruments[track.program === 9 ? 116 : 0];
+        const pitch = event.pitch;
+        const volume = event.velocity / 127.0 * track.mixer.effectiveGain;
+
+        // check if we've underrun the clock offset
+        if (start < 0) {
+          console.warn(`Clock offset to small! Event scheduled ${-start}s in the past. This will lead to audible timing glitches!`);
+        }
+
+        // queue the midi event
+        this._player.queueWaveTable(
+          this._audioContext,
+          this._masterInput,
+          window[instrument],
+          this._audioContext.currentTime + start,
+          pitch,
+          duration,
+          volume,
+          [],
+        );
       }
-
-      // calculate note parameters
-      const start = (event.tick - this._audioClockTickPosition) * this._tickDuration + AUDIO_CLOCK_OFFSET;
-      const duration = Math.min(event.duration * this._tickDuration, 5);
-      const instrument = this._instruments[track.program === 9 ? 116 : 0];
-      const pitch = event.pitch;
-      const volume = event.velocity / 127.0 * track.mixer.effectiveGain;
-
-      // check if we've underrun the clock offset
-      if (start < 0) {
-        console.warn(`Clock offset to small! Event scheduled ${-start}s in the past. This will lead to audible timing glitches!`);
-      }
-
-      // queue the midi event
-      this._player.queueWaveTable(
-        this._audioContext,
-        this._masterInput,
-        window[instrument],
-        this._audioContext.currentTime + start,
-        pitch,
-        duration,
-        volume,
-        [],
-      );
 
       // emit the note event
       this.emit("note", event);
