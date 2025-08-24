@@ -118,13 +118,14 @@ player.onNote(event => {
                   />
                 </ButtonGroup>
                 <Slider
-                  v-model="track.mixer.gain"
+                  :model-value="track.mixer.gain"
                   class="flex-1 mx-2"
                   :min="0"
                   :max="1"
                   :step="0.001"
                   pt:range:class="bg-primary"
                   :pt:range:id="`mixer-track-slider-${track.mixer.index}`"
+                  @update:model-value="song?.setTrackGain(track.mixer.index, $event as number)"
                 />
               </div>
             </div>
