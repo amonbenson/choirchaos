@@ -9,6 +9,7 @@ const pdfRendererStore = usePdfRendererStore();
 
 const props = defineProps<{
   url: string | undefined,
+  cursor?: string | undefined,
 }>();
 
 const emit = defineEmits([
@@ -37,6 +38,21 @@ const pages: Ref<{
 }[]> = ref([]);
 
 const transform: PageTransform = new PageTransform({ x: 100, y: 100 }, 750);
+
+// update cursor immediately
+watch(() => props.cursor, () => {
+  if (!overlaySketch.value) {
+    return;
+  }
+
+  if (props.cursor) {
+    overlaySketch.value.cursor(props.cursor);
+  } else if (overlaySketch.value.mouseIsPressed) {
+    overlaySketch.value.cursor("grabbing");
+  } else {
+    overlaySketch.value.cursor("grab");
+  }
+});
 
 function updateReactiveState() {
   // reset state
@@ -143,9 +159,9 @@ function drawOverlay() {
 
   // update the cursor
   if (s.mouseIsPressed) {
-    s.cursor("grabbing");
+    s.cursor(props.cursor ?? "grabbing");
   } else {
-    s.cursor("grab");
+    s.cursor(props.cursor ?? "grab");
   }
 
   // check which pages are visible on screen.
@@ -160,11 +176,19 @@ function drawOverlay() {
 }
 
 function mousePressed() {
-  overlaySketch.value?.cursor("grabbing");
+  overlaySketch.value?.cursor(props.cursor ?? "grabbing");
+
+  emit("mousePressed", { s: overlaySketch.value, transform });
 }
 
 function mouseReleased() {
-  overlaySketch.value?.cursor("grab");
+  overlaySketch.value?.cursor(props.cursor ?? "grab");
+
+  emit("mouseReleased", { s: overlaySketch.value, transform });
+}
+
+function mouseMoved() {
+  emit("mouseMoved", { s: overlaySketch.value, transform });
 }
 
 function mouseDragged() {
@@ -173,6 +197,7 @@ function mouseDragged() {
   transform.pan.x += s.movedX;
   transform.pan.y += s.movedY;
 
+  emit("mouseDragged", { s: overlaySketch.value, transform });
   s.redraw();
   overlaySketch.value?.redraw();
 }
@@ -183,6 +208,7 @@ function mouseWheel(event: WheelEvent) {
   const newZoom = transform.zoom * Math.exp(-0.001 * event.deltaY);
   transform.setZoom(newZoom, { x: s.mouseX, y: s.mouseY });
 
+  // emit("mouseWheel", { s: overlaySketch.value, transform });
   sketch.value?.redraw();
   overlaySketch.value?.redraw();
 }
@@ -211,6 +237,7 @@ onMounted(() => {
     s.draw = drawOverlay;
     s.mouseReleased = mouseReleased;
     s.mousePressed = mousePressed;
+    s.mouseMoved = mouseMoved;
     s.mouseDragged = mouseDragged;
     s.mouseWheel = mouseWheel;
   }, container.value);

@@ -4,7 +4,7 @@ import PdfViewerV2 from "./PdfViewerV2.vue";
 import { resolveUrl } from "@/core/utils/file";
 import type p5 from "p5";
 import type PageTransform from "@/core/pdf/pageTransform";
-import { computed, ref, watch, type ComputedRef } from "vue";
+import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import type Measure from "@/core/show/measure";
 import { usePlayerStore } from "@/stores/player";
 
@@ -15,10 +15,7 @@ const props = defineProps<{
 }>();
 
 const pdfViewer = ref();
-
-watch(() => player.position, () => {
-  pdfViewer.value?.redraw();
-});
+const cursor: Ref<string | undefined> = ref();
 
 const measuresByPage: ComputedRef<{ [key: number]: Measure[] }> = computed(() => {
   if (!props.song) {
@@ -39,15 +36,49 @@ const measuresByPage: ComputedRef<{ [key: number]: Measure[] }> = computed(() =>
   return groups;
 });
 
-function mouseMoved({ s, transform }: { s: p5, transform: PageTransform }) {
-  // redraw on mouse move
+const hoverMeasure: Ref<Measure | undefined> = ref();
+
+watch(() => player.position, () => {
   pdfViewer.value?.redraw();
+});
+
+function mousePressed({ s, transform }: { s: p5, transform: PageTransform }) {
+  // move to selected measure
+  if (hoverMeasure.value) {
+    player.setMeasure(hoverMeasure.value.value);
+  }
+}
+
+function mouseMoved({ s, transform }: { s: p5, transform: PageTransform }) {
+  // check if we are hovering a measure
+  let newHoverMeasure = undefined;
+  const { p, x, y } = transform.screenToPage({ x: s.mouseX, y: s.mouseY });
+  for (const measure of (measuresByPage.value[p] ?? [])) {
+    const l = measure.layout!;
+
+    // check if in bounds
+    if (x >= l.x && x < l.x + l.width && y >= l.y && y < l.y + l.height) {
+      newHoverMeasure = measure;
+      break;
+    }
+  }
+
+  // set new hover measure and redraw on change
+  if (newHoverMeasure !== hoverMeasure.value) {
+    hoverMeasure.value = newHoverMeasure;
+    pdfViewer.value?.redraw();
+  }
 }
 
 function drawPageOverlay({ s, p, transform }: { s: p5, p: number, transform: PageTransform }) {
   if (!props.song) {
     return;
   }
+
+  // update cursor. setting it to undefined will show the default for the pdf viewport (grab)
+  cursor.value = hoverMeasure.value ? "pointer" : undefined;
+
+  s.noStroke();
 
   // render measures
   for (const measure of (measuresByPage.value[p] ?? [])) {
@@ -66,9 +97,14 @@ function drawPageOverlay({ s, p, transform }: { s: p5, p: number, transform: Pag
     s.translate(measure.layout.x, measure.layout.y);
     s.scale(measure.layout.width, measure.layout.height);
 
-    s.noStroke();
-    s.fill("#10b98144");
-    // s.rect(0, 0, 1, 1);
+    const lineWidth = 0.005 / measure.layout.width;
+    const lineHeight = 0.005 / measure.layout.height;
+
+    // highlight hovering measure
+    if (measure === hoverMeasure.value) {
+      s.fill("#10b98122");
+      s.rect(0, 0, 1, 1);
+    }
 
     // draw playbar
     const currentMeasure = props.song.findMeasure(player.currentMeasure[0]);
@@ -83,7 +119,7 @@ function drawPageOverlay({ s, p, transform }: { s: p5, p: number, transform: Pag
       }
 
       s.fill("#10b981ff");
-      s.rect(measureProgress, 0, 0.005 / currentMeasure.layout!.width, 1);
+      s.rect(measureProgress, 0, lineWidth, 1);
     }
 
     s.pop();
@@ -95,7 +131,9 @@ function drawPageOverlay({ s, p, transform }: { s: p5, p: number, transform: Pag
   <PdfViewerV2
     ref="pdfViewer"
     :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
+    :cursor="cursor"
     @draw-page-overlay="drawPageOverlay"
+    @mouse-pressed="mousePressed"
     @mouse-moved="mouseMoved"
   />
 </template>
