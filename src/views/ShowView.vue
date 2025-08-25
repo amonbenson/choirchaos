@@ -8,11 +8,9 @@ import TransportBar from "@/components/TransportBar.vue";
 import type Song from "@/core/show/song";
 import ButtonGroup from "primevue/buttongroup";
 import Button from "primevue/button";
-import PdfViewer from "@/components/PdfViewer.vue";
 import MarkerPanel from "@/components/MarkerPanel.vue";
 import MixerPanel from "@/components/MixerPanel.vue";
-import PdfViewerV2 from "@/components/PdfViewerV2.vue";
-import { resolveUrl } from "@/core/utils/file";
+import SongPdfViewer from "@/components/SongPdfViewer.vue";
 
 const settings = useSettingsStore();
 const player = usePlayerStore();
@@ -177,9 +175,9 @@ fetchShow();
       :class="settings.current.ui.selectedTab === 'pdf' ? 'flex' : 'hidden lg:flex'"
       :song="song"
     /> -->
-    <PdfViewerV2
+    <SongPdfViewer
       class="w-full h-full"
-      :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
+      :song="song"
     />
     <div
       class="w-full h-full relative transition-all"

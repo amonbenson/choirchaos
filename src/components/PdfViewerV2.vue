@@ -4,7 +4,14 @@ import p5 from "p5";
 import { usePdfRendererStore } from "@/stores/pdfRenderer";
 import type { PdfPageStatus } from "@/core/pdf/pdfRenderer";
 
-const PAGE_GAP = 0.1;
+export type ReverseTransformMouse = {
+  mouseX: number;
+  mouseY: number;
+  movedX: number;
+  movedY: number;
+};
+
+const PAGE_GAP = 0.02;
 
 const pdfRendererStore = usePdfRendererStore();
 
@@ -12,10 +19,22 @@ const props = defineProps<{
   url: string | undefined,
 }>();
 
+const emit = defineEmits([
+  "setup",
+  "beforeDraw",
+  "beforePageDraw",
+  "afterPageDraw",
+  "afterDraw",
+  "mousePressed",
+  "mouseReleased",
+  "mouseMoved",
+  "mouseDragged",
+]);
+
 const container: Ref<HTMLDivElement | undefined> = ref();
 
-const p5Instance: ShallowRef = shallowRef();
-const sketch: ShallowRef = shallowRef();
+const p5Instance: ShallowRef<p5 | undefined> = shallowRef();
+const sketch: ShallowRef<p5 | undefined> = shallowRef();
 const resizeObserver: ShallowRef<ResizeObserver | undefined> = shallowRef();
 
 const documentStatus: Ref<"none" | "loading" | "loadError" | "ready"> = ref("none");
@@ -24,8 +43,8 @@ const pages: Ref<{
   canvas?: HTMLCanvasElement,
 }[]> = ref([]);
 
-const pan: Ref<{ x: number, y: number }> = ref({ x: 0, y: 0 });
-const zoom: Ref<number> = ref(500);
+const pan: Ref<{ x: number, y: number }> = ref({ x: 100, y: 100 });
+const zoom: Ref<number> = ref(750);
 
 function updateReactiveState() {
   // reset state
@@ -73,14 +92,36 @@ pdfRendererStore.onPageStatusUpdate((status: PdfPageStatus, url: string, page: n
   // update reactive statue
   if (url === props.url) {
     updateReactiveState();
+    sketch.value?.redraw();
   }
 });
 
 function setup() {
   const s = sketch.value!;
 
-  s.frameRate(50);
+  s.noLoop();
   handleResize();
+
+  emit("setup", { s });
+}
+
+function reverseTransformMouseViewport(s: p5): ReverseTransformMouse {
+  return {
+    mouseX: (s.mouseX - pan.value.x) / zoom.value,
+    mouseY: (s.mouseY - pan.value.y) / zoom.value,
+    movedX: s.movedX / zoom.value,
+    movedY: s.movedY / zoom.value,
+  };
+}
+
+function reverseTransformMousePage(s: p5, x: number): ReverseTransformMouse {
+  const vp = reverseTransformMouseViewport(s);
+  return {
+    mouseX: (vp.mouseX - x) / Math.SQRT1_2,
+    mouseY: vp.mouseY,
+    movedX: vp.movedX / Math.SQRT1_2,
+    movedY: vp.movedY,
+  };
 }
 
 function draw() {
@@ -92,20 +133,117 @@ function draw() {
   s.translate(pan.value.x, pan.value.y);
   s.scale(zoom.value);
 
-  // draw all pages
-  for (const [i, page] of pages.value.entries()) {
+  // update the cursor
+  if (s.mouseIsPressed) {
+    s.cursor("grabbing");
+  } else {
+    s.cursor("grab");
+  }
+
+  // check which pages are on screen. TODO: use a nice formula rather than this "brute-force" loop
+  const pageRange = [-1, pages.value.length];
+  for (let i = 0; i < pages.value.length; i++) {
     const x = i * (Math.SQRT1_2 + PAGE_GAP);
+    const pageLeftScreen = x * zoom.value + pan.value.x;
+    const pageRightScreen = (x + Math.SQRT1_2) * zoom.value + pan.value.x;
+    if (pageRightScreen < 0) {
+      pageRange[0] = i;
+      continue;
+    }
+    if (pageLeftScreen > s.width) {
+      pageRange[1] = i;
+      break; // any following page won't be rendered, so we can use a break here
+    }
+  }
+  pageRange[0] += 1;
+
+  // invoke before draw hooks
+  emit("beforeDraw", { s, pageRange, mouse: reverseTransformMouseViewport(s) });
+  for (let i = pageRange[0]; i < pageRange[1]; i++) {
+    const x = i * (Math.SQRT1_2 + PAGE_GAP);
+    s.push();
+    s.translate(x, 0);
+    s.scale(Math.SQRT1_2, 1);
+
+    emit("beforePageDraw", { s, page: i, mouse: reverseTransformMousePage(s, x) });
+
+    s.pop();
+  }
+
+  // draw pages
+  for (let i = pageRange[0]; i < pageRange[1]; i++) {
+    const page = pages.value[i];
+    const x = i * (Math.SQRT1_2 + PAGE_GAP);
+    s.push();
+    s.translate(x, 0);
+    s.scale(Math.SQRT1_2, 1);
 
     if (page.status === "ready" && page.canvas) {
-      s.drawingContext.drawImage(page.canvas, x, 0, Math.SQRT1_2, 1);
+      s.drawingContext.drawImage(page.canvas, 0, 0, 1, 1);
     } else {
       s.fill(255);
       s.noStroke();
-      s.rect(x, 0, Math.SQRT1_2, 1);
+      s.rect(0, 0, 1, 1);
     }
+
+    s.pop();
   }
 
+  // invoke after draw hooks
+  for (let i = pageRange[0]; i < pageRange[1]; i++) {
+    const x = i * (Math.SQRT1_2 + PAGE_GAP);
+    s.push();
+    s.translate(x, 0);
+    s.scale(Math.SQRT1_2, 1);
+
+    emit("afterPageDraw", { s, page: i, mouse: reverseTransformMousePage(s, x) });
+
+    s.pop();
+  }
+  emit("afterDraw", { s, pageRange, mouse: reverseTransformMouseViewport(s) });
+
   s.pop();
+}
+
+function mousePressed() {
+  const s = sketch.value!;
+  emit("mousePressed", { s });
+  s.redraw(); // redraw required to update the cursor
+}
+
+function mouseReleased() {
+  const s = sketch.value!;
+  emit("mouseReleased", { s });
+  s.redraw(); // redraw required to update the cursor
+}
+
+function mouseMoved() {
+  const s = sketch.value!;
+  emit("mouseMoved", { s });
+  // redraw might be requested by the parent, but is not strictly required
+}
+
+function mouseDragged() {
+  const s = sketch.value!;
+
+  pan.value.x += s.movedX;
+  pan.value.y += s.movedY;
+
+  emit("mouseDragged", { s });
+  s.redraw();
+}
+
+function mouseWheel(event: WheelEvent) {
+  const s = sketch.value!;
+
+  const zoomBefore = zoom.value;
+  const zoomAfter = zoom.value * Math.exp(-0.001 * event.deltaY);
+
+  zoom.value = zoomAfter;
+  pan.value.x += (zoomBefore - zoomAfter) * (s.mouseX - pan.value.x) / zoomBefore;
+  pan.value.y += (zoomBefore - zoomAfter) * (s.mouseY - pan.value.y) / zoomBefore;
+
+  sketch.value?.redraw();
 }
 
 function handleResize() {
@@ -124,6 +262,10 @@ onMounted(() => {
     sketch.value = s;
     s.setup = setup;
     s.draw = draw;
+    s.mouseReleased = mouseReleased;
+    s.mousePressed = mousePressed;
+    s.mouseDragged = mouseDragged;
+    s.mouseWheel = mouseWheel;
   }, container.value);
 
   // setup resize observer
@@ -136,6 +278,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   p5Instance.value?.remove();
   resizeObserver.value?.unobserve(container.value!);
+});
+
+defineExpose({
+  "redraw": () => sketch.value?.redraw(),
 });
 </script>
 
