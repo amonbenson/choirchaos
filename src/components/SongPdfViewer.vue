@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import type Song from "@/core/show/song";
-import PdfViewerV2, { type ReverseTransformMouse } from "./PdfViewerV2.vue";
+import PdfViewerV2 from "./PdfViewerV2.vue";
 import { resolveUrl } from "@/core/utils/file";
 import type p5 from "p5";
+import type PageTransform from "@/core/pdf/pageTransform";
 
 defineProps<{
   song?: Song,
 }>();
 
-function afterPageDraw({ s, page, mouse }: { s: p5, page: number, mouse: ReverseTransformMouse }) {
-  if (page === 1) console.log(mouse.mouseY);
+function afterPageDraw({ s, p, transform }: { s: p5, p: number, transform: PageTransform }) {
 }
 </script>
 

@@ -3,13 +3,7 @@ import { onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref, type Shal
 import p5 from "p5";
 import { usePdfRendererStore } from "@/stores/pdfRenderer";
 import type { PdfPageStatus } from "@/core/pdf/pdfRenderer";
-
-export type ReverseTransformMouse = {
-  mouseX: number;
-  mouseY: number;
-  movedX: number;
-  movedY: number;
-};
+import PageTransform from "@/core/pdf/pageTransform";
 
 const PAGE_GAP = 0.02;
 
@@ -43,8 +37,7 @@ const pages: Ref<{
   canvas?: HTMLCanvasElement,
 }[]> = ref([]);
 
-const pan: Ref<{ x: number, y: number }> = ref({ x: 100, y: 100 });
-const zoom: Ref<number> = ref(750);
+const transform: PageTransform = new PageTransform({ x: 100, y: 100 }, 750);
 
 function updateReactiveState() {
   // reset state
@@ -105,33 +98,10 @@ function setup() {
   emit("setup", { s });
 }
 
-function reverseTransformMouseViewport(s: p5): ReverseTransformMouse {
-  return {
-    mouseX: (s.mouseX - pan.value.x) / zoom.value,
-    mouseY: (s.mouseY - pan.value.y) / zoom.value,
-    movedX: s.movedX / zoom.value,
-    movedY: s.movedY / zoom.value,
-  };
-}
-
-function reverseTransformMousePage(s: p5, x: number): ReverseTransformMouse {
-  const vp = reverseTransformMouseViewport(s);
-  return {
-    mouseX: (vp.mouseX - x) / Math.SQRT1_2,
-    mouseY: vp.mouseY,
-    movedX: vp.movedX / Math.SQRT1_2,
-    movedY: vp.movedY,
-  };
-}
-
 function draw() {
   const s = sketch.value!;
 
   s.clear();
-
-  s.push();
-  s.translate(pan.value.x, pan.value.y);
-  s.scale(zoom.value);
 
   // update the cursor
   if (s.mouseIsPressed) {
@@ -140,44 +110,25 @@ function draw() {
     s.cursor("grab");
   }
 
-  // check which pages are on screen. TODO: use a nice formula rather than this "brute-force" loop
-  const pageRange = [-1, pages.value.length];
-  for (let i = 0; i < pages.value.length; i++) {
-    const x = i * (Math.SQRT1_2 + PAGE_GAP);
-    const pageLeftScreen = x * zoom.value + pan.value.x;
-    const pageRightScreen = (x + Math.SQRT1_2) * zoom.value + pan.value.x;
-    if (pageRightScreen < 0) {
-      pageRange[0] = i;
-      continue;
-    }
-    if (pageLeftScreen > s.width) {
-      pageRange[1] = i;
-      break; // any following page won't be rendered, so we can use a break here
-    }
-  }
-  pageRange[0] += 1;
+  // check which pages are visible on screen.
+  const pageRange = transform.getVisiblePageRange(s.width, pages.value.length);
 
   // invoke before draw hooks
-  emit("beforeDraw", { s, pageRange, mouse: reverseTransformMouseViewport(s) });
-  for (let i = pageRange[0]; i < pageRange[1]; i++) {
-    const x = i * (Math.SQRT1_2 + PAGE_GAP);
-    s.push();
-    s.translate(x, 0);
-    s.scale(Math.SQRT1_2, 1);
+  transform.pushViewportTransform(s);
+  emit("beforeDraw", { s, pageRange, transform });
+  s.pop();
 
-    emit("beforePageDraw", { s, page: i, mouse: reverseTransformMousePage(s, x) });
-
+  for (let p = pageRange[0]; p < pageRange[1]; p++) {
+    transform.pushPageTransform(s, p);
+    emit("beforePageDraw", { s, p, transform });
     s.pop();
   }
 
   // draw pages
-  for (let i = pageRange[0]; i < pageRange[1]; i++) {
-    const page = pages.value[i];
-    const x = i * (Math.SQRT1_2 + PAGE_GAP);
-    s.push();
-    s.translate(x, 0);
-    s.scale(Math.SQRT1_2, 1);
+  for (let p = pageRange[0]; p < pageRange[1]; p++) {
+    transform.pushPageTransform(s, p);
 
+    const page = pages.value[p];
     if (page.status === "ready" && page.canvas) {
       s.drawingContext.drawImage(page.canvas, 0, 0, 1, 1);
     } else {
@@ -190,18 +141,14 @@ function draw() {
   }
 
   // invoke after draw hooks
-  for (let i = pageRange[0]; i < pageRange[1]; i++) {
-    const x = i * (Math.SQRT1_2 + PAGE_GAP);
-    s.push();
-    s.translate(x, 0);
-    s.scale(Math.SQRT1_2, 1);
-
-    emit("afterPageDraw", { s, page: i, mouse: reverseTransformMousePage(s, x) });
-
+  for (let p = pageRange[0]; p < pageRange[1]; p++) {
+    transform.pushPageTransform(s, p);
+    emit("afterPageDraw", { s, p, transform });
     s.pop();
   }
-  emit("afterDraw", { s, pageRange, mouse: reverseTransformMouseViewport(s) });
 
+  transform.pushViewportTransform(s);
+  emit("afterDraw", { s, pageRange, transform });
   s.pop();
 }
 
@@ -226,8 +173,8 @@ function mouseMoved() {
 function mouseDragged() {
   const s = sketch.value!;
 
-  pan.value.x += s.movedX;
-  pan.value.y += s.movedY;
+  transform.pan.x += s.movedX;
+  transform.pan.y += s.movedY;
 
   emit("mouseDragged", { s });
   s.redraw();
@@ -236,12 +183,8 @@ function mouseDragged() {
 function mouseWheel(event: WheelEvent) {
   const s = sketch.value!;
 
-  const zoomBefore = zoom.value;
-  const zoomAfter = zoom.value * Math.exp(-0.001 * event.deltaY);
-
-  zoom.value = zoomAfter;
-  pan.value.x += (zoomBefore - zoomAfter) * (s.mouseX - pan.value.x) / zoomBefore;
-  pan.value.y += (zoomBefore - zoomAfter) * (s.mouseY - pan.value.y) / zoomBefore;
+  const newZoom = transform.zoom * Math.exp(-0.001 * event.deltaY);
+  transform.setZoom(newZoom, { x: s.mouseX, y: s.mouseY });
 
   sketch.value?.redraw();
 }
@@ -264,6 +207,7 @@ onMounted(() => {
     s.draw = draw;
     s.mouseReleased = mouseReleased;
     s.mousePressed = mousePressed;
+    s.mouseMoved = mouseMoved;
     s.mouseDragged = mouseDragged;
     s.mouseWheel = mouseWheel;
   }, container.value);
