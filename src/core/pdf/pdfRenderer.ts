@@ -59,7 +59,7 @@ export class PdfRenderer extends EventEmitter {
 
     // get the page and viewport (note that page must be 1-indexed)
     const pageProxy = await doc.proxy.getPage(page + 1);
-    const viewport = pageProxy.getViewport({ scale: 4.0 });
+    const viewport = pageProxy.getViewport({ scale: 2.0 });
     const viewportLow = pageProxy.getViewport({ scale: 0.5 });
 
     // setup canvases

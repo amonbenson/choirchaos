@@ -13,10 +13,7 @@ const props = defineProps<{
 
 const emit = defineEmits([
   "setup",
-  "beforeDraw",
-  "beforePageDraw",
-  "afterPageDraw",
-  "afterDraw",
+  "drawPageOverlay",
   "mousePressed",
   "mouseReleased",
   "mouseMoved",
@@ -28,6 +25,9 @@ const container: Ref<HTMLDivElement | undefined> = ref();
 const p5Instance: ShallowRef<p5 | undefined> = shallowRef();
 const sketch: ShallowRef<p5 | undefined> = shallowRef();
 const resizeObserver: ShallowRef<ResizeObserver | undefined> = shallowRef();
+
+const overlayInstance: ShallowRef<p5 | undefined> = shallowRef();
+const overlaySketch: ShallowRef<p5 | undefined> = shallowRef();
 
 const documentStatus: Ref<"none" | "loading" | "loadError" | "ready"> = ref("none");
 const pages: Ref<{
@@ -103,26 +103,8 @@ function draw() {
 
   s.clear();
 
-  // update the cursor
-  if (s.mouseIsPressed) {
-    s.cursor("grabbing");
-  } else {
-    s.cursor("grab");
-  }
-
   // check which pages are visible on screen.
   const pageRange = transform.getVisiblePageRange(s.width, pages.value.length);
-
-  // invoke before draw hooks
-  transform.pushViewportTransform(s);
-  emit("beforeDraw", { s, pageRange, transform });
-  s.pop();
-
-  for (let p = pageRange[0]; p < pageRange[1]; p++) {
-    transform.pushPageTransform(s, p);
-    emit("beforePageDraw", { s, p, transform });
-    s.pop();
-  }
 
   // draw pages
   for (let p = pageRange[0]; p < pageRange[1]; p++) {
@@ -143,35 +125,46 @@ function draw() {
 
     s.pop();
   }
+}
 
-  // invoke after draw hooks
-  for (let p = pageRange[0]; p < pageRange[1]; p++) {
-    transform.pushPageTransform(s, p);
-    emit("afterPageDraw", { s, p, transform });
-    s.pop();
+function setupOverlay() {
+  const s = overlaySketch.value!;
+
+  s.noLoop();
+  handleResize();
+
+  emit("setup", { s });
+}
+
+function drawOverlay() {
+  const s = overlaySketch.value!;
+
+  s.clear();
+
+  // update the cursor
+  if (s.mouseIsPressed) {
+    s.cursor("grabbing");
+  } else {
+    s.cursor("grab");
   }
 
-  transform.pushViewportTransform(s);
-  emit("afterDraw", { s, pageRange, transform });
-  s.pop();
+  // check which pages are visible on screen.
+  const pageRange = transform.getVisiblePageRange(s.width, pages.value.length);
+
+  // invoke overlay draw hook for each visible page
+  for (let p = pageRange[0]; p < pageRange[1]; p++) {
+    transform.pushPageTransform(s, p);
+    emit("drawPageOverlay", { s, p, transform });
+    s.pop();
+  }
 }
 
 function mousePressed() {
-  const s = sketch.value!;
-  emit("mousePressed", { s, transform });
-  s.redraw(); // redraw required to update the cursor
+  overlaySketch.value?.cursor("grabbing");
 }
 
 function mouseReleased() {
-  const s = sketch.value!;
-  emit("mouseReleased", { s, transform });
-  s.redraw(); // redraw required to update the cursor
-}
-
-function mouseMoved() {
-  const s = sketch.value!;
-  emit("mouseMoved", { s, transform });
-  // redraw might be requested by the parent, but is not strictly required
+  overlaySketch.value?.cursor("grab");
 }
 
 function mouseDragged() {
@@ -180,8 +173,8 @@ function mouseDragged() {
   transform.pan.x += s.movedX;
   transform.pan.y += s.movedY;
 
-  emit("mouseDragged", { s, transform });
   s.redraw();
+  overlaySketch.value?.redraw();
 }
 
 function mouseWheel(event: WheelEvent) {
@@ -191,16 +184,16 @@ function mouseWheel(event: WheelEvent) {
   transform.setZoom(newZoom, { x: s.mouseX, y: s.mouseY });
 
   sketch.value?.redraw();
+  overlaySketch.value?.redraw();
 }
 
 function handleResize() {
-  if (!sketch.value || !container.value) {
+  if (!container.value || !sketch.value || !overlaySketch.value) {
     return;
   }
 
-  const s = sketch.value;
-
-  s.resizeCanvas(container.value.clientWidth, container.value.clientHeight);
+  sketch.value.resizeCanvas(container.value.clientWidth, container.value.clientHeight);
+  overlaySketch.value.resizeCanvas(container.value.clientWidth, container.value.clientHeight);
 }
 
 onMounted(() => {
@@ -209,9 +202,15 @@ onMounted(() => {
     sketch.value = s;
     s.setup = setup;
     s.draw = draw;
+  }, container.value);
+
+  // create overlay instance
+  overlayInstance.value = new p5((s) => {
+    overlaySketch.value = s;
+    s.setup = setupOverlay;
+    s.draw = drawOverlay;
     s.mouseReleased = mouseReleased;
     s.mousePressed = mousePressed;
-    s.mouseMoved = mouseMoved;
     s.mouseDragged = mouseDragged;
     s.mouseWheel = mouseWheel;
   }, container.value);
@@ -224,18 +223,26 @@ onMounted(() => {
   updateReactiveState();
 });
 onBeforeUnmount(() => {
+  overlayInstance.value?.remove();
   p5Instance.value?.remove();
   resizeObserver.value?.unobserve(container.value!);
 });
 
 defineExpose({
-  "redraw": () => sketch.value?.redraw(),
+  "redraw": () => overlaySketch.value?.redraw(),
 });
 </script>
 
 <template>
   <div
     ref="container"
-    class="overflow-hidden"
+    class="pdf-canvas-container relative overflow-hidden"
   />
 </template>
+
+<style scoped>
+.pdf-canvas-container > * {
+  position: absolute;
+  inset: 0;
+}
+</style>
