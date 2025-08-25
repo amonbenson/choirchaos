@@ -218,8 +218,20 @@ function handleResize() {
     return;
   }
 
-  sketch.value.resizeCanvas(container.value.clientWidth, container.value.clientHeight);
-  overlaySketch.value.resizeCanvas(container.value.clientWidth, container.value.clientHeight);
+  const pw = sketch.value.width;
+  const ph = sketch.value.height;
+  const w = container.value.clientWidth;
+  const h = container.value.clientHeight;
+
+  // update size
+  sketch.value.resizeCanvas(w, h);
+  overlaySketch.value.resizeCanvas(w, h);
+
+  // keep pages in center
+  if (pw > 100 && ph > 100 && w > 100 && h > 100) {
+    transform.pan.x += (w - pw) / 2;
+    transform.pan.y += (h - ph) / 2;
+  }
 }
 
 onMounted(() => {
