@@ -10,15 +10,14 @@ export type PdfPageStatus = "none" | "loading" | "loadError" | "rendering" | "re
 export type ImageDataUrl = string;
 
 type PdfPage = {
-  // proxy: pdfjsLib.PDFPageProxy;
   canvas: HTMLCanvasElement;
-  imageData: ImageDataUrl;
+  canvasLow: HTMLCanvasElement;
 }
 
 type PdfDocument = {
   proxy: pdfjsLib.PDFDocumentProxy;
   numPages: number;
-  pages: JobCache<PdfPage, number, [PdfDocument, number, number]>;
+  pages: JobCache<PdfPage, number, [PdfDocument, number]>;
 };
 
 export class PdfRenderer extends EventEmitter {
@@ -41,7 +40,7 @@ export class PdfRenderer extends EventEmitter {
     const proxy = await task.promise;
 
     // setup page cache with callback forwarding
-    const pages: JobCache<PdfPage, number, [PdfDocument, number, number]> = new JobCache();
+    const pages: JobCache<PdfPage, number, [PdfDocument, number]> = new JobCache();
     pages.on("run", page => this.emit("statusChanged", "rendering", url, page));
     pages.on("success", page => this.emit("statusChanged", "ready", url, page));
     pages.on("error", page => this.emit("statusChanged", "renderError", url, page));
@@ -55,20 +54,26 @@ export class PdfRenderer extends EventEmitter {
     };
   }
 
-  private async renderPage(doc: PdfDocument, page: number, scale: number): Promise<PdfPage> {
+  private async renderPage(doc: PdfDocument, page: number): Promise<PdfPage> {
     console.log("PDF: start rendering page:", page);
 
     // get the page and viewport (note that page must be 1-indexed)
     const pageProxy = await doc.proxy.getPage(page + 1);
-    const viewport = pageProxy.getViewport({ scale });
+    const viewport = pageProxy.getViewport({ scale: 4.0 });
+    const viewportLow = pageProxy.getViewport({ scale: 0.5 });
 
-    // setup a canvas
+    // setup canvases
     const canvas = document.createElement("canvas");
     canvas.width = viewport.width;
     canvas.height = viewport.height;
 
+    const canvasLow = document.createElement("canvas");
+    canvasLow.width = viewportLow.width;
+    canvasLow.height = viewportLow.height;
+
     const canvasContext = canvas.getContext("2d");
-    if (!canvasContext) {
+    const canvasContextLow = canvasLow.getContext("2d");
+    if (!canvasContext || !canvasContextLow) {
       throw new Error("Failed to get canvas context");
     }
 
@@ -80,8 +85,13 @@ export class PdfRenderer extends EventEmitter {
     });
     await task.promise;
 
-    // convert the page to a data url
-    const imageData = canvas.toDataURL();
+    // render a lower version for mipmapping (when zooming out)
+    const taskLow = pageProxy.render({
+      canvasContext: canvasContextLow,
+      canvas: canvasLow,
+      viewport: viewportLow,
+    });
+    await taskLow.promise;
 
     // free page resources
     pageProxy.cleanup();
@@ -90,7 +100,7 @@ export class PdfRenderer extends EventEmitter {
 
     return {
       canvas,
-      imageData,
+      canvasLow,
     };
   }
 
@@ -99,10 +109,10 @@ export class PdfRenderer extends EventEmitter {
     await this.docs.get(url, (...params) => this.loadDocument(...params), url);
   }
 
-  public async render(url: string, page: number, scale: number = 2.0): Promise<PdfPage> {
+  public async render(url: string, page: number): Promise<PdfPage> {
     // resolve the document and the page
     const doc = await this.docs.get(url, (...params) => this.loadDocument(...params), url);
-    return await doc.pages.get(page, (...params) => this.renderPage(...params), doc, page, scale);
+    return await doc.pages.get(page, (...params) => this.renderPage(...params), doc, page);
   }
 
   public getNumPages(url: string): number | undefined {

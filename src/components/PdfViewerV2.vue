@@ -5,8 +5,6 @@ import { usePdfRendererStore } from "@/stores/pdfRenderer";
 import type { PdfPageStatus } from "@/core/pdf/pdfRenderer";
 import PageTransform from "@/core/pdf/pageTransform";
 
-const PAGE_GAP = 0.02;
-
 const pdfRendererStore = usePdfRendererStore();
 
 const props = defineProps<{
@@ -35,6 +33,7 @@ const documentStatus: Ref<"none" | "loading" | "loadError" | "ready"> = ref("non
 const pages: Ref<{
   status: "none" | "rendering" | "renderError" | "ready",
   canvas?: HTMLCanvasElement,
+  canvasLow?: HTMLCanvasElement,
 }[]> = ref([]);
 
 const transform: PageTransform = new PageTransform({ x: 100, y: 100 }, 750);
@@ -60,6 +59,7 @@ function updateReactiveState() {
     return {
       status,
       canvas: pdfPage?.canvas,
+      canvasLow: pdfPage?.canvasLow,
     };
   });
 }
@@ -81,7 +81,7 @@ watch(() => props.url, async () => {
   }
 });
 
-pdfRendererStore.onPageStatusUpdate((status: PdfPageStatus, url: string, page: number) => {
+pdfRendererStore.onPageStatusUpdate((status: PdfPageStatus, url: string, _page: number) => {
   // update reactive statue
   if (url === props.url) {
     updateReactiveState();
@@ -129,8 +129,12 @@ function draw() {
     transform.pushPageTransform(s, p);
 
     const page = pages.value[p];
-    if (page.status === "ready" && page.canvas) {
-      s.drawingContext.drawImage(page.canvas, 0, 0, 1, 1);
+    if (page.status === "ready") {
+      if (pageRange[1] - pageRange[0] < 7) {
+        s.drawingContext.drawImage(page.canvas, 0, 0, 1, 1);
+      } else {
+        s.drawingContext.drawImage(page.canvasLow, 0, 0, 1, 1);
+      }
     } else {
       s.fill(255);
       s.noStroke();
@@ -154,19 +158,19 @@ function draw() {
 
 function mousePressed() {
   const s = sketch.value!;
-  emit("mousePressed", { s });
+  emit("mousePressed", { s, transform });
   s.redraw(); // redraw required to update the cursor
 }
 
 function mouseReleased() {
   const s = sketch.value!;
-  emit("mouseReleased", { s });
+  emit("mouseReleased", { s, transform });
   s.redraw(); // redraw required to update the cursor
 }
 
 function mouseMoved() {
   const s = sketch.value!;
-  emit("mouseMoved", { s });
+  emit("mouseMoved", { s, transform });
   // redraw might be requested by the parent, but is not strictly required
 }
 
@@ -176,7 +180,7 @@ function mouseDragged() {
   transform.pan.x += s.movedX;
   transform.pan.y += s.movedY;
 
-  emit("mouseDragged", { s });
+  emit("mouseDragged", { s, transform });
   s.redraw();
 }
 
