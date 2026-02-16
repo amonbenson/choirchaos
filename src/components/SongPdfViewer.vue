@@ -48,7 +48,7 @@ watch(() => player.position, () => {
   pdfViewer.value?.redrawOverlay();
 });
 
-watch(playingMeasure, () => {
+watch(playingMeasure, (current, previous) => {
   // Skip if the measure has no associated value with it
   if (!(pdfViewer.value && playingMeasure.value?.layout)) {
     return;
@@ -63,8 +63,11 @@ watch(playingMeasure, () => {
   };
 
   // If the measure is out of view, move to its location
-  if (!pdfViewer.value.isLocationVisible(pc)) {
-    pdfViewer.value.moveToLocation(pc);
+  // if (!pdfViewer.value.isLocationVisible(pc)) {
+  //   pdfViewer.value.moveToLocation(pc);
+  // }
+  if (current?.layout && current.layout.page !== previous?.layout?.page) {
+    pdfViewer.value.moveToPage(current.layout.page);
   }
 });
 

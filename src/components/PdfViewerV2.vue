@@ -304,13 +304,34 @@ function isLocationVisible(pc: PageCoordinate): boolean {
   return transform.contains(pc, overlaySketch.value.width, overlaySketch.value.height);
 }
 
-function moveToLocation(pc: PageCoordinate, offsetX: number = 0.3, offsetY: number = 0.3) {
+function moveToPage(page: number) {
   const s = overlaySketch.value;
   if (!s) {
     return;
   }
 
-  const vc = transform.pageToViewport(pc);
+  // A page is Math.SQRT1_2 wide and 1 tall in viewport units.
+  // Fit the page on screen with some padding, then center it.
+  const padding = 0.95;
+  const zoomByWidth = s.width / Math.SQRT1_2 * padding;
+  const zoomByHeight = s.height * padding;
+  transform.zoom = Math.min(zoomByWidth, zoomByHeight);
+
+  // Center the page on screen
+  const pageCenter = transform.pageToViewport({ p: page, x: 0.5, y: 0.5 });
+  transform.pan.x = -pageCenter.x * transform.zoom + s.width / 2;
+  transform.pan.y = -pageCenter.y * transform.zoom + s.height / 2;
+
+  redrawAll();
+}
+
+function moveToLocation(target: PageCoordinate, offsetX: number = 0.3, offsetY: number = 0.3) {
+  const s = overlaySketch.value;
+  if (!s) {
+    return;
+  }
+
+  const vc = transform.pageToViewport(target);
   transform.pan.x = -vc.x * transform.zoom + s.width * offsetX;
   transform.pan.y = -vc.y * transform.zoom + s.height * offsetY;
 
@@ -323,6 +344,7 @@ defineExpose({
   "redrawOverlay": redrawOverlay,
   "redrawAll": () => redrawAll,
   "isLocationVisible": isLocationVisible,
+  "moveToPage": moveToPage,
   "moveToLocation": moveToLocation,
 });
 </script>
