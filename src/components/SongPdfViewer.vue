@@ -7,6 +7,7 @@ import type PageTransform from "@/core/pdf/pageTransform";
 import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import type Measure from "@/core/show/measure";
 import { usePlayerStore } from "@/stores/player";
+import type { PageCoordinate } from "@/core/pdf/pageTransform";
 
 const player = usePlayerStore();
 
@@ -36,10 +37,35 @@ const measuresByPage: ComputedRef<{ [key: number]: Measure[] }> = computed(() =>
   return groups;
 });
 
+const playingMeasure: Ref<Measure | undefined> = ref();
 const hoverMeasure: Ref<Measure | undefined> = ref();
 
 watch(() => player.position, () => {
-  pdfViewer.value?.redraw();
+  // Update the currently playing measure
+  playingMeasure.value = props.song?.findMeasure(player.currentMeasure[0]);
+
+  // Update the pdf viewer
+  pdfViewer.value?.redrawOverlay();
+});
+
+watch(playingMeasure, () => {
+  // Skip if the measure has no associated value with it
+  if (!(pdfViewer.value && playingMeasure.value?.layout)) {
+    return;
+  }
+
+  // Move to the current measure position
+  const layout = playingMeasure.value.layout;
+  const pc: PageCoordinate = {
+    p: layout.page,
+    x: layout.x,
+    y: layout.y,
+  };
+
+  // If the measure is out of view, move to its location
+  if (!pdfViewer.value.isLocationVisible(pc)) {
+    pdfViewer.value.moveToLocation(pc);
+  }
 });
 
 function mousePressed({ s, transform }: { s: p5, transform: PageTransform }) {
@@ -66,7 +92,7 @@ function mouseMoved({ s, transform }: { s: p5, transform: PageTransform }) {
   // set new hover measure and redraw on change
   if (newHoverMeasure !== hoverMeasure.value) {
     hoverMeasure.value = newHoverMeasure;
-    pdfViewer.value?.redraw();
+    pdfViewer.value?.redrawOverlay();
   }
 }
 
@@ -107,13 +133,12 @@ function drawPageOverlay({ s, p, transform }: { s: p5, p: number, transform: Pag
     }
 
     // draw playbar
-    const currentMeasure = props.song.findMeasure(player.currentMeasure[0]);
-    if (currentMeasure?.value === measure.value) {
+    if (playingMeasure?.value?.value === measure.value) {
       let measureProgress = 0;
 
-      const nextMeasure = props.song.measures.items()[props.song.measures.items().indexOf(currentMeasure) + 1];
+      const nextMeasure = props.song.measures.items()[props.song.measures.items().indexOf(playingMeasure.value) + 1];
       if (nextMeasure) {
-        const t0 = currentMeasure.$beatTicks[0];
+        const t0 = playingMeasure.value.$beatTicks[0];
         const t1 = nextMeasure.$beatTicks[0];
         measureProgress = Math.max(0, Math.min(1, (player.position - t0) / (t1 - t0)));
       }

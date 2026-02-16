@@ -38,27 +38,43 @@ export default class PageTransform {
     };
   }
 
-  public pageToScreen(pc: PageCoordinate, scale: boolean = false): ScreenCoordinate {
+  public pageToViewport(pc: PageCoordinate): ViewportCoordinate {
     const pViewport = pc.p * (Math.SQRT1_2 + PageTransform.PAGE_GAP);
-
-    const vc = {
-      x: pc.x * Math.SQRT1_2 + (scale ? 0 : pViewport),
+    return {
+      x: pc.x * Math.SQRT1_2 + pViewport,
       y: pc.y,
     };
+  }
+
+  public viewportToPage(vc: ViewportCoordinate): PageCoordinate {
+    const p = Math.floor(vc.x / (Math.SQRT1_2 + PageTransform.PAGE_GAP));
+    const pViewport = p * (Math.SQRT1_2 + PageTransform.PAGE_GAP);
+    return {
+      p,
+      x: (vc.x - pViewport) / Math.SQRT1_2,
+      y: vc.y,
+    };
+  }
+
+  public pageToScreen(pc: PageCoordinate, scale: boolean = false): ScreenCoordinate {
+    const vc = this.pageToViewport(pc);
+
+    if (scale) {
+      vc.x -= pc.p * (Math.SQRT1_2 + PageTransform.PAGE_GAP);
+    }
+
     return this.viewportToScreen(vc, scale);
   }
 
   public screenToPage(sc: ScreenCoordinate, scale: boolean = false): PageCoordinate {
     const vc = this.screenToViewport(sc, scale);
+    const pc = this.viewportToPage(vc);
 
-    const p = Math.floor(vc.x / (Math.SQRT1_2 + PageTransform.PAGE_GAP));
-    const pViewport = p * (Math.SQRT1_2 + PageTransform.PAGE_GAP);
+    if (scale) {
+      pc.x += pc.p * (Math.SQRT1_2 + PageTransform.PAGE_GAP) / Math.SQRT1_2;
+    }
 
-    return {
-      p,
-      x: (vc.x - (scale ? 0 : pViewport)) / Math.SQRT1_2,
-      y: vc.y,
-    };
+    return pc;
   }
 
   public setZoom(zoom: number, origin?: ScreenCoordinate) {
@@ -92,10 +108,16 @@ export default class PageTransform {
     s.scale(scale.x, scale.y);
   }
 
-  public getVisiblePageRange(screenWidth: number, numPages: number) {
+  public getVisiblePageRange(screenWidth: number, numPages: number): [number, number] {
     const left = this.screenToPage({ x: 0, y: 0 });
     const right = this.screenToPage({ x: screenWidth, y: 0 });
 
     return [Math.max(0, left.p), Math.min(numPages, right.p + 1)];
+  }
+
+  public contains(pc: PageCoordinate, screenWidth: number, screenHeight: number) {
+    const sc = this.pageToScreen(pc);
+
+    return sc.x >= 0 && sc.x < screenWidth && sc.y >= 0 && sc.y < screenHeight;
   }
 }

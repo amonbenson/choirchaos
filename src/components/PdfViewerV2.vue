@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref, type Shal
 import p5 from "p5";
 import { usePdfRendererStore } from "@/stores/pdfRenderer";
 import type { PdfPageStatus } from "@/core/pdf/pdfRenderer";
-import PageTransform from "@/core/pdf/pageTransform";
+import PageTransform, { type PageCoordinate } from "@/core/pdf/pageTransform";
 
 const pdfRendererStore = usePdfRendererStore();
 
@@ -101,7 +101,7 @@ pdfRendererStore.onPageStatusUpdate((status: PdfPageStatus, url: string, _page: 
   // update reactive statue
   if (url === props.url) {
     updateReactiveState();
-    sketch.value?.redraw();
+    redrawPages();
   }
 });
 
@@ -141,6 +141,19 @@ function draw() {
 
     s.pop();
   }
+}
+
+function redrawPages() {
+  sketch.value?.redraw();
+}
+
+function redrawOverlay() {
+  overlaySketch.value?.redraw();
+}
+
+function redrawAll() {
+  sketch.value?.redraw();
+  overlaySketch.value?.redraw();
 }
 
 function setupOverlay() {
@@ -203,8 +216,7 @@ function mouseDragged(event: MouseEvent) {
   transform.pan.y += s.movedY;
 
   emit("mouseDragged", { s: overlaySketch.value, transform });
-  s.redraw();
-  overlaySketch.value?.redraw();
+  redrawAll();
 }
 
 function mouseWheel(event: WheelEvent) {
@@ -227,8 +239,7 @@ function mouseWheel(event: WheelEvent) {
 
 
   // emit("mouseWheel", { s: overlaySketch.value, transform });
-  s.redraw();
-  overlaySketch.value?.redraw();
+  redrawAll();
 }
 
 function handleResize() {
@@ -285,8 +296,34 @@ onBeforeUnmount(() => {
   resizeObserver.value?.unobserve(container.value!);
 });
 
+function isLocationVisible(pc: PageCoordinate): boolean {
+  if (!overlaySketch.value) {
+    return false;
+  }
+
+  return transform.contains(pc, overlaySketch.value.width, overlaySketch.value.height);
+}
+
+function moveToLocation(pc: PageCoordinate, offsetX: number = 0.3, offsetY: number = 0.3) {
+  const s = overlaySketch.value;
+  if (!s) {
+    return;
+  }
+
+  const vc = transform.pageToViewport(pc);
+  transform.pan.x = -vc.x * transform.zoom + s.width * offsetX;
+  transform.pan.y = -vc.y * transform.zoom + s.height * offsetY;
+
+  // Update both sketches
+  redrawAll();
+}
+
 defineExpose({
-  "redraw": () => overlaySketch.value?.redraw(),
+  "redrawPages": redrawPages,
+  "redrawOverlay": redrawOverlay,
+  "redrawAll": () => redrawAll,
+  "isLocationVisible": isLocationVisible,
+  "moveToLocation": moveToLocation,
 });
 </script>
 
