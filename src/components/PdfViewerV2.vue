@@ -191,8 +191,13 @@ function mouseMoved() {
   emit("mouseMoved", { s: overlaySketch.value, transform });
 }
 
-function mouseDragged() {
+function mouseDragged(event: MouseEvent) {
   const s = sketch.value!;
+
+  // Skip if the scroll event wasn't targeted at our canvas
+  if (event.target !== s.canvas && event.target !== overlaySketch.value!.canvas) {
+    return;
+  }
 
   transform.pan.x += s.movedX;
   transform.pan.y += s.movedY;
@@ -205,11 +210,24 @@ function mouseDragged() {
 function mouseWheel(event: WheelEvent) {
   const s = sketch.value!;
 
-  const newZoom = transform.zoom * Math.exp(-0.001 * event.deltaY);
-  transform.setZoom(newZoom, { x: s.mouseX, y: s.mouseY });
+  // Skip if the scroll event wasn't targeted at our canvas
+  if (event.target !== s.canvas && event.target !== overlaySketch.value!.canvas) {
+    return;
+  }
+
+  if (event.metaKey) {
+    // Zoom if meta key is also pressed
+    const newZoom = transform.zoom * Math.exp(-0.005 * event.deltaY);
+    transform.setZoom(newZoom, { x: s.mouseX, y: s.mouseY });
+  } else {
+    // Move the canvas
+    transform.pan.x -= event.deltaX;
+    transform.pan.y -= event.deltaY;
+  }
+
 
   // emit("mouseWheel", { s: overlaySketch.value, transform });
-  sketch.value?.redraw();
+  s.redraw();
   overlaySketch.value?.redraw();
 }
 
