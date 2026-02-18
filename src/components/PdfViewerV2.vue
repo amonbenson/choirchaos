@@ -5,6 +5,8 @@ import { usePdfRendererStore } from "@/stores/pdfRenderer";
 import type { PdfPageStatus } from "@/core/pdf/pdfRenderer";
 import PageTransform, { type PageCoordinate } from "@/core/pdf/pageTransform";
 
+type P5Sketch = p5 & { canvas?: HTMLCanvasElement };
+
 const pdfRendererStore = usePdfRendererStore();
 
 const props = defineProps<{
@@ -24,11 +26,11 @@ const emit = defineEmits([
 const container: Ref<HTMLDivElement | undefined> = ref();
 
 const p5Instance: ShallowRef<p5 | undefined> = shallowRef();
-const sketch: ShallowRef<p5 | undefined> = shallowRef();
+const sketch: ShallowRef<P5Sketch | undefined> = shallowRef();
 const resizeObserver: ShallowRef<ResizeObserver | undefined> = shallowRef();
 
 const overlayInstance: ShallowRef<p5 | undefined> = shallowRef();
-const overlaySketch: ShallowRef<p5 | undefined> = shallowRef();
+const overlaySketch: ShallowRef<P5Sketch | undefined> = shallowRef();
 
 const documentStatus: Ref<"none" | "loading" | "loadError" | "ready"> = ref("none");
 const pages: Ref<{

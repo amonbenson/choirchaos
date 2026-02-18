@@ -4,10 +4,9 @@ import PdfViewerV2 from "./PdfViewerV2.vue";
 import { resolveUrl } from "@/core/utils/file";
 import type p5 from "p5";
 import type PageTransform from "@/core/pdf/pageTransform";
-import { computed, ref, toRaw, watch, type ComputedRef, type Ref } from "vue";
+import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import type Measure from "@/core/show/measure";
 import { usePlayerStore } from "@/stores/player";
-import type { PageCoordinate } from "@/core/pdf/pageTransform";
 
 const player = usePlayerStore();
 
@@ -36,6 +35,8 @@ const measuresByPage: ComputedRef<{ [key: number]: Measure[] }> = computed(() =>
   }
   return groups;
 });
+
+const highlightedTracks: ComputedRef<Set<number>> = computed(() => new Set(props.song?.tracks.map(t => t.mixer.highlight) ?? []));
 
 const currentPlayingMeasure: Ref<Measure | undefined> = ref();
 const currentWrittenMeasure: Ref<Measure | undefined> = ref();
@@ -84,7 +85,12 @@ watch(currentWrittenMeasure, (current, previous) => {
   // }
 });
 
-function mousePressed({ s, transform }: { s: p5, transform: PageTransform }) {
+// Redraw when track highlighting changes
+watch(highlightedTracks, () => {
+  pdfViewer.value?.redrawOverlay();
+});
+
+function mousePressed(_: { s: p5, transform: PageTransform }) {
   // move to selected measure
   if (hoverMeasure.value) {
     player.setMeasure(hoverMeasure.value.value);
@@ -112,7 +118,18 @@ function mouseMoved({ s, transform }: { s: p5, transform: PageTransform }) {
   }
 }
 
-function drawPageOverlay({ s, p, transform }: { s: p5, p: number, transform: PageTransform }) {
+function isMeasureHighlighted(measure: Measure) {
+  // check if any track playing in the given measure is highlighted
+  for (const trackIndex of measure.$activeTrackIndices) {
+    if (props.song?.tracks[trackIndex].mixer.highlight) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function drawPageOverlay({ s, p }: { s: p5, p: number, transform: PageTransform }) {
   if (!props.song) {
     return;
   }
@@ -140,11 +157,16 @@ function drawPageOverlay({ s, p, transform }: { s: p5, p: number, transform: Pag
     s.scale(measure.layout.width, measure.layout.height);
 
     const lineWidth = 0.005 / measure.layout.width;
-    const lineHeight = 0.005 / measure.layout.height;
 
     // highlight hovering measure
     if (measure === hoverMeasure.value) {
       s.fill("#10b98122");
+      s.rect(0, 0, 1, 1);
+    }
+
+    // highlight marked measure
+    if (isMeasureHighlighted(measure)) {
+      s.fill("#74d4ff44");
       s.rect(0, 0, 1, 1);
     }
 
