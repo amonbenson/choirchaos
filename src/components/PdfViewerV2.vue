@@ -37,6 +37,8 @@ const pages: Ref<{
   canvasLow?: HTMLCanvasElement,
 }[]> = ref([]);
 
+const pressInitiatedOnCanvas: Ref<boolean> = ref(false);
+
 const transform: PageTransform = new PageTransform({ x: 100, y: 100 }, 750);
 
 // update cursor immediately
@@ -188,13 +190,24 @@ function drawOverlay() {
   }
 }
 
-function mousePressed() {
+function isCanvasTarget(event: MouseEvent | WheelEvent): boolean {
+  return event.target === sketch.value?.canvas || event.target === overlaySketch.value?.canvas;
+}
+
+function mousePressed(event: MouseEvent) {
+  // Skip if the mouse event wasn't targeted at our canvas
+  if (!isCanvasTarget(event)) {
+    return;
+  }
+
+  pressInitiatedOnCanvas.value = true;
   overlaySketch.value?.cursor(props.cursor ?? "grabbing");
 
   emit("mousePressed", { s: overlaySketch.value, transform });
 }
 
 function mouseReleased() {
+  pressInitiatedOnCanvas.value = false;
   overlaySketch.value?.cursor(props.cursor ?? "grab");
 
   emit("mouseReleased", { s: overlaySketch.value, transform });
@@ -207,8 +220,8 @@ function mouseMoved() {
 function mouseDragged(event: MouseEvent) {
   const s = sketch.value!;
 
-  // Skip if the scroll event wasn't targeted at our canvas
-  if (event.target !== s.canvas && event.target !== overlaySketch.value!.canvas) {
+  // Skip if the scroll event wasn't targeted at our canvas or the press wasn't initiated on our canvas
+  if (!isCanvasTarget(event) || !pressInitiatedOnCanvas.value) {
     return;
   }
 
@@ -223,7 +236,7 @@ function mouseWheel(event: WheelEvent) {
   const s = sketch.value!;
 
   // Skip if the scroll event wasn't targeted at our canvas
-  if (event.target !== s.canvas && event.target !== overlaySketch.value!.canvas) {
+  if (!isCanvasTarget(event)) {
     return;
   }
 
@@ -243,7 +256,7 @@ function mouseWheel(event: WheelEvent) {
 }
 
 function handleResize() {
-  if (!container.value || !sketch.value || !overlaySketch.value) {
+  if (!(container.value && sketch.value && sketch.value.canvas && overlaySketch.value)) {
     return;
   }
 

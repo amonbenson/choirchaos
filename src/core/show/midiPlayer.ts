@@ -480,6 +480,8 @@ export default class MidiPlayer extends EventEmitter {
     // Generate a normal array and pass it to the constructor to sort it in one go instead.
 
     // parse the system events
+    let prevMeasure: Measure | undefined = undefined;
+
     const midiJson: MTIMidiJson = jsonRes.data;
     for (const event of midiJson.score.events) {
       const { type, tickcount, value } = event;
@@ -500,6 +502,14 @@ export default class MidiPlayer extends EventEmitter {
             } else {
               // set the beat's tick value
               songMeasure.$beatTicks[value.beat - 1] = tickcount;
+            }
+
+            // store the previous measure's tick length
+            if (songMeasure !== prevMeasure) {
+              if (songMeasure.$beatTicks[0] !== undefined && prevMeasure?.$beatTicks[0] !== undefined) {
+                prevMeasure.$tickLength = songMeasure.$beatTicks[0] - prevMeasure.$beatTicks[0];
+              }
+              prevMeasure = songMeasure;
             }
           } else {
             console.warn(`Midi measure ${value.meas} does not exist in the song data. This will lead to inconsistencies when seeking to that measure.`);

@@ -37,23 +37,33 @@ export default class Song {
     this.tracks.forEach((track, i) => track.mixer.index = i);
   }
 
-  public findMeasure(value: Numbering) {
-    return this.measures.search({ value } as Measure);
+  public findMeasureIndex(value: Numbering, ignoreRepeats: boolean = false) {
+    if (ignoreRepeats && value.includes("-")) {
+      value = value.split("-")[0] + "-1";
+    }
+
+    return this.measures.searchIndex({ value } as Measure);
   }
 
-  public findFollowingMeasure(value: Numbering) {
-    const i = this.measures.searchIndex({ value } as Measure);
-    return this.measures.items()[i + 1] ?? this.measures.last();
+  public findMeasure(value: Numbering, ignoreRepeats: boolean = false) {
+    return this.measures.items()[this.findMeasureIndex(value, ignoreRepeats)];
   }
 
-  public findPreceedingMeasure(value: Numbering) {
-    const i = this.measures.searchIndex({ value } as Measure);
-    return this.measures.items()[i - 1] ?? this.measures.first();
-  }
+  // public findFollowingMeasure(value: Numbering, ignoreRepeats: boolean = false): Measure {
+  //   // TODO: Use more complex logic to handle repeats
+  //   const i = this.findMeasureIndex(value, ignoreRepeats);
+  //   return this.measures.items()[i + 1] ?? this.measures.last();
+  // }
+
+  // public findPreceedingMeasure(value: Numbering, ignoreRepeats: boolean = false): Measure {
+  //   // TODO: Use more complex logic to handle repeats
+  //   const i = this.findMeasureIndex(value, ignoreRepeats);
+  //   return this.measures.items()[i - 1] ?? this.measures.first();
+  // }
 
   public findMeasureByTick(tick: Tick) {
     const index = binarySearch<number, Measure>(this.measures.items(), tick, {
-      comparator: (tick, measure) => tick - measure.$beatTicks[0],
+      comparator: (tick, measure) => tick - (measure.$beatTicks[0] ?? Infinity),
       direction: "backward",
       inclusive: true,
       extend: true,

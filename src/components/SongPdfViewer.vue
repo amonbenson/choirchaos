@@ -4,7 +4,7 @@ import PdfViewerV2 from "./PdfViewerV2.vue";
 import { resolveUrl } from "@/core/utils/file";
 import type p5 from "p5";
 import type PageTransform from "@/core/pdf/pageTransform";
-import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
+import { computed, ref, toRaw, watch, type ComputedRef, type Ref } from "vue";
 import type Measure from "@/core/show/measure";
 import { usePlayerStore } from "@/stores/player";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
@@ -37,38 +37,51 @@ const measuresByPage: ComputedRef<{ [key: number]: Measure[] }> = computed(() =>
   return groups;
 });
 
-const playingMeasure: Ref<Measure | undefined> = ref();
+const currentPlayingMeasure: Ref<Measure | undefined> = ref();
+const currentWrittenMeasure: Ref<Measure | undefined> = ref();
+
 const hoverMeasure: Ref<Measure | undefined> = ref();
 
 watch(() => player.position, () => {
-  // Update the currently playing measure
-  playingMeasure.value = props.song?.findMeasure(player.currentMeasure[0]);
+  // Update the current measures
+  currentPlayingMeasure.value = props.song?.findMeasure(player.currentMeasure[0]);
+  currentWrittenMeasure.value = props.song?.findMeasure(player.currentMeasure[0], true);
 
   // Update the pdf viewer
   pdfViewer.value?.redrawOverlay();
 });
 
-watch(playingMeasure, (current, previous) => {
+// Move to page 0 on song change
+watch(() => props.song, () => {
+  if (props.song) {
+    pdfViewer.value.moveToPage(0);
+  }
+});
+
+// Move to next page on measure change
+watch(currentWrittenMeasure, (current, previous) => {
   // Skip if the measure has no associated value with it
-  if (!(pdfViewer.value && playingMeasure.value?.layout)) {
+  if (!(pdfViewer.value && currentWrittenMeasure.value?.layout)) {
     return;
   }
 
+  // Move to the measure's page
+  if (current?.layout && current.layout.page !== previous?.layout?.page) {
+    pdfViewer.value.moveToPage(current.layout.page);
+  }
+
   // Move to the current measure position
-  const layout = playingMeasure.value.layout;
-  const pc: PageCoordinate = {
-    p: layout.page,
-    x: layout.x,
-    y: layout.y,
-  };
+  // const layout = playingMeasure.value.layout;
+  // const pc: PageCoordinate = {
+  //   p: layout.page,
+  //   x: layout.x,
+  //   y: layout.y,
+  // };
 
   // If the measure is out of view, move to its location
   // if (!pdfViewer.value.isLocationVisible(pc)) {
   //   pdfViewer.value.moveToLocation(pc);
   // }
-  if (current?.layout && current.layout.page !== previous?.layout?.page) {
-    pdfViewer.value.moveToPage(current.layout.page);
-  }
 });
 
 function mousePressed({ s, transform }: { s: p5, transform: PageTransform }) {
@@ -136,15 +149,10 @@ function drawPageOverlay({ s, p, transform }: { s: p5, p: number, transform: Pag
     }
 
     // draw playbar
-    if (playingMeasure?.value?.value === measure.value) {
-      let measureProgress = 0;
-
-      const nextMeasure = props.song.measures.items()[props.song.measures.items().indexOf(playingMeasure.value) + 1];
-      if (nextMeasure) {
-        const t0 = playingMeasure.value.$beatTicks[0];
-        const t1 = nextMeasure.$beatTicks[0];
-        measureProgress = Math.max(0, Math.min(1, (player.position - t0) / (t1 - t0)));
-      }
+    if (currentWrittenMeasure?.value?.value === measure.value && currentPlayingMeasure.value) {
+      const mStart = currentPlayingMeasure.value.$beatTicks[0];
+      const mLength = currentPlayingMeasure.value.$tickLength ?? 960;
+      const measureProgress = Math.max(0, Math.min(1, (player.position - mStart) / mLength));
 
       s.fill("#10b981ff");
       s.rect(measureProgress, 0, lineWidth, 1);

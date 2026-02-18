@@ -68,6 +68,10 @@ export const usePlayerStore = defineStore("player", () => {
     setter: (player, value) => player.playbackTransposition = value,
   });
 
+  function seek(position: number) {
+    globalPlayer.seek(position);
+  }
+
   function setMeasure(value: string) {
     if (!globalPlayer.currentSong) {
       return;
@@ -116,6 +120,7 @@ export const usePlayerStore = defineStore("player", () => {
     pause: () => globalPlayer.pause(),
     stop: () => globalPlayer.stop(),
     exitVamp: () => globalPlayer.exitVamp(),
+    seek,
     setMeasure,
     setBeat,
     onNote,

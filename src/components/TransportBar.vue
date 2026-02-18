@@ -201,6 +201,7 @@ const playbackSpeedPercentage = computed({
           <!-- Vamp -->
           <Button
             class="min-w-24"
+            pt:label:class="whitespace-nowrap"
             :disabled="vampState === 'none'"
             :label="{
               'none': 'Vamp',
@@ -226,7 +227,7 @@ const playbackSpeedPercentage = computed({
     </Toolbar>
 
     <!-- Progress Bar -->
-    <div
+    <!-- <div
       class="absolute left-2 -bottom-0.5 h-1 bg-primary rounded-full shadow-[0_0_0.75rem] shadow-primary/10"
       :class="{
         'hidden': !player.ready,
@@ -235,6 +236,19 @@ const playbackSpeedPercentage = computed({
       :style="{
         width: `calc(${player.position / player.duration * 100}% - 1rem)`
       }"
-    />
+    /> -->
+    <div
+      class="absolute left-2 -bottom-0.5 h-1 w-[calc(100%-1rem)]"
+    >
+      <Slider
+        :model-value="player.position"
+        :min="0"
+        :max="player.duration"
+        class="w-full group"
+        pt:handle:class="scale-50 group-hover:scale-100 active:scale-100 transition-transform"
+        pt:range:class="h-1"
+        @update:model-value="player.seek($event as number)"
+      />
+    </div>
   </div>
 </template>

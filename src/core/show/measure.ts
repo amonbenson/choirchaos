@@ -30,6 +30,7 @@ export default class Measure {
     public beats: number,
     public layout?: MeasureLayout,
     public $beatTicks: number[] = [],
+    public $tickLength?: number,
     public $activeTrackIndices: Set<number> = new Set(),
   ) {}
 
