@@ -2,14 +2,14 @@
 import Toolbar from "primevue/toolbar";
 import Button from "primevue/button";
 import Select from "primevue/select";
-import Popover from "primevue/popover";
 import Slider from "primevue/slider";
 import { usePlayerStore } from "@/stores/player";
 import Song from "@/core/show/song";
 import QuarterNoteSvg from "./svg/QuarterNoteSvg.vue";
-import { computed, ref } from "vue";
+import { computed } from "vue";
 import InputNumber from "primevue/inputnumber";
 import InputText from "primevue/inputtext";
+import PopoverButton from "./PopoverButton.vue";
 
 const props = defineProps<{
   songs?: Song[],
@@ -17,17 +17,11 @@ const props = defineProps<{
 }>();
 
 const songId = defineModel<string>();
+const songIndex = computed(() => props.songs?.findIndex(s => s.id === songId.value) ?? 0);
 
 const player = usePlayerStore();
 
-// popover ui elements
-const measurePopover = ref();
-const beatPopover = ref();
-const transpositionPopover = ref();
-const tempoPopover = ref();
-
 const vampState = computed(() => player.ready && player.currentVamp ? (player.currentVamp.manualExit ? "exiting" : "vamping") : "none");
-const song = computed(() => props.songs?.find(s => s.id === songId.value));
 
 const playbackSpeedPercentage = computed({
   get: () => player.playbackSpeed * 100,
@@ -38,21 +32,43 @@ const playbackSpeedPercentage = computed({
 <template>
   <div class="relative">
     <Toolbar
-      class="relative px-4 grid grid-cols-[auto_auto] lg:grid-cols-[repeat(3,minmax(auto,1fr))]"
+      class="relative px-4 grid grid-cols-[auto_auto] lg:grid-cols-[repeat(3,minmax(auto,1fr))] lg:overflow-x-auto"
       pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-8"
       pt:center="flex justify-center items-center gap-0"
       pt:end="overflow-x-auto lg:overflow-x-visible"
     >
       <template #start>
-        <Select
-          v-model="songId"
-          class="w-full lg:max-w-88 border-none"
-          :options="songs"
-          option-value="id"
-          :option-label="song => `#${song.number} ${song.title}`"
-          :loading="loading"
-          scroll-height="80vh"
-        />
+        <div class="w-full lg:w-90 flex justify-end items-center">
+          <Select
+            v-model="songId"
+            class="flex-1 w-full border-none mr-4 lg:mr-2"
+            :options="songs"
+            option-value="id"
+            :option-label="song => `#${song.number} ${song.title}`"
+            :loading="loading"
+            scroll-height="80vh"
+          />
+          <Button
+            class="flex-none"
+            :disabled="songIndex <= 0"
+            icon="pi pi-arrow-left"
+            severity="secondary"
+            aria-label="Previous Song"
+            rounded
+            text
+            @click="songId = songs?.[songIndex - 1].id"
+          />
+          <Button
+            class="flex-none"
+            :disabled="songIndex >= (songs?.length ?? 0)"
+            icon="pi pi-arrow-right"
+            severity="secondary"
+            aria-label="Next Song"
+            rounded
+            text
+            @click="songId = songs?.[songIndex + 1].id"
+          />
+        </div>
       </template>
 
       <template #center>
@@ -79,116 +95,115 @@ const playbackSpeedPercentage = computed({
         <div class="flex justify-end items-center gap-4 sm:gap-8">
           <!-- Measure -->
           <div class="sm:w-24 max-w-24 flex justify-end items-center gap-1">
-            <Button
-              class="min-w-8"
-              severity="secondary"
+            <PopoverButton
+              button-class="min-w-8"
               :label="player.ready ? player.currentMeasure[0] : '-'"
-              @click="measurePopover.toggle($event)"
-            />
-            <Popover ref="measurePopover">
-              <InputText
-                :model-value="player.currentMeasure[0]"
-                class="w-16"
-                fluid
-                @update:model-value="player.setMeasure($event ?? '')"
-              />
-            </Popover>
+            >
+              <template #default="{ setFocusTarget }">
+                <InputText
+                  :ref="setFocusTarget"
+                  :model-value="player.currentMeasure[0]"
+                  class="w-16"
+                  fluid
+                  @change="player.setMeasure(($event.target as HTMLInputElement).value)"
+                />
+              </template>
+            </PopoverButton>
             .
-            <Button
-              class="min-w-8"
-              severity="secondary"
+            <PopoverButton
+              button-class="min-w-8"
               :label="player.ready ? String(player.currentMeasure[1]) : '-'"
-              @click="beatPopover.toggle($event)"
-            />
-            <Popover ref="beatPopover">
-              <InputNumber
-                :model-value="player.currentMeasure[1] + 1"
-                class="w-16"
-                fluid
-                @update:model-value="player.setBeat($event - 1)"
-              />
-            </Popover>
+            >
+              <template #default="{ setFocusTarget }">
+                <InputNumber
+                  :ref="setFocusTarget"
+                  :model-value="player.currentMeasure[1] + 1"
+                  class="w-16"
+                  fluid
+                  @update:model-value="player.setBeat($event - 1)"
+                />
+              </template>
+            </PopoverButton>
           </div>
 
           <!-- Transposition -->
-          <Button
+          <PopoverButton
             :label="`${player.playbackTransposition > 0 ? '+' : ''}${player.playbackTransposition}&nbsp;HT`"
-            :severity="player.playbackTransposition !== 0 ? 'primary' : 'secondary'"
-            @click="transpositionPopover.toggle($event)"
-          />
-          <Popover
-            ref="transpositionPopover"
-            pt:content:class="flex justify-stretch items-center gap-1"
+            :active="player.playbackTransposition !== 0"
           >
-            <Button
-              icon="pi pi-minus"
-              severity="secondary"
-              size="small"
-              rounded
-              text
-              :disabled="player.playbackTransposition <= -11"
-              @click="player.playbackTransposition--"
-            />
-            <InputNumber
-              v-model="player.playbackTransposition"
-              class="w-20"
-              :min="-11"
-              :max="11"
-              :step="1"
-              :prefix="player.playbackTransposition > 0 ? '+' : ''"
-              suffix=" HT"
-              fluid
-            />
-            <Button
-              icon="pi pi-plus"
-              severity="secondary"
-              size="small"
-              rounded
-              text
-              :disabled="player.playbackTransposition >= 11"
-              @click="player.playbackTransposition++"
-            />
-          </Popover>
+            <template #default="{ setFocusTarget }">
+              <div class="flex justify-stretch items-center gap-1">
+                <Button
+                  icon="pi pi-minus"
+                  severity="secondary"
+                  size="small"
+                  rounded
+                  text
+                  :disabled="player.playbackTransposition <= -11"
+                  @click="player.playbackTransposition--"
+                />
+                <InputNumber
+                  :ref="setFocusTarget"
+                  v-model="player.playbackTransposition"
+                  class="w-20"
+                  :min="-11"
+                  :max="11"
+                  :step="1"
+                  :prefix="player.playbackTransposition > 0 ? '+' : ''"
+                  suffix=" HT"
+                  fluid
+                />
+                <Button
+                  icon="pi pi-plus"
+                  severity="secondary"
+                  size="small"
+                  rounded
+                  text
+                  :disabled="player.playbackTransposition >= 11"
+                  @click="player.playbackTransposition++"
+                />
+              </div>
+            </template>
+          </PopoverButton>
 
           <!-- Tempo -->
-          <Button
-            :severity="Math.round(playbackSpeedPercentage) !== 100 ? 'primary' : 'secondary'"
-            @click="tempoPopover.toggle($event)"
-          >
-            <QuarterNoteSvg class="inline size-6 -mx-1.5 fill-current" />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * player.currentTempo) : "-" }}
-          </Button>
-          <Popover
-            ref="tempoPopover"
-            pt:content:class="flex justify-stretch items-center gap-4"
-          >
-            <Button
-              icon="pi pi-minus"
-              severity="secondary"
-              size="small"
-              rounded
-              text
-              :disabled="playbackSpeedPercentage <= 10"
-              @click="playbackSpeedPercentage--"
-            />
-            <InputNumber
-              v-model="playbackSpeedPercentage"
-              class="w-18"
-              :min="10"
-              :max="300"
-              :step="1"
-              suffix=" %"
-              fluid
-            />
-            <Button
-              icon="pi pi-plus"
-              severity="secondary"
-              size="small"
-              rounded
-              text
-              :disabled="playbackSpeedPercentage >= 300"
-              @click="playbackSpeedPercentage++"
-            />
-          </Popover>
+          <PopoverButton :active="Math.round(playbackSpeedPercentage) !== 100">
+            <template #button>
+              <QuarterNoteSvg class="inline size-6 -mx-1.5 fill-current" />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * player.currentTempo) : "-" }}
+            </template>
+            <template #default="{ setFocusTarget }">
+              <div class="flex justify-stretch items-center gap-4">
+                <Button
+                  icon="pi pi-minus"
+                  severity="secondary"
+                  size="small"
+                  rounded
+                  text
+                  :disabled="playbackSpeedPercentage <= 10"
+                  @click="playbackSpeedPercentage--"
+                />
+                <InputNumber
+                  :ref="setFocusTarget"
+                  v-model="playbackSpeedPercentage"
+                  class="w-18"
+                  :min="10"
+                  :max="300"
+                  :step="1"
+                  suffix=" %"
+                  fluid
+                />
+                <Button
+                  icon="pi pi-plus"
+                  severity="secondary"
+                  size="small"
+                  rounded
+                  text
+                  :disabled="playbackSpeedPercentage >= 300"
+                  @click="playbackSpeedPercentage++"
+                />
+              </div>
+            </template>
+          </PopoverButton>
 
           <!-- Signature -->
           <Button
