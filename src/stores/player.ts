@@ -38,6 +38,10 @@ export const usePlayerStore = defineStore("player", () => {
     initial: globalPlayer.currentVamp,
   });
 
+  const currentSegue = useEvent(globalPlayer, "currentSegueChanged", {
+    initial: globalPlayer.currentSegue,
+  });
+
   const currentMeasure = useEvent(globalPlayer, "currentMeasureChanged", {
     initial: globalPlayer.currentMeasure,
   });
@@ -103,9 +107,9 @@ export const usePlayerStore = defineStore("player", () => {
     globalPlayer.seek(measure?.$beatTicks[value] ?? 0);
   }
 
-  function onEndOfSong(callback: () => void) {
-    globalPlayer.on("endOfSong", callback);
-    onScopeDispose(() => globalPlayer.off("endOfSong", callback));
+  function onSegue(callback: () => void) {
+    globalPlayer.on("segue", callback);
+    onScopeDispose(() => globalPlayer.off("segue", callback));
   }
 
   function onNote(callback: (event: NoteEvent) => void) {
@@ -120,11 +124,14 @@ export const usePlayerStore = defineStore("player", () => {
     pause: () => globalPlayer.pause(),
     stop: () => globalPlayer.stop(),
     exitVamp: () => globalPlayer.exitVamp(),
+    setSegueEnabled: (enabled: boolean) => globalPlayer.setSegueEnabled(enabled),
+    enableSegue: () => globalPlayer.enableSegue(),
+    disableSegue: () => globalPlayer.disableSegue(),
     seek,
     setMeasure,
     setBeat,
     onNote,
-    onEndOfSong,
+    onSegue,
     status,
     loading,
     ready,
@@ -134,6 +141,7 @@ export const usePlayerStore = defineStore("player", () => {
     currentTempo,
     currentTimeSignature,
     currentVamp,
+    currentSegue,
     currentMeasure,
     finalMeasure,
     events,

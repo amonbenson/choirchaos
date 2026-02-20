@@ -29,7 +29,7 @@ const showLoading = ref(true);
 const song: ComputedRef<Song | undefined> = computed(() => show.value?.songs.find(s => s.id === props.songId));
 const songLoading = ref(true);
 
-function selectSong(songId?: string) {
+function selectSong(songId?: string, autoplay: boolean = false) {
   // route to the correct song first
   if (songId && songId !== props.songId) {
     router.replace({
@@ -37,6 +37,9 @@ function selectSong(songId?: string) {
       params: {
         showId: props.showId,
         songId,
+      },
+      query: {
+        ...(autoplay ? { autoplay: "1" } : {}),
       },
     });
   }
@@ -48,6 +51,11 @@ watch([show, song], async () => {
     try {
       songLoading.value = true;
       await player.load(song.value!);
+
+      // Start playing immediately
+      if (route.query.autoplay === "1") {
+        player.play();
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -57,15 +65,19 @@ watch([show, song], async () => {
 });
 
 // handle segue
-// player.onEndOfSong(() => {
-//   if (show.value && song.value?.events.segue) {
-//     const currentIndex = show.value.songs.findIndex(s => s.id === props.songId) ?? -1;
-//     const nextSong = show.value.songs[currentIndex + 1];
-//     if (nextSong) {
-//       selectSong(nextSong.id);
-//     }
-//   }
-// });
+player.onSegue(() => {
+  // Check the current song
+  const currentIndex = show.value?.songs.findIndex(s => s.id === song.value?.id) ?? -1;
+  if (currentIndex === -1) {
+    return;
+  }
+
+  // Select the next song
+  const nextSong = show.value?.songs[currentIndex + 1];
+  if (nextSong) {
+    selectSong(nextSong.id, true);
+  }
+});
 
 // fetch the show data from pocketbase on setup
 async function fetchShow() {

@@ -33,6 +33,10 @@ export type MidiPlayerVampState = MidiPlayerVamp & {
   manualExit: boolean;
 }
 
+export type MidiPlayerSegueState = {
+  enabled: boolean;
+}
+
 export type MidiSystemEvents = {
   measure: MidiEventList<MeasureEvent>;
   tempo: MidiEventList<TempoEvent>;
@@ -75,6 +79,7 @@ export default class MidiPlayer extends EventEmitter {
 
   private _vamps: MidiPlayerVamp[] = [];
   private _currentVamp?: MidiPlayerVampState;
+  private _currentSegue?: MidiPlayerSegueState;
 
   private _audioContext = new AudioContext();
   private _player: any = null;
@@ -174,9 +179,18 @@ export default class MidiPlayer extends EventEmitter {
     return this._currentVamp;
   }
 
+  get currentSegue() {
+    return this._currentSegue;
+  }
+
   private _updateCurrentVamp(value: MidiPlayerVampState | undefined) {
     this._currentVamp = value;
     this.emit("currentVampChanged", this._currentVamp);
+  }
+
+  private _updateCurrentSegue(value: MidiPlayerSegueState | undefined) {
+    this._currentSegue = value;
+    this.emit("currentSegueChanged", this._currentSegue);
   }
 
   get midi_events() {
@@ -295,7 +309,12 @@ export default class MidiPlayer extends EventEmitter {
     // stop when the end is reached
     if (this._position >= this._duration) {
       this.pause();
-      this.emit("endOfSong");
+
+      // emit segue
+      if (this._currentSegue?.enabled) {
+        this.emit("segue");
+      }
+
       return;
     }
 
@@ -448,6 +467,23 @@ export default class MidiPlayer extends EventEmitter {
         manualExit: true,
       });
     }
+  }
+
+  setSegueEnabled(enabled: boolean) {
+    if (this._currentSegue) {
+      this._updateCurrentSegue({
+        ...this._currentSegue,
+        enabled,
+      });
+    }
+  }
+
+  enableSegue() {
+    this.setSegueEnabled(true);
+  }
+
+  disableSegue() {
+    this.setSegueEnabled(false);
   }
 
   async load(song: Song) {
@@ -628,6 +664,10 @@ export default class MidiPlayer extends EventEmitter {
       }
     }
 
+    // store segue info
+    console.log(song.title, song.events.segue);
+    this._updateCurrentSegue(song.events.segue ? { enabled: true } : undefined);
+
     // store additional song-specific settings
     this._currentSong = song;
     this._ppqn = midiJson.score.ppqn;
@@ -638,7 +678,7 @@ export default class MidiPlayer extends EventEmitter {
       this._updateFinalMeasure(finalMeasureEvent.measure);
     }
 
-    // resumt the audio context and create a player
+    // resume the audio context and create a player
     this.resume();
     this._player = new window.WebAudioFontPlayer();
 

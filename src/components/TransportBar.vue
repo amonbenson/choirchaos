@@ -217,10 +217,10 @@ const playbackSpeedPercentage = computed({
           <!-- Segue -->
           <Button
             class="w-24"
-            :disabled="!song?.events.segue"
+            :disabled="player.currentSegue === undefined"
             label="Segue"
-            :severity="song?.events.segue ? 'primary': 'secondary'"
-            @click="player.exitVamp()"
+            :severity="player.currentSegue?.enabled ? 'primary': 'secondary'"
+            @click="player.setSegueEnabled(!player.currentSegue?.enabled)"
           />
         </div>
       </template>
