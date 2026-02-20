@@ -54,7 +54,6 @@ function clearSettings() {
 
 export const useSettingsStore = defineStore(STORE_NAME, () => {
   const settings: Ref<Settings> = ref(loadSettings());
-  console.log(settings.value);
 
   const updateSelectedTab = (tab: UiSettings["selectedTab"]) => {
     settings.value.ui.selectedTab = tab;

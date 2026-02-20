@@ -33,19 +33,15 @@ export class PdfRenderer extends EventEmitter {
   }
 
   private async loadDocument(url: string): Promise<PdfDocument> {
-    console.log("PDF: start loading document:", url);
-
     // load the pdf document
     const task = pdfjsLib.getDocument({ url });
     const proxy = await task.promise;
 
-    // setup page cache with callback forwarding
-    const pages: JobCache<PdfPage, number, [PdfDocument, number]> = new JobCache();
+    // setup page cache with callback forwarding (limit concurrent renders to avoid UI overload)
+    const pages: JobCache<PdfPage, number, [PdfDocument, number]> = new JobCache(3);
     pages.on("run", page => this.emit("statusChanged", "rendering", url, page));
     pages.on("success", page => this.emit("statusChanged", "ready", url, page));
     pages.on("error", page => this.emit("statusChanged", "renderError", url, page));
-
-    console.log("PDF: finished loading document:", url);
 
     return {
       proxy,
@@ -55,8 +51,6 @@ export class PdfRenderer extends EventEmitter {
   }
 
   private async renderPage(doc: PdfDocument, page: number): Promise<PdfPage> {
-    console.log("PDF: start rendering page:", page);
-
     // get the page and viewport (note that page must be 1-indexed)
     const pageProxy = await doc.proxy.getPage(page + 1);
     const viewport = pageProxy.getViewport({ scale: 2.0 });
@@ -96,7 +90,7 @@ export class PdfRenderer extends EventEmitter {
     // free page resources
     pageProxy.cleanup();
 
-    console.log("PDF: finished rendering page:", page);
+    console.log(`Finished rendering page ${page}`);
 
     return {
       canvas,

@@ -67,6 +67,22 @@ class Job<K, P extends any[], T, E> extends EventEmitter {
 
 export default class JobCache<T, K = string, P extends any[] = [K], E = unknown> extends EventEmitter {
   private jobs: Map<K, Job<K, P, T, E>> = new Map();
+  private queue: Job<K, P, T, E>[] = [];
+  private activeCount = 0;
+
+  constructor(private readonly concurrency = Infinity) {
+    super();
+  }
+
+  private startJob(job: Job<K, P, T, E>): void {
+    this.activeCount++;
+    job.run().finally(() => {
+      this.activeCount--;
+      if (this.queue.length > 0) {
+        this.startJob(this.queue.shift()!);
+      }
+    });
+  }
 
   private createJob(key: K, params: P, fn: JobFunction<P, T>): Job<K, P, T, E> {
     const job = new Job<K, P, T, E>(key, params, fn);
@@ -77,8 +93,12 @@ export default class JobCache<T, K = string, P extends any[] = [K], E = unknown>
     job.on("success", () => this.emit("success", key));
     job.on("error", () => this.emit("error", key));
 
-    // run in the background (without await)
-    job.run();
+    // run immediately or queue if at concurrency limit
+    if (this.activeCount < this.concurrency) {
+      this.startJob(job);
+    } else {
+      this.queue.push(job);
+    }
 
     return job;
   }
