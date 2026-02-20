@@ -100,10 +100,22 @@ function mousePressed(_: { s: p5, transform: PageTransform }) {
   }
 }
 
-function mouseMoved({ s, transform }: { s: p5, transform: PageTransform }) {
+function tap({ x, y, transform }: { x: number, y: number, transform: PageTransform }) {
+  const { p, x: px, y: py } = transform.screenToPage({ x, y });
+  for (const measure of (measuresByPage.value[p] ?? [])) {
+    if (!measure.layout) continue;
+    const l = measure.layout;
+    if (px >= l.x && px < l.x + l.width && py >= l.y && py < l.y + l.height) {
+      player.setMeasure(measure.value);
+      break;
+    }
+  }
+}
+
+function mouseMoved({ transform, x: screenX, y: screenY }: { s: p5, transform: PageTransform, x: number, y: number }) {
   // check if we are hovering a measure
   let newHoverMeasure = undefined;
-  const { p, x, y } = transform.screenToPage({ x: s.mouseX, y: s.mouseY });
+  const { p, x, y } = transform.screenToPage({ x: screenX, y: screenY });
   for (const measure of (measuresByPage.value[p] ?? [])) {
     const l = measure.layout!;
 
@@ -196,5 +208,6 @@ function drawPageOverlay({ s, p }: { s: p5, p: number, transform: PageTransform 
     @draw-page-overlay="drawPageOverlay"
     @mouse-pressed="mousePressed"
     @mouse-moved="mouseMoved"
+    @tap="tap"
   />
 </template>
