@@ -36,7 +36,7 @@ const measuresByPage: ComputedRef<{ [key: number]: Measure[] }> = computed(() =>
   return groups;
 });
 
-const highlightedTracks: ComputedRef<Set<number>> = computed(() => new Set(props.song?.tracks.map(t => t.mixer.highlight) ?? []));
+const highlightedTracks: ComputedRef<Set<number>> = computed(() => new Set(props.song?.tracks.flatMap((t, i) => t.mixer.highlight ? [i] : []) ?? []));
 
 const currentPlayingMeasure: Ref<Measure | undefined> = ref();
 const currentWrittenMeasure: Ref<Measure | undefined> = ref();
@@ -52,10 +52,14 @@ watch(() => player.position, () => {
   pdfViewer.value?.redrawOverlay();
 });
 
-// Move to page 0 on song change
+// Move to page 0 and set current measure on song change
 watch(() => props.song, () => {
   if (props.song) {
-    pdfViewer.value.moveToPage(0);
+    pdfViewer.value?.moveToPage(0);
+
+    currentPlayingMeasure.value = props.song?.measures.first();
+    currentWrittenMeasure.value = props.song?.measures.first();
+    setTimeout(() => pdfViewer.value?.redrawOverlay(), 100);
   }
 });
 
