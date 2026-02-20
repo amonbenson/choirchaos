@@ -106,6 +106,13 @@ export class PdfRenderer extends EventEmitter {
   public async render(url: string, page: number): Promise<PdfPage> {
     // resolve the document and the page
     const doc = await this.docs.get(url, (...params) => this.loadDocument(...params), url);
+
+    // Re-emit status events for cache hits so listeners always go through the rendering→ready phase
+    if (doc.pages.getJobStatus(page) === "success") {
+      this.emit("statusChanged", "rendering", url, page);
+      this.emit("statusChanged", "ready", url, page);
+    }
+
     return await doc.pages.get(page, (...params) => this.renderPage(...params), doc, page);
   }
 

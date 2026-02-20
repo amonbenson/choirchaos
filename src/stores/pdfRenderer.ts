@@ -12,7 +12,7 @@ export const usePdfRendererStore = defineStore("pdfRenderer", () => {
 
   return {
     load: (url: string) => globalPdfRenderer.load(url),
-    render: (url: string, page: number, scale: number = 2.0) => globalPdfRenderer.render(url, page, scale),
+    render: (url: string, page: number) => globalPdfRenderer.render(url, page),
     getNumPages: (url: string) => globalPdfRenderer.getNumPages(url),
     getRenderedPage: (url: string, page: number) => globalPdfRenderer.getRenderedPage(url, page),
     getStatus: (url: string, page: number) => globalPdfRenderer.getStatus(url, page),

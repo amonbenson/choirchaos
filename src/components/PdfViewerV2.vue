@@ -89,7 +89,7 @@ watch(() => props.url, async () => {
   // load all pages. The reactive state will change automatically when status update events are fired
   const currentUrl = props.url;
   if (currentUrl) {
-    // laod document
+    // load document
     await pdfRendererStore.load(currentUrl);
     if (currentUrl !== props.url) {
       return; // cancel if url changed in the meantime
@@ -105,7 +105,7 @@ pdfRendererStore.onPageStatusUpdate((status: PdfPageStatus, url: string, _page: 
   // update reactive statue
   if (url === props.url) {
     updateReactiveState();
-    redrawPages();
+    redrawAll();
   }
 });
 
@@ -357,7 +357,7 @@ function moveToLocation(target: PageCoordinate, offsetX: number = 0.3, offsetY: 
 defineExpose({
   "redrawPages": redrawPages,
   "redrawOverlay": redrawOverlay,
-  "redrawAll": () => redrawAll,
+  "redrawAll": redrawAll,
   "isLocationVisible": isLocationVisible,
   "moveToPage": moveToPage,
   "moveToLocation": moveToLocation,
