@@ -59,7 +59,7 @@ watch(() => props.song, () => {
 
     currentPlayingMeasure.value = props.song?.measures.first();
     currentWrittenMeasure.value = props.song?.measures.first();
-    setTimeout(() => pdfViewer.value?.redrawOverlay(), 100);
+    setTimeout(() => pdfViewer.value?.redrawOverlay(), 100);  // TODO: fixed timeout is kind of ugly
   }
 });
 
