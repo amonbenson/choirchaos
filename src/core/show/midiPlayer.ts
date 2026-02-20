@@ -392,6 +392,14 @@ export default class MidiPlayer extends EventEmitter {
     this.pause();
     this.seek(0);
     this._resetAudioClockReference();
+
+    // Reset Vamp iterations, if there is a Vamp on the first bar
+    if (this._currentVamp) {
+      this._updateCurrentVamp({
+        ...this._currentVamp,
+        currentIteration: 0,
+      });
+    }
   }
 
   seek(position: Tick) {
