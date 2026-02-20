@@ -24,7 +24,10 @@ function onShow() {
   const input = el.$el
     ? el.$el.querySelector("input") ?? el.$el
     : el.querySelector?.("input") ?? el;
-  input?.focus();
+
+  // Focus and select all text
+  input?.focus?.();
+  input?.select?.();
 }
 </script>
 
