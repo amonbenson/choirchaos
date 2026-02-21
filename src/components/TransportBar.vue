@@ -47,6 +47,14 @@ function playPause() {
 function forward() {
   songId.value = props.songs?.[songIndex.value + 1].id;
 }
+
+function toggleVamp() {
+  player.exitVamp();
+}
+
+function toggleSegue() {
+  player.setSegueEnabled(!player.currentSegue?.enabled);
+}
 </script>
 
 <template>
@@ -120,7 +128,7 @@ function forward() {
             .
             <PopoverButton
               button-class="min-w-8"
-              :label="player.ready ? String(player.currentMeasure[1]) : '-'"
+              :label="player.ready ? String(player.currentMeasure[1] + 1) : '-'"
             >
               <template #default="{ setFocusTarget }">
                 <InputNumber
@@ -234,7 +242,7 @@ function forward() {
               'exiting': 'Exiting...'
             }[vampState]"
             :severity="vampState === 'vamping' ? 'primary': 'secondary'"
-            @click="player.exitVamp()"
+            @click="toggleVamp()"
           />
 
           <!-- Segue -->
@@ -243,7 +251,7 @@ function forward() {
             :disabled="player.currentSegue === undefined"
             label="Segue"
             :severity="player.currentSegue?.enabled ? 'primary': 'secondary'"
-            @click="player.setSegueEnabled(!player.currentSegue?.enabled)"
+            @click="toggleSegue()"
           />
         </div>
       </template>

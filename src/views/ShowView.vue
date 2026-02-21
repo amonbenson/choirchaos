@@ -11,6 +11,7 @@ import Button from "primevue/button";
 import MarkerPanel from "@/components/MarkerPanel.vue";
 import MixerPanel from "@/components/MixerPanel.vue";
 import SongPdfViewer from "@/components/SongPdfViewer.vue";
+import { useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
 
 const settings = useSettingsStore();
 const player = usePlayerStore();
@@ -28,6 +29,43 @@ const showLoading = ref(true);
 
 const song: ComputedRef<Song | undefined> = computed(() => show.value?.songs.find(s => s.id === props.songId));
 const songLoading = ref(true);
+
+const songs = computed(() => show.value?.songs ?? []);
+const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
+
+useGlobalShortcuts({
+  " ": () => player.playing ? player.pause() : player.play(),
+  "ArrowLeft": () => {
+    if (!player.ready || !song.value) return;
+    const measures = song.value.measures.items();
+    const i = song.value.findMeasureIndex(player.currentMeasure[0]);
+    const prev = measures[i - 1];
+    if (prev) player.seek(prev.$beatTicks[0]);
+  },
+  "ArrowRight": () => {
+    if (!player.ready || !song.value) return;
+    const measures = song.value.measures.items();
+    const i = song.value.findMeasureIndex(player.currentMeasure[0]);
+    const next = measures[i + 1];
+    if (next) player.seek(next.$beatTicks[0]);
+  },
+  "Mod+ArrowLeft": () => {
+    if (!player.ready) return;
+    if (player.position > 0) {
+      player.seek(0);
+    } else {
+      const prev = songs.value[songIndex.value - 1];
+      if (prev) selectSong(prev.id);
+    }
+  },
+  "Mod+ArrowRight": () => {
+    if (!player.ready) return;
+    const next = songs.value[songIndex.value + 1];
+    if (next) selectSong(next.id);
+  },
+  "v": () => player.exitVamp(),
+  "s": () => player.currentSegue !== undefined && player.setSegueEnabled(!player.currentSegue?.enabled),
+});
 
 function selectSong(songId?: string, autoplay: boolean = false) {
   // route to the correct song first

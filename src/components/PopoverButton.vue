@@ -45,6 +45,8 @@ function onShow() {
     ref="popover"
     @show="onShow"
   >
-    <slot :set-focus-target="(el: any) => focusTarget = el" />
+    <div @keydown.enter="popover.hide()">
+      <slot :set-focus-target="(el: any) => focusTarget = el" />
+    </div>
   </Popover>
 </template>
