@@ -27,6 +27,26 @@ const playbackSpeedPercentage = computed({
   get: () => player.playbackSpeed * 100,
   set: (value) => player.playbackSpeed = value / 100,
 });
+
+function rewind() {
+  if (player.position > 0) {
+    player.seek(0);
+  } else {
+    songId.value = props.songs?.[songIndex.value - 1].id;
+  }
+}
+
+function playPause() {
+  if (player.playing) {
+    player.pause();
+  } else {
+    player.play();
+  }
+}
+
+function forward() {
+  songId.value = props.songs?.[songIndex.value + 1].id;
+}
 </script>
 
 <template>
@@ -34,60 +54,48 @@ const playbackSpeedPercentage = computed({
     <Toolbar
       class="relative px-4 grid grid-cols-[auto_auto] lg:grid-cols-[repeat(3,minmax(auto,1fr))] lg:overflow-x-auto"
       pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-8"
-      pt:center="flex justify-center items-center gap-0"
+      pt:center="flex justify-center items-center -space-x-2 sm:space-x-0"
       pt:end="overflow-x-auto lg:overflow-x-visible"
     >
       <template #start>
-        <div class="w-full lg:w-90 flex justify-end items-center">
-          <Select
-            v-model="songId"
-            class="flex-1 w-full border-none mr-4 lg:mr-2"
-            :options="songs"
-            option-value="id"
-            :option-label="song => `#${song.number} ${song.title}`"
-            :loading="loading"
-            scroll-height="80vh"
-          />
-          <Button
-            class="flex-none"
-            :disabled="songIndex <= 0"
-            icon="pi pi-arrow-left"
-            severity="secondary"
-            aria-label="Previous Song"
-            rounded
-            text
-            @click="songId = songs?.[songIndex - 1].id"
-          />
-          <Button
-            class="flex-none"
-            :disabled="songIndex >= (songs?.length ?? 0)"
-            icon="pi pi-arrow-right"
-            severity="secondary"
-            aria-label="Next Song"
-            rounded
-            text
-            @click="songId = songs?.[songIndex + 1].id"
-          />
-        </div>
+        <Select
+          v-model="songId"
+          class="w-full lg:w-88 border-none"
+          :options="songs"
+          option-value="id"
+          :option-label="song => `#${song.number} ${song.title}`"
+          :loading="loading"
+          scroll-height="80vh"
+        />
       </template>
 
       <template #center>
         <Button
           :disabled="!player.ready"
-          :icon="`pi ${player.playing ? 'pi-pause' : 'pi-play'}`"
-          aria-label="Play"
+          :icon="`pi ${player.position > 0 ? 'pi-backward' : 'pi-step-backward'}`"
+          severity="secondary"
+          aria-label="Rewind / Previous Song"
           rounded
           text
-          @click="player.playing ? player.pause() : player.play()"
+          @click="rewind()"
         />
         <Button
           :disabled="!player.ready"
-          icon="pi pi-stop"
-          severity="secondary"
-          aria-label="Stop"
+          :icon="`pi ${player.playing ? 'pi-pause' : 'pi-play'}`"
+          aria-label="Play / Pause"
           rounded
           text
-          @click="player.stop()"
+          @click="playPause()"
+        />
+        <Button
+          class="flex-none"
+          :disabled="songIndex >= (songs?.length ?? 0)"
+          icon="pi pi-step-forward"
+          severity="secondary"
+          aria-label="Next Song"
+          rounded
+          text
+          @click="forward()"
         />
       </template>
 

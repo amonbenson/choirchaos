@@ -73,25 +73,25 @@ watch(currentWrittenMeasure, (current, previous) => {
   if (current?.layout && current.layout.page !== previous?.layout?.page) {
     pdfViewer.value.moveToPage(current.layout.page);
   }
-
-  // Move to the current measure position
-  // const layout = playingMeasure.value.layout;
-  // const pc: PageCoordinate = {
-  //   p: layout.page,
-  //   x: layout.x,
-  //   y: layout.y,
-  // };
-
-  // If the measure is out of view, move to its location
-  // if (!pdfViewer.value.isLocationVisible(pc)) {
-  //   pdfViewer.value.moveToLocation(pc);
-  // }
 });
 
 // Redraw when track highlighting changes
 watch(highlightedTracks, () => {
   pdfViewer.value?.redrawOverlay();
 });
+
+// Returns the measure at the given screen-space coordinates, or undefined if none.
+function findMeasureAt(transform: PageTransform, x: number, y: number): Measure | undefined {
+  const { p, x: px, y: py } = transform.screenToPage({ x, y });
+  for (const measure of (measuresByPage.value[p] ?? [])) {
+    if (!measure.layout) continue;
+    const l = measure.layout;
+    if (px >= l.x && px < l.x + l.width && py >= l.y && py < l.y + l.height) {
+      return measure;
+    }
+  }
+  return undefined;
+}
 
 function mousePressed(_: { s: p5, transform: PageTransform }) {
   // move to selected measure
@@ -101,30 +101,13 @@ function mousePressed(_: { s: p5, transform: PageTransform }) {
 }
 
 function tap({ x, y, transform }: { x: number, y: number, transform: PageTransform }) {
-  const { p, x: px, y: py } = transform.screenToPage({ x, y });
-  for (const measure of (measuresByPage.value[p] ?? [])) {
-    if (!measure.layout) continue;
-    const l = measure.layout;
-    if (px >= l.x && px < l.x + l.width && py >= l.y && py < l.y + l.height) {
-      player.setMeasure(measure.value);
-      break;
-    }
-  }
+  const measure = findMeasureAt(transform, x, y);
+  if (measure) player.setMeasure(measure.value);
 }
 
-function mouseMoved({ transform, x: screenX, y: screenY }: { s: p5, transform: PageTransform, x: number, y: number }) {
+function mouseMoved({ transform, x, y }: { s: p5, transform: PageTransform, x: number, y: number }) {
   // check if we are hovering a measure
-  let newHoverMeasure = undefined;
-  const { p, x, y } = transform.screenToPage({ x: screenX, y: screenY });
-  for (const measure of (measuresByPage.value[p] ?? [])) {
-    const l = measure.layout!;
-
-    // check if in bounds
-    if (x >= l.x && x < l.x + l.width && y >= l.y && y < l.y + l.height) {
-      newHoverMeasure = measure;
-      break;
-    }
-  }
+  const newHoverMeasure = findMeasureAt(transform, x, y);
 
   // set new hover measure and redraw on change
   if (newHoverMeasure !== hoverMeasure.value) {
@@ -133,14 +116,10 @@ function mouseMoved({ transform, x: screenX, y: screenY }: { s: p5, transform: P
   }
 }
 
-function isMeasureHighlighted(measure: Measure) {
-  // check if any track playing in the given measure is highlighted
-  for (const trackIndex of measure.$activeTrackIndices) {
-    if (props.song?.tracks[trackIndex].mixer.highlight) {
-      return true;
-    }
+function isMeasureHighlighted(measure: Measure): boolean {
+  for (const i of measure.$activeTrackIndices) {
+    if (highlightedTracks.value.has(i)) return true;
   }
-
   return false;
 }
 
@@ -158,12 +137,6 @@ function drawPageOverlay({ s, p }: { s: p5, p: number, transform: PageTransform 
   for (const measure of (measuresByPage.value[p] ?? [])) {
     if (!measure.layout) {
       continue;
-    }
-    if (measure.layout.page < p) {
-      continue;
-    }
-    if (measure.layout.page > p) {
-      break; // as measure pages are in ascending order, we can break on the first out-of-range page
     }
 
     // transform to measure space
