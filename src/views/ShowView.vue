@@ -34,38 +34,64 @@ const songs = computed(() => show.value?.songs ?? []);
 const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
 
 useGlobalShortcuts({
-  " ": () => player.playing ? player.pause() : player.play(),
-  "ArrowLeft": () => {
-    if (!player.ready || !song.value) return;
-    const measures = song.value.measures.items();
-    const i = song.value.findMeasureIndex(player.currentMeasure[0]);
-    const prev = measures[i - 1];
-    if (prev) player.seek(prev.$beatTicks[0]);
-  },
-  "ArrowRight": () => {
-    if (!player.ready || !song.value) return;
-    const measures = song.value.measures.items();
-    const i = song.value.findMeasureIndex(player.currentMeasure[0]);
-    const next = measures[i + 1];
-    if (next) player.seek(next.$beatTicks[0]);
-  },
-  "Mod+ArrowLeft": () => {
-    if (!player.ready) return;
-    if (player.position > 0) {
-      player.seek(0);
-    } else {
-      const prev = songs.value[songIndex.value - 1];
-      if (prev) selectSong(prev.id);
-    }
-  },
-  "Mod+ArrowRight": () => {
-    if (!player.ready) return;
-    const next = songs.value[songIndex.value + 1];
-    if (next) selectSong(next.id);
-  },
-  "v": () => player.exitVamp(),
-  "s": () => player.currentSegue !== undefined && player.setSegueEnabled(!player.currentSegue?.enabled),
+  " ": playPause,
+  "ArrowLeft": previousMeasure,
+  "ArrowRight": nextMeasure,
+  "Mod+ArrowLeft": rewind,
+  "Mod+ArrowRight": forward,
+  "v": toggleVamp,
+  "s": toggleSegue,
 });
+
+function playPause() {
+  if (player.playing) {
+    player.pause();
+  } else {
+    player.play();
+  }
+}
+
+function previousMeasure() {
+  if (!player.ready || !song.value) return;
+  const measures = song.value.measures.items();
+  const i = song.value.findMeasureIndex(player.currentMeasure[0]);
+  const prev = measures[i - 1];
+  if (prev) player.seek(prev.$beatTicks[0]);
+}
+
+function nextMeasure() {
+  if (!player.ready || !song.value) return;
+  const measures = song.value.measures.items();
+  const i = song.value.findMeasureIndex(player.currentMeasure[0]);
+  const next = measures[i + 1];
+  if (next) player.seek(next.$beatTicks[0]);
+}
+
+function rewind() {
+  if (!player.ready) return;
+  if (player.position > 0) {
+    player.seek(0);
+  } else {
+    const prev = songs.value[songIndex.value - 1];
+    if (prev) selectSong(prev.id);
+  }
+}
+
+function forward() {
+  if (!player.ready) return;
+  const next = songs.value[songIndex.value + 1];
+  if (next) selectSong(next.id);
+}
+
+function toggleVamp() {
+  player.exitVamp();
+}
+
+function toggleSegue() {
+  if (player.currentSegue !== undefined) {
+    player.setSegueEnabled(!player.currentSegue.enabled);
+  }
+}
 
 function selectSong(songId?: string, autoplay: boolean = false) {
   // route to the correct song first
@@ -181,6 +207,11 @@ fetchShow();
       :songs="show?.songs"
       :loading="showLoading || songLoading"
       @update:model-value="selectSong($event)"
+      @play-pause="playPause"
+      @rewind="rewind"
+      @forward="forward"
+      @vamp-out="toggleVamp"
+      @segue-toggle="toggleSegue"
     />
     <ButtonGroup class="w-full lg:hidden">
       <Button

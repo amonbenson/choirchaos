@@ -2,7 +2,6 @@
 import Show from "@/core/show/show";
 import { resolveUrl } from "@/core/utils/file";
 import Card from "primevue/card";
-import Button from "primevue/button";
 import { onMounted, ref, type Ref } from "vue";
 import { useRouter } from "vue-router";
 

@@ -16,6 +16,14 @@ const props = defineProps<{
   loading?: boolean,
 }>();
 
+const emit = defineEmits<{
+  rewind: [];
+  forward: [];
+  "play-pause": [];
+  "vamp-out": [];
+  "segue-toggle": [];
+}>();
+
 const songId = defineModel<string>();
 const songIndex = computed(() => props.songs?.findIndex(s => s.id === songId.value) ?? 0);
 
@@ -27,34 +35,6 @@ const playbackSpeedPercentage = computed({
   get: () => player.playbackSpeed * 100,
   set: (value) => player.playbackSpeed = value / 100,
 });
-
-function rewind() {
-  if (player.position > 0) {
-    player.seek(0);
-  } else {
-    songId.value = props.songs?.[songIndex.value - 1].id;
-  }
-}
-
-function playPause() {
-  if (player.playing) {
-    player.pause();
-  } else {
-    player.play();
-  }
-}
-
-function forward() {
-  songId.value = props.songs?.[songIndex.value + 1].id;
-}
-
-function toggleVamp() {
-  player.exitVamp();
-}
-
-function toggleSegue() {
-  player.setSegueEnabled(!player.currentSegue?.enabled);
-}
 </script>
 
 <template>
@@ -85,7 +65,7 @@ function toggleSegue() {
           aria-label="Rewind / Previous Song"
           rounded
           text
-          @click="rewind()"
+          @click="emit('rewind')"
         />
         <Button
           :disabled="!player.ready"
@@ -93,7 +73,7 @@ function toggleSegue() {
           aria-label="Play / Pause"
           rounded
           text
-          @click="playPause()"
+          @click="emit('play-pause')"
         />
         <Button
           class="flex-none"
@@ -103,7 +83,7 @@ function toggleSegue() {
           aria-label="Next Song"
           rounded
           text
-          @click="forward()"
+          @click="emit('forward')"
         />
       </template>
 
@@ -242,7 +222,7 @@ function toggleSegue() {
               'exiting': 'Exiting...'
             }[vampState]"
             :severity="vampState === 'vamping' ? 'primary': 'secondary'"
-            @click="toggleVamp()"
+            @click="emit('vamp-out')"
           />
 
           <!-- Segue -->
@@ -251,7 +231,7 @@ function toggleSegue() {
             :disabled="player.currentSegue === undefined"
             label="Segue"
             :severity="player.currentSegue?.enabled ? 'primary': 'secondary'"
-            @click="toggleSegue()"
+            @click="emit('segue-toggle')"
           />
         </div>
       </template>
