@@ -5,13 +5,31 @@ import InputText from "primevue/inputtext";
 import Select from "primevue/select";
 import Slider from "primevue/slider";
 import Toolbar from "primevue/toolbar";
-import { computed } from "vue";
+import { computed, type ComputedRef } from "vue";
 
 import Song from "@/core/show/song";
 import { usePlayerStore } from "@/stores/player";
 
 import PopoverButton from "./PopoverButton.vue";
+import DottedHalfNoteSvg from "./svg/DottedHalfNoteSvg.vue";
+import DottedQuarterNoteSvg from "./svg/DottedQuarterNoteSvg.vue";
+import HalfNoteSvg from "./svg/HalfNoteSvg.vue";
 import QuarterNoteSvg from "./svg/QuarterNoteSvg.vue";
+
+type NoteValue = "quarter" | "half" | "dottedQuarter" | "dottedHalf";
+
+const NOTE_VALUE_QUARTER_MAP: Record<NoteValue, number> = {
+  quarter: 1,
+  half: 2,
+  dottedQuarter: 1.5,
+  dottedHalf: 3,
+};
+const NOTE_VALUE_SVG_MAP: Record<NoteValue, object> = {
+  quarter: QuarterNoteSvg,
+  half: HalfNoteSvg,
+  dottedQuarter: DottedQuarterNoteSvg,
+  dottedHalf: DottedHalfNoteSvg,
+};
 
 const props = defineProps<{
   songs?: Song[];
@@ -32,6 +50,15 @@ const songIndex = computed(() => props.songs?.findIndex(s => s.id === songId.val
 const player = usePlayerStore();
 
 const vampState = computed(() => player.ready && player.currentVamp ? (player.currentVamp.manualExit ? "exiting" : "vamping") : "none");
+
+const tempoNoteValue: ComputedRef<NoteValue> = computed(() => {
+  if (player.currentTimeSignature[0] % 3 === 0) {
+    return player.currentTempo / 1.5 < 130 ? "dottedQuarter" : "dottedHalf";
+  } else {
+    return player.currentTempo < 130 ? "quarter" : "half";
+  }
+});
+const writtenTempo = computed(() => player.currentTempo / NOTE_VALUE_QUARTER_MAP[tempoNoteValue.value]);
 
 const playbackSpeedPercentage = computed({
   get: () => player.playbackSpeed * 100,
@@ -167,7 +194,10 @@ const playbackSpeedPercentage = computed({
           <!-- Tempo -->
           <PopoverButton :active="Math.round(playbackSpeedPercentage) !== 100">
             <template #button>
-              <QuarterNoteSvg class="-mx-1.5 inline size-6 fill-current" />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * player.currentTempo) : "-" }}
+              <component
+                :is="NOTE_VALUE_SVG_MAP[tempoNoteValue]"
+                class="mx-[-15%] inline size-6 fill-current"
+              />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * writtenTempo) : "-" }}
             </template>
             <template #default="{ setFocusTarget }">
               <div class="flex items-center justify-stretch gap-4">

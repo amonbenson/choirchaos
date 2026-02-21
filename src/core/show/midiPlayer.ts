@@ -676,7 +676,6 @@ export default class MidiPlayer extends EventEmitter {
     }
 
     // store segue info
-    console.log(song.title, song.events.segue);
     this._updateCurrentSegue(song.events.segue ? { enabled: true } : undefined);
 
     // store additional song-specific settings
