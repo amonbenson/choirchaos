@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type p5 from "p5";
-import { computed, type ComputedRef, type Ref,ref, watch } from "vue";
+import { computed, type ComputedRef, type Ref, ref, watch } from "vue";
 
 import type PageTransform from "@/core/pdf/pageTransform";
 import type Measure from "@/core/show/measure";
@@ -13,7 +13,7 @@ import PdfViewerV2 from "./PdfViewerV2.vue";
 const player = usePlayerStore();
 
 const props = defineProps<{
-  song?: Song,
+  song?: Song;
 }>();
 
 const pdfViewer = ref();
@@ -32,9 +32,11 @@ const measuresByPage: ComputedRef<{ [key: number]: Measure[] }> = computed(() =>
       if (!Array.isArray(groups[p])) {
         groups[p] = [];
       }
+
       groups[p].push(measure);
     }
   }
+
   return groups;
 });
 
@@ -86,28 +88,34 @@ watch(highlightedTracks, () => {
 function findMeasureAt(transform: PageTransform, x: number, y: number): Measure | undefined {
   const { p, x: px, y: py } = transform.screenToPage({ x, y });
   for (const measure of (measuresByPage.value[p] ?? [])) {
-    if (!measure.layout) continue;
+    if (!measure.layout) {
+      continue;
+    }
+
     const l = measure.layout;
     if (px >= l.x && px < l.x + l.width && py >= l.y && py < l.y + l.height) {
       return measure;
     }
   }
+
   return undefined;
 }
 
-function mousePressed(_: { s: p5, transform: PageTransform }) {
+function mousePressed(_: { s: p5; transform: PageTransform }) {
   // move to selected measure
   if (hoverMeasure.value) {
     player.setMeasure(hoverMeasure.value.value);
   }
 }
 
-function tap({ x, y, transform }: { x: number, y: number, transform: PageTransform }) {
+function tap({ x, y, transform }: { x: number; y: number; transform: PageTransform }) {
   const measure = findMeasureAt(transform, x, y);
-  if (measure) player.setMeasure(measure.value);
+  if (measure) {
+    player.setMeasure(measure.value);
+  }
 }
 
-function mouseMoved({ transform, x, y }: { s: p5, transform: PageTransform, x: number, y: number }) {
+function mouseMoved({ transform, x, y }: { s: p5; transform: PageTransform; x: number; y: number }) {
   // check if we are hovering a measure
   const newHoverMeasure = findMeasureAt(transform, x, y);
 
@@ -120,12 +128,15 @@ function mouseMoved({ transform, x, y }: { s: p5, transform: PageTransform, x: n
 
 function isMeasureHighlighted(measure: Measure): boolean {
   for (const i of measure.$activeTrackIndices) {
-    if (highlightedTracks.value.has(i)) return true;
+    if (highlightedTracks.value.has(i)) {
+      return true;
+    }
   }
+
   return false;
 }
 
-function drawPageOverlay({ s, p }: { s: p5, p: number, transform: PageTransform }) {
+function drawPageOverlay({ s, p }: { s: p5; p: number; transform: PageTransform }) {
   if (!props.song) {
     return;
   }

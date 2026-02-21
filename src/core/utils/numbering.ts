@@ -43,4 +43,6 @@ export function compareNumberings(a: Numbering, b: Numbering): number {
   const letterB = matchB[2] ?? "";
 
   return letterA.localeCompare(letterB);
-};
+}
+
+;

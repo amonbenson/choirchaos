@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import * as pdfjsLib from "pdfjs-dist";
-import { type Ref,ref, shallowRef, watch } from "vue";
+import { type Ref, ref, shallowRef, watch } from "vue";
 
 import pdfWorker from "/js/pdf.worker.min.mjs?url";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 const props = withDefaults(defineProps<{
-  url: string,
-  page: number,
-  scale?: number,
+  url: string;
+  page: number;
+  scale?: number;
 }>(), {
   scale: 1.0,
 });

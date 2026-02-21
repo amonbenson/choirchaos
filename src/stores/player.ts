@@ -15,12 +15,12 @@ export const usePlayerStore = defineStore("player", () => {
 
   const loading = useEvent(globalPlayer, "statusChanged", {
     initial: globalPlayer.status === "loading",
-    getter: (player) => player.status === "loading",
+    getter: player => player.status === "loading",
   });
 
   const ready = useEvent(globalPlayer, "statusChanged", {
     initial: globalPlayer.status === "ready",
-    getter: (player) => player.status === "ready",
+    getter: player => player.status === "ready",
   });
 
   const position = useEvent(globalPlayer, "positionChanged", { initial: globalPlayer.position });
@@ -53,23 +53,23 @@ export const usePlayerStore = defineStore("player", () => {
 
   const events = useEvent(globalPlayer, "statusChanged", {
     initial: markRaw(globalPlayer.midi_events),
-    getter: (player) => markRaw(player.midi_events),
+    getter: player => markRaw(player.midi_events),
   });
 
   const ppqn = useEvent(globalPlayer, "statusChanged", {
     initial: globalPlayer.ppqn,
-    getter: (player) => player.ppqn,
+    getter: player => player.ppqn,
   });
 
   const playbackSpeed = useEvent(globalPlayer, "playbackSpeedChanged", {
     initial: globalPlayer.playbackSpeed,
-    getter: (player) => player.playbackSpeed,
+    getter: player => player.playbackSpeed,
     setter: (player, value) => player.playbackSpeed = value,
   });
 
   const playbackTransposition = useEvent(globalPlayer, "playbackTranspositionChanged", {
     initial: globalPlayer.playbackTransposition,
-    getter: (player) => player.playbackTransposition,
+    getter: player => player.playbackTransposition,
     setter: (player, value) => player.playbackTransposition = value,
   });
 
@@ -105,6 +105,7 @@ export const usePlayerStore = defineStore("player", () => {
     } else if (value >= beats) {
       value = beats - 1;
     }
+
     globalPlayer.seek(measure?.$beatTicks[value] ?? 0);
   }
 

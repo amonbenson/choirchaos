@@ -1,12 +1,12 @@
-import { computed, getCurrentScope,onScopeDispose, ref } from "vue";
+import { computed, getCurrentScope, onScopeDispose, ref } from "vue";
 
 type EventEmitterLike = {
   on: (eventName: string | number, handler: (...args: any) => void) => void;
   off: (eventName: string | number, handler: (...args: any) => void) => void;
-}
+};
 
 export type EventEmitterOptions<E, T> = {
-  initial?: T,
+  initial?: T;
   getter?: (emitter: E, ...params: any[]) => T;
   setter?: (emitter: E, value: T) => void;
 };
@@ -26,6 +26,7 @@ export function useEvent<E extends EventEmitterLike, T>(emitter: E, event: strin
   const syncEmitterToReceiver = (...params: any[]) => {
     receiverValue.value = getter(emitter, ...params);
   };
+
   emitter.on(event, syncEmitterToReceiver);
   onScopeDispose(() => emitter.off(event, syncEmitterToReceiver));
 
@@ -41,6 +42,6 @@ export function useEvent<E extends EventEmitterLike, T>(emitter: E, event: strin
   // wrap in a computed reference to allow setting the value
   return computed<T>({
     get: () => receiverValue.value,
-    set: (value) => syncReceiverToEmitter(value),
+    set: value => syncReceiverToEmitter(value),
   });
 }

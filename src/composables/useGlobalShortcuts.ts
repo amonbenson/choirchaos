@@ -29,19 +29,30 @@ function matchesShortcut(e: KeyboardEvent, shortcut: string): boolean {
   const parts = shortcut.split("+");
   const key = parts[parts.length - 1]!;
 
-  const wantsMod   = parts.includes("Mod");
-  const wantsMeta  = parts.includes("Meta") || (wantsMod && isMac);
-  const wantsCtrl  = parts.includes("Ctrl") || (wantsMod && !isMac);
+  const wantsMod = parts.includes("Mod");
+  const wantsMeta = parts.includes("Meta") || (wantsMod && isMac);
+  const wantsCtrl = parts.includes("Ctrl") || (wantsMod && !isMac);
   const wantsShift = parts.includes("Shift");
-  const wantsAlt   = parts.includes("Alt");
+  const wantsAlt = parts.includes("Alt");
 
-  if (e.metaKey  !== wantsMeta)  return false;
-  if (e.ctrlKey  !== wantsCtrl)  return false;
-  if (e.shiftKey !== wantsShift) return false;
-  if (e.altKey   !== wantsAlt)   return false;
+  if (e.metaKey !== wantsMeta) {
+    return false;
+  }
+
+  if (e.ctrlKey !== wantsCtrl) {
+    return false;
+  }
+
+  if (e.shiftKey !== wantsShift) {
+    return false;
+  }
+
+  if (e.altKey !== wantsAlt) {
+    return false;
+  }
 
   // Single-character keys are matched case-insensitively.
-  const normalizedKey      = key.length === 1 ? key.toLowerCase() : key;
+  const normalizedKey = key.length === 1 ? key.toLowerCase() : key;
   const normalizedEventKey = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   return normalizedEventKey === normalizedKey;
 }

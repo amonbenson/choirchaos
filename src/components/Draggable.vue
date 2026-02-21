@@ -1,6 +1,6 @@
 <!-- eslint-disable vue/multi-word-component-names -->
 <script setup lang="ts">
-import { onBeforeUnmount, type Ref,ref, toRaw } from "vue";
+import { onBeforeUnmount, type Ref, ref, toRaw } from "vue";
 
 type DraggableEvent = {
   active: boolean;
@@ -17,7 +17,7 @@ type DraggableEvent = {
     x: number;
     y: number;
   };
-  target: HTMLElement,
+  target: HTMLElement;
   events: {
     mousedown: MouseEvent | undefined;
     mousemove: MouseEvent | undefined;
@@ -136,8 +136,11 @@ function handleTouchStart(event: TouchEvent) {
   if (event.target !== target.value) {
     return;
   }
+
   const touch = event.touches[0];
-  if (!touch) return;
+  if (!touch) {
+    return;
+  }
 
   state.value = {
     active: true,
@@ -172,8 +175,11 @@ function handleTouchMove(event: TouchEvent) {
   if (!state.value.active) {
     return;
   }
+
   const touch = event.touches[0];
-  if (!touch) return;
+  if (!touch) {
+    return;
+  }
 
   state.value.status = "move";
   state.value.end = {

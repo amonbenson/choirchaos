@@ -7,7 +7,7 @@ export type MeasureLayout = {
   y: number;
   width: number;
   height: number;
-}
+};
 
 export type MeasureNumber = Numbering;
 export type BeatNumber = number;
@@ -45,7 +45,6 @@ export default class Measure {
       layout: this.layout,
     };
   }
-
 
   public static fromJson({ value, beats, layout }: any) {
     return new Measure(value, beats, layout);

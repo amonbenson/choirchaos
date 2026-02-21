@@ -148,7 +148,7 @@ export type MTIMidiJson = {
         meas: string;
         beat: number;
         tick: number;
-      }
+      };
     })[];
   };
 };

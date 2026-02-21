@@ -3,18 +3,18 @@ import type p5 from "p5";
 export type ScreenCoordinate = {
   x: number;
   y: number;
-}
+};
 
 export type ViewportCoordinate = {
   x: number;
   y: number;
-}
+};
 
 export type PageCoordinate = {
   p: number;
   x: number;
   y: number;
-}
+};
 
 export default class PageTransform {
   public static PAGE_GAP = 0.02;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
-import { computed, type ComputedRef,markRaw, type Ref, ref, watch } from "vue";
+import { computed, type ComputedRef, markRaw, type Ref, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import MarkerPanel from "@/components/MarkerPanel.vue";
@@ -20,8 +20,8 @@ const route = useRoute();
 const router = useRouter();
 
 const props = defineProps<{
-  showId: string,
-  songId?: string,
+  showId: string;
+  songId?: string;
 }>();
 
 // store show and current song data from pocketbase
@@ -53,35 +53,55 @@ function playPause() {
 }
 
 function previousMeasure() {
-  if (!player.ready || !song.value) return;
+  if (!player.ready || !song.value) {
+    return;
+  }
+
   const measures = song.value.measures.items();
   const i = song.value.findMeasureIndex(player.currentMeasure[0]);
   const prev = measures[i - 1];
-  if (prev) player.seek(prev.$beatTicks[0] ?? 0);
+  if (prev) {
+    player.seek(prev.$beatTicks[0] ?? 0);
+  }
 }
 
 function nextMeasure() {
-  if (!player.ready || !song.value) return;
+  if (!player.ready || !song.value) {
+    return;
+  }
+
   const measures = song.value.measures.items();
   const i = song.value.findMeasureIndex(player.currentMeasure[0]);
   const next = measures[i + 1];
-  if (next) player.seek(next.$beatTicks[0] ?? 0);
+  if (next) {
+    player.seek(next.$beatTicks[0] ?? 0);
+  }
 }
 
 function rewind() {
-  if (!player.ready) return;
+  if (!player.ready) {
+    return;
+  }
+
   if (player.position > 0) {
     player.seek(0);
   } else {
     const prev = songs.value[songIndex.value - 1];
-    if (prev) selectSong(prev.id);
+    if (prev) {
+      selectSong(prev.id);
+    }
   }
 }
 
 function forward() {
-  if (!player.ready) return;
+  if (!player.ready) {
+    return;
+  }
+
   const next = songs.value[songIndex.value + 1];
-  if (next) selectSong(next.id);
+  if (next) {
+    selectSong(next.id);
+  }
 }
 
 function toggleVamp() {

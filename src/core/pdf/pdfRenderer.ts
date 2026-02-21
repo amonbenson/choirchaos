@@ -13,7 +13,7 @@ export type ImageDataUrl = string;
 type PdfPage = {
   canvas: HTMLCanvasElement;
   canvasLow: HTMLCanvasElement;
-}
+};
 
 type PdfDocument = {
   proxy: pdfjsLib.PDFDocumentProxy;

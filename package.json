@@ -45,6 +45,7 @@
     "glob": "^13.0.0"
   },
   "devDependencies": {
+    "@stylistic/eslint-plugin": "^5.9.0",
     "@tsconfig/node22": "^22.0.5",
     "@types/jsdom": "^27.0.0",
     "@types/node": "^25.3.0",

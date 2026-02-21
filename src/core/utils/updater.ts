@@ -5,10 +5,10 @@ export type UpdateCallback = (delta: number) => void;
 export type TimeProvider = () => number;
 
 export type UpdaterOptions = {
-  interval: number,
-  maximumLag: number,
-  timeProvider: TimeProvider,
-}
+  interval: number;
+  maximumLag: number;
+  timeProvider: TimeProvider;
+};
 
 export abstract class Updater {
   protected readonly _options: UpdaterOptions;

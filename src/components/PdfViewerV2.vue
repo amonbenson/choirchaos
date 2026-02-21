@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import p5 from "p5";
-import { onBeforeUnmount, onMounted, type Ref, ref, type ShallowRef,shallowRef, toRef } from "vue";
+import { onBeforeUnmount, onMounted, type Ref, ref, type ShallowRef, shallowRef, toRef } from "vue";
 
 import { usePanZoom } from "@/composables/usePanZoom";
 import { usePdfPages } from "@/composables/usePdfPages";
@@ -9,8 +9,8 @@ import PageTransform, { type PageCoordinate } from "@/core/pdf/pageTransform";
 type P5Sketch = p5 & { canvas?: HTMLCanvasElement };
 
 const props = defineProps<{
-  url: string | undefined,
-  cursor?: string | undefined,
+  url: string | undefined;
+  cursor?: string | undefined;
 }>();
 
 const emit = defineEmits([
@@ -57,7 +57,11 @@ function draw() {
     transform.pushPageTransform(s, p);
 
     const page = pages.value[p];
-    if (!page) { s.pop(); continue; }
+    if (!page) {
+      s.pop();
+      continue;
+    }
+
     if (page.status === "ready") {
       const ctx = s.drawingContext as CanvasRenderingContext2D;
       if (pageRange[1] - pageRange[0] < 7) {
@@ -141,17 +145,26 @@ function containerPos(clientX: number, clientY: number) {
 }
 
 function onPointerDownForEmit(e: PointerEvent) {
-  if (e.pointerType !== "mouse" || !isOnCanvas(e.target)) return;
+  if (e.pointerType !== "mouse" || !isOnCanvas(e.target)) {
+    return;
+  }
+
   emit("mousePressed", { s: overlaySketch.value, transform });
 }
 
 function onPointerUpForEmit(e: PointerEvent) {
-  if (e.pointerType !== "mouse") return;
+  if (e.pointerType !== "mouse") {
+    return;
+  }
+
   emit("mouseReleased", { s: overlaySketch.value, transform });
 }
 
 function onPointerMoveForEmit(e: PointerEvent) {
-  if (e.pointerType !== "mouse") return;
+  if (e.pointerType !== "mouse") {
+    return;
+  }
+
   const pos = containerPos(e.clientX, e.clientY);
   emit("mouseMoved", { s: overlaySketch.value, transform, x: pos.x, y: pos.y });
 }
@@ -194,6 +207,7 @@ function isLocationVisible(pc: PageCoordinate): boolean {
   if (!overlaySketch.value) {
     return false;
   }
+
   return transform.contains(pc, overlaySketch.value.width, overlaySketch.value.height);
 }
 
@@ -229,12 +243,12 @@ function moveToLocation(target: PageCoordinate, offsetX: number = 0.3, offsetY: 
 }
 
 defineExpose({
-  "redrawPages": redrawPages,
-  "redrawOverlay": redrawOverlay,
-  "redrawAll": redrawAll,
-  "isLocationVisible": isLocationVisible,
-  "moveToPage": moveToPage,
-  "moveToLocation": moveToLocation,
+  redrawPages: redrawPages,
+  redrawOverlay: redrawOverlay,
+  redrawAll: redrawAll,
+  isLocationVisible: isLocationVisible,
+  moveToPage: moveToPage,
+  moveToLocation: moveToLocation,
 });
 </script>
 

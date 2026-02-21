@@ -14,8 +14,8 @@ import PopoverButton from "./PopoverButton.vue";
 import QuarterNoteSvg from "./svg/QuarterNoteSvg.vue";
 
 const props = defineProps<{
-  songs?: Song[],
-  loading?: boolean,
+  songs?: Song[];
+  loading?: boolean;
 }>();
 
 const emit = defineEmits([
@@ -35,7 +35,7 @@ const vampState = computed(() => player.ready && player.currentVamp ? (player.cu
 
 const playbackSpeedPercentage = computed({
   get: () => player.playbackSpeed * 100,
-  set: (value) => player.playbackSpeed = value / 100,
+  set: value => player.playbackSpeed = value / 100,
 });
 </script>
 

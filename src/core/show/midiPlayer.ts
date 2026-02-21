@@ -5,7 +5,7 @@ import { parseArrayBuffer as parseMidiBuffer } from "midi-json-parser";
 import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
 import { type BinarySearchOptions } from "../utils/binarySearch";
 import { resolveUrl } from "../utils/file";
-import { SetIntervalUpdater,type Updater } from "../utils/updater";
+import { SetIntervalUpdater, type Updater } from "../utils/updater";
 import type { MeasureReference } from "./measure";
 import type Measure from "./measure";
 import { MeasureEvent, MidiEvent, MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "./midiEvents";
@@ -17,26 +17,25 @@ const POSITION_UPDATE_DURATION = 1 / 50;
 const AUDIO_CLOCK_OFFSET = 0.1;
 
 declare global {
-    interface Window { WebAudioFontPlayer: any; }
+  interface Window { WebAudioFontPlayer: any }
 }
-
 
 export type MidiPlayerStatus = "idle" | "loading" | "ready";
 
 export type MidiPlayerVamp = {
-  start: Tick,
-  end: Tick,
-  iterations: number
+  start: Tick;
+  end: Tick;
+  iterations: number;
 };
 
 export type MidiPlayerVampState = MidiPlayerVamp & {
   currentIteration: number;
   manualExit: boolean;
-}
+};
 
 export type MidiPlayerSegueState = {
   enabled: boolean;
-}
+};
 
 export type MidiSystemEvents = {
   measure: MidiEventList<MeasureEvent>;
@@ -51,7 +50,7 @@ export type MidiTrackEvents = {
 export type MidiPlayerEvents = {
   system: MidiSystemEvents;
   track: MidiTrackEvents[];
-}
+};
 
 export default class MidiPlayer extends EventEmitter {
   private _status: MidiPlayerStatus = "idle";
@@ -94,13 +93,15 @@ export default class MidiPlayer extends EventEmitter {
     seconds: number;
     ticks: number;
   } = { seconds: 0, ticks: 0 };
+
   private _audioClockTickPosition: number = 0;
 
-  private _updater: Updater = new SetIntervalUpdater((delta) => this._handleStep(delta), {
+  private _updater: Updater = new SetIntervalUpdater(delta => this._handleStep(delta), {
     interval: STEP_DURATION,
     maximumLag: 5.0,
     timeProvider: () => this._audioContext.currentTime,
   });
+
   private _timeSinceLastPositionUpdate = 0;
 
   get status() {
@@ -430,6 +431,7 @@ export default class MidiPlayer extends EventEmitter {
     if (this._status !== "ready") {
       return;
     }
+
     const wasPlaying = this._playing;
     this.pause();
 
@@ -502,9 +504,11 @@ export default class MidiPlayer extends EventEmitter {
     if (!song.midiFile) {
       throw new Error(`Midi file missing from song '${song.title}'`);
     }
+
     if (!song.jsonFile) {
       throw new Error(`Json file missing from song '${song.title}'`);
     }
+
     const [midiRes, jsonRes] = await Promise.all([
       axios.get(resolveUrl(song.midiFile, "songs", song.id), {
         validateStatus: status => status === 200,
@@ -540,7 +544,7 @@ export default class MidiPlayer extends EventEmitter {
           this._midi_events.system.measure.insert(new MeasureEvent(tickcount, [value.meas, value.beat - 1]));
 
           // store tick reference in original song measure data
-          const songMeasure = song.measures.search({  value: value.meas } as Measure);
+          const songMeasure = song.measures.search({ value: value.meas } as Measure);
           if (songMeasure?.value === value.meas) {
             // store the tick data
             if (songMeasure.$beatTicks.length === 0) {
@@ -558,6 +562,7 @@ export default class MidiPlayer extends EventEmitter {
               if (songMeasure.$beatTicks[0] !== undefined && prevMeasure?.$beatTicks[0] !== undefined) {
                 prevMeasure.$tickLength = songMeasure.$beatTicks[0] - prevMeasure.$beatTicks[0];
               }
+
               prevMeasure = songMeasure;
             }
           } else {
@@ -653,6 +658,7 @@ export default class MidiPlayer extends EventEmitter {
       markerEvent.$startTick = song.findMeasure(markerEvent.start[0])?.$beatTicks[0];
       markerEvent.$endTick = song.findMeasure(markerEvent.end[0])?.$beatTicks[0];
     }
+
     for (const vampEvent of song.events.vamps.items()) {
       vampEvent.$startTick = song.findMeasure(vampEvent.start[0])?.$beatTicks[0];
       vampEvent.$endTick = song.findMeasure(vampEvent.end[0])?.$beatTicks[0];

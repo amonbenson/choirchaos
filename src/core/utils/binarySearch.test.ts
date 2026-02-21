@@ -1,10 +1,8 @@
+import { describe, expect, it } from "vitest";
 
-import { describe, expect,it } from "vitest";
-
-import { binarySearch, type BinarySearchOptions,BinarySortedList, insertSorted } from "./binarySearch";
+import { binarySearch, type BinarySearchOptions, BinarySortedList, insertSorted } from "./binarySearch";
 
 type TestItem = { p: number };
-
 
 describe("binarySearch", () => {
   const items: TestItem[] = [{ p: 10 }, { p: 20 }, { p: 30 }];
@@ -91,7 +89,7 @@ describe("binarySearch", () => {
   });
 
   it("searches single-element lists", () => {
-    const singleItem = [{ p:10 }];
+    const singleItem = [{ p: 10 }];
     const options: BinarySearchOptions<TestItem, TestItem> = { comparator };
 
     expect(binarySearch(singleItem, { p: 9 }, options)).toEqual(0);

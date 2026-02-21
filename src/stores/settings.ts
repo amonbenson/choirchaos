@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { type Ref,ref } from "vue";
+import { type Ref, ref } from "vue";
 
 const STORE_NAME = "settings";
 const LOCAL_STORAGE_KEY = "choirchaosSettings";
@@ -59,10 +59,12 @@ export const useSettingsStore = defineStore(STORE_NAME, () => {
     settings.value.ui.selectedTab = tab;
     storeSettings(settings.value);
   };
+
   const updatePanelVisible = (panel: keyof UiSettings["panelVisible"], visible: boolean) => {
     settings.value.ui.panelVisible[panel] = visible;
     storeSettings(settings.value);
   };
+
   const togglePanelVisible = (panel: keyof UiSettings["panelVisible"]) => {
     updatePanelVisible(panel, !settings.value.ui.panelVisible[panel]);
   };

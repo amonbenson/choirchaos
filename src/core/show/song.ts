@@ -15,7 +15,7 @@ export type SongEvents = {
   markers: MeasureEventList<MarkerEvent>;
   vamps: MeasureEventList<VampEvent>;
   segue: boolean;
-}
+};
 
 export default class Song {
   constructor(
@@ -80,24 +80,40 @@ export default class Song {
   }
 
   public setTrackMute(trackIndex: number, value: boolean) {
-    if (!this.tracks[trackIndex]) { console.warn(`setTrackMute: track index ${trackIndex} out of range.`); return; }
+    if (!this.tracks[trackIndex]) {
+      console.warn(`setTrackMute: track index ${trackIndex} out of range.`);
+      return;
+    }
+
     this.tracks[trackIndex]!.mixer.mute = value;
     this._updateEffectiveParameters();
   }
 
   public setTrackSolo(trackIndex: number, value: boolean) {
-    if (!this.tracks[trackIndex]) { console.warn(`setTrackSolo: track index ${trackIndex} out of range.`); return; }
+    if (!this.tracks[trackIndex]) {
+      console.warn(`setTrackSolo: track index ${trackIndex} out of range.`);
+      return;
+    }
+
     this.tracks[trackIndex]!.mixer.solo = value;
     this._updateEffectiveParameters();
   }
 
   public setTrackHighlight(trackIndex: number, value: boolean) {
-    if (!this.tracks[trackIndex]) { console.warn(`setTrackHighlight: track index ${trackIndex} out of range.`); return; }
+    if (!this.tracks[trackIndex]) {
+      console.warn(`setTrackHighlight: track index ${trackIndex} out of range.`);
+      return;
+    }
+
     this.tracks[trackIndex]!.mixer.highlight = value;
   }
 
   public setTrackGain(trackIndex: number, value: number) {
-    if (!this.tracks[trackIndex]) { console.warn(`setTrackGain: track index ${trackIndex} out of range.`); return; }
+    if (!this.tracks[trackIndex]) {
+      console.warn(`setTrackGain: track index ${trackIndex} out of range.`);
+      return;
+    }
+
     this.tracks[trackIndex]!.mixer.gain = Math.max(0, Math.min(1, value));
     this._updateEffectiveParameters();
   }

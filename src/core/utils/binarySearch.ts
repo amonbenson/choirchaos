@@ -19,6 +19,7 @@ export function binarySearch<K, T>(list: T[], key: K, options: BinarySearchOptio
   if (!Array.isArray(list)) {
     throw new TypeError(`Cannot insert into type ${typeof list}`);
   }
+
   if (list.length === 0) {
     return -1;
   }
@@ -104,6 +105,7 @@ export function insertSorted<T>(list: T[], item: T, options: InsertSortedOptions
   if (!Array.isArray(list)) {
     throw new TypeError(`Cannot insert into type ${typeof list}`);
   }
+
   if (list.length === 0) {
     list.splice(0, 0, item);
     return list;
@@ -215,6 +217,7 @@ export class BinarySortedList<T> {
     if (a === -1 && b === 1) {
       return this._items.slice(0, 1); // edge case, where slice(-1, 1) returns no items, although it should return the first item
     }
+
     return this._items.slice(a, b);
   }
 

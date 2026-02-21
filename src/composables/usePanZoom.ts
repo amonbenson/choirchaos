@@ -1,4 +1,4 @@
-import { onMounted, onUnmounted, type Ref,watch } from "vue";
+import { onMounted, onUnmounted, type Ref, watch } from "vue";
 
 import type PageTransform from "@/core/pdf/pageTransform";
 
@@ -18,7 +18,9 @@ export function usePanZoom(
   let pressing = false;
 
   function setCursor(value: string) {
-    if (container.value) container.value.style.cursor = value;
+    if (container.value) {
+      container.value.style.cursor = value;
+    }
   }
 
   function idleCursor() {
@@ -44,8 +46,14 @@ export function usePanZoom(
   let lastY: number | undefined;
 
   function onPointerDown(e: PointerEvent) {
-    if (e.pointerType !== "mouse") return;
-    if (e.target !== container.value && !(container.value?.contains(e.target as Node))) return;
+    if (e.pointerType !== "mouse") {
+      return;
+    }
+
+    if (e.target !== container.value && !(container.value?.contains(e.target as Node))) {
+      return;
+    }
+
     pressing = true;
     lastX = e.clientX;
     lastY = e.clientY;
@@ -53,7 +61,10 @@ export function usePanZoom(
   }
 
   function onPointerMove(e: PointerEvent) {
-    if (e.pointerType !== "mouse") return;
+    if (e.pointerType !== "mouse") {
+      return;
+    }
+
     if (pressing && lastX !== undefined && lastY !== undefined) {
       transform.pan.x += e.clientX - lastX;
       transform.pan.y += e.clientY - lastY;
@@ -64,7 +75,10 @@ export function usePanZoom(
   }
 
   function onPointerUp(e: PointerEvent) {
-    if (e.pointerType !== "mouse" || !pressing) return;
+    if (e.pointerType !== "mouse" || !pressing) {
+      return;
+    }
+
     pressing = false;
     lastX = undefined;
     lastY = undefined;
@@ -81,6 +95,7 @@ export function usePanZoom(
       transform.pan.x -= e.deltaX;
       transform.pan.y -= e.deltaY;
     }
+
     onRedraw();
   }
 
@@ -100,6 +115,7 @@ export function usePanZoom(
     } else {
       tapStart = undefined;
     }
+
     activeTouches = Array.from(e.touches).map(t => ({ id: t.identifier, x: t.clientX, y: t.clientY }));
   }
 
@@ -115,6 +131,7 @@ export function usePanZoom(
           tapStart = undefined;
         }
       }
+
       onRedraw();
     } else if (e.touches.length === 2) {
       tapStart = undefined;
@@ -133,8 +150,10 @@ export function usePanZoom(
           transform.pan.y += currCenter.y - prevCenter.y;
         }
       }
+
       onRedraw();
     }
+
     activeTouches = Array.from(e.touches).map(t => ({ id: t.identifier, x: t.clientX, y: t.clientY }));
   }
 
@@ -146,12 +165,15 @@ export function usePanZoom(
         const pos = containerPos(changed.clientX, changed.clientY);
         onTap?.(pos.x, pos.y);
       }
+
       tapStart = undefined;
     }
+
     if (e.touches.length === 0) {
       pressing = false;
       idleCursor();
     }
+
     activeTouches = Array.from(e.touches).map(t => ({ id: t.identifier, x: t.clientX, y: t.clientY }));
   }
 
@@ -172,7 +194,10 @@ export function usePanZoom(
 
   onUnmounted(() => {
     const el = container.value;
-    if (!el) return;
+    if (!el) {
+      return;
+    }
+
     el.removeEventListener("pointerdown", onPointerDown);
     el.removeEventListener("pointermove", onPointerMove);
     el.removeEventListener("pointerup", onPointerUp);

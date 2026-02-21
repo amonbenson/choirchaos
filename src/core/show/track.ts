@@ -13,8 +13,8 @@ export default class Track {
       solo: boolean;
       highlight: boolean;
       gain: number;
-      effectiveMute: boolean,
-      effectiveGain: number,
+      effectiveMute: boolean;
+      effectiveGain: number;
     } = {
       index: 0,
       mute: false,
@@ -34,7 +34,6 @@ export default class Track {
       program: this.program,
     };
   }
-
 
   public static fromJson({ title, classification, program }: any) {
     return new Track(title, classification, program);

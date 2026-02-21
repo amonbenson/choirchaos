@@ -25,7 +25,6 @@ export class MarkerEvent extends MeasureEvent {
     };
   }
 
-
   public static fromJson({ start, marker }: any) {
     return new MarkerEvent(start, marker);
   }
@@ -44,7 +43,6 @@ export class VampEvent extends MeasureEvent {
       iterations: this.iterations,
     };
   }
-
 
   public static fromJson({ start, end, iterations }: any) {
     return new VampEvent(start, end, iterations);

@@ -4,7 +4,7 @@ import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
 import Panel from "primevue/panel";
 import Slider from "primevue/slider";
-import { computed, type Ref,ref, watch } from "vue";
+import { computed, type Ref, ref, watch } from "vue";
 
 import type Song from "@/core/show/song";
 import type { TrackClassification } from "@/core/show/track";
@@ -20,9 +20,9 @@ const props = defineProps<{
 const tracks = computed(() => props.song?.tracks ?? []);
 const trackByClassification = computed(() => {
   const groups: Record<TrackClassification, Track[]> = {
-    "Accompaniment": [],
-    "Percussion": [],
-    "Vocal": [],
+    Accompaniment: [],
+    Percussion: [],
+    Vocal: [],
   };
 
   for (const track of tracks.value) {
@@ -48,12 +48,11 @@ watch(tracks, () => {
   }
 }, { immediate: true, flush: "post" });
 
-
 function triggerEventAnimation(trackIndex: number) {
   trackTweens.value[trackIndex]?.restart();
 }
 
-player.onNote(event => {
+player.onNote((event) => {
   // trigger the flash event
   triggerEventAnimation(event.trackIndex);
 });

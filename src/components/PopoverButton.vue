@@ -7,7 +7,7 @@ defineProps<{
   label?: string;
   active?: boolean;
   disabled?: boolean;
-  "buttonClass"?: string;
+  buttonClass?: string;
 }>();
 
 const popover = ref();

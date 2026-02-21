@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
-import { computed, type ComputedRef, type Ref, ref, type ShallowRef,shallowRef, watch } from "vue";
+import { computed, type ComputedRef, type Ref, ref, type ShallowRef, shallowRef, watch } from "vue";
 
 import Draggable from "@/components/Draggable.vue";
 import PdfCanvas from "@/components/PdfCanvas.vue";
@@ -14,7 +14,7 @@ import { usePlayerStore } from "@/stores/player";
 const player = usePlayerStore();
 
 const props = defineProps<{
-  song?: Song,
+  song?: Song;
 }>();
 
 const editing = ref(false);
@@ -77,13 +77,19 @@ function isMeasureHighlighted(measure: Measure) {
 
 // keep track of currently playing measure.
 const currentMeasure: ComputedRef<Measure | undefined> = computed(() => {
-  if (!player.ready) return undefined;
+  if (!player.ready) {
+    return undefined;
+  }
+
   const measureNumber = player.currentMeasure[0].split("-")[0]!;
   return props.song?.findMeasure(measureNumber);
 });
 const currentMeasureProgress = computed(() => {
   const m = currentMeasure.value;
-  if (!m || !m.layout || !m.$beatTicks) return 0;
+  if (!m || !m.layout || !m.$beatTicks) {
+    return 0;
+  }
+
   const beatStart = m.$beatTicks[0] ?? 0;
   const beatEnd = m.$beatTicks[m.beats - 1] ?? beatStart;
   return (player.position - beatStart) / (beatEnd - beatStart) / m.beats * (m.beats - 1);
@@ -148,7 +154,7 @@ type StaffType = {
   y: number;
   width: number;
   height: number;
-}
+};
 
 const editStaff: Ref<StaffType | undefined> = ref();
 
@@ -243,13 +249,13 @@ function handleMeasureDrag(event: any, measure: Measure, handle: HandleDirection
 
   switch (handle) {
     case "top":
-      sameStaffMeasures.forEach(measure => {
+      sameStaffMeasures.forEach((measure) => {
         measure.layout!.y += dy;
         measure.layout!.height -= dy;
       });
       break;
     case "bottom":
-      sameStaffMeasures.forEach(measure => {
+      sameStaffMeasures.forEach((measure) => {
         measure.layout!.height += dy;
       });
       break;
@@ -258,6 +264,7 @@ function handleMeasureDrag(event: any, measure: Measure, handle: HandleDirection
       if (left) {
         left.layout!.width += dx;
       }
+
       measure.layout!.x += dx;
       measure.layout!.width -= dx;
       break;
@@ -268,6 +275,7 @@ function handleMeasureDrag(event: any, measure: Measure, handle: HandleDirection
         right.layout!.x += dx;
         right.layout!.width -= dx;
       }
+
       break;
     default:
       break;

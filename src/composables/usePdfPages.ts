@@ -1,4 +1,4 @@
-import { onScopeDispose, type Ref,ref, watch } from "vue";
+import { onScopeDispose, type Ref, ref, watch } from "vue";
 
 import type { PdfPageStatus } from "@/core/pdf/pdfRenderer";
 import { usePdfRendererStore } from "@/stores/pdfRenderer";
@@ -43,10 +43,14 @@ export function usePdfPages(url: Ref<string | undefined>, options?: { onUpdate?:
   // Load and render all pages whenever the URL changes
   watch(url, async () => {
     const currentUrl = url.value;
-    if (!currentUrl) return;
+    if (!currentUrl) {
+      return;
+    }
 
     await pdfRendererStore.load(currentUrl);
-    if (currentUrl !== url.value) return;
+    if (currentUrl !== url.value) {
+      return;
+    }
 
     const numPages = pdfRendererStore.getNumPages(url.value) ?? 0;
     await Promise.all(Array(numPages).fill(null).map((_, i) => pdfRendererStore.render(currentUrl, i)));
@@ -56,8 +60,14 @@ export function usePdfPages(url: Ref<string | undefined>, options?: { onUpdate?:
   // one state update per animation frame
   let pendingId: number | undefined;
   pdfRendererStore.onPageStatusUpdate((_status: PdfPageStatus, eventUrl: string) => {
-    if (eventUrl !== url.value) return;
-    if (pendingId !== undefined) cancelAnimationFrame(pendingId);
+    if (eventUrl !== url.value) {
+      return;
+    }
+
+    if (pendingId !== undefined) {
+      cancelAnimationFrame(pendingId);
+    }
+
     pendingId = requestAnimationFrame(() => {
       pendingId = undefined;
       updateState();
@@ -65,7 +75,9 @@ export function usePdfPages(url: Ref<string | undefined>, options?: { onUpdate?:
     });
   });
   onScopeDispose(() => {
-    if (pendingId !== undefined) cancelAnimationFrame(pendingId);
+    if (pendingId !== undefined) {
+      cancelAnimationFrame(pendingId);
+    }
   });
 
   return { pages, documentStatus };

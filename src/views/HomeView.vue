@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Card from "primevue/card";
-import { onMounted, type Ref,ref } from "vue";
+import { onMounted, type Ref, ref } from "vue";
 import { useRouter } from "vue-router";
 
 import Show from "@/core/show/show";
