@@ -57,7 +57,7 @@ function previousMeasure() {
   const measures = song.value.measures.items();
   const i = song.value.findMeasureIndex(player.currentMeasure[0]);
   const prev = measures[i - 1];
-  if (prev) player.seek(prev.$beatTicks[0]);
+  if (prev) player.seek(prev.$beatTicks[0] ?? 0);
 }
 
 function nextMeasure() {
@@ -65,7 +65,7 @@ function nextMeasure() {
   const measures = song.value.measures.items();
   const i = song.value.findMeasureIndex(player.currentMeasure[0]);
   const next = measures[i + 1];
-  if (next) player.seek(next.$beatTicks[0]);
+  if (next) player.seek(next.$beatTicks[0] ?? 0);
 }
 
 function rewind() {
@@ -188,7 +188,7 @@ async function fetchShow() {
     const songObj = showObj.songs.find(s => s.id === props.songId) ?? null;
     if (!songObj) {
       // if no valid song is selected, route to the first song
-      selectSong(showObj.songs[0].id);
+      selectSong(showObj.songs[0]?.id);
     }
   } catch (err) {
     console.error(err);

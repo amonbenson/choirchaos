@@ -1,8 +1,8 @@
 import { computed, getCurrentScope,onScopeDispose, ref } from "vue";
 
 type EventEmitterLike = {
-  on: (eventName: string | symbol, handler: (...args: any) => void) => void;
-  off: (eventName: string | symbol, handler: (...args: any) => void) => void;
+  on: (eventName: string | number, handler: (...args: any) => void) => void;
+  off: (eventName: string | number, handler: (...args: any) => void) => void;
 }
 
 export type EventEmitterOptions<E, T> = {

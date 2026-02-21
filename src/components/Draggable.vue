@@ -136,17 +136,19 @@ function handleTouchStart(event: TouchEvent) {
   if (event.target !== target.value) {
     return;
   }
+  const touch = event.touches[0];
+  if (!touch) return;
 
   state.value = {
     active: true,
     status: "start",
     start: {
-      x: event.touches[0].clientX,
-      y: event.touches[0].clientY,
+      x: touch.clientX,
+      y: touch.clientY,
     },
     end: {
-      x: event.touches[0].clientX,
-      y: event.touches[0].clientY,
+      x: touch.clientX,
+      y: touch.clientY,
     },
     delta: {
       x: 0,
@@ -170,11 +172,13 @@ function handleTouchMove(event: TouchEvent) {
   if (!state.value.active) {
     return;
   }
+  const touch = event.touches[0];
+  if (!touch) return;
 
   state.value.status = "move";
   state.value.end = {
-    x: event.touches[0].clientX,
-    y: event.touches[0].clientY,
+    x: touch.clientX,
+    y: touch.clientY,
   };
   state.value.delta = {
     x: state.value.end.x - lastPosition.value.x,

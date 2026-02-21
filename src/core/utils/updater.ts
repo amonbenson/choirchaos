@@ -82,7 +82,7 @@ export abstract class Updater {
 }
 
 export class SetIntervalUpdater extends Updater {
-  private _intervalHandle?: NodeJS.Timeout;
+  private _intervalHandle?: ReturnType<typeof setInterval>;
 
   protected _startImpl(): void {
     // setup a regular interval update handler

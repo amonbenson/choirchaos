@@ -94,7 +94,7 @@ export function usePanZoom(
     e.preventDefault();
     if (e.touches.length === 1) {
       pressing = true;
-      const t = e.touches[0];
+      const t = e.touches[0]!;
       tapStart = { id: t.identifier, x: t.clientX, y: t.clientY };
       activeCursor();
     } else {
@@ -106,7 +106,7 @@ export function usePanZoom(
   function onTouchMove(e: TouchEvent) {
     e.preventDefault();
     if (e.touches.length === 1 && pressing) {
-      const touch = e.touches[0];
+      const touch = e.touches[0]!;
       const prev = activeTouches.find(t => t.id === touch.identifier);
       if (prev) {
         transform.pan.x += touch.clientX - prev.x;
@@ -118,7 +118,7 @@ export function usePanZoom(
       onRedraw();
     } else if (e.touches.length === 2) {
       tapStart = undefined;
-      const [t1, t2] = Array.from(e.touches);
+      const [t1, t2] = Array.from(e.touches) as [Touch, Touch];
       const prevT1 = activeTouches.find(t => t.id === t1.identifier);
       const prevT2 = activeTouches.find(t => t.id === t2.identifier);
       if (prevT1 && prevT2) {

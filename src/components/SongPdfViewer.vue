@@ -162,7 +162,7 @@ function drawPageOverlay({ s, p }: { s: p5, p: number, transform: PageTransform 
 
     // draw playbar
     if (currentWrittenMeasure?.value?.value === measure.value && currentPlayingMeasure.value) {
-      const mStart = currentPlayingMeasure.value.$beatTicks[0];
+      const mStart = currentPlayingMeasure.value.$beatTicks[0] ?? 0;
       const mLength = currentPlayingMeasure.value.$tickLength ?? 960;
       const measureProgress = Math.max(0, Math.min(1, (player.position - mStart) / mLength));
 

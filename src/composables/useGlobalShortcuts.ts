@@ -27,7 +27,7 @@ const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
 // All specified modifiers must be active; unspecified modifiers must be inactive.
 function matchesShortcut(e: KeyboardEvent, shortcut: string): boolean {
   const parts = shortcut.split("+");
-  const key = parts[parts.length - 1];
+  const key = parts[parts.length - 1]!;
 
   const wantsMod   = parts.includes("Mod");
   const wantsMeta  = parts.includes("Meta") || (wantsMod && isMac);

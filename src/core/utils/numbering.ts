@@ -22,8 +22,8 @@ export function compareNumberings(a: Numbering, b: Numbering): number {
   const matchA = a.match(NUMBERING_REGEX) as RegExpMatchArray;
   const matchB = b.match(NUMBERING_REGEX) as RegExpMatchArray;
 
-  const numA = parseInt(matchA[1] ?? 0, 10);
-  const numB = parseInt(matchB[1] ?? 0, 10);
+  const numA = parseInt(matchA[1] ?? "0", 10);
+  const numB = parseInt(matchB[1] ?? "0", 10);
 
   // Compare the numeric parts
   if (numA !== numB) {
@@ -31,8 +31,8 @@ export function compareNumberings(a: Numbering, b: Numbering): number {
   }
 
   // If numeric parts are equal, compare iterations
-  const iterA = parseInt(matchA[4] ?? 0, 10);
-  const iterB = parseInt(matchB[4] ?? 0, 10);
+  const iterA = parseInt(matchA[4] ?? "0", 10);
+  const iterB = parseInt(matchB[4] ?? "0", 10);
 
   if (iterA !== iterB) {
     return iterA - iterB;

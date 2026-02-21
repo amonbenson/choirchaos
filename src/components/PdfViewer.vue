@@ -43,7 +43,12 @@ function updatePageMeasures() {
   pageMeasures.value = Array(numPages.value).fill(null).map(() => ([]));
   for (const measure of props.song.measures.items()) {
     if (measure.layout) {
-      pageMeasures.value[measure.layout.page].push(measure);
+      const page = pageMeasures.value[measure.layout.page];
+      if (!page) {
+        console.warn(`Measure ${measure.value} references page ${measure.layout.page} which is out of range (numPages=${numPages.value}).`);
+      } else {
+        page.push(measure);
+      }
     }
   }
 
@@ -62,7 +67,7 @@ function isMeasureHighlighted(measure: Measure) {
 
   // check if any track playing in the given measure is highlighted
   for (const trackIndex of measure.$activeTrackIndices) {
-    if (props.song!.tracks[trackIndex].mixer.highlight) {
+    if (props.song!.tracks[trackIndex]?.mixer.highlight) {
       return true;
     }
   }
@@ -71,10 +76,18 @@ function isMeasureHighlighted(measure: Measure) {
 }
 
 // keep track of currently playing measure.
-const currentMeasure: ComputedRef<Measure | undefined> = computed(() => player.ready ? props.song?.findMeasure(player.currentMeasure[0].split("-")[0]) : undefined);
-const currentMeasureProgress = computed(() => currentMeasure.value && currentMeasure.value?.layout && currentMeasure.value.$beatTicks
-  ? (player.position - currentMeasure.value.$beatTicks[0]) / (currentMeasure.value.$beatTicks[currentMeasure.value.beats - 1] - currentMeasure.value.$beatTicks[0]) / currentMeasure.value.beats * (currentMeasure.value.beats - 1)
-  : 0);
+const currentMeasure: ComputedRef<Measure | undefined> = computed(() => {
+  if (!player.ready) return undefined;
+  const measureNumber = player.currentMeasure[0].split("-")[0]!;
+  return props.song?.findMeasure(measureNumber);
+});
+const currentMeasureProgress = computed(() => {
+  const m = currentMeasure.value;
+  if (!m || !m.layout || !m.$beatTicks) return 0;
+  const beatStart = m.$beatTicks[0] ?? 0;
+  const beatEnd = m.$beatTicks[m.beats - 1] ?? beatStart;
+  return (player.position - beatStart) / (beatEnd - beatStart) / m.beats * (m.beats - 1);
+});
 
 // automatic page sync
 const currentPage = ref(0);

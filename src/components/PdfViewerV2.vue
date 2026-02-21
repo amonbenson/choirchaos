@@ -57,11 +57,13 @@ function draw() {
     transform.pushPageTransform(s, p);
 
     const page = pages.value[p];
+    if (!page) { s.pop(); continue; }
     if (page.status === "ready") {
+      const ctx = s.drawingContext as CanvasRenderingContext2D;
       if (pageRange[1] - pageRange[0] < 7) {
-        s.drawingContext.drawImage(page.canvas, 0, 0, 1, 1);
+        ctx.drawImage(page.canvas!, 0, 0, 1, 1);
       } else {
-        s.drawingContext.drawImage(page.canvasLow, 0, 0, 1, 1);
+        ctx.drawImage(page.canvasLow!, 0, 0, 1, 1);
       }
     } else {
       s.fill(255);

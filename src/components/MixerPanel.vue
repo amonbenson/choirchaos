@@ -50,7 +50,7 @@ watch(tracks, () => {
 
 
 function triggerEventAnimation(trackIndex: number) {
-  trackTweens.value[trackIndex].restart();
+  trackTweens.value[trackIndex]?.restart();
 }
 
 player.onNote(event => {

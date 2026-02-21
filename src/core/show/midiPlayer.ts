@@ -1,5 +1,5 @@
 import axios from "axios";
-import EventEmitter from "events";
+import { EventEmitter } from "events";
 import { parseArrayBuffer as parseMidiBuffer } from "midi-json-parser";
 
 import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
@@ -257,6 +257,10 @@ export default class MidiPlayer extends EventEmitter {
   private _handleEvent(event: MidiEvent) {
     if (event instanceof NoteEvent) {
       const track = this._currentSong!.tracks[event.trackIndex];
+      if (!track) {
+        console.warn(`NoteEvent references track index ${event.trackIndex} which does not exist in the current song.`);
+        return;
+      }
 
       // only process if the track is not muted (event will still be fired)
       if (track.mixer.effectiveGain > 0) {
@@ -608,14 +612,14 @@ export default class MidiPlayer extends EventEmitter {
         // store a complete note event when we have received the note off
         if (midiEvent.noteOff) {
           // lookup the note on index that we've store previously to set the duration property
-          const noteOnIndex = noteOnIndices[midiEvent.noteOff.noteNumber];
+          const noteOnIndex = noteOnIndices[midiEvent.noteOff.noteNumber]!;
           if (noteOnIndex === -1) {
             console.warn("Midi data contains note off without a note on.");
           } else {
             const noteOnEvent = midiEvents[noteOnIndex] as any;
 
             // store the note event
-            this._midi_events.track[t].note.insert(new NoteEvent(
+            this._midi_events.track[t]!.note.insert(new NoteEvent(
               noteOnEvent.$tick,
               tick - noteOnEvent.$tick,
               noteOnEvent.noteOn.noteNumber,

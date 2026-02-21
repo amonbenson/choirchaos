@@ -80,21 +80,25 @@ export default class Song {
   }
 
   public setTrackMute(trackIndex: number, value: boolean) {
-    this.tracks[trackIndex].mixer.mute = value;
+    if (!this.tracks[trackIndex]) { console.warn(`setTrackMute: track index ${trackIndex} out of range.`); return; }
+    this.tracks[trackIndex]!.mixer.mute = value;
     this._updateEffectiveParameters();
   }
 
   public setTrackSolo(trackIndex: number, value: boolean) {
-    this.tracks[trackIndex].mixer.solo = value;
+    if (!this.tracks[trackIndex]) { console.warn(`setTrackSolo: track index ${trackIndex} out of range.`); return; }
+    this.tracks[trackIndex]!.mixer.solo = value;
     this._updateEffectiveParameters();
   }
 
   public setTrackHighlight(trackIndex: number, value: boolean) {
-    this.tracks[trackIndex].mixer.highlight = value;
+    if (!this.tracks[trackIndex]) { console.warn(`setTrackHighlight: track index ${trackIndex} out of range.`); return; }
+    this.tracks[trackIndex]!.mixer.highlight = value;
   }
 
   public setTrackGain(trackIndex: number, value: number) {
-    this.tracks[trackIndex].mixer.gain = Math.max(0, Math.min(1, value));
+    if (!this.tracks[trackIndex]) { console.warn(`setTrackGain: track index ${trackIndex} out of range.`); return; }
+    this.tracks[trackIndex]!.mixer.gain = Math.max(0, Math.min(1, value));
     this._updateEffectiveParameters();
   }
 

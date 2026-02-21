@@ -24,7 +24,7 @@ export function binarySearch<K, T>(list: T[], key: K, options: BinarySearchOptio
   }
 
   // check lower bound
-  const cmpLow = comparator(key, list[0]);
+  const cmpLow = comparator(key, list[0]!);
   if (cmpLow < 0) {
     return extend ? 0 : -1;
   } else if (cmpLow === 0) {
@@ -38,7 +38,7 @@ export function binarySearch<K, T>(list: T[], key: K, options: BinarySearchOptio
   }
 
   // check upper bound
-  const cmpHigh = comparator(key, list[list.length - 1]);
+  const cmpHigh = comparator(key, list[list.length - 1]!);
   if (cmpHigh > 0) {
     return extend ? list.length - 1 : (upperBoundReturnsLength ? list.length : -1);
   } else if (cmpHigh === 0) {
@@ -56,7 +56,7 @@ export function binarySearch<K, T>(list: T[], key: K, options: BinarySearchOptio
   let high = list.length - 1;
   while (low <= high) {
     const mid = low + Math.floor((high - low) / 2);
-    const cmp = comparator(key, list[mid]);
+    const cmp = comparator(key, list[mid]!);
 
     // validate the comparator result
     if (typeof cmp !== "number" || isNaN(cmp)) {
@@ -112,7 +112,7 @@ export function insertSorted<T>(list: T[], item: T, options: InsertSortedOptions
   let pos = undefined;
 
   // check lower bound
-  const cmpLow = comparator(item, list[0]);
+  const cmpLow = comparator(item, list[0]!);
   if (cmpLow < 0) {
     pos = 0;
   } else if (cmpLow === 0) {
@@ -120,7 +120,7 @@ export function insertSorted<T>(list: T[], item: T, options: InsertSortedOptions
   }
 
   // check upper bound
-  const cmpHigh = comparator(item, list[list.length - 1]);
+  const cmpHigh = comparator(item, list[list.length - 1]!);
   if (cmpHigh >= 0) {
     pos = list.length;
   }
@@ -213,7 +213,7 @@ export class BinarySortedList<T> {
   searchRange<K = T>(from: K, to: K, options: BinarySearchOptions<K, T> = {}) {
     const [a, b] = this.searchIndexRange(from, to, options);
     if (a === -1 && b === 1) {
-      return [this._items[0]]; // edge case, where slice(-1, 1) returns no items, although it should return the first item
+      return this._items.slice(0, 1); // edge case, where slice(-1, 1) returns no items, although it should return the first item
     }
     return this._items.slice(a, b);
   }
@@ -231,6 +231,6 @@ export class BinarySortedList<T> {
   }
 
   last() {
-    return this._items.at(-1);
+    return this._items[this._items.length - 1];
   }
 }
