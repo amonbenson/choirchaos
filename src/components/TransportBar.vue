@@ -40,15 +40,15 @@ const playbackSpeedPercentage = computed({
 <template>
   <div class="relative">
     <Toolbar
-      class="relative px-4 grid grid-cols-[auto_auto] lg:grid-cols-[repeat(3,minmax(auto,1fr))] lg:overflow-x-auto"
-      pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-8"
+      class="relative px-4 grid grid-cols-[auto_auto] lg:grid-cols-[repeat(3,minmax(0,1fr))] lg:overflow-x-auto"
+      pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-8 min-w-0 overflow-hidden"
       pt:center="flex justify-center items-center -space-x-2 sm:space-x-0"
-      pt:end="overflow-x-auto lg:overflow-x-visible"
+      pt:end="overflow-x-auto lg:overflow-x-visible min-w-0"
     >
       <template #start>
         <Select
           v-model="songId"
-          class="w-full lg:w-88 border-none"
+          class="w-full min-w-0 lg:max-w-88 border-none"
           :options="songs"
           option-value="id"
           :option-label="song => `#${song.number} ${song.title}`"

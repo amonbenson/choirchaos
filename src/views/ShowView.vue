@@ -258,6 +258,7 @@ fetchShow();
     /> -->
     <SongPdfViewer
       class="w-full h-full"
+      :class="settings.current.ui.selectedTab !== 'pdf' ? 'hidden lg:block' : ''"
       :song="song"
     />
     <div
