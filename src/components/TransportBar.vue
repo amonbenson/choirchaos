@@ -16,13 +16,13 @@ const props = defineProps<{
   loading?: boolean,
 }>();
 
-const emit = defineEmits<{
-  rewind: [];
-  forward: [];
-  "play-pause": [];
-  "vamp-out": [];
-  "segue-toggle": [];
-}>();
+const emit = defineEmits([
+  "rewind",
+  "forward",
+  "playPause",
+  "toggleVamp",
+  "toggleSegue",
+]);
 
 const songId = defineModel<string>();
 const songIndex = computed(() => props.songs?.findIndex(s => s.id === songId.value) ?? 0);
@@ -40,7 +40,7 @@ const playbackSpeedPercentage = computed({
 <template>
   <div class="relative">
     <Toolbar
-      class="relative px-4 grid grid-cols-[auto_auto] lg:grid-cols-3 lg:overflow-x-auto"
+      class="relative px-4 grid grid-cols-[auto_auto] lg:grid-cols-[repeat(3,auto)] lg:overflow-x-auto"
       pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-8 min-w-0 overflow-hidden"
       pt:center="flex justify-center items-center -space-x-2 sm:space-x-0"
       pt:end="overflow-x-auto lg:overflow-x-visible min-w-0"
@@ -48,7 +48,7 @@ const playbackSpeedPercentage = computed({
       <template #start>
         <Select
           v-model="songId"
-          class="w-full min-w-0 lg:max-w-88 border-none"
+          class="w-full min-w-0 lg:w-88 border-none"
           :options="songs"
           option-value="id"
           :option-label="song => `#${song.number} ${song.title}`"
@@ -59,7 +59,7 @@ const playbackSpeedPercentage = computed({
 
       <template #center>
         <Button
-          :disabled="!player.ready"
+          :disabled="!player.ready || (songIndex === 0 && player.position <= 0)"
           :icon="`pi ${player.position > 0 ? 'pi-backward' : 'pi-step-backward'}`"
           severity="secondary"
           aria-label="Rewind / Previous Song"
@@ -73,11 +73,11 @@ const playbackSpeedPercentage = computed({
           aria-label="Play / Pause"
           rounded
           text
-          @click="emit('play-pause')"
+          @click="emit('playPause')"
         />
         <Button
           class="flex-none"
-          :disabled="songIndex >= (songs?.length ?? 0)"
+          :disabled="!player.ready || songIndex >= (songs?.length ?? 1) - 1"
           icon="pi pi-step-forward"
           severity="secondary"
           aria-label="Next Song"
@@ -222,7 +222,7 @@ const playbackSpeedPercentage = computed({
               'exiting': 'Exiting...'
             }[vampState]"
             :severity="vampState === 'vamping' ? 'primary': 'secondary'"
-            @click="emit('vamp-out')"
+            @click="emit('toggleVamp')"
           />
 
           <!-- Segue -->
@@ -231,7 +231,7 @@ const playbackSpeedPercentage = computed({
             :disabled="player.currentSegue === undefined"
             label="Segue"
             :severity="player.currentSegue?.enabled ? 'primary': 'secondary'"
-            @click="emit('segue-toggle')"
+            @click="emit('toggleSegue')"
           />
         </div>
       </template>

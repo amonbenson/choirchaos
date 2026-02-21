@@ -210,8 +210,8 @@ fetchShow();
       @play-pause="playPause"
       @rewind="rewind"
       @forward="forward"
-      @vamp-out="toggleVamp"
-      @segue-toggle="toggleSegue"
+      @toggle-vamp="toggleVamp"
+      @toggle-segue="toggleSegue"
     />
     <ButtonGroup class="w-full lg:hidden">
       <Button
