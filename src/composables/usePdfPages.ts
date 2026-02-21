@@ -9,15 +9,20 @@ export type PdfPageData = {
   canvasLow?: HTMLCanvasElement;
 };
 
+export type PdfStatus = "none" | "loading" | "loadError" | "ready";
+
 // Reactive page state for a given PDF URL, backed by the shared PdfRenderer.
 // Handles loading, rendering, and live status updates.
-export function usePdfPages(url: Ref<string | undefined>, options?: { onUpdate?: () => void }) {
+export function usePdfPages(url: Ref<string | undefined>, options?: { onUpdate?: () => void }): {
+  pages: Ref<PdfPageData[]>;
+  documentStatus: Ref<PdfStatus>;
+} {
   const pdfRendererStore = usePdfRendererStore();
 
-  const documentStatus = ref<"none" | "loading" | "loadError" | "ready">("none");
+  const documentStatus = ref<PdfStatus>("none");
   const pages = ref<PdfPageData[]>([]);
 
-  function updateState() {
+  function updateState(): void {
     if (!url.value) {
       documentStatus.value = "none";
       pages.value = [];

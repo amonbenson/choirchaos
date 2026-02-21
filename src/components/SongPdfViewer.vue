@@ -101,21 +101,21 @@ function findMeasureAt(transform: PageTransform, x: number, y: number): Measure 
   return undefined;
 }
 
-function mousePressed(_: { s: p5; transform: PageTransform }) {
+function mousePressed(_: { s: p5; transform: PageTransform }): void {
   // move to selected measure
   if (hoverMeasure.value) {
     player.setMeasure(hoverMeasure.value.value);
   }
 }
 
-function tap({ x, y, transform }: { x: number; y: number; transform: PageTransform }) {
+function tap({ x, y, transform }: { x: number; y: number; transform: PageTransform }): void {
   const measure = findMeasureAt(transform, x, y);
   if (measure) {
     player.setMeasure(measure.value);
   }
 }
 
-function mouseMoved({ transform, x, y }: { s: p5; transform: PageTransform; x: number; y: number }) {
+function mouseMoved({ transform, x, y }: { s: p5; transform: PageTransform; x: number; y: number }): void {
   // check if we are hovering a measure
   const newHoverMeasure = findMeasureAt(transform, x, y);
 
@@ -136,7 +136,7 @@ function isMeasureHighlighted(measure: Measure): boolean {
   return false;
 }
 
-function drawPageOverlay({ s, p }: { s: p5; p: number; transform: PageTransform }) {
+function drawPageOverlay({ s, p }: { s: p5; p: number; transform: PageTransform }): void {
   if (!props.song) {
     return;
   }

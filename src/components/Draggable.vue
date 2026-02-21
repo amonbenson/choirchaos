@@ -62,7 +62,7 @@ const lastPosition = ref({
   y: 0,
 });
 
-function handleMouseDown(event: MouseEvent) {
+function handleMouseDown(event: MouseEvent): void {
   if (event.target !== target.value) {
     return;
   }
@@ -95,7 +95,7 @@ function handleMouseDown(event: MouseEvent) {
   emit("dragstart", toRaw(state.value));
 }
 
-function handleMouseMove(event: MouseEvent) {
+function handleMouseMove(event: MouseEvent): void {
   if (!state.value.active) {
     return;
   }
@@ -113,7 +113,7 @@ function handleMouseMove(event: MouseEvent) {
   emit("drag", toRaw(state.value));
 }
 
-function handleMouseUp(event: MouseEvent) {
+function handleMouseUp(event: MouseEvent): void {
   if (!state.value.active) {
     return;
   }
@@ -132,7 +132,7 @@ function handleMouseUp(event: MouseEvent) {
   emit("dragend", toRaw(state.value));
 }
 
-function handleTouchStart(event: TouchEvent) {
+function handleTouchStart(event: TouchEvent): void {
   if (event.target !== target.value) {
     return;
   }
@@ -171,7 +171,7 @@ function handleTouchStart(event: TouchEvent) {
   emit("dragstart", toRaw(state.value));
 }
 
-function handleTouchMove(event: TouchEvent) {
+function handleTouchMove(event: TouchEvent): void {
   if (!state.value.active) {
     return;
   }
@@ -195,7 +195,7 @@ function handleTouchMove(event: TouchEvent) {
   emit("drag", toRaw(state.value));
 }
 
-function handleTouchEnd(event: TouchEvent) {
+function handleTouchEnd(event: TouchEvent): void {
   if (!state.value.active) {
     return;
   }
@@ -210,7 +210,7 @@ function handleTouchEnd(event: TouchEvent) {
   emit("dragend", toRaw(state.value));
 }
 
-function registerListeners() {
+function registerListeners(): void {
   target.value?.addEventListener("mousedown", handleMouseDown);
   window.addEventListener("mousemove", handleMouseMove);
   window.addEventListener("mouseup", handleMouseUp);
@@ -222,7 +222,7 @@ function registerListeners() {
   target.value?.addEventListener("touchcancel", handleTouchEnd);
 }
 
-function unregisterListeners() {
+function unregisterListeners(): void {
   target.value?.removeEventListener("mousedown", handleMouseDown);
   window.removeEventListener("mousemove", handleMouseMove);
   window.removeEventListener("mouseup", handleMouseUp);
@@ -234,7 +234,7 @@ function unregisterListeners() {
   target.value?.removeEventListener("touchcancel", handleTouchEnd);
 }
 
-function passRef(el: any) {
+function passRef(el: any): void {
   if (!(el instanceof HTMLElement)) {
     console.error("passRef() can only accept direct Element references (no Vue components)");
   }

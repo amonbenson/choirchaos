@@ -59,7 +59,7 @@ function matchesShortcut(e: KeyboardEvent, shortcut: string): boolean {
 
 // Registers global keyboard shortcuts from a keymap of shortcut → action.
 // preventDefault is called for every matched shortcut.
-export function useGlobalShortcuts(keymap: Record<string, () => void>) {
+export function useGlobalShortcuts(keymap: Record<string, () => void>): void {
   useEventListener(window, "keydown", (e: KeyboardEvent) => {
     if (isInputFocused()) {
       return;

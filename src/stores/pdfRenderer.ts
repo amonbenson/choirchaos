@@ -6,7 +6,7 @@ import { type PdfPageStatus, PdfRenderer } from "@/core/pdf/pdfRenderer";
 const globalPdfRenderer = new PdfRenderer();
 
 export const usePdfRendererStore = defineStore("pdfRenderer", () => {
-  function onPageStatusUpdate(cb: (status: PdfPageStatus, url: string, page: number) => void) {
+  function onPageStatusUpdate(cb: (status: PdfPageStatus, url: string, page: number) => void): void {
     globalPdfRenderer.on("statusChanged", cb);
     onScopeDispose(() => globalPdfRenderer.off("statusChanged", cb));
   }

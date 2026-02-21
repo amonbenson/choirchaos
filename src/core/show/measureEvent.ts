@@ -17,7 +17,7 @@ export class MarkerEvent extends MeasureEvent {
     super(start);
   }
 
-  public json() {
+  public json(): any {
     return {
       type: "marker",
       start: this.start,
@@ -25,7 +25,7 @@ export class MarkerEvent extends MeasureEvent {
     };
   }
 
-  public static fromJson({ start, marker }: any) {
+  public static fromJson({ start, marker }: any): MarkerEvent {
     return new MarkerEvent(start, marker);
   }
 }
@@ -35,7 +35,7 @@ export class VampEvent extends MeasureEvent {
     super(start, end);
   }
 
-  public json() {
+  public json(): any {
     return {
       type: "vamp",
       start: this.start,
@@ -44,7 +44,7 @@ export class VampEvent extends MeasureEvent {
     };
   }
 
-  public static fromJson({ start, end, iterations }: any) {
+  public static fromJson({ start, end, iterations }: any): VampEvent {
     return new VampEvent(start, end, iterations);
   }
 }

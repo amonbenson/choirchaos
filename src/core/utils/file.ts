@@ -2,7 +2,7 @@ import { pb } from "@/pocketbase";
 
 export type UrlOrFile = string | File;
 
-export function resolveFilename(file: UrlOrFile) {
+export function resolveFilename(file: UrlOrFile): string {
   if (file instanceof File) {
     return file.name;
   } else {
@@ -10,7 +10,7 @@ export function resolveFilename(file: UrlOrFile) {
   }
 }
 
-export function resolveUrl(file: UrlOrFile, collectionIdOrName: string, recordId: string) {
+export function resolveUrl(file: UrlOrFile, collectionIdOrName: string, recordId: string): string {
   if (file instanceof File) {
     return URL.createObjectURL(file);
   } else {

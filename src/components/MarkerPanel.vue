@@ -15,7 +15,7 @@ const props = defineProps<{
 
 const markers = computed(() => props.song?.events.markers.items() ?? []);
 
-function isMarkerActive(marker: MarkerEvent) {
+function isMarkerActive(marker: MarkerEvent): boolean {
   return player.currentMeasure[0] === marker.start[0]; // && player.currentMeasure[1] === marker.start[1];
 }
 </script>

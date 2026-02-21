@@ -73,11 +73,11 @@ export const usePlayerStore = defineStore("player", () => {
     setter: (player, value) => player.playbackTransposition = value,
   });
 
-  function seek(position: number) {
+  function seek(position: number): void {
     globalPlayer.seek(position);
   }
 
-  function setMeasure(value: string) {
+  function setMeasure(value: string): void {
     if (!globalPlayer.currentSong) {
       return;
     }
@@ -92,7 +92,7 @@ export const usePlayerStore = defineStore("player", () => {
     globalPlayer.seek(measure?.$beatTicks[0] ?? 0);
   }
 
-  function setBeat(value: number) {
+  function setBeat(value: number): void {
     if (!globalPlayer.currentSong) {
       return;
     }
@@ -109,12 +109,12 @@ export const usePlayerStore = defineStore("player", () => {
     globalPlayer.seek(measure?.$beatTicks[value] ?? 0);
   }
 
-  function onSegue(callback: () => void) {
+  function onSegue(callback: () => void): void {
     globalPlayer.on("segue", callback);
     onScopeDispose(() => globalPlayer.off("segue", callback));
   }
 
-  function onNote(callback: (event: NoteEvent) => void) {
+  function onNote(callback: (event: NoteEvent) => void): void {
     globalPlayer.on("note", callback);
     onScopeDispose(() => globalPlayer.off("note", callback));
   }

@@ -13,7 +13,7 @@ defineProps<{
 const popover = ref();
 const focusTarget = ref<any>(null);
 
-function onShow() {
+function onShow(): void {
   // Check if a target element was provided
   const el = focusTarget.value;
   if (!el) {

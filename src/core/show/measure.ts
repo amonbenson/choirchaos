@@ -13,7 +13,7 @@ export type MeasureNumber = Numbering;
 export type BeatNumber = number;
 export type MeasureReference = [MeasureNumber, BeatNumber];
 
-export function compareMeasureReferences(a: MeasureReference, b: MeasureReference) {
+export function compareMeasureReferences(a: MeasureReference, b: MeasureReference): number {
   const nrDiff = compareNumberings(a[0], b[0]);
   if (nrDiff !== 0) {
     // compare by measure numbers
@@ -38,7 +38,7 @@ export default class Measure {
     return [this.value, beat];
   }
 
-  public json() {
+  public json(): any {
     return {
       value: this.value,
       beats: this.beats,
@@ -46,12 +46,12 @@ export default class Measure {
     };
   }
 
-  public static fromJson({ value, beats, layout }: any) {
+  public static fromJson({ value, beats, layout }: any): Measure {
     return new Measure(value, beats, layout);
   }
 }
 
-export function compareMeasures(a: Measure, b: Measure) {
+export function compareMeasures(a: Measure, b: Measure): number {
   return compareNumberings(a.value, b.value);
 }
 

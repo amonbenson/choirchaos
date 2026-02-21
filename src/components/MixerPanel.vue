@@ -48,7 +48,7 @@ watch(tracks, () => {
   }
 }, { immediate: true, flush: "post" });
 
-function triggerEventAnimation(trackIndex: number) {
+function triggerEventAnimation(trackIndex: number): void {
   trackTweens.value[trackIndex]?.restart();
 }
 

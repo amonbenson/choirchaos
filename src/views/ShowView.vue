@@ -44,7 +44,7 @@ useGlobalShortcuts({
   "s": toggleSegue,
 });
 
-function playPause() {
+function playPause(): void {
   if (player.playing) {
     player.pause();
   } else {
@@ -52,7 +52,7 @@ function playPause() {
   }
 }
 
-function previousMeasure() {
+function previousMeasure(): void {
   if (!player.ready || !song.value) {
     return;
   }
@@ -65,7 +65,7 @@ function previousMeasure() {
   }
 }
 
-function nextMeasure() {
+function nextMeasure(): void {
   if (!player.ready || !song.value) {
     return;
   }
@@ -78,7 +78,7 @@ function nextMeasure() {
   }
 }
 
-function rewind() {
+function rewind(): void {
   if (!player.ready) {
     return;
   }
@@ -93,7 +93,7 @@ function rewind() {
   }
 }
 
-function forward() {
+function forward(): void {
   if (!player.ready) {
     return;
   }
@@ -104,17 +104,17 @@ function forward() {
   }
 }
 
-function toggleVamp() {
+function toggleVamp(): void {
   player.exitVamp();
 }
 
-function toggleSegue() {
+function toggleSegue(): void {
   if (player.currentSegue !== undefined) {
     player.setSegueEnabled(!player.currentSegue.enabled);
   }
 }
 
-function selectSong(songId?: string, autoplay: boolean = false) {
+function selectSong(songId?: string, autoplay: boolean = false): void {
   // route to the correct song first
   if (songId && songId !== props.songId) {
     router.replace({
@@ -165,7 +165,7 @@ player.onSegue(() => {
 });
 
 // fetch the show data from pocketbase on setup
-async function fetchShow() {
+async function fetchShow(): Promise<void> {
   try {
     showLoading.value = true;
     const showObj = await Show.get(route.params.showId as string);

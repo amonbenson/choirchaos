@@ -12,22 +12,22 @@ export function usePanZoom(
     onRedraw: () => void;
     onTap?: (x: number, y: number) => void;
   },
-) {
+): void {
   const { cursor, onRedraw, onTap } = options;
 
   let pressing = false;
 
-  function setCursor(value: string) {
+  function setCursor(value: string): void {
     if (container.value) {
       container.value.style.cursor = value;
     }
   }
 
-  function idleCursor() {
+  function idleCursor(): void {
     setCursor(cursor?.value ?? "grab");
   }
 
-  function activeCursor() {
+  function activeCursor(): void {
     setCursor(cursor?.value ?? "grabbing");
   }
 
@@ -35,7 +35,7 @@ export function usePanZoom(
     watch(cursor, () => pressing ? activeCursor() : idleCursor());
   }
 
-  function containerPos(clientX: number, clientY: number) {
+  function containerPos(clientX: number, clientY: number): { x: number; y: number } {
     const rect = container.value!.getBoundingClientRect();
     return { x: clientX - rect.left, y: clientY - rect.top };
   }
@@ -45,7 +45,7 @@ export function usePanZoom(
   let lastX: number | undefined;
   let lastY: number | undefined;
 
-  function onPointerDown(e: PointerEvent) {
+  function onPointerDown(e: PointerEvent): void {
     if (e.pointerType !== "mouse") {
       return;
     }
@@ -60,7 +60,7 @@ export function usePanZoom(
     activeCursor();
   }
 
-  function onPointerMove(e: PointerEvent) {
+  function onPointerMove(e: PointerEvent): void {
     if (e.pointerType !== "mouse") {
       return;
     }
@@ -74,7 +74,7 @@ export function usePanZoom(
     }
   }
 
-  function onPointerUp(e: PointerEvent) {
+  function onPointerUp(e: PointerEvent): void {
     if (e.pointerType !== "mouse" || !pressing) {
       return;
     }
@@ -85,8 +85,9 @@ export function usePanZoom(
     idleCursor();
   }
 
-  function onWheel(e: WheelEvent) {
+  function onWheel(e: WheelEvent): void {
     e.preventDefault();
+
     const pos = containerPos(e.clientX, e.clientY);
     if (e.metaKey || e.ctrlKey) {
       // metaKey: macOS Cmd+scroll; ctrlKey: trackpad/mobile pinch
@@ -105,8 +106,9 @@ export function usePanZoom(
   let tapStart: { id: number; x: number; y: number } | undefined;
   const TAP_MAX_MOVEMENT = 10;
 
-  function onTouchStart(e: TouchEvent) {
+  function onTouchStart(e: TouchEvent): void {
     e.preventDefault();
+
     if (e.touches.length === 1) {
       pressing = true;
       const t = e.touches[0]!;
@@ -119,8 +121,9 @@ export function usePanZoom(
     activeTouches = Array.from(e.touches).map(t => ({ id: t.identifier, x: t.clientX, y: t.clientY }));
   }
 
-  function onTouchMove(e: TouchEvent) {
+  function onTouchMove(e: TouchEvent): void {
     e.preventDefault();
+
     if (e.touches.length === 1 && pressing) {
       const touch = e.touches[0]!;
       const prev = activeTouches.find(t => t.id === touch.identifier);
@@ -157,8 +160,9 @@ export function usePanZoom(
     activeTouches = Array.from(e.touches).map(t => ({ id: t.identifier, x: t.clientX, y: t.clientY }));
   }
 
-  function onTouchEnd(e: TouchEvent) {
+  function onTouchEnd(e: TouchEvent): void {
     e.preventDefault();
+
     if (tapStart) {
       const changed = Array.from(e.changedTouches).find(t => t.identifier === tapStart!.id);
       if (changed && Math.hypot(changed.clientX - tapStart.x, changed.clientY - tapStart.y) <= TAP_MAX_MOVEMENT) {

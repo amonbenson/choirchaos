@@ -26,15 +26,15 @@ export abstract class Updater {
     this._updateCallback = updateCallback;
   }
 
-  public get lastUpdate() {
+  public get lastUpdate(): number {
     return this._lastUpdate;
   }
 
-  public get running() {
+  public get running(): boolean {
     return this._running;
   }
 
-  protected _update() {
+  protected _update(): void {
     // calculate delta time
     const now = this._options.timeProvider();
     let delta = now - this._lastUpdate;
@@ -55,7 +55,7 @@ export abstract class Updater {
     this._updateCompleteImpl();
   }
 
-  start() {
+  start(): void {
     if (this._running) {
       return;
     }
@@ -67,7 +67,7 @@ export abstract class Updater {
     this._startImpl();
   }
 
-  stop() {
+  stop(): void {
     if (!this._running) {
       return;
     }

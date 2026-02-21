@@ -27,7 +27,7 @@ export default class Track {
     public $midiTrackEvents: MidiTrackEvents | object = {},
   ) {}
 
-  public json() {
+  public json(): any {
     return {
       title: this.title,
       classification: this.classification,
@@ -35,7 +35,7 @@ export default class Track {
     };
   }
 
-  public static fromJson({ title, classification, program }: any) {
+  public static fromJson({ title, classification, program }: any): Track {
     return new Track(title, classification, program);
   }
 }

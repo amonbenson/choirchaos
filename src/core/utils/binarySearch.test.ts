@@ -6,7 +6,7 @@ type TestItem = { p: number };
 
 describe("binarySearch", () => {
   const items: TestItem[] = [{ p: 10 }, { p: 20 }, { p: 30 }];
-  const comparator = (a: TestItem, b: TestItem) => a.p - b.p;
+  const comparator = (a: TestItem, b: TestItem): number => a.p - b.p;
 
   it("finds the correct element with default parameters", () => {
     const options = { comparator };
@@ -159,7 +159,7 @@ describe("BinarySortedList", () => {
 
   it("works with custom comparator for objects", () => {
     const items: TestItem[] = [{ p: 1 }, { p: 3 }, { p: 5 }];
-    const comparator = (a: TestItem, b: TestItem) => a.p - b.p;
+    const comparator = (a: TestItem, b: TestItem): number => a.p - b.p;
     const list = new BinarySortedList(items, { comparator });
     list.insert({ p: 4 });
     expect(list.items()).toEqual([
@@ -171,7 +171,7 @@ describe("BinarySortedList", () => {
 
   it("sorts items after construction", () => {
     const arr = [{ p: 5 }, { p: 1 }, { p: 3 }];
-    const comparator = (a: TestItem, b: TestItem) => a.p - b.p;
+    const comparator = (a: TestItem, b: TestItem): number => a.p - b.p;
     const list = new BinarySortedList(arr, { comparator });
     expect(list.items()).toEqual([
       { p: 1 }, { p: 3 }, { p: 5 },

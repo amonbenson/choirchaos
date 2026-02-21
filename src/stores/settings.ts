@@ -44,35 +44,35 @@ function loadSettings(): Settings {
   }
 }
 
-function storeSettings(settings: Settings) {
+function storeSettings(settings: Settings): void {
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(settings));
 }
 
-function clearSettings() {
+function clearSettings(): void {
   localStorage.removeItem(LOCAL_STORAGE_KEY);
 }
 
 export const useSettingsStore = defineStore(STORE_NAME, () => {
   const settings: Ref<Settings> = ref(loadSettings());
 
-  const updateSelectedTab = (tab: UiSettings["selectedTab"]) => {
+  function updateSelectedTab(tab: UiSettings["selectedTab"]): void {
     settings.value.ui.selectedTab = tab;
     storeSettings(settings.value);
-  };
+  }
 
-  const updatePanelVisible = (panel: keyof UiSettings["panelVisible"], visible: boolean) => {
+  function updatePanelVisible(panel: keyof UiSettings["panelVisible"], visible: boolean): void {
     settings.value.ui.panelVisible[panel] = visible;
     storeSettings(settings.value);
-  };
+  }
 
-  const togglePanelVisible = (panel: keyof UiSettings["panelVisible"]) => {
+  function togglePanelVisible(panel: keyof UiSettings["panelVisible"]): void {
     updatePanelVisible(panel, !settings.value.ui.panelVisible[panel]);
-  };
+  }
 
-  const clear = () => {
+  function clear(): void {
     settings.value = getDefaultSettings();
     clearSettings();
-  };
+  }
 
   return {
     current: settings,

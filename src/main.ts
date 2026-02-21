@@ -11,7 +11,7 @@ import { router } from "./router/router";
 
 // Load WebAudioFont as a global script (the library uses top-level var declarations,
 // so it must be executed as a classic script, not bundled as an ES module).
-async function init() {
+async function init(): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const script = document.createElement("script");
     script.src = webAudioFontUrl;

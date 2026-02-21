@@ -77,7 +77,7 @@ export default class PageTransform {
     return pc;
   }
 
-  public setZoom(zoom: number, origin?: ScreenCoordinate) {
+  public setZoom(zoom: number, origin?: ScreenCoordinate): void {
     const previousZoom = this.zoom;
     this.zoom = zoom;
 
@@ -88,7 +88,7 @@ export default class PageTransform {
     }
   }
 
-  public pushViewportTransform(s: p5) {
+  public pushViewportTransform(s: p5): void {
     s.push();
 
     const translation = this.viewportToScreen({ x: 0, y: 0 });
@@ -98,7 +98,7 @@ export default class PageTransform {
     s.scale(scale.x, scale.y);
   }
 
-  public pushPageTransform(s: p5, p: number) {
+  public pushPageTransform(s: p5, p: number): void {
     s.push();
 
     const translation = this.pageToScreen({ p, x: 0, y: 0 });
@@ -115,7 +115,7 @@ export default class PageTransform {
     return [Math.max(0, left.p), Math.min(numPages, right.p + 1)];
   }
 
-  public contains(pc: PageCoordinate, screenWidth: number, screenHeight: number) {
+  public contains(pc: PageCoordinate, screenWidth: number, screenHeight: number): boolean {
     const sc = this.pageToScreen(pc);
 
     return sc.x >= 0 && sc.x < screenWidth && sc.y >= 0 && sc.y < screenHeight;

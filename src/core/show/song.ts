@@ -38,7 +38,7 @@ export default class Song {
     this.tracks.forEach((track, i) => track.mixer.index = i);
   }
 
-  public findMeasureIndex(value: Numbering, ignoreRepeats: boolean = false) {
+  public findMeasureIndex(value: Numbering, ignoreRepeats: boolean = false): number {
     if (ignoreRepeats && value.includes("-")) {
       value = value.split("-")[0] + "-1";
     }
@@ -46,7 +46,7 @@ export default class Song {
     return this.measures.searchIndex({ value } as Measure);
   }
 
-  public findMeasure(value: Numbering, ignoreRepeats: boolean = false) {
+  public findMeasure(value: Numbering, ignoreRepeats: boolean = false): Measure | undefined {
     return this.measures.items()[this.findMeasureIndex(value, ignoreRepeats)];
   }
 
@@ -62,7 +62,7 @@ export default class Song {
   //   return this.measures.items()[i - 1] ?? this.measures.first();
   // }
 
-  public findMeasureByTick(tick: Tick) {
+  public findMeasureByTick(tick: Tick): Measure | undefined {
     const index = binarySearch<number, Measure>(this.measures.items(), tick, {
       comparator: (tick, measure) => tick - (measure.$beatTicks[0] ?? Infinity),
       direction: "backward",
@@ -72,14 +72,14 @@ export default class Song {
     return this.measures.items()[index];
   }
 
-  private _updateEffectiveParameters() {
+  private _updateEffectiveParameters(): void {
     const soloing = this.tracks.some(track => track.mixer.solo);
 
     this.tracks.forEach(track => track.mixer.effectiveMute = soloing ? !track.mixer.solo : track.mixer.mute);
     this.tracks.forEach(track => track.mixer.effectiveGain = track.mixer.effectiveMute ? 0.0 : track.mixer.gain);
   }
 
-  public setTrackMute(trackIndex: number, value: boolean) {
+  public setTrackMute(trackIndex: number, value: boolean): void {
     if (!this.tracks[trackIndex]) {
       console.warn(`setTrackMute: track index ${trackIndex} out of range.`);
       return;
@@ -89,7 +89,7 @@ export default class Song {
     this._updateEffectiveParameters();
   }
 
-  public setTrackSolo(trackIndex: number, value: boolean) {
+  public setTrackSolo(trackIndex: number, value: boolean): void {
     if (!this.tracks[trackIndex]) {
       console.warn(`setTrackSolo: track index ${trackIndex} out of range.`);
       return;
@@ -99,7 +99,7 @@ export default class Song {
     this._updateEffectiveParameters();
   }
 
-  public setTrackHighlight(trackIndex: number, value: boolean) {
+  public setTrackHighlight(trackIndex: number, value: boolean): void {
     if (!this.tracks[trackIndex]) {
       console.warn(`setTrackHighlight: track index ${trackIndex} out of range.`);
       return;
@@ -108,7 +108,7 @@ export default class Song {
     this.tracks[trackIndex]!.mixer.highlight = value;
   }
 
-  public setTrackGain(trackIndex: number, value: number) {
+  public setTrackGain(trackIndex: number, value: number): void {
     if (!this.tracks[trackIndex]) {
       console.warn(`setTrackGain: track index ${trackIndex} out of range.`);
       return;

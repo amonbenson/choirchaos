@@ -40,14 +40,14 @@ usePanZoom(container, transform, {
   onTap: (x, y) => emit("tap", { x, y, transform }),
 });
 
-function setup() {
+function setup(): void {
   const s = sketch.value!;
   s.noLoop();
   handleResize();
   emit("setup", { s });
 }
 
-function draw() {
+function draw(): void {
   const s = sketch.value!;
   s.clear();
 
@@ -79,27 +79,27 @@ function draw() {
   }
 }
 
-function redrawPages() {
+function redrawPages(): void {
   sketch.value?.redraw();
 }
 
-function redrawOverlay() {
+function redrawOverlay(): void {
   overlaySketch.value?.redraw();
 }
 
-function redrawAll() {
+function redrawAll(): void {
   sketch.value?.redraw();
   overlaySketch.value?.redraw();
 }
 
-function setupOverlay() {
+function setupOverlay(): void {
   const s = overlaySketch.value!;
   s.noLoop();
   handleResize();
   emit("setup", { s });
 }
 
-function drawOverlay() {
+function drawOverlay(): void {
   const s = overlaySketch.value!;
   s.clear();
 
@@ -112,7 +112,7 @@ function drawOverlay() {
   }
 }
 
-function handleResize() {
+function handleResize(): void {
   if (!(container.value && sketch.value && sketch.value.canvas && overlaySketch.value)) {
     return;
   }
@@ -139,12 +139,12 @@ function isOnCanvas(target: EventTarget | null): boolean {
   return target === sketch.value?.canvas || target === overlaySketch.value?.canvas;
 }
 
-function containerPos(clientX: number, clientY: number) {
+function containerPos(clientX: number, clientY: number): { x: number; y: number } {
   const rect = container.value!.getBoundingClientRect();
   return { x: clientX - rect.left, y: clientY - rect.top };
 }
 
-function onPointerDownForEmit(e: PointerEvent) {
+function onPointerDownForEmit(e: PointerEvent): void {
   if (e.pointerType !== "mouse" || !isOnCanvas(e.target)) {
     return;
   }
@@ -152,7 +152,7 @@ function onPointerDownForEmit(e: PointerEvent) {
   emit("mousePressed", { s: overlaySketch.value, transform });
 }
 
-function onPointerUpForEmit(e: PointerEvent) {
+function onPointerUpForEmit(e: PointerEvent): void {
   if (e.pointerType !== "mouse") {
     return;
   }
@@ -160,7 +160,7 @@ function onPointerUpForEmit(e: PointerEvent) {
   emit("mouseReleased", { s: overlaySketch.value, transform });
 }
 
-function onPointerMoveForEmit(e: PointerEvent) {
+function onPointerMoveForEmit(e: PointerEvent): void {
   if (e.pointerType !== "mouse") {
     return;
   }
@@ -211,7 +211,7 @@ function isLocationVisible(pc: PageCoordinate): boolean {
   return transform.contains(pc, overlaySketch.value.width, overlaySketch.value.height);
 }
 
-function moveToPage(page: number) {
+function moveToPage(page: number): void {
   const s = overlaySketch.value;
   if (!s) {
     return;
@@ -229,7 +229,7 @@ function moveToPage(page: number) {
   redrawAll();
 }
 
-function moveToLocation(target: PageCoordinate, offsetX: number = 0.3, offsetY: number = 0.3) {
+function moveToLocation(target: PageCoordinate, offsetX: number = 0.3, offsetY: number = 0.3): void {
   const s = overlaySketch.value;
   if (!s) {
     return;

@@ -54,7 +54,7 @@ watch([() => props.page, () => props.scale], async () => {
   }
 });
 
-async function load() {
+async function load(): Promise<void> {
   if (!props.url) {
     status.value = "idle";
     return;
@@ -70,7 +70,7 @@ async function load() {
   status.value = "loaded";
 }
 
-async function render() {
+async function render(): Promise<void> {
   if (!pdf.value) {
     console.warn("render() was called without a PDF file loaded!");
     return;

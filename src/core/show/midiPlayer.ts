@@ -62,7 +62,7 @@ export default class MidiPlayer extends EventEmitter {
   private _position: Tick = 0;
   private _duration: Tick = 0;
 
-  private _currentSong: Song | null = null;
+  private _currentSong?: Song;
   private _currentMeasure: MeasureReference = ["1", 0];
   private _currentTempo: number = 120;
   private _currentTimeSignature: TimeSignature = [4, 2];
@@ -104,110 +104,110 @@ export default class MidiPlayer extends EventEmitter {
 
   private _timeSinceLastPositionUpdate = 0;
 
-  get status() {
+  get status(): MidiPlayerStatus {
     return this._status;
   }
 
-  private _updateStatus(value: MidiPlayerStatus) {
+  private _updateStatus(value: MidiPlayerStatus): void {
     this._status = value;
     this.emit("statusChanged", this._status);
   }
 
-  get playing() {
+  get playing(): boolean {
     return this._playing;
   }
 
-  private _updatePlaying(value: boolean) {
+  private _updatePlaying(value: boolean): void {
     this._playing = value;
     this.emit("playingChanged", this._playing);
   }
 
-  get position() {
+  get position(): Tick {
     return this._position;
   }
 
-  private _updatePosition(value: Tick) {
+  private _updatePosition(value: Tick): void {
     // TODO: slow down emit rate while playing
     this._position = Math.max(0, Math.min(this._duration, value));
     this.emit("positionChanged", this._position);
   }
 
-  get duration() {
+  get duration(): Tick {
     return this._duration;
   }
 
-  private _updateDuration(value: Tick) {
+  private _updateDuration(value: Tick): void {
     this._duration = value;
     this.emit("durationChanged", this._duration);
   }
 
-  get currentMeasure() {
+  get currentMeasure(): MeasureReference {
     return this._currentMeasure;
   }
 
-  private _updateCurrentMeasure(value: MeasureReference) {
+  private _updateCurrentMeasure(value: MeasureReference): void {
     this._currentMeasure = value;
     this.emit("currentMeasureChanged", this._currentMeasure);
   }
 
-  get currentTempo() {
+  get currentTempo(): number {
     return this._currentTempo;
   }
 
-  private _updateCurrentTempo(value: number) {
+  private _updateCurrentTempo(value: number): void {
     this._currentTempo = value;
     this.emit("currentTempoChanged", this._currentTempo);
   }
 
-  get currentTimeSignature() {
+  get currentTimeSignature(): TimeSignature {
     return this._currentTimeSignature;
   }
 
-  private _updateCurrentTimeSignature(value: TimeSignature) {
+  private _updateCurrentTimeSignature(value: TimeSignature): void {
     this._currentTimeSignature = value;
     this.emit("currentTimeSignatureChanged", this._currentTimeSignature);
   }
 
-  get finalMeasure() {
+  get finalMeasure(): MeasureReference {
     return this._finalMeasure;
   }
 
-  private _updateFinalMeasure(value: MeasureReference) {
+  private _updateFinalMeasure(value: MeasureReference): void {
     this._finalMeasure = value;
     this.emit("finalMeasureChanged", this._finalMeasure);
   }
 
-  get currentVamp() {
+  get currentVamp(): MidiPlayerVampState | undefined {
     return this._currentVamp;
   }
 
-  get currentSegue() {
-    return this._currentSegue;
-  }
-
-  private _updateCurrentVamp(value: MidiPlayerVampState | undefined) {
+  private _updateCurrentVamp(value: MidiPlayerVampState | undefined): void {
     this._currentVamp = value;
     this.emit("currentVampChanged", this._currentVamp);
   }
 
-  private _updateCurrentSegue(value: MidiPlayerSegueState | undefined) {
+  get currentSegue(): MidiPlayerSegueState | undefined {
+    return this._currentSegue;
+  }
+
+  private _updateCurrentSegue(value: MidiPlayerSegueState | undefined): void {
     this._currentSegue = value;
     this.emit("currentSegueChanged", this._currentSegue);
   }
 
-  get midi_events() {
+  get midi_events(): MidiPlayerEvents {
     return this._midi_events;
   }
 
-  get ppqn() {
+  get ppqn(): number {
     return this._ppqn;
   }
 
-  get currentSong() {
+  get currentSong(): Song | undefined {
     return this._currentSong;
   }
 
-  get playbackSpeed() {
+  get playbackSpeed(): number {
     return this._playbackSpeed;
   }
 
@@ -217,7 +217,7 @@ export default class MidiPlayer extends EventEmitter {
     this.emit("playbackSpeedChanged", this._playbackSpeed);
   }
 
-  get playbackTransposition() {
+  get playbackTransposition(): number {
     return this._playbackTransposition;
   }
 
@@ -226,14 +226,14 @@ export default class MidiPlayer extends EventEmitter {
     this.emit("playbackTranspositionChanged", this._playbackTransposition);
   }
 
-  private _resetAudioClockReference() {
+  private _resetAudioClockReference(): void {
     this._audioClockReference = {
       seconds: this._audioContext.currentTime,
       ticks: this._position,
     };
   }
 
-  private _updateTickDuration() {
+  private _updateTickDuration(): void {
     const ticksPerSecond = this._currentTempo / 60 * this._ppqn * this._playbackSpeed;
     this._tickDuration = 1 / ticksPerSecond;
 
@@ -255,7 +255,7 @@ export default class MidiPlayer extends EventEmitter {
     return undefined;
   }
 
-  private _handleEvent(event: MidiEvent) {
+  private _handleEvent(event: MidiEvent): void {
     if (event instanceof NoteEvent) {
       const track = this._currentSong!.tracks[event.trackIndex];
       if (!track) {
@@ -311,7 +311,7 @@ export default class MidiPlayer extends EventEmitter {
     }
   }
 
-  private _handleStep(deltaTime: number) {
+  private _handleStep(deltaTime: number): void {
     // stop when the end is reached
     if (this._position >= this._duration) {
       this.pause();
@@ -381,20 +381,20 @@ export default class MidiPlayer extends EventEmitter {
       .searchRange(k0 as NoteEvent, k1 as NoteEvent).forEach(event => this._handleEvent(event)));
   }
 
-  resume() {
+  resumeAudioContext(): void {
     // try to resume the audio context
     if (this._audioContext.state !== "running") {
       this._audioContext.resume();
     }
   }
 
-  play() {
+  play(): void {
     if (this._status !== "ready" || this._playing) {
       return;
     }
 
     // try to resume the audio context
-    this.resume();
+    this.resumeAudioContext();
 
     this.emit("positionChanged", this._position);
     this._updatePlaying(true);
@@ -402,7 +402,7 @@ export default class MidiPlayer extends EventEmitter {
     this._updater.start();
   }
 
-  pause() {
+  pause(): void {
     if (this._status !== "ready" || !this._playing) {
       return;
     }
@@ -413,7 +413,7 @@ export default class MidiPlayer extends EventEmitter {
     this._resetAudioClockReference();
   }
 
-  stop() {
+  stop(): void {
     this.pause();
     this.seek(0);
     this._resetAudioClockReference();
@@ -427,7 +427,7 @@ export default class MidiPlayer extends EventEmitter {
     }
   }
 
-  seek(position: Tick) {
+  seek(position: Tick): void {
     if (this._status !== "ready") {
       return;
     }
@@ -467,7 +467,7 @@ export default class MidiPlayer extends EventEmitter {
     }
   }
 
-  exitVamp() {
+  exitVamp(): void {
     if (this._currentVamp) {
       this._updateCurrentVamp({
         ...this._currentVamp,
@@ -476,7 +476,7 @@ export default class MidiPlayer extends EventEmitter {
     }
   }
 
-  setSegueEnabled(enabled: boolean) {
+  setSegueEnabled(enabled: boolean): void {
     if (this._currentSegue) {
       this._updateCurrentSegue({
         ...this._currentSegue,
@@ -485,15 +485,15 @@ export default class MidiPlayer extends EventEmitter {
     }
   }
 
-  enableSegue() {
+  enableSegue(): void {
     this.setSegueEnabled(true);
   }
 
-  disableSegue() {
+  disableSegue(): void {
     this.setSegueEnabled(false);
   }
 
-  async load(song: Song) {
+  async load(song: Song): Promise<void> {
     if (this._status !== "idle") {
       this.unload();
     }
@@ -690,7 +690,7 @@ export default class MidiPlayer extends EventEmitter {
     }
 
     // resume the audio context and create a player
-    this.resume();
+    this.resumeAudioContext();
     this._player = new window.WebAudioFontPlayer();
 
     // setup effects chain
@@ -718,7 +718,7 @@ export default class MidiPlayer extends EventEmitter {
     this.seek(0);
   }
 
-  unload() {
+  unload(): void {
     if (this._status !== "ready") {
       return;
     }
