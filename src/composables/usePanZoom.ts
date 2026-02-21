@@ -1,4 +1,5 @@
-import { watch, onMounted, onUnmounted, type Ref } from "vue";
+import { onMounted, onUnmounted, type Ref,watch } from "vue";
+
 import type PageTransform from "@/core/pdf/pageTransform";
 
 // Attaches pan, zoom, and tap gesture handling to a container element.

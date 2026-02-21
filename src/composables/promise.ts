@@ -1,4 +1,4 @@
-import { ref, type Ref } from "vue";
+import { type Ref,ref } from "vue";
 
 export function usePromise<T, E>(promise: Promise<T>): [Ref<T | null>, Ref<boolean>, Ref<E | null>] {
   const result: Ref<T | null> = ref(null);

@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import Card from "primevue/card";
+import { onMounted, type Ref,ref } from "vue";
+import { useRouter } from "vue-router";
+
 import Show from "@/core/show/show";
 import { resolveUrl } from "@/core/utils/file";
-import Card from "primevue/card";
-import { onMounted, ref, type Ref } from "vue";
-import { useRouter } from "vue-router";
 
 const router = useRouter();
 const shows: Ref<Show[]> = ref([]);
@@ -14,11 +15,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="size-full flex justify-center items-center overflow-hidden">
+  <div class="flex size-full items-center justify-center overflow-hidden">
     <Card
       v-for="show in shows"
       :key="show.id"
-      class="overflow-hidden w-64 cursor-pointer"
+      class="w-64 cursor-pointer overflow-hidden"
       @click="router.push({ name: 'show', params: { showId: show.id } })"
     >
       <template

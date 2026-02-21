@@ -1,6 +1,7 @@
-import { ref, watch, onScopeDispose, type Ref } from "vue";
-import { usePdfRendererStore } from "@/stores/pdfRenderer";
+import { onScopeDispose, type Ref,ref, watch } from "vue";
+
 import type { PdfPageStatus } from "@/core/pdf/pdfRenderer";
+import { usePdfRendererStore } from "@/stores/pdfRenderer";
 
 export type PdfPageData = {
   status: "none" | "rendering" | "renderError" | "ready";

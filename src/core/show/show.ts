@@ -1,7 +1,8 @@
 import { pb, type PbRecord } from "@/pocketbase";
+
 import type { UrlOrFile } from "../utils/file";
-import Song from "./song";
 import { compareNumberings } from "../utils/numbering";
+import Song from "./song";
 
 export default class Show {
   constructor(

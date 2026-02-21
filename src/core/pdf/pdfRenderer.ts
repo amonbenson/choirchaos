@@ -1,7 +1,8 @@
+import EventEmitter from "events";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+
 import JobCache from "./jobCache";
-import EventEmitter from "events";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 

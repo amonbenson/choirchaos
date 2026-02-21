@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, shallowRef, watch, type Ref } from "vue";
 import * as pdfjsLib from "pdfjs-dist";
+import { type Ref,ref, shallowRef, watch } from "vue";
+
 import pdfWorker from "/js/pdf.worker.min.mjs?url";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -113,7 +114,7 @@ async function render() {
 
 <template>
   <div
-    class="absolute pointer-events-none"
+    class="pointer-events-none absolute"
     :style="{
       width: `${pageWidth}px`,
       height: `${pageHeight}px`,

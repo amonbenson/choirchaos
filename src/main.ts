@@ -1,11 +1,13 @@
-import { createApp } from "vue";
+import "./main.css";
+
+import Aura from "@primeuix/themes/aura";
 import { createPinia } from "pinia";
 import PrimeVue from "primevue/config";
-import Aura from "@primeuix/themes/aura";
+import { createApp } from "vue";
+import webAudioFontUrl from "webaudiofont/npm/dist/WebAudioFontPlayer.js?url";
+
 import App from "./App.vue";
 import { router } from "./router/router";
-import "./main.css";
-import webAudioFontUrl from "webaudiofont/npm/dist/WebAudioFontPlayer.js?url";
 
 // Load WebAudioFont as a global script (the library uses top-level var declarations,
 // so it must be executed as a classic script, not bundled as an ES module).

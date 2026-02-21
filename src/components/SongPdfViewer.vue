@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import type Song from "@/core/show/song";
-import PdfViewerV2 from "./PdfViewerV2.vue";
-import { resolveUrl } from "@/core/utils/file";
 import type p5 from "p5";
+import { computed, type ComputedRef, type Ref,ref, watch } from "vue";
+
 import type PageTransform from "@/core/pdf/pageTransform";
-import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import type Measure from "@/core/show/measure";
+import type Song from "@/core/show/song";
+import { resolveUrl } from "@/core/utils/file";
 import { usePlayerStore } from "@/stores/player";
+
+import PdfViewerV2 from "./PdfViewerV2.vue";
 
 const player = usePlayerStore();
 

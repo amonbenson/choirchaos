@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
-import { PdfRenderer, type PdfPageStatus } from "@/core/pdf/pdfRenderer";
 import { onScopeDispose } from "vue";
+
+import { type PdfPageStatus,PdfRenderer } from "@/core/pdf/pdfRenderer";
 
 const globalPdfRenderer = new PdfRenderer();
 

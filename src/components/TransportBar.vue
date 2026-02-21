@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import Toolbar from "primevue/toolbar";
 import Button from "primevue/button";
-import Select from "primevue/select";
-import Slider from "primevue/slider";
-import { usePlayerStore } from "@/stores/player";
-import Song from "@/core/show/song";
-import QuarterNoteSvg from "./svg/QuarterNoteSvg.vue";
-import { computed } from "vue";
 import InputNumber from "primevue/inputnumber";
 import InputText from "primevue/inputtext";
+import Select from "primevue/select";
+import Slider from "primevue/slider";
+import Toolbar from "primevue/toolbar";
+import { computed } from "vue";
+
+import Song from "@/core/show/song";
+import { usePlayerStore } from "@/stores/player";
+
 import PopoverButton from "./PopoverButton.vue";
+import QuarterNoteSvg from "./svg/QuarterNoteSvg.vue";
 
 const props = defineProps<{
   songs?: Song[],
@@ -40,7 +42,7 @@ const playbackSpeedPercentage = computed({
 <template>
   <div class="relative">
     <Toolbar
-      class="relative px-4 grid grid-cols-[auto_auto] lg:grid-cols-[repeat(3,auto)] lg:overflow-x-auto"
+      class="relative grid grid-cols-[auto_auto] px-4 lg:grid-cols-[repeat(3,auto)] lg:overflow-x-auto"
       pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-8 min-w-0 overflow-hidden"
       pt:center="flex justify-center items-center -space-x-2 sm:space-x-0"
       pt:end="overflow-x-auto lg:overflow-x-visible min-w-0"
@@ -48,7 +50,7 @@ const playbackSpeedPercentage = computed({
       <template #start>
         <Select
           v-model="songId"
-          class="w-full min-w-0 lg:w-88 border-none"
+          class="w-full min-w-0 border-none lg:w-88"
           :options="songs"
           option-value="id"
           :option-label="song => `#${song.number} ${song.title}`"
@@ -88,9 +90,9 @@ const playbackSpeedPercentage = computed({
       </template>
 
       <template #end>
-        <div class="flex justify-end items-center gap-4 sm:gap-8">
+        <div class="flex items-center justify-end gap-4 sm:gap-8">
           <!-- Measure -->
-          <div class="sm:w-24 max-w-24 flex justify-end items-center gap-1">
+          <div class="flex max-w-24 items-center justify-end gap-1 sm:w-24">
             <PopoverButton
               button-class="min-w-8"
               :label="player.ready ? player.currentMeasure[0] : '-'"
@@ -128,7 +130,7 @@ const playbackSpeedPercentage = computed({
             :active="player.playbackTransposition !== 0"
           >
             <template #default="{ setFocusTarget }">
-              <div class="flex justify-stretch items-center gap-1">
+              <div class="flex items-center justify-stretch gap-1">
                 <Button
                   icon="pi pi-minus"
                   severity="secondary"
@@ -165,10 +167,10 @@ const playbackSpeedPercentage = computed({
           <!-- Tempo -->
           <PopoverButton :active="Math.round(playbackSpeedPercentage) !== 100">
             <template #button>
-              <QuarterNoteSvg class="inline size-6 -mx-1.5 fill-current" />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * player.currentTempo) : "-" }}
+              <QuarterNoteSvg class="-mx-1.5 inline size-6 fill-current" />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * player.currentTempo) : "-" }}
             </template>
             <template #default="{ setFocusTarget }">
-              <div class="flex justify-stretch items-center gap-4">
+              <div class="flex items-center justify-stretch gap-4">
                 <Button
                   icon="pi pi-minus"
                   severity="secondary"
@@ -249,13 +251,13 @@ const playbackSpeedPercentage = computed({
       }"
     /> -->
     <div
-      class="absolute left-2 -bottom-0.5 h-1 w-[calc(100%-1rem)]"
+      class="absolute -bottom-0.5 left-2 h-1 w-[calc(100%-1rem)]"
     >
       <Slider
         :model-value="player.position"
         :min="0"
         :max="player.duration"
-        class="w-full group bg-transparent"
+        class="group w-full bg-transparent"
         pt:handle:class="scale-50 group-hover:scale-100 active:scale-100 transition-transform z-1"
         pt:range:class="h-1"
         @update:model-value="player.seek($event as number)"

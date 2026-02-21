@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import Show from "@/core/show/show";
-import { useSettingsStore } from "@/stores/settings";
-import { usePlayerStore } from "@/stores/player";
-import { computed, watch, ref, markRaw, type Ref, type ComputedRef } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import TransportBar from "@/components/TransportBar.vue";
-import type Song from "@/core/show/song";
-import ButtonGroup from "primevue/buttongroup";
 import Button from "primevue/button";
+import ButtonGroup from "primevue/buttongroup";
+import { computed, type ComputedRef,markRaw, type Ref, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+
 import MarkerPanel from "@/components/MarkerPanel.vue";
 import MixerPanel from "@/components/MixerPanel.vue";
 import SongPdfViewer from "@/components/SongPdfViewer.vue";
+import TransportBar from "@/components/TransportBar.vue";
 import { useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
+import Show from "@/core/show/show";
+import type Song from "@/core/show/song";
+import { usePlayerStore } from "@/stores/player";
+import { useSettingsStore } from "@/stores/settings";
 
 const settings = useSettingsStore();
 const player = usePlayerStore();
@@ -200,7 +201,7 @@ fetchShow();
 </script>
 
 <template>
-  <div class="size-full grid grid-cols-1 grid-rows-[auto_auto_1fr] lg:grid-cols-[auto_1fr_auto] lg:grid-rows-[auto_1fr] gap-2 p-2 overflow-hidden">
+  <div class="grid size-full grid-cols-1 grid-rows-[auto_auto_1fr] gap-2 overflow-hidden p-2 lg:grid-cols-[auto_1fr_auto] lg:grid-rows-[auto_1fr]">
     <TransportBar
       class="lg:col-span-3"
       :model-value="songId"
@@ -228,7 +229,7 @@ fetchShow();
       />
     </ButtonGroup>
     <div
-      class="w-full h-full relative transition-all"
+      class="relative h-full w-full transition-all"
       :class="[
         settings.current.ui.selectedTab === 'markers' ? 'block' : 'hidden lg:block',
         settings.current.ui.panelVisible.markers ? 'lg:w-96' : 'lg:w-0'
@@ -242,7 +243,7 @@ fetchShow();
         :song="song"
       />
       <Button
-        class="absolute left-full top-2 z-10 transition-all hidden lg:block"
+        class="absolute top-2 left-full z-10 hidden transition-all lg:block"
         :class="settings.current.ui.panelVisible.markers ? 'rounded-l-none' : ''"
         aria-label="Show Markers Panel"
         :icon="`pi ${settings.current.ui.panelVisible.markers ? 'pi-chevron-left' : 'pi-chevron-right'}`"
@@ -257,12 +258,12 @@ fetchShow();
       :song="song"
     /> -->
     <SongPdfViewer
-      class="w-full h-full"
+      class="h-full w-full"
       :class="settings.current.ui.selectedTab !== 'pdf' ? 'hidden lg:block' : ''"
       :song="song"
     />
     <div
-      class="w-full h-full relative transition-all"
+      class="relative h-full w-full transition-all"
       :class="[
         settings.current.ui.selectedTab === 'mixer' ? 'block' : 'hidden lg:block',
         settings.current.ui.panelVisible.mixer ? 'lg:w-96' : 'lg:w-0',
@@ -276,7 +277,7 @@ fetchShow();
         :song="song"
       />
       <Button
-        class="absolute right-full top-2 z-10 transition-all hidden lg:block"
+        class="absolute top-2 right-full z-10 hidden transition-all lg:block"
         :class="settings.current.ui.panelVisible.mixer ? 'rounded-r-none' : ''"
         aria-label="Show Markers Panel"
         :icon="`pi ${settings.current.ui.panelVisible.mixer ? 'pi-chevron-right' : 'pi-chevron-left'}`"

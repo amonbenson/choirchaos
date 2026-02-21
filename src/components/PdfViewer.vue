@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from "vue";
-import { resolveUrl } from "@/core/utils/file";
-import Song from "@/core/show/song";
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
-import PdfCanvas from "@/components/PdfCanvas.vue";
-import { usePlayerStore } from "@/stores/player";
-import type Measure from "@/core/show/measure";
-import { compareNumberings } from "@/core/utils/numbering";
+import { computed, type ComputedRef, type Ref, ref, type ShallowRef,shallowRef, watch } from "vue";
+
 import Draggable from "@/components/Draggable.vue";
+import PdfCanvas from "@/components/PdfCanvas.vue";
+import type Measure from "@/core/show/measure";
+import Song from "@/core/show/song";
+import { resolveUrl } from "@/core/utils/file";
+import { compareNumberings } from "@/core/utils/numbering";
+import { usePlayerStore } from "@/stores/player";
 
 const player = usePlayerStore();
 
@@ -280,13 +281,13 @@ async function uploadMeasureLayout() {
     >
       <div
         :ref="ref => { passRef(ref); viewportRef = ref as HTMLElement; }"
-        class="relative size-full overflow-hidden group/viewport"
+        class="group/viewport relative size-full overflow-hidden"
         :class="dragState.active ? 'cursor-grabbing' : 'cursor-grab'"
         @wheel="handleViewportWheel($event)"
       >
         <PdfCanvas
           v-if="pdfUrl"
-          class="absolute left-1/2 top-1/2"
+          class="absolute top-1/2 left-1/2"
           :class="{
             'hidden': !ready,
             'cursor-crosshair': editing,
@@ -310,11 +311,11 @@ async function uploadMeasureLayout() {
           >
             <div
               :ref="ref => { passRefInner(ref); editorPlane = ref; }"
-              class="absolute inset-0 pointer-events-auto"
+              class="pointer-events-auto absolute inset-0"
             >
               <div
                 v-if="editStaff"
-                class="absolute bg-primary/25 border-primary border-1 pointer-events-none"
+                class="pointer-events-none absolute border-1 border-primary bg-primary/25"
                 :style="{
                   left: `${editStaff.x * 100}%`,
                   top: `${editStaff.y * 100}%`,
@@ -332,10 +333,10 @@ async function uploadMeasureLayout() {
           >
             <div
               v-if="measure.layout"
-              class="absolute transition-colors group/measure bg-blend-screen pointer-events-auto"
+              class="group/measure pointer-events-auto absolute bg-blend-screen transition-colors"
               :class="{
-                'bg-primary/0 hover:bg-primary/25 cursor-pointer': !editing,
-                'bg-primary/25 border-primary border-1 cursor-default': editing,
+                'cursor-pointer bg-primary/0 hover:bg-primary/25': !editing,
+                'cursor-default border-1 border-primary bg-primary/25': editing,
                 'bg-sky-300/50': isMeasureHighlighted(measure),
               }"
               :style="{
@@ -348,11 +349,11 @@ async function uploadMeasureLayout() {
             >
               <template v-if="editing">
                 <!-- Measure number -->
-                <div class="absolute left-1/2 top-1/2 -translate-1/2 text-black text-2xl font-bold group-hover/measure:opacity-0 transition-opacity">
+                <div class="absolute top-1/2 left-1/2 -translate-1/2 text-2xl font-bold text-black transition-opacity group-hover/measure:opacity-0">
                   {{ measure.value }}
                 </div>
                 <Button
-                  class="absolute left-1/2 top-1/2 -translate-1/2 opacity-0 group-hover/measure:opacity-100 transition-opacity"
+                  class="absolute top-1/2 left-1/2 -translate-1/2 opacity-0 transition-opacity group-hover/measure:opacity-100"
                   icon="pi pi-trash"
                   severity="danger"
                   rounded
@@ -366,7 +367,7 @@ async function uploadMeasureLayout() {
                 >
                   <Button
                     :ref="(c: any) => passRefInner(c?.$el)"
-                    class="absolute left-1/2 top-0 -translate-1/2 cursor-ns-resize"
+                    class="absolute top-0 left-1/2 -translate-1/2 cursor-ns-resize"
                     icon="pi pi-arrows-v"
                     severity="secondary"
                     size="small"
@@ -380,7 +381,7 @@ async function uploadMeasureLayout() {
                 >
                   <Button
                     :ref="(c: any) => passRefInner(c?.$el)"
-                    class="absolute left-full top-1/2 -translate-1/2 cursor-ew-resize"
+                    class="absolute top-1/2 left-full -translate-1/2 cursor-ew-resize"
                     icon="pi pi-arrows-h"
                     severity="secondary"
                     size="small"
@@ -394,7 +395,7 @@ async function uploadMeasureLayout() {
                 >
                   <Button
                     :ref="(c: any) => passRefInner(c?.$el)"
-                    class="absolute left-1/2 top-full -translate-1/2 cursor-ns-resize"
+                    class="absolute top-full left-1/2 -translate-1/2 cursor-ns-resize"
                     icon="pi pi-arrows-v"
                     severity="secondary"
                     size="small"
@@ -408,7 +409,7 @@ async function uploadMeasureLayout() {
                 >
                   <Button
                     :ref="(c: any) => passRefInner(c?.$el)"
-                    class="absolute left-0 top-1/2 -translate-1/2 cursor-ew-resize"
+                    class="absolute top-1/2 left-0 -translate-1/2 cursor-ew-resize"
                     icon="pi pi-arrows-h"
                     severity="secondary"
                     size="small"
@@ -423,7 +424,7 @@ async function uploadMeasureLayout() {
           <!-- Playbar -->
           <div
             v-if="!editing && currentMeasure?.layout && currentMeasure.layout.page === currentPage"
-            class="absolute bg-primary rounded-full shadow-[0_0_0.75rem] shadow-primary/25 w-1 -translate-x-1/2"
+            class="absolute w-1 -translate-x-1/2 rounded-full bg-primary shadow-[0_0_0.75rem] shadow-primary/25"
             :style="{
               left: `${(currentMeasure.layout.x + currentMeasureProgress * currentMeasure.layout.width) * 100}%`,
               top: `${currentMeasure.layout.y * 100}%`,
@@ -444,7 +445,7 @@ async function uploadMeasureLayout() {
 
         <div
           v-if="ready"
-          class="absolute left-1/2 bottom-2 -translate-x-1/2 flex justify-center items-center gap-8 bg-surface-950 rounded-full shadow-md"
+          class="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center justify-center gap-8 rounded-full bg-surface-950 shadow-md"
         >
           <ButtonGroup>
             <Button

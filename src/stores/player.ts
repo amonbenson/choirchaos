@@ -1,10 +1,11 @@
 import { defineStore } from "pinia";
-import { useEvent } from "@/composables/event";
-import MidiPlayer from "@/core/show/midiPlayer";
 import { markRaw, onScopeDispose } from "vue";
+
+import { useEvent } from "@/composables/event";
+import type { NoteEvent } from "@/core/show/midiEvents";
+import MidiPlayer from "@/core/show/midiPlayer";
 import type Song from "@/core/show/song";
 import { isNumbering } from "@/core/utils/numbering";
-import type { NoteEvent } from "@/core/show/midiEvents";
 
 const globalPlayer = new MidiPlayer();
 

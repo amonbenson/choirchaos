@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import type Song from "@/core/show/song";
-import Panel from "primevue/panel";
-import ButtonGroup from "primevue/buttongroup";
+import gsap from "gsap";
 import Button from "primevue/button";
+import ButtonGroup from "primevue/buttongroup";
+import Panel from "primevue/panel";
 import Slider from "primevue/slider";
-import { computed, ref, watch, type Ref } from "vue";
+import { computed, type Ref,ref, watch } from "vue";
+
+import type Song from "@/core/show/song";
 import type { TrackClassification } from "@/core/show/track";
 import type Track from "@/core/show/track";
 import { usePlayerStore } from "@/stores/player";
-import gsap from "gsap";
 
 const player = usePlayerStore();
 
@@ -67,28 +68,28 @@ player.onNote(event => {
   >
     <div
       v-if="tracks.length > 0"
-      class="flex flex-col justify-stretch items-stretch gap-12"
+      class="flex flex-col items-stretch justify-stretch gap-12"
     >
       <div
         v-for="trackGroup, classification in trackByClassification"
         :key="classification"
-        class="flex flex-col justify-stretch items-stretch gap-2"
+        class="flex flex-col items-stretch justify-stretch gap-2"
       >
         <template v-if="trackGroup.length > 0">
           <h3 class="font-bold">
             {{ classification }}
           </h3>
-          <div class="flex flex-col justify-stretch items-stretch gap-4">
+          <div class="flex flex-col items-stretch justify-stretch gap-4">
             <div
               v-for="track in trackGroup"
               :key="track.title"
-              class="flex flex-col justify-stretch items-stretch gap-2"
+              class="flex flex-col items-stretch justify-stretch gap-2"
             >
               <h4 v-if="track.title !== classification">
                 {{ track.title.replace(/^-*/, '') }}
               </h4>
               <div
-                class="flex justify-stretch items-center gap-4"
+                class="flex items-center justify-stretch gap-4"
                 :class="{ 'opacity-50': track.mixer.effectiveMute }"
               >
                 <ButtonGroup>
@@ -119,7 +120,7 @@ player.onNote(event => {
                 </ButtonGroup>
                 <Slider
                   :model-value="track.mixer.gain"
-                  class="flex-1 mx-2"
+                  class="mx-2 flex-1"
                   :min="0"
                   :max="1"
                   :step="0.001"
@@ -136,7 +137,7 @@ player.onNote(event => {
 
     <div
       v-else
-      class="italic text-center"
+      class="text-center italic"
     >
       No tracks available.
     </div>

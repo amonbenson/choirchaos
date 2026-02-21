@@ -1,6 +1,7 @@
 
-import { describe, it, expect } from "vitest";
-import { binarySearch, insertSorted, BinarySortedList, type BinarySearchOptions } from "./binarySearch";
+import { describe, expect,it } from "vitest";
+
+import { binarySearch, type BinarySearchOptions,BinarySortedList, insertSorted } from "./binarySearch";
 
 type TestItem = { p: number };
 

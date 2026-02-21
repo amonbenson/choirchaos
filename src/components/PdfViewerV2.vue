@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, shallowRef, toRef, type Ref, type ShallowRef } from "vue";
 import p5 from "p5";
-import PageTransform, { type PageCoordinate } from "@/core/pdf/pageTransform";
-import { usePdfPages } from "@/composables/usePdfPages";
+import { onBeforeUnmount, onMounted, type Ref, ref, type ShallowRef,shallowRef, toRef } from "vue";
+
 import { usePanZoom } from "@/composables/usePanZoom";
+import { usePdfPages } from "@/composables/usePdfPages";
+import PageTransform, { type PageCoordinate } from "@/core/pdf/pageTransform";
 
 type P5Sketch = p5 & { canvas?: HTMLCanvasElement };
 

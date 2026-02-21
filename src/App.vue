@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { RouterView, useRoute, useRouter } from "vue-router";
-import { login } from "./pocketbase/auth";
 import { onMounted } from "vue";
+import { RouterView, useRoute, useRouter } from "vue-router";
+
+import { login } from "./pocketbase/auth";
 
 const router = useRouter();
 const route = useRoute();

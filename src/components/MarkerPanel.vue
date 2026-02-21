@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { usePlayerStore } from "@/stores/player";
-import Panel from "primevue/panel";
 import Button from "primevue/button";
-import type Song from "@/core/show/song";
+import Panel from "primevue/panel";
+import { computed } from "vue";
+
 import type { MarkerEvent } from "@/core/show/measureEvent";
+import type Song from "@/core/show/song";
+import { usePlayerStore } from "@/stores/player";
 
 const player = usePlayerStore();
 
@@ -28,7 +29,7 @@ function isMarkerActive(marker: MarkerEvent) {
   >
     <div
       v-if="markers.length > 0"
-      class="flex flex-col justify-stretch items-stretch gap-4"
+      class="flex flex-col items-stretch justify-stretch gap-4"
     >
       <div
         v-for="marker, m in markers"
@@ -36,7 +37,7 @@ function isMarkerActive(marker: MarkerEvent) {
         class="relative"
       >
         <Button
-          class="relative flex justify-between items-center truncate"
+          class="relative flex items-center justify-between truncate"
           :severity="isMarkerActive(marker) ? 'primary' : 'secondary'"
           fluid
           @click="player.setMeasure(marker.start[0]); player.setBeat(marker.start[1])"
@@ -49,7 +50,7 @@ function isMarkerActive(marker: MarkerEvent) {
           </div>
         </Button>
         <div
-          class="absolute left-1 bottom-0 translate-y-1/2 h-0.5 bg-primary rounded-full transition-opacity"
+          class="absolute bottom-0 left-1 h-0.5 translate-y-1/2 rounded-full bg-primary transition-opacity"
           :class="isMarkerActive(marker) ? 'opacity-0': 'opacity-50'"
           :style="{
             width: `calc(${marker.$startTick! / player.duration * 100}% - 0.5rem)`
@@ -60,7 +61,7 @@ function isMarkerActive(marker: MarkerEvent) {
 
     <div
       v-else
-      class="italic text-center"
+      class="text-center italic"
     >
       No markers available.
     </div>
