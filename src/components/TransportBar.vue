@@ -202,12 +202,12 @@ const playbackSpeedPercentage = computed({
           </PopoverButton>
 
           <!-- Signature -->
-          <Button
+          <!-- <Button
             class="cursor-default"
             severity="secondary"
           >
             {{ player.currentTimeSignature[0] }}&nbsp;/&nbsp;{{ Math.pow(2, player.currentTimeSignature[1]) }}
-          </Button>
+          </Button> -->
 
           <!-- Vamp -->
           <Button
