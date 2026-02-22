@@ -39,7 +39,6 @@ const autoplayNextSong = ref(false);
 
 const vampCardType = computed(() => {
   if (player.playing) {
-    console.log(player.currentVamp);
     if (player.currentVamp && !player.currentVamp.manualExit) {
       return "vamp";
     } else if (player.currentSegue && player.currentMeasure[0] === player.finalMeasure[0]) {

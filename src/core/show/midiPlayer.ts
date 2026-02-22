@@ -749,8 +749,6 @@ export default class MidiPlayer extends EventEmitter {
       this._updateFinalMeasure(finalMeasureEvent?.measure ?? ["1", 0]);
     }
 
-    console.log(this._finalMeasure);
-
     // resume the audio context and create a player
     this.resumeAudioContext();
     this._player = new window.WebAudioFontPlayer();
