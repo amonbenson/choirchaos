@@ -697,6 +697,7 @@ export default class MidiPlayer extends EventEmitter {
       this._updateDuration(lastWrittenMeasure.$beatTicks[0]! + lastWrittenMeasure.$tickLength!);
       this._updateFinalMeasure(lastWrittenMeasure.reference(lastWrittenMeasure.$beatTicks.length - 1));
     } else {
+      // fallback: use the last measure event
       const finalMeasureEvent = this._midi_events.system.measure.last();
       this._updateDuration(finalMeasureEvent?.tick ?? 1);
       this._updateFinalMeasure(finalMeasureEvent?.measure ?? ["1", 0]);
