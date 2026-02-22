@@ -682,11 +682,27 @@ export default class MidiPlayer extends EventEmitter {
     this._currentSong = song;
     this._ppqn = midiJson.score.ppqn;
 
-    const finalMeasureEvent = this._midi_events.system.measure.last();
-    if (finalMeasureEvent) {
-      this._updateDuration(finalMeasureEvent.tick ?? 0);
-      this._updateFinalMeasure(finalMeasureEvent.measure);
+    // find the last measure to compute the duration
+    let lastWrittenMeasure: Measure | undefined = undefined;
+    let l = song.measures.items().length;
+    while (l--) {
+      const measure = song.measures.items()[l]!;
+      if (measure.layout) {
+        lastWrittenMeasure = measure;
+        break;
+      }
     }
+
+    if (lastWrittenMeasure && lastWrittenMeasure.$beatTicks.length > 0 && lastWrittenMeasure.$tickLength !== undefined) {
+      this._updateDuration(lastWrittenMeasure.$beatTicks[0]! + lastWrittenMeasure.$tickLength!);
+      this._updateFinalMeasure(lastWrittenMeasure.reference(lastWrittenMeasure.$beatTicks.length - 1));
+    } else {
+      const finalMeasureEvent = this._midi_events.system.measure.last();
+      this._updateDuration(finalMeasureEvent?.tick ?? 1);
+      this._updateFinalMeasure(finalMeasureEvent?.measure ?? ["1", 0]);
+    }
+
+    console.log(this._finalMeasure);
 
     // resume the audio context and create a player
     this.resumeAudioContext();
