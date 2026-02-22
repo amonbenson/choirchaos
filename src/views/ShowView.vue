@@ -8,6 +8,7 @@ import MarkerPanel from "@/components/MarkerPanel.vue";
 import MixerPanel from "@/components/MixerPanel.vue";
 import SongPdfViewer from "@/components/SongPdfViewer.vue";
 import TransportBar from "@/components/TransportBar.vue";
+import VampCard from "@/components/VampCard.vue";
 import { useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
 import Show from "@/core/show/show";
 import type Song from "@/core/show/song";
@@ -36,8 +37,22 @@ const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songI
 
 const autoplayNextSong = ref(false);
 
+const vampCardType = computed(() => {
+  if (player.playing) {
+    console.log(player.currentVamp);
+    if (player.currentVamp && !player.currentVamp.manualExit) {
+      return "vamp";
+    } else if (player.currentSegue && player.currentMeasure[0] === player.finalMeasure[0]) {
+      return "segue";
+    }
+  }
+
+  // default action
+  return "pause";
+});
+
 useGlobalShortcuts({
-  " ": playPause,
+  " ": () => vampCardType.value === "vamp" ? toggleVamp() : playPause(),
   "ArrowLeft": previousMeasure,
   "ArrowRight": nextMeasure,
   "Mod+ArrowLeft": rewind,
@@ -49,6 +64,9 @@ useGlobalShortcuts({
 function playPause(): void {
   if (player.playing) {
     player.pause();
+
+    // Reset Vamp on pause
+    player.resetVamp();
   } else {
     player.play();
   }
@@ -107,13 +125,11 @@ function forward(): void {
 }
 
 function toggleVamp(): void {
-  player.exitVamp();
+  player.toggleVamp();
 }
 
 function toggleSegue(): void {
-  if (player.currentSegue !== undefined) {
-    player.setSegueEnabled(!player.currentSegue.enabled);
-  }
+  player.toggleSegue();
 }
 
 function selectSong(songId?: string, autoplay: boolean = false): void {
@@ -251,7 +267,7 @@ fetchShow();
       />
     </ButtonGroup>
     <div
-      class="relative h-full w-full transition-all"
+      class="relative size-full transition-all"
       :class="[
         settings.current.ui.selectedTab === 'markers' ? 'block' : 'hidden lg:block',
         settings.current.ui.panelVisible.markers ? 'lg:w-96' : 'lg:w-0'
@@ -274,18 +290,33 @@ fetchShow();
         @click="settings.togglePanelVisible('markers')"
       />
     </div>
-    <!-- <PdfViewer
-      class="w-full h-full"
-      :class="settings.current.ui.selectedTab === 'pdf' ? 'flex' : 'hidden lg:flex'"
-      :song="song"
-    /> -->
-    <SongPdfViewer
-      class="h-full w-full"
-      :class="settings.current.ui.selectedTab !== 'pdf' ? 'hidden lg:block' : ''"
-      :song="song"
-    />
+    <div class="relative size-full">
+      <div class="absolute inset-0">
+        <SongPdfViewer
+          class="size-full"
+          :class="settings.current.ui.selectedTab !== 'pdf' ? 'hidden lg:block' : ''"
+          :song="song"
+        />
+      </div>
+      <div class="absolute bottom-4 left-1/2 w-[calc(100%-2rem)] -translate-x-1/2 md:w-64 lg:bottom-16">
+        <VampCard
+          v-if="vampCardType === 'vamp'"
+          class="size-full"
+          :title="`Vamping (${player.currentVamp.currentIteration + 1}) ...`"
+        >
+          Press <kbd>SPACE</kbd> to exit.
+        </VampCard>
+        <VampCard
+          v-else-if="vampCardType === 'segue'"
+          class="size-full"
+          title="Segueing..."
+        >
+          Press <kbd>SPACE</kbd> to pause.
+        </VampCard>
+      </div>
+    </div>
     <div
-      class="relative h-full w-full transition-all"
+      class="relative size-full transition-all"
       :class="[
         settings.current.ui.selectedTab === 'mixer' ? 'block' : 'hidden lg:block',
         settings.current.ui.panelVisible.mixer ? 'lg:w-96' : 'lg:w-0',

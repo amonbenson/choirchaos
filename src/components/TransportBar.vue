@@ -53,9 +53,9 @@ const vampState = computed(() => player.ready && player.currentVamp ? (player.cu
 
 const tempoNoteValue: ComputedRef<NoteValue> = computed(() => {
   if (player.currentTimeSignature[0] % 3 === 0) {
-    return player.currentTempo / 1.5 < 130 ? "dottedQuarter" : "dottedHalf";
+    return player.currentTempo / 1.5 < 170 ? "dottedQuarter" : "dottedHalf";
   } else {
-    return player.currentTempo < 130 ? "quarter" : "half";
+    return player.currentTempo < 170 ? "quarter" : "half";
   }
 });
 const writtenTempo = computed(() => player.currentTempo / NOTE_VALUE_QUARTER_MAP[tempoNoteValue.value]);
@@ -77,11 +77,10 @@ const playbackSpeedPercentage = computed({
       <template #start>
         <Select
           v-model="songId"
-          class="w-full min-w-0 border-none lg:w-88"
+          class="w-full min-w-0 border-none whitespace-nowrap lg:w-88"
           :options="songs"
           option-value="id"
           :option-label="song => `#${song.number} ${song.title}`"
-          :loading="loading"
           scroll-height="80vh"
         />
       </template>
@@ -121,7 +120,7 @@ const playbackSpeedPercentage = computed({
           <!-- Measure -->
           <div class="flex max-w-24 items-center justify-end gap-1 sm:w-24">
             <PopoverButton
-              button-class="min-w-8"
+              button-class="min-w-8 max-w-12 whitespace-nowrap"
               :label="player.ready ? player.currentMeasure[0] : '-'"
             >
               <template #default="{ setFocusTarget }">
@@ -136,7 +135,7 @@ const playbackSpeedPercentage = computed({
             </PopoverButton>
             .
             <PopoverButton
-              button-class="min-w-8"
+              button-class="w-8 whitespace-nowrap"
               :label="player.ready ? String(player.currentMeasure[1] + 1) : '-'"
             >
               <template #default="{ setFocusTarget }">
@@ -153,6 +152,7 @@ const playbackSpeedPercentage = computed({
 
           <!-- Transposition -->
           <PopoverButton
+            button-class="w-16 whitespace-nowrap"
             :label="`${player.playbackTransposition > 0 ? '+' : ''}${player.playbackTransposition}&nbsp;HT`"
             :active="player.playbackTransposition !== 0"
           >
@@ -164,15 +164,15 @@ const playbackSpeedPercentage = computed({
                   size="small"
                   rounded
                   text
-                  :disabled="player.playbackTransposition <= -11"
+                  :disabled="player.playbackTransposition <= -12"
                   @click="player.playbackTransposition--"
                 />
                 <InputNumber
                   :ref="setFocusTarget"
                   v-model="player.playbackTransposition"
                   class="w-20"
-                  :min="-11"
-                  :max="11"
+                  :min="-12"
+                  :max="12"
                   :step="1"
                   :prefix="player.playbackTransposition > 0 ? '+' : ''"
                   suffix=" HT"
@@ -184,7 +184,7 @@ const playbackSpeedPercentage = computed({
                   size="small"
                   rounded
                   text
-                  :disabled="player.playbackTransposition >= 11"
+                  :disabled="player.playbackTransposition >= 12"
                   @click="player.playbackTransposition++"
                 />
               </div>
@@ -192,7 +192,10 @@ const playbackSpeedPercentage = computed({
           </PopoverButton>
 
           <!-- Tempo -->
-          <PopoverButton :active="Math.round(playbackSpeedPercentage) !== 100">
+          <PopoverButton
+            button-class="w-22 whitespace-nowrap"
+            :active="Math.round(playbackSpeedPercentage) !== 100"
+          >
             <template #button>
               <component
                 :is="NOTE_VALUE_SVG_MAP[tempoNoteValue]"
@@ -243,8 +246,7 @@ const playbackSpeedPercentage = computed({
 
           <!-- Vamp -->
           <Button
-            class="min-w-24"
-            pt:label:class="whitespace-nowrap"
+            class="w-24 whitespace-nowrap"
             :disabled="vampState === 'none'"
             :label="{
               'none': 'Vamp',
@@ -259,7 +261,7 @@ const playbackSpeedPercentage = computed({
 
           <!-- Segue -->
           <Button
-            class="w-24"
+            class="w-24 whitespace-nowrap"
             :disabled="player.currentSegue === undefined"
             label="Segue"
             :severity="player.currentSegue?.enabled ? 'primary': 'secondary'"

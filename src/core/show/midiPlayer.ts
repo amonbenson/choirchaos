@@ -103,6 +103,7 @@ export default class MidiPlayer extends EventEmitter {
   });
 
   private _timeSinceLastPositionUpdate = 0;
+  private _barlineCrossedDuringLastStep = false;
 
   get status(): MidiPlayerStatus {
     return this._status;
@@ -222,7 +223,7 @@ export default class MidiPlayer extends EventEmitter {
   }
 
   set playbackTransposition(value: number) {
-    this._playbackTransposition = Math.floor(Math.max(-11, Math.min(11, value)));
+    this._playbackTransposition = Math.floor(Math.max(-12, Math.min(12, value)));
     this.emit("playbackTranspositionChanged", this._playbackTransposition);
   }
 
@@ -305,6 +306,11 @@ export default class MidiPlayer extends EventEmitter {
     } else if (event instanceof MeasureEvent) {
       if (this._currentMeasure !== event.measure) {
         this._updateCurrentMeasure(event.measure);
+
+        // Enable barline corssed flag on the first beat. This is used by "out-any-bar" vamps
+        if (event.measure[1] == 0) {
+          this._barlineCrossedDuringLastStep = true;
+        }
       }
     } else {
       console.warn(`Unknown event '${event}'`);
@@ -329,32 +335,51 @@ export default class MidiPlayer extends EventEmitter {
     this._position += deltaTime / this._tickDuration;
     let p1 = this._position;
 
-    // enter a new vamp if any
-    const newVamp = this._getVampAt(p0);
-    if (newVamp && !this._currentVamp) {
-      this._updateCurrentVamp(newVamp);
+    // enter a new vamp
+    if (!this._currentVamp) {
+      const newVamp = this._getVampAt(p0);
+      if (newVamp) {
+        this._updateCurrentVamp(newVamp);
+      }
     }
 
-    // repeat or exit vamp if we pass its end point
-    if (this._currentVamp && p1 > this._currentVamp.end) {
-      const maxIterationsReached = this._currentVamp.iterations > 0 && this._currentVamp.currentIteration >= this._currentVamp.iterations;
-      if (this._currentVamp.manualExit || maxIterationsReached) {
-        // exit
+    // repeat or exit vamp if we pass its OR the current measures end point
+    // (So currently all vamps will be handled as out any bar)
+    if (this._currentVamp) {
+      const reachedEndOfVamp = p1 > this._currentVamp.end;
+      const reachedBarlineWithinVamp = p0 > (this._currentVamp.start + 100) && p1 < this._currentVamp.end && this._barlineCrossedDuringLastStep;
+      const reachedMaxIterations = this._currentVamp.iterations > 0 && this._currentVamp.currentIteration >= this._currentVamp.iterations;
+
+      let offset = 0;
+
+      if ((reachedEndOfVamp || reachedBarlineWithinVamp) && (this._currentVamp.manualExit || reachedMaxIterations)) {
+        // exit vamp: offset playhead by the difference between current position and vamp length
+        // if we are already at the end of the vamp, p1 might be a bit larger than the vamp's end position. In that case
+        // we dont want to jump backwards, so we clamp the offset to allow only positive values.
+        offset = Math.max(this._currentVamp.end - p1, 0);
+
+        // remove vamp
         this._updateCurrentVamp(undefined);
-      } else {
-        // repeat
-        const vampLength = this._currentVamp.end - this._currentVamp.start;
-        this._position -= vampLength;
-        p0 -= vampLength;
-        p1 -= vampLength;
+      } else if (reachedEndOfVamp) {
+        // repeat vamp: offset playhead by the negative total vamp length
+        offset = -(this._currentVamp.end - this._currentVamp.start);
 
-        // also adjust the clock reference. We don't need to reset it, because the timeSignature did not change (Resetting would cause audible glitches)
-        this._audioClockReference.ticks -= vampLength;
-
+        // count iterations
         this._updateCurrentVamp({
           ...this._currentVamp,
           currentIteration: this._currentVamp.currentIteration + 1,
         });
+      }
+
+      // apply calculated offset to playhead if repeating or exiting the Vamp
+      if (offset !== 0) {
+        // repeat vamp: offset playhead by the negative total vamp length
+        this._position += offset;
+        p0 += offset;
+        p1 += offset;
+
+        // also adjust the clock reference. We don't need to reset it, because the timeSignature did not change (Resetting would cause audible glitches)
+        this._audioClockReference.ticks += offset;
       }
     }
 
@@ -370,6 +395,9 @@ export default class MidiPlayer extends EventEmitter {
     const timeSinceReference = this._audioContext.currentTime - this._audioClockReference.seconds;
     const ticksSinceReference = timeSinceReference / this._tickDuration;
     this._audioClockTickPosition = this._audioClockReference.ticks + ticksSinceReference;
+
+    // reset barline crossed flag - it will be re-enabled by the MeasureEvent handler
+    this._barlineCrossedDuringLastStep = false;
 
     // handle all events within the current region
     const k0 = { tick: p0 };
@@ -476,6 +504,28 @@ export default class MidiPlayer extends EventEmitter {
     }
   }
 
+  resetVamp(): void {
+    if (this._currentVamp) {
+      this._updateCurrentVamp({
+        ...this._currentVamp,
+        manualExit: false,
+        currentIteration: 0,
+      });
+    }
+  }
+
+  toggleVamp(): void {
+    if (this._currentVamp) {
+      if (this._currentVamp.manualExit) {
+        // Re-enable the vamp if we are already exiting
+        this.resetVamp();
+      } else {
+        // Start exiting the vamp
+        this.exitVamp();
+      }
+    }
+  }
+
   setSegueEnabled(enabled: boolean): void {
     if (this._currentSegue) {
       this._updateCurrentSegue({
@@ -485,12 +535,8 @@ export default class MidiPlayer extends EventEmitter {
     }
   }
 
-  enableSegue(): void {
-    this.setSegueEnabled(true);
-  }
-
-  disableSegue(): void {
-    this.setSegueEnabled(false);
+  toggleSegue(): void {
+    this.setSegueEnabled(!this._currentSegue?.enabled);
   }
 
   async load(song: Song): Promise<void> {
