@@ -34,6 +34,8 @@ const songLoading = ref(true);
 const songs = computed(() => show.value?.songs ?? []);
 const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
 
+const autoplayNextSong = ref(false);
+
 useGlobalShortcuts({
   " ": playPause,
   "ArrowLeft": previousMeasure,
@@ -115,16 +117,15 @@ function toggleSegue(): void {
 }
 
 function selectSong(songId?: string, autoplay: boolean = false): void {
-  // route to the correct song first
+  autoplayNextSong.value = autoplay;
+
+  // route to the correct song
   if (songId && songId !== props.songId) {
     router.replace({
       name: "song",
       params: {
         showId: props.showId,
         songId,
-      },
-      query: {
-        ...(autoplay ? { autoplay: "1" } : {}),
       },
     });
   }
@@ -138,7 +139,8 @@ watch([show, song], async () => {
       await player.load(song.value!);
 
       // Start playing immediately
-      if (route.query.autoplay === "1") {
+      if (autoplayNextSong.value) {
+        autoplayNextSong.value = false;
         player.play();
       }
     } catch (err) {
