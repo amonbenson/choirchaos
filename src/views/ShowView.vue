@@ -265,80 +265,93 @@ fetchShow();
         @click="settings.updateSelectedTab(tab)"
       />
     </ButtonGroup>
-    <div
-      class="relative size-full transition-all"
-      :class="[
-        settings.current.ui.selectedTab === 'markers' ? 'block' : 'hidden lg:block',
-        settings.current.ui.panelVisible.markers ? 'lg:w-96' : 'lg:w-0'
-      ]"
-    >
-      <MarkerPanel
-        class="absolute inset-0 min-h-0"
+    <!--
+      desktop: use lg:contents to make the wrapper div invisible and use its contents as direct grid children
+      mobile: div acts as a single grid cell where all panels overlap absolutely
+    -->
+    <div class="relative size-full lg:contents">
+      <!-- Markers Panel -->
+      <div
+        class="absolute inset-0 transition-all lg:relative lg:inset-auto lg:size-full"
         :class="[
-          settings.current.ui.panelVisible.markers ? 'lg:opacity-100' : 'lg:opacity-0',
+          settings.current.ui.selectedTab !== 'markers' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : '',
+          settings.current.ui.panelVisible.markers ? 'lg:w-96' : 'lg:w-0',
         ]"
-        :song="song"
-      />
-      <Button
-        class="absolute top-2 left-full z-10 hidden transition-all lg:block"
-        :class="settings.current.ui.panelVisible.markers ? 'rounded-l-none' : ''"
-        aria-label="Show Markers Panel"
-        :icon="`pi ${settings.current.ui.panelVisible.markers ? 'pi-chevron-left' : 'pi-chevron-right'}`"
-        severity="secondary"
-        rounded
-        @click="settings.togglePanelVisible('markers')"
-      />
-    </div>
-    <div class="relative size-full">
-      <div class="absolute inset-0">
-        <SongPdfViewer
-          class="size-full"
-          :class="settings.current.ui.selectedTab !== 'pdf' ? 'hidden lg:block' : ''"
+      >
+        <MarkerPanel
+          class="absolute inset-0 min-h-0"
+          :class="[
+            settings.current.ui.panelVisible.markers ? 'lg:opacity-100' : 'lg:opacity-0',
+          ]"
           :song="song"
         />
+        <Button
+          class="absolute top-2 left-full z-10 hidden transition-all lg:block"
+          :class="settings.current.ui.panelVisible.markers ? 'rounded-l-none' : ''"
+          aria-label="Show Markers Panel"
+          :icon="`pi ${settings.current.ui.panelVisible.markers ? 'pi-chevron-left' : 'pi-chevron-right'}`"
+          severity="secondary"
+          rounded
+          @click="settings.togglePanelVisible('markers')"
+        />
       </div>
-      <div class="absolute bottom-4 left-1/2 w-[calc(100%-2rem)] -translate-x-1/2 md:w-72 lg:bottom-16">
-        <VampCard
-          v-if="vampCardType === 'vamp'"
-          class="size-full cursor-pointer"
-          :title="`Vamping (x${player.currentVamp.currentIteration + 1})`"
-          @click="toggleVamp()"
-        >
-          <span class="touch:hidden">Press <kbd>SPACE</kbd> to exit</span>
-          <span class="hidden touch:inline">Click here to exit</span>
-        </VampCard>
-        <VampCard
-          v-else-if="vampCardType === 'segue'"
-          class="size-full"
-          title="Segueing"
-        >
-          Loading the next song
-        </VampCard>
+
+      <!-- PDF Panel -->
+      <div
+        class="absolute inset-0 lg:relative lg:inset-auto lg:size-full"
+        :class="settings.current.ui.selectedTab !== 'pdf' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : ''"
+      >
+        <div class="absolute inset-0">
+          <SongPdfViewer
+            class="size-full"
+            :song="song"
+          />
+        </div>
+        <div class="absolute bottom-4 left-1/2 w-[calc(100%-2rem)] -translate-x-1/2 md:w-72 lg:bottom-16">
+          <VampCard
+            v-if="vampCardType === 'vamp'"
+            class="size-full cursor-pointer"
+            :title="`Vamping (x${player.currentVamp.currentIteration + 1})`"
+            @click="toggleVamp()"
+          >
+            <span class="touch:hidden">Press <kbd>SPACE</kbd> to exit</span>
+            <span class="hidden touch:inline">Click here to exit</span>
+          </VampCard>
+          <VampCard
+            v-else-if="vampCardType === 'segue'"
+            class="size-full"
+            title="Segueing"
+          >
+            Loading the next song
+          </VampCard>
+        </div>
       </div>
-    </div>
-    <div
-      class="relative size-full transition-all"
-      :class="[
-        settings.current.ui.selectedTab === 'mixer' ? 'block' : 'hidden lg:block',
-        settings.current.ui.panelVisible.mixer ? 'lg:w-96' : 'lg:w-0',
-      ]"
-    >
-      <MixerPanel
-        class="absolute inset-0 min-h-0"
+
+      <!-- Mixer Panel -->
+      <div
+        class="absolute inset-0 transition-all lg:relative lg:inset-auto lg:size-full"
         :class="[
-          settings.current.ui.panelVisible.mixer ? 'lg:opacity-100' : 'lg:opacity-0',
+          settings.current.ui.selectedTab !== 'mixer' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : '',
+          settings.current.ui.panelVisible.mixer ? 'lg:w-96' : 'lg:w-0',
         ]"
-        :song="song"
-      />
-      <Button
-        class="absolute top-2 right-full z-10 hidden transition-all lg:block"
-        :class="settings.current.ui.panelVisible.mixer ? 'rounded-r-none' : ''"
-        aria-label="Show Markers Panel"
-        :icon="`pi ${settings.current.ui.panelVisible.mixer ? 'pi-chevron-right' : 'pi-chevron-left'}`"
-        severity="secondary"
-        rounded
-        @click="settings.togglePanelVisible('mixer')"
-      />
+      >
+        <MixerPanel
+          class="absolute inset-0 min-h-0"
+          :class="[
+            settings.current.ui.panelVisible.mixer ? 'lg:opacity-100' : 'lg:opacity-0',
+          ]"
+          :song="song"
+        />
+        <Button
+          class="absolute top-2 right-full z-10 hidden transition-all lg:block"
+          :class="settings.current.ui.panelVisible.mixer ? 'rounded-r-none' : ''"
+          aria-label="Show Markers Panel"
+          :icon="`pi ${settings.current.ui.panelVisible.mixer ? 'pi-chevron-right' : 'pi-chevron-left'}`"
+          severity="secondary"
+          rounded
+          @click="settings.togglePanelVisible('mixer')"
+        />
+      </div>
     </div>
   </div>
 </template>

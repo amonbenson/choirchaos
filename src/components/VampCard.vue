@@ -9,7 +9,7 @@ defineProps<{
 
 <template>
   <Card
-    class="overflow-hidden rounded-xl bg-surface-900/75 text-center backdrop-blur"
+    class="overflow-hidden rounded-xl bg-surface/75 text-center backdrop-blur"
     pt:body:class="p-2"
   >
     <template #title>

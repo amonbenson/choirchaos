@@ -39,7 +39,7 @@ watch(tracks, () => {
     trackTweens.value = [];
     for (let i = 0; i < tracks.value.length; i++) {
       const tween = gsap.to(`#mixer-track-slider-${i}`, {
-        background: "var(--color-surface-700)",
+        background: "var(--p-slider-track-background)",
         duration: 1.0,
       });
       tween.seek(tween.endTime()); // start at the end
