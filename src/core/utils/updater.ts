@@ -34,9 +34,13 @@ export abstract class Updater {
     return this._running;
   }
 
+  public now(): number {
+    return this._options.timeProvider();
+  }
+
   protected _update(): void {
     // calculate delta time
-    const now = this._options.timeProvider();
+    const now = this.now();
     let delta = now - this._lastUpdate;
     this._lastUpdate = now;
 

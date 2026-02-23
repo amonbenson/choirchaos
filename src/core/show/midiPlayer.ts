@@ -82,9 +82,10 @@ export default class MidiPlayer extends EventEmitter {
   private _currentSegue?: MidiPlayerSegueState;
 
   private _audioContext = new AudioContext();
-  private _player: any = null;
+  private _player: any = undefined;
   private _instruments: { [key: number]: any } = {};
-  private _masterInput: AudioNode | null = null;
+  private _masterInput: AudioNode | undefined = undefined;
+  private _chainOutput: GainNode | undefined;
 
   private _playbackSpeed: number = 1.0;
   private _playbackTransposition: number = 0;
@@ -99,7 +100,7 @@ export default class MidiPlayer extends EventEmitter {
   private _updater: Updater = new SetIntervalUpdater(delta => this._handleStep(delta), {
     interval: STEP_DURATION,
     maximumLag: 5.0,
-    timeProvider: () => this._audioContext.currentTime,
+    timeProvider: () => this._audioContext?.currentTime ?? 0,
   });
 
   private _timeSinceLastPositionUpdate = 0;
@@ -229,7 +230,7 @@ export default class MidiPlayer extends EventEmitter {
 
   private _resetAudioClockReference(): void {
     this._audioClockReference = {
-      seconds: this._audioContext.currentTime,
+      seconds: this._updater.now(),
       ticks: this._position,
     };
   }
@@ -283,7 +284,7 @@ export default class MidiPlayer extends EventEmitter {
           this._audioContext,
           this._masterInput,
           window[instrument],
-          this._audioContext.currentTime + start,
+          this._updater.now() + start,
           pitch,
           duration,
           volume,
@@ -392,7 +393,7 @@ export default class MidiPlayer extends EventEmitter {
 
     // calculate the tick position in audio clock space. This will give much more precise timing, but we need to manually
     // reset the reference point whenever the scaling factor between audio clock and tick position changes (the tick duration)
-    const timeSinceReference = this._audioContext.currentTime - this._audioClockReference.seconds;
+    const timeSinceReference = this._updater.now() - this._audioClockReference.seconds;
     const ticksSinceReference = timeSinceReference / this._tickDuration;
     this._audioClockTickPosition = this._audioClockReference.ticks + ticksSinceReference;
 
@@ -409,10 +410,59 @@ export default class MidiPlayer extends EventEmitter {
       .searchRange(k0 as NoteEvent, k1 as NoteEvent).forEach(event => this._handleEvent(event)));
   }
 
+  private _setupMasterChain(): void {
+    const ctx = this._audioContext;
+
+    // Disconnect the previous chain output from the destination (if reloading)
+    this._chainOutput?.disconnect();
+
+    // 1. Master input gain
+    const input = ctx.createGain();
+
+    // 2. Compressor (gentle glue: only catches the loudest peaks, preserves transients)
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -12;
+    compressor.knee.value = 12;
+    compressor.ratio.value = 3;
+    compressor.attack.value = 0.005;
+    compressor.release.value = 0.15;
+
+    // 3. Three-band EQ (low shelf / mid peak / high shelf, all flat by default)
+    const low = ctx.createBiquadFilter();
+    low.type = "lowshelf";
+    low.frequency.value = 200;
+    low.gain.value = 0;
+
+    const mid = ctx.createBiquadFilter();
+    mid.type = "peaking";
+    mid.frequency.value = 1000;
+    mid.Q.value = 1;
+    mid.gain.value = 0;
+
+    const high = ctx.createBiquadFilter();
+    high.type = "highshelf";
+    high.frequency.value = 6000;
+    high.gain.value = 0;
+
+    // Summing output: single node connected to destination so re-loads are clean
+    const output = ctx.createGain();
+
+    // Wiring: input -> compressor -> EQ -> output -> destination
+    input.connect(compressor);
+    compressor.connect(low);
+    low.connect(mid);
+    mid.connect(high);
+    high.connect(output);
+    output.connect(ctx.destination);
+
+    this._masterInput = input;
+    this._chainOutput = output;
+  }
+
   resumeAudioContext(): void {
     // try to resume the audio context
     if (this._audioContext.state !== "running") {
-      this._audioContext.resume();
+      this._audioContext.resume().then(() => {});
     }
   }
 
@@ -755,12 +805,7 @@ export default class MidiPlayer extends EventEmitter {
     this._player = new window.WebAudioFontPlayer();
 
     // setup effects chain
-    const equalizer = this._player.createChannel(this._audioContext);
-    const reverberator = this._player.createReverberator(this._audioContext);
-
-    this._masterInput = equalizer.input;
-    equalizer.output.connect(reverberator.input);
-    reverberator.output.connect(this._audioContext.destination);
+    this._setupMasterChain();
 
     // load soundfonts
     // TODO: point the url to our own server
@@ -786,7 +831,7 @@ export default class MidiPlayer extends EventEmitter {
 
     this.pause();
 
-    this._player = null;
+    this._player = undefined;
     this._updatePosition(0);
     this._updateDuration(0);
     this._updateStatus("idle");
