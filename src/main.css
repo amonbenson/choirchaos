@@ -7,3 +7,6 @@
     @apply size-full select-none;
   }
 }
+
+@custom-variant touch (@media (pointer: coarse));
+@custom-variant mouse (@media (pointer: fine));

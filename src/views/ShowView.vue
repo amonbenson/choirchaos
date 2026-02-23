@@ -297,20 +297,22 @@ fetchShow();
           :song="song"
         />
       </div>
-      <div class="absolute bottom-4 left-1/2 w-[calc(100%-2rem)] -translate-x-1/2 md:w-64 lg:bottom-16">
+      <div class="absolute bottom-4 left-1/2 w-[calc(100%-2rem)] -translate-x-1/2 md:w-72 lg:bottom-16">
         <VampCard
           v-if="vampCardType === 'vamp'"
-          class="size-full"
-          :title="`Vamping (${player.currentVamp.currentIteration + 1}) ...`"
+          class="size-full cursor-pointer"
+          :title="`Vamping (x${player.currentVamp.currentIteration + 1})`"
+          @click="toggleVamp()"
         >
-          Press <kbd>SPACE</kbd> to exit.
+          <span class="touch:hidden">Press <kbd>SPACE</kbd> to exit</span>
+          <span class="hidden touch:inline">Click here to exit</span>
         </VampCard>
         <VampCard
           v-else-if="vampCardType === 'segue'"
           class="size-full"
-          title="Segueing..."
+          title="Segueing"
         >
-          Press <kbd>SPACE</kbd> to pause.
+          Loading the next song
         </VampCard>
       </div>
     </div>

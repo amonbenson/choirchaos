@@ -10,7 +10,7 @@ import type Song from "@/core/show/song";
 import { resolveUrl } from "@/core/utils/file";
 import { usePlayerStore } from "@/stores/player";
 
-import PdfViewerV2 from "./PdfViewerV2.vue";
+import PdfViewer from "./PdfViewer.vue";
 
 const player = usePlayerStore();
 
@@ -79,11 +79,6 @@ watch(currentWrittenMeasure, () => {
   if (!layout) {
     return;
   }
-
-  // Move to the measure's page
-  // if (current?.layout && current.layout.page !== previous?.layout?.page) {
-  //   pdfViewer.value.moveToPage(current.layout.page);
-  // }
 
   const measureTopLeft: PageCoordinate = {
     x: layout.x,
@@ -239,7 +234,7 @@ function drawPageOverlay({ s, p }: { s: p5; p: number; transform: PageTransform 
 </script>
 
 <template>
-  <PdfViewerV2
+  <PdfViewer
     ref="pdfViewer"
     :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
     :cursor="cursor"
