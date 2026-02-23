@@ -3,7 +3,9 @@ import type p5 from "p5";
 import { computed, type ComputedRef, type Ref, ref, watch } from "vue";
 
 import type PageTransform from "@/core/pdf/pageTransform";
+import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import type Measure from "@/core/show/measure";
+import type { MeasureLayout } from "@/core/show/measure";
 import type Song from "@/core/show/song";
 import { resolveUrl } from "@/core/utils/file";
 import { usePlayerStore } from "@/stores/player";
@@ -59,7 +61,8 @@ watch(() => player.position, () => {
 // Move to page 0 and set current measure on song change
 watch(() => props.song, () => {
   if (props.song) {
-    pdfViewer.value?.moveToPage(0);
+    pdfViewer.value?.zoomToPage(0);
+    pdfViewer.value?.redrawAll();
 
     currentPlayingMeasure.value = props.song?.measures.first();
     currentWrittenMeasure.value = props.song?.measures.first();
@@ -67,16 +70,65 @@ watch(() => props.song, () => {
 });
 
 // Move to next page on measure change
-watch(currentWrittenMeasure, (current, previous) => {
-  // Skip if the measure has no associated value with it
-  if (!(pdfViewer.value && currentWrittenMeasure.value?.layout)) {
+watch(currentWrittenMeasure, () => {
+  if (!pdfViewer.value) {
+    return;
+  }
+
+  const layout: MeasureLayout | undefined = currentWrittenMeasure.value?.layout;
+  if (!layout) {
     return;
   }
 
   // Move to the measure's page
-  if (current?.layout && current.layout.page !== previous?.layout?.page) {
-    pdfViewer.value.moveToPage(current.layout.page);
+  // if (current?.layout && current.layout.page !== previous?.layout?.page) {
+  //   pdfViewer.value.moveToPage(current.layout.page);
+  // }
+
+  const measureTopLeft: PageCoordinate = {
+    x: layout.x,
+    y: layout.y,
+    p: layout.page,
+  };
+  const measureBottomRight: PageCoordinate = {
+    x: layout.x + layout.width,
+    y: layout.y + layout.height,
+    p: layout.page,
+  };
+
+  const isMeasureVisible = (): boolean => pdfViewer.value.isLocationVisible(measureTopLeft) && pdfViewer.value.isLocationVisible(measureBottomRight);
+
+  // If the whole measure is within view, cancel
+  if (isMeasureVisible()) {
+    return;
   }
+
+  // Get the measure's left edge
+  const staffLineCenter: PageCoordinate = {
+    x: 0.5,
+    y: layout.y + layout.height / 2,
+    p: layout.page,
+  };
+
+  // Move only the horizontal axis first. If that isn't enough, move both axes
+  pdfViewer.value.moveToLocation(staffLineCenter, { axis: "horizontal" });
+
+  // If the measure still isn't visible, move both axes
+  if (!isMeasureVisible()) {
+    pdfViewer.value.moveToLocation(staffLineCenter, { axis: "both" });
+  }
+
+  // If the measure still isn't visible, that means we are so zoomed in, that the full staff width doesn't fit.
+  // In that case, move to the center of the measure
+  if (!isMeasureVisible()) {
+    pdfViewer.value.moveToLocation({
+      x: layout.x + layout.width / 2,
+      y: layout.y + layout.height / 2,
+      p: layout.page,
+    }, { axis: "both" });
+  }
+
+  pdfViewer.value.redrawAll();
 });
 
 // Redraw when track highlighting changes

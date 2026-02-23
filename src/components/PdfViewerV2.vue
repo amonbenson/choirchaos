@@ -211,35 +211,47 @@ function isLocationVisible(pc: PageCoordinate): boolean {
   return transform.contains(pc, overlaySketch.value.width, overlaySketch.value.height);
 }
 
-function moveToPage(page: number): void {
+export type MoveToLocationOptions = Partial<{
+  offsetX: number;
+  offsetY: number;
+  axis: "both" | "horizontal" | "vertical";
+}>;
+
+function moveToLocation(target: PageCoordinate, options: MoveToLocationOptions = {}): void {
   const s = overlaySketch.value;
   if (!s) {
     return;
   }
 
+  const offsetX = options.offsetX ?? 0.5;
+  const offsetY = options.offsetY ?? 0.5;
+  const axis = options.axis ?? "both";
+
+  const vc = transform.pageToViewport(target);
+
+  if (["both", "horizontal"].includes(axis)) {
+    transform.pan.x = -vc.x * transform.zoom + s.width * offsetX;
+  }
+
+  if (["both", "vertical"].includes(axis)) {
+    transform.pan.y = -vc.y * transform.zoom + s.height * offsetY;
+  }
+}
+
+function zoomToPage(page: number): void {
+  const s = overlaySketch.value;
+  if (!s) {
+    return;
+  }
+
+  // Zoom to fit the whole page
   const padding = 0.95;
   const zoomByWidth = s.width / Math.SQRT1_2 * padding;
   const zoomByHeight = s.height * padding;
   transform.zoom = Math.min(zoomByWidth, zoomByHeight);
 
-  const pageCenter = transform.pageToViewport({ p: page, x: 0.5, y: 0.5 });
-  transform.pan.x = -pageCenter.x * transform.zoom + s.width / 2;
-  transform.pan.y = -pageCenter.y * transform.zoom + s.height / 2;
-
-  redrawAll();
-}
-
-function moveToLocation(target: PageCoordinate, offsetX: number = 0.3, offsetY: number = 0.3): void {
-  const s = overlaySketch.value;
-  if (!s) {
-    return;
-  }
-
-  const vc = transform.pageToViewport(target);
-  transform.pan.x = -vc.x * transform.zoom + s.width * offsetX;
-  transform.pan.y = -vc.y * transform.zoom + s.height * offsetY;
-
-  redrawAll();
+  // Move to the center of the page
+  moveToLocation({ p: page, x: 0.5, y: 0.5 });
 }
 
 defineExpose({
@@ -247,8 +259,8 @@ defineExpose({
   redrawOverlay: redrawOverlay,
   redrawAll: redrawAll,
   isLocationVisible: isLocationVisible,
-  moveToPage: moveToPage,
   moveToLocation: moveToLocation,
+  zoomToPage: zoomToPage,
 });
 </script>
 
