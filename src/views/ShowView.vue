@@ -311,7 +311,7 @@ fetchShow();
           <VampCard
             v-if="vampCardType === 'vamp'"
             class="size-full cursor-pointer"
-            :title="`Vamping (x${player.currentVamp.currentIteration + 1})`"
+            :title="`Vamping (x${(player.currentVamp?.currentIteration ?? 0) + 1})`"
             @click="toggleVamp()"
           >
             <span class="touch:hidden">Press <kbd>SPACE</kbd> to exit</span>

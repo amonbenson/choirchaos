@@ -3,7 +3,7 @@ import { markRaw, onScopeDispose } from "vue";
 
 import { useEvent } from "@/composables/event";
 import type { NoteEvent } from "@/core/show/midiEvents";
-import MidiPlayer from "@/core/show/midiPlayer";
+import MidiPlayer, { type MidiPlayerSegueState, type MidiPlayerVampState } from "@/core/show/midiPlayer";
 import type Song from "@/core/show/song";
 import { isNumbering } from "@/core/utils/numbering";
 
@@ -35,11 +35,11 @@ export const usePlayerStore = defineStore("player", () => {
     initial: globalPlayer.currentTimeSignature,
   });
 
-  const currentVamp = useEvent(globalPlayer, "currentVampChanged", {
+  const currentVamp = useEvent<MidiPlayer, MidiPlayerVampState | undefined>(globalPlayer, "currentVampChanged", {
     initial: globalPlayer.currentVamp,
   });
 
-  const currentSegue = useEvent(globalPlayer, "currentSegueChanged", {
+  const currentSegue = useEvent<MidiPlayer, MidiPlayerSegueState | undefined>(globalPlayer, "currentSegueChanged", {
     initial: globalPlayer.currentSegue,
   });
 

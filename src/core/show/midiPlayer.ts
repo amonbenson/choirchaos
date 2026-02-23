@@ -698,7 +698,8 @@ export default class MidiPlayer extends EventEmitter {
 
     // handle song measure events
     this._vamps = [];
-    this._currentVamp = undefined;
+    this._updateCurrentVamp(undefined);
+    this._updateCurrentSegue(undefined);
 
     for (const markerEvent of song.events.markers.items()) {
       markerEvent.$startTick = song.findMeasure(markerEvent.start[0])?.$beatTicks[0];
