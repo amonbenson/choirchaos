@@ -251,8 +251,8 @@ const playbackSpeedPercentage = computed({
             :label="{
               'none': 'Vamp',
               'vamping': player.currentVamp?.iterations
-                ? `Vamp ${player.currentVamp?.currentIteration + 1}/${player.currentVamp?.iterations}`
-                : `Vamp ${player.currentVamp?.currentIteration + 1}`,
+                ? `Vamp ${(player.currentVamp?.currentIteration ?? 0) + 1}/${player.currentVamp?.iterations}`
+                : `Vamp ${(player.currentVamp?.currentIteration ?? 0) + 1}`,
               'exiting': 'Exiting...'
             }[vampState]"
             :severity="vampState === 'vamping' ? 'primary': 'secondary'"
