@@ -10,8 +10,8 @@ import SongPdfViewer from "@/components/SongPdfViewer.vue";
 import TransportBar from "@/components/TransportBar.vue";
 import VampCard from "@/components/VampCard.vue";
 import { useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
-import Show from "@/core/show/show";
-import type Song from "@/core/show/song";
+import Show from "@/core/models/show";
+import type Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 

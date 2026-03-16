@@ -3,7 +3,7 @@ import Card from "primevue/card";
 import { onMounted, type Ref, ref } from "vue";
 import { useRouter } from "vue-router";
 
-import Show from "@/core/show/show";
+import Show from "@/core/models/show";
 import { resolveUrl } from "@/core/utils/file";
 
 const router = useRouter();

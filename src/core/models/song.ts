@@ -5,8 +5,8 @@ import type { UrlOrFile } from "../utils/file";
 import type { Numbering } from "../utils/numbering";
 import Measure, { MeasureList } from "./measure";
 import { MarkerEvent, MeasureEventList, VampEvent } from "./measureEvent";
-import type { MidiSystemEvents } from "./midiPlayer";
-import type { Tick } from "./midiTypes";
+import type { MidiSystemEvents } from "../midi/player";
+import type { Tick } from "../midi/types";
 import Track from "./track";
 
 export type SongNumber = Numbering;

@@ -3,8 +3,8 @@ import Button from "primevue/button";
 import Panel from "primevue/panel";
 import { computed } from "vue";
 
-import type { MarkerEvent } from "@/core/show/measureEvent";
-import type Song from "@/core/show/song";
+import type { MarkerEvent } from "@/core/models/measureEvent";
+import type Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
 
 const player = usePlayerStore();

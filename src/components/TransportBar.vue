@@ -7,7 +7,7 @@ import Slider from "primevue/slider";
 import Toolbar from "primevue/toolbar";
 import { computed, type ComputedRef } from "vue";
 
-import Song from "@/core/show/song";
+import Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
 
 import PopoverButton from "./PopoverButton.vue";

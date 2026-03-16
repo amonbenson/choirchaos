@@ -6,9 +6,9 @@ import Panel from "primevue/panel";
 import Slider from "primevue/slider";
 import { computed, type Ref, ref, watch } from "vue";
 
-import type Song from "@/core/show/song";
-import type { TrackClassification } from "@/core/show/track";
-import type Track from "@/core/show/track";
+import type Song from "@/core/models/song";
+import type { TrackClassification } from "@/core/models/track";
+import type Track from "@/core/models/track";
 import { usePlayerStore } from "@/stores/player";
 
 const player = usePlayerStore();
