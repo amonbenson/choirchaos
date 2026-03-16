@@ -13,6 +13,7 @@ import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
     if (tagName === "canvas") {
       return new OffscreenCanvas(1, 1);
     }
+
     return null;
   },
 };
@@ -21,9 +22,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 // ── Message types (exported for use in pdfRenderer.ts) ───────────────────────
 
+// WorkerRequest is WorkerInMessage without the id field, defined as a proper
+// union so callers can pass variant-specific properties (e.g. `page`) without
+// TypeScript collapsing them via Omit<union, key>.
+export type WorkerRequest
+  = | { type: "load"; url: string }
+    | { type: "render"; url: string; page: number };
+
 export type WorkerInMessage
-  = | { type: "load"; id: number; url: string }
-    | { type: "render"; id: number; url: string; page: number };
+  = | (WorkerRequest & { id: number });
 
 export type WorkerOutMessage
   = | { type: "loaded"; id: number; numPages: number }
@@ -49,7 +56,13 @@ function getDoc(url: string): Promise<PDFDocumentProxy> {
 
 // ── Message handler ──────────────────────────────────────────────────────────
 
-const workerSelf = self as unknown as DedicatedWorkerGlobalScope;
+// DedicatedWorkerGlobalScope is in the "webworker" lib, which conflicts with the
+// project's "dom" lib. Define only what we need here instead.
+type WorkerGlobal = {
+  onmessage: ((e: MessageEvent<any>) => any) | null;
+  postMessage(message: any, transfer?: Transferable[]): void;
+};
+const workerSelf = self as unknown as WorkerGlobal;
 
 workerSelf.onmessage = async (e: MessageEvent<WorkerInMessage>) => {
   const msg = e.data;
@@ -76,12 +89,12 @@ workerSelf.onmessage = async (e: MessageEvent<WorkerInMessage>) => {
       // Render high-res version
       const canvasHigh = new OffscreenCanvas(Math.ceil(vpHigh.width), Math.ceil(vpHigh.height));
       const ctxHigh = canvasHigh.getContext("2d")!;
-      await pageProxy.render({ canvasContext: ctxHigh as unknown as CanvasRenderingContext2D, viewport: vpHigh }).promise;
+      await pageProxy.render({ canvasContext: ctxHigh as unknown as CanvasRenderingContext2D, canvas: canvasHigh as unknown as HTMLCanvasElement, viewport: vpHigh }).promise;
 
       // Render low-res version (used for mipmap when many pages are visible)
       const canvasLow = new OffscreenCanvas(Math.ceil(vpLow.width), Math.ceil(vpLow.height));
       const ctxLow = canvasLow.getContext("2d")!;
-      await pageProxy.render({ canvasContext: ctxLow as unknown as CanvasRenderingContext2D, viewport: vpLow }).promise;
+      await pageProxy.render({ canvasContext: ctxLow as unknown as CanvasRenderingContext2D, canvas: canvasLow as unknown as HTMLCanvasElement, viewport: vpLow }).promise;
 
       pageProxy.cleanup();
 

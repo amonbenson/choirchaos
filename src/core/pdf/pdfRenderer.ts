@@ -1,7 +1,7 @@
 import { EventEmitter } from "events";
 
 import JobCache from "./jobCache";
-import type { WorkerInMessage, WorkerOutMessage } from "./pdfRender.worker";
+import type { WorkerInMessage, WorkerOutMessage, WorkerRequest } from "./pdfRender.worker";
 import PdfRenderWorker from "./pdfRender.worker?worker";
 
 export type PdfPageStatus = "none" | "loading" | "loadError" | "rendering" | "renderError" | "ready";
@@ -55,7 +55,7 @@ export class PdfRenderer extends EventEmitter {
     }
   }
 
-  private _send<R>(message: Omit<WorkerInMessage, "id">): Promise<R> {
+  private _send<R>(message: WorkerRequest): Promise<R> {
     const id = this.nextId++;
     const fullMessage = { ...message, id } as WorkerInMessage;
     return new Promise<R>((resolve, reject) => {
