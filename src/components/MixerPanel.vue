@@ -77,12 +77,16 @@ watch(tracks, () => {
   // configure animations
   if (tracks.value.length !== trackTweens.value.length) {
     trackTweens.value = [];
+    const cs = getComputedStyle(document.documentElement);
+    const colorFrom = cs.getPropertyValue("--p-primary-color").trim();
+    const colorTo = cs.getPropertyValue("--p-slider-track-background").trim();
     for (let i = 0; i < tracks.value.length; i++) {
-      const tween = gsap.to(`#mixer-track-slider-${i}`, {
-        background: "var(--p-slider-track-background)",
-        duration: 1.0,
-      });
-      tween.seek(tween.endTime()); // start at the end
+      const tween = gsap.fromTo(
+        `#mixer-track-slider-${i}`,
+        { background: colorFrom },
+        { background: colorTo, duration: 1.0 },
+      );
+      tween.seek(tween.endTime()); // start at the end (normal gray state)
       trackTweens.value.push(tween);
     }
   }
