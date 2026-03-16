@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
-import { computed, type ComputedRef, markRaw, type Ref, ref, watch } from "vue";
+import { computed, type ComputedRef, markRaw, onMounted, type Ref, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import MarkerPanel from "@/components/MarkerPanel.vue";
@@ -233,6 +233,15 @@ async function fetchShow(): Promise<void> {
     showLoading.value = false;
   }
 }
+
+onMounted(() => {
+  // Apply playback modifiers from settings store
+  player.playbackSpeed = settings.current.transport.playbackSpeed;
+  player.playbackTransposition = settings.current.transport.playbackTransposition;
+});
+
+watch(() => player.playbackSpeed, value => settings.updateTransport({ playbackSpeed: value }));
+watch(() => player.playbackTransposition, value => settings.updateTransport({ playbackTransposition: value }));
 
 fetchShow();
 </script>
