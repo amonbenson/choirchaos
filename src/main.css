@@ -10,6 +10,10 @@
   html, body, #app {
     @apply size-full select-none bg-surface;
   }
+
+  kbd {
+    @apply bg-surface-950 px-1 py-0.5 rounded shadow not-italic font-medium;
+  }
 }
 
 @custom-variant touch (@media (pointer: coarse));
