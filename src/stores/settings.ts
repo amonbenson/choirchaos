@@ -1,6 +1,8 @@
 import { defineStore } from "pinia";
 import { type Ref, ref } from "vue";
 
+import type { ShortcutAction } from "@/composables/useGlobalShortcuts";
+
 const STORE_NAME = "settings";
 const LOCAL_STORAGE_KEY = "choirchaosSettings";
 
@@ -28,10 +30,15 @@ export type TransportSettings = {
   playbackTransposition: number;
 };
 
+// Maps key strings (e.g. "Mod+ArrowLeft") to named actions.
+// Multiple keys can bind to the same action; one action may have no binding.
+export type ShortcutSettings = Record<string, ShortcutAction>;
+
 export type Settings = {
   ui: UiSettings;
   mixer: MixerSettings;
   transport: TransportSettings;
+  shortcuts: ShortcutSettings;
 };
 
 function getDefaultSettings(): Settings {
@@ -50,6 +57,15 @@ function getDefaultSettings(): Settings {
       playbackSpeed: 1.0,
       playbackTransposition: 0,
     },
+    shortcuts: {
+      " ": "playPause",
+      "ArrowLeft": "previousMeasure",
+      "ArrowRight": "nextMeasure",
+      "Mod+ArrowLeft": "rewind",
+      "Mod+ArrowRight": "forward",
+      "v": "toggleVamp",
+      "s": "toggleSegue",
+    },
   };
 }
 
@@ -67,8 +83,9 @@ function loadSettings(): Settings {
   const ui = parsed.ui ?? defaultSettings.ui;
   const mixer = parsed.mixer?.tracks ? parsed.mixer : defaultSettings.mixer;
   const transport = parsed.transport ?? defaultSettings.transport;
+  const shortcuts = parsed.shortcuts ?? defaultSettings.shortcuts;
 
-  return { ui, mixer, transport } satisfies Settings;
+  return { ui, mixer, transport, shortcuts } satisfies Settings;
 }
 
 function storeSettings(settings: Settings): void {
@@ -123,6 +140,11 @@ export const useSettingsStore = defineStore(STORE_NAME, () => {
     storeSettings(settings.value);
   }
 
+  function updateShortcuts(shortcuts: ShortcutSettings): void {
+    settings.value.shortcuts = shortcuts;
+    storeSettings(settings.value);
+  }
+
   function clear(): void {
     settings.value = getDefaultSettings();
     clearSettings();
@@ -136,6 +158,7 @@ export const useSettingsStore = defineStore(STORE_NAME, () => {
     getTrackMixer,
     updateTrackMixer,
     updateTransport,
+    updateShortcuts,
     clear,
   };
 });

@@ -4,6 +4,7 @@ import ButtonGroup from "primevue/buttongroup";
 import { computed, type ComputedRef, markRaw, onMounted, type Ref, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import KbdShortcut from "@/components/KbdShortcut.vue";
 import MarkerPanel from "@/components/MarkerPanel.vue";
 import MixerPanel from "@/components/MixerPanel.vue";
 import SongPdfViewer from "@/components/SongPdfViewer.vue";
@@ -50,14 +51,14 @@ const vampCardType = computed(() => {
   return "pause";
 });
 
-useGlobalShortcuts({
-  " ": () => vampCardType.value === "vamp" ? toggleVamp() : playPause(),
-  "ArrowLeft": previousMeasure,
-  "ArrowRight": nextMeasure,
-  "Mod+ArrowLeft": rewind,
-  "Mod+ArrowRight": forward,
-  "v": toggleVamp,
-  "s": toggleSegue,
+useGlobalShortcuts(settings.current.shortcuts, {
+  playPause: () => vampCardType.value === "vamp" ? toggleVamp() : playPause(),
+  previousMeasure,
+  nextMeasure,
+  rewind,
+  forward,
+  toggleVamp,
+  toggleSegue,
 });
 
 function playPause(): void {
@@ -323,7 +324,7 @@ fetchShow();
             :title="`Vamping (x${(player.currentVamp?.currentIteration ?? 0) + 1})`"
             @click="toggleVamp()"
           >
-            <span class="touch:hidden">Press <kbd>SPACE</kbd> to exit</span>
+            <span class="touch:hidden">Press <KbdShortcut action="playPause" /> to exit</span>
             <span class="hidden touch:inline">Click here to exit</span>
           </VampCard>
           <VampCard
