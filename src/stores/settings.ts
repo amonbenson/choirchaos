@@ -12,8 +12,15 @@ export type UiSettings = {
   };
 };
 
+export type TrackMixerEntry = {
+  gain: number;
+  mute: boolean;
+  solo: boolean;
+  highlight: boolean;
+};
+
 export type MixerSettings = {
-  dummy: null;
+  tracks: Record<string, TrackMixerEntry>;
 };
 
 export type Settings = {
@@ -31,14 +38,19 @@ function getDefaultSettings(): Settings {
       },
     },
     mixer: {
-      dummy: null,
+      tracks: {},
     },
   };
 }
 
 function loadSettings(): Settings {
   if (localStorage.getItem(LOCAL_STORAGE_KEY)) {
-    return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)!);
+    const parsed = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)!);
+    // Migrate from older format that had { dummy: null } instead of { tracks: {} }
+    if (!parsed.mixer?.tracks) {
+      parsed.mixer = { tracks: {} };
+    }
+    return parsed as Settings;
   } else {
     return getDefaultSettings();
   }
@@ -69,6 +81,27 @@ export const useSettingsStore = defineStore(STORE_NAME, () => {
     updatePanelVisible(panel, !settings.value.ui.panelVisible[panel]);
   }
 
+  const DEFAULT_TRACK_MIXER: TrackMixerEntry = { gain: 1.0, mute: false, solo: false, highlight: false };
+
+  function isDefaultTrackMixer(entry: TrackMixerEntry): boolean {
+    return entry.gain === 1.0 && !entry.mute && !entry.solo && !entry.highlight;
+  }
+
+  function getTrackMixer(trackTitle: string): TrackMixerEntry {
+    return settings.value.mixer.tracks[trackTitle] ?? { ...DEFAULT_TRACK_MIXER };
+  }
+
+  function updateTrackMixer(trackTitle: string, update: Partial<TrackMixerEntry>): void {
+    const current = settings.value.mixer.tracks[trackTitle] ?? { ...DEFAULT_TRACK_MIXER };
+    const updated = { ...current, ...update };
+    if (isDefaultTrackMixer(updated)) {
+      delete settings.value.mixer.tracks[trackTitle];
+    } else {
+      settings.value.mixer.tracks[trackTitle] = updated;
+    }
+    storeSettings(settings.value);
+  }
+
   function clear(): void {
     settings.value = getDefaultSettings();
     clearSettings();
@@ -79,6 +112,8 @@ export const useSettingsStore = defineStore(STORE_NAME, () => {
     updateSelectedTab,
     updatePanelVisible,
     togglePanelVisible,
+    getTrackMixer,
+    updateTrackMixer,
     clear,
   };
 });
