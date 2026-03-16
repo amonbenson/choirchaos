@@ -36,7 +36,10 @@ const trackByClassification = computed(() => {
 
 // Apply persisted mixer settings whenever the song changes
 watch(() => props.song, (song) => {
-  if (!song) return;
+  if (!song) {
+    return;
+  }
+
   for (const track of song.tracks) {
     const stored = settingsStore.getTrackMixer(track.title);
     song.setTrackGain(track.mixer.index, stored.gain);

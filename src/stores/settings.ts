@@ -50,6 +50,7 @@ function loadSettings(): Settings {
     if (!parsed.mixer?.tracks) {
       parsed.mixer = { tracks: {} };
     }
+
     return parsed as Settings;
   } else {
     return getDefaultSettings();
@@ -99,6 +100,7 @@ export const useSettingsStore = defineStore(STORE_NAME, () => {
     } else {
       settings.value.mixer.tracks[trackTitle] = updated;
     }
+
     storeSettings(settings.value);
   }
 
