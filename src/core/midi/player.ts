@@ -2,15 +2,15 @@ import axios from "axios";
 import { EventEmitter } from "events";
 import { parseArrayBuffer as parseMidiBuffer } from "midi-json-parser";
 
+import type { MeasureReference } from "../models/measure";
+import type Measure from "../models/measure";
+import type Song from "../models/song";
 import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
 import { type BinarySearchOptions } from "../utils/binarySearch";
 import { resolveUrl } from "../utils/file";
 import { SetIntervalUpdater, type Updater } from "../utils/updater";
-import type { MeasureReference } from "../models/measure";
-import type Measure from "../models/measure";
 import { MeasureEvent, MidiEvent, MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "./events";
 import type { Tick, TimeSignature } from "./types";
-import type Song from "../models/song";
 
 const STEP_DURATION = 1 / 50;
 const POSITION_UPDATE_DURATION = 1 / 50;

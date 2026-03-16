@@ -1,5 +1,5 @@
-import { BinarySortedList } from "../utils/binarySearch";
 import type { MeasureReference } from "../models/measure";
+import { BinarySortedList } from "../utils/binarySearch";
 import type { Tick, TimeSignature } from "./types";
 
 export class MidiEvent {

@@ -2,11 +2,11 @@
 import type p5 from "p5";
 import { computed, type ComputedRef, type Ref, ref, watch } from "vue";
 
-import type PageTransform from "@/core/pdf/pageTransform";
-import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import type Measure from "@/core/models/measure";
 import type { MeasureLayout } from "@/core/models/measure";
 import type Song from "@/core/models/song";
+import type PageTransform from "@/core/pdf/pageTransform";
+import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
 import { usePlayerStore } from "@/stores/player";
 
