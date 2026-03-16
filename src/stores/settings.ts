@@ -23,9 +23,15 @@ export type MixerSettings = {
   tracks: Record<string, TrackMixerEntry>;
 };
 
+export type TransportSettings = {
+  playbackSpeed: number;
+  playbackTransposition: number;
+};
+
 export type Settings = {
   ui: UiSettings;
   mixer: MixerSettings;
+  transport: TransportSettings;
 };
 
 function getDefaultSettings(): Settings {
@@ -40,21 +46,29 @@ function getDefaultSettings(): Settings {
     mixer: {
       tracks: {},
     },
+    transport: {
+      playbackSpeed: 1.0,
+      playbackTransposition: 0,
+    },
   };
 }
 
 function loadSettings(): Settings {
-  if (localStorage.getItem(LOCAL_STORAGE_KEY)) {
-    const parsed = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)!);
-    // Migrate from older format that had { dummy: null } instead of { tracks: {} }
-    if (!parsed.mixer?.tracks) {
-      parsed.mixer = { tracks: {} };
-    }
+  const defaultSettings = getDefaultSettings();
 
-    return parsed as Settings;
-  } else {
-    return getDefaultSettings();
+  const item = localStorage.getItem(LOCAL_STORAGE_KEY);
+  if (!item) {
+    return defaultSettings;
   }
+
+  const parsed = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)!) as Partial<Settings>;
+
+  // The parsed settings might contain only partial keys due to previously stored versions
+  const ui = parsed.ui ?? defaultSettings.ui;
+  const mixer = parsed.mixer?.tracks ? parsed.mixer : defaultSettings.mixer;
+  const transport = parsed.transport ?? defaultSettings.transport;
+
+  return { ui, mixer, transport } satisfies Settings;
 }
 
 function storeSettings(settings: Settings): void {
@@ -104,6 +118,11 @@ export const useSettingsStore = defineStore(STORE_NAME, () => {
     storeSettings(settings.value);
   }
 
+  function updateTransport(update: Partial<TransportSettings>): void {
+    settings.value.transport = { ...settings.value.transport, ...update };
+    storeSettings(settings.value);
+  }
+
   function clear(): void {
     settings.value = getDefaultSettings();
     clearSettings();
@@ -116,6 +135,7 @@ export const useSettingsStore = defineStore(STORE_NAME, () => {
     togglePanelVisible,
     getTrackMixer,
     updateTrackMixer,
+    updateTransport,
     clear,
   };
 });
