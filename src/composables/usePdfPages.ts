@@ -5,8 +5,8 @@ import { usePdfRendererStore } from "@/stores/pdfRenderer";
 
 export type PdfPageData = {
   status: "none" | "rendering" | "renderError" | "ready";
-  canvas?: HTMLCanvasElement;
-  canvasLow?: HTMLCanvasElement;
+  bitmap?: ImageBitmap;
+  bitmapLow?: ImageBitmap;
 };
 
 export type PdfStatus = "none" | "loading" | "loadError" | "ready";
@@ -39,8 +39,8 @@ export function usePdfPages(url: Ref<string | undefined>, options?: { onUpdate?:
       const pdfPage = pdfRendererStore.getRenderedPage(url.value!, i);
       return {
         status: pdfRendererStore.getStatus(url.value!, i) as PdfPageData["status"],
-        canvas: pdfPage?.canvas,
-        canvasLow: pdfPage?.canvasLow,
+        bitmap: pdfPage?.bitmap,
+        bitmapLow: pdfPage?.bitmapLow,
       };
     });
   }
