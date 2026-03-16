@@ -10,8 +10,10 @@ import type Song from "@/core/models/song";
 import type { TrackClassification } from "@/core/models/track";
 import type Track from "@/core/models/track";
 import { usePlayerStore } from "@/stores/player";
+import { useSettingsStore } from "@/stores/settings";
 
 const player = usePlayerStore();
+const settingsStore = useSettingsStore();
 
 const props = defineProps<{
   song: Song | undefined;
@@ -31,6 +33,44 @@ const trackByClassification = computed(() => {
 
   return groups;
 });
+
+// Apply persisted mixer settings whenever the song changes
+watch(() => props.song, (song) => {
+  if (!song) {
+    return;
+  }
+
+  for (const track of song.tracks) {
+    const stored = settingsStore.getTrackMixer(track.title);
+    song.setTrackGain(track.mixer.index, stored.gain);
+    song.setTrackMute(track.mixer.index, stored.mute);
+    song.setTrackSolo(track.mixer.index, stored.solo);
+    song.setTrackHighlight(track.mixer.index, stored.highlight);
+  }
+}, { immediate: true });
+
+function setTrackMute(track: Track): void {
+  const next = !track.mixer.mute;
+  props.song?.setTrackMute(track.mixer.index, next);
+  settingsStore.updateTrackMixer(track.title, { mute: next });
+}
+
+function setTrackSolo(track: Track): void {
+  const next = !track.mixer.solo;
+  props.song?.setTrackSolo(track.mixer.index, next);
+  settingsStore.updateTrackMixer(track.title, { solo: next });
+}
+
+function setTrackHighlight(track: Track): void {
+  const next = !track.mixer.highlight;
+  props.song?.setTrackHighlight(track.mixer.index, next);
+  settingsStore.updateTrackMixer(track.title, { highlight: next });
+}
+
+function setTrackGain(track: Track, value: number): void {
+  props.song?.setTrackGain(track.mixer.index, value);
+  settingsStore.updateTrackMixer(track.title, { gain: value });
+}
 
 const trackTweens: Ref<GSAPTween[]> = ref([]);
 watch(tracks, () => {
@@ -98,7 +138,7 @@ player.onNote((event) => {
                     class="w-8"
                     :severity="track.mixer.mute ? 'primary' : 'secondary'"
                     size="small"
-                    @click="song?.setTrackMute(track.mixer.index, !track.mixer.mute)"
+                    @click="setTrackMute(track)"
                   />
                   <Button
                     label="S"
@@ -106,7 +146,7 @@ player.onNote((event) => {
                     class="w-8"
                     :severity="track.mixer.solo ? 'warn' : 'secondary'"
                     size="small"
-                    @click="song?.setTrackSolo(track.mixer.index, !track.mixer.solo)"
+                    @click="setTrackSolo(track)"
                   />
                   <Button
                     icon="pi pi-eye"
@@ -114,7 +154,7 @@ player.onNote((event) => {
                     class="w-8"
                     :severity="track.mixer.highlight ? 'info' : 'secondary'"
                     size="small"
-                    @click="song?.setTrackHighlight(track.mixer.index, !track.mixer.highlight)"
+                    @click="setTrackHighlight(track)"
                   />
                 </ButtonGroup>
                 <Slider
@@ -125,7 +165,7 @@ player.onNote((event) => {
                   :step="0.001"
                   pt:range:class="bg-primary"
                   :pt:range:id="`mixer-track-slider-${track.mixer.index}`"
-                  @update:model-value="song?.setTrackGain(track.mixer.index, $event as number)"
+                  @update:model-value="setTrackGain(track, $event as number)"
                 />
               </div>
             </div>
