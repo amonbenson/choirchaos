@@ -1,8 +1,19 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { useMediaQuery } from "@vueuse/core";
+import { onMounted, watchEffect } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 
 import { login } from "./pocketbase/auth";
+import { useSettingsStore } from "./stores/settings";
+
+const settings = useSettingsStore();
+const systemPrefersDark = useMediaQuery("(prefers-color-scheme: dark)");
+
+watchEffect(() => {
+  const { theme } = settings.current.appearance;
+  const isDark = theme === "dark" || (theme === "system" && systemPrefersDark.value);
+  document.documentElement.classList.toggle("dark", isDark);
+});
 
 const router = useRouter();
 const route = useRoute();

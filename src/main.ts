@@ -27,7 +27,7 @@ async function init(): Promise<void> {
       preset: Aura,
       options: {
         prefix: "p",
-        darkModeSelector: "system",
+        darkModeSelector: ".dark",
         cssLayer: {
           name: "primevue",
           order: "theme, base, primevue",

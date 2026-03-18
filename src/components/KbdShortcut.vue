@@ -76,7 +76,7 @@ const parts = computed(() => {
       v-for="(part, i) in parts"
       :key="i"
     >
-      <kbd>{{ part }}</kbd>
+      <kbd class="-my-0.5">{{ part }}</kbd>
       <span
         v-if="i < parts.length - 1"
         class="text-xs opacity-50"
