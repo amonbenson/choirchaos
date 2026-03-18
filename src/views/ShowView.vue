@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
-import { computed, type ComputedRef, markRaw, onMounted, type Ref, ref, watch } from "vue";
+import { computed, type ComputedRef, markRaw, onMounted, type Ref, ref, watch, watchEffect } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import KbdShortcut from "@/components/KbdShortcut.vue";
 import MarkerPanel from "@/components/MarkerPanel.vue";
 import MixerPanel from "@/components/MixerPanel.vue";
 import SongPdfViewer from "@/components/SongPdfViewer.vue";
@@ -41,7 +42,7 @@ const vampCardType = computed(() => {
   if (player.playing) {
     if (player.currentVamp && !player.currentVamp.manualExit) {
       return "vamp";
-    } else if (player.currentSegue && player.currentMeasure[0] === player.finalMeasure[0]) {
+    } else if (player.currentSegue?.enabled && player.currentMeasure[0] === player.finalMeasure[0]) {
       return "segue";
     }
   }
@@ -50,14 +51,14 @@ const vampCardType = computed(() => {
   return "pause";
 });
 
-useGlobalShortcuts({
-  " ": () => vampCardType.value === "vamp" ? toggleVamp() : playPause(),
-  "ArrowLeft": previousMeasure,
-  "ArrowRight": nextMeasure,
-  "Mod+ArrowLeft": rewind,
-  "Mod+ArrowRight": forward,
-  "v": toggleVamp,
-  "s": toggleSegue,
+useGlobalShortcuts(settings.current.shortcuts, {
+  playPause: () => vampCardType.value === "vamp" ? toggleVamp() : playPause(),
+  previousMeasure,
+  nextMeasure,
+  rewind,
+  forward,
+  toggleVamp,
+  toggleSegue,
 });
 
 function playPause(): void {
@@ -236,12 +237,19 @@ async function fetchShow(): Promise<void> {
 
 onMounted(() => {
   // Apply playback modifiers from settings store
-  player.playbackSpeed = settings.current.transport.playbackSpeed;
-  player.playbackTransposition = settings.current.transport.playbackTransposition;
+  player.playbackSpeed = settings.current.playback.speed;
+  player.playbackTransposition = settings.current.playback.transposition;
 });
 
-watch(() => player.playbackSpeed, value => settings.updateTransport({ playbackSpeed: value }));
-watch(() => player.playbackTransposition, value => settings.updateTransport({ playbackTransposition: value }));
+watch(() => player.playbackSpeed, value => settings.updatePlayback({ speed: value }));
+watch(() => player.playbackTransposition, value => settings.updatePlayback({ transposition: value }));
+
+// Apply the global segue setting whenever the current song changes or the setting is toggled.
+watchEffect(() => {
+  if (player.currentSegue !== undefined) {
+    player.setSegueEnabled(settings.current.playback.segueEnabled);
+  }
+});
 
 fetchShow();
 </script>
@@ -269,9 +277,9 @@ fetchShow();
         }"
         :key="tab"
         :label="name"
-        :severity="settings.current.ui.selectedTab === tab ? 'primary' : 'secondary'"
+        :severity="settings.current.workspace.selectedTab === tab ? 'primary' : 'secondary'"
         fluid
-        @click="settings.updateSelectedTab(tab)"
+        @click="settings.updateWorkspace({ selectedTab: tab })"
       />
     </ButtonGroup>
     <!--
@@ -283,22 +291,22 @@ fetchShow();
       <div
         class="absolute inset-0 transition-all lg:relative lg:inset-auto lg:size-full"
         :class="[
-          settings.current.ui.selectedTab !== 'markers' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : '',
-          settings.current.ui.panelVisible.markers ? 'lg:w-96' : 'lg:w-0',
+          settings.current.workspace.selectedTab !== 'markers' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : '',
+          settings.current.workspace.panelVisible.markers ? 'lg:w-96' : 'lg:w-0',
         ]"
       >
         <MarkerPanel
           class="absolute inset-0 min-h-0"
           :class="[
-            settings.current.ui.panelVisible.markers ? 'lg:opacity-100' : 'lg:opacity-0',
+            settings.current.workspace.panelVisible.markers ? 'lg:opacity-100' : 'lg:opacity-0',
           ]"
           :song="song"
         />
         <Button
           class="absolute top-2 left-full z-10 hidden transition-all lg:block"
-          :class="settings.current.ui.panelVisible.markers ? 'rounded-l-none' : ''"
+          :class="settings.current.workspace.panelVisible.markers ? 'rounded-l-none' : ''"
           aria-label="Show Markers Panel"
-          :icon="`pi ${settings.current.ui.panelVisible.markers ? 'pi-chevron-left' : 'pi-chevron-right'}`"
+          :icon="`pi ${settings.current.workspace.panelVisible.markers ? 'pi-chevron-left' : 'pi-chevron-right'}`"
           severity="secondary"
           rounded
           @click="settings.togglePanelVisible('markers')"
@@ -308,7 +316,7 @@ fetchShow();
       <!-- PDF Panel -->
       <div
         class="absolute inset-0 lg:relative lg:inset-auto lg:size-full"
-        :class="settings.current.ui.selectedTab !== 'pdf' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : ''"
+        :class="settings.current.workspace.selectedTab !== 'pdf' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : ''"
       >
         <div class="absolute inset-0">
           <SongPdfViewer
@@ -323,7 +331,7 @@ fetchShow();
             :title="`Vamping (x${(player.currentVamp?.currentIteration ?? 0) + 1})`"
             @click="toggleVamp()"
           >
-            <span class="touch:hidden">Press <kbd>SPACE</kbd> to exit</span>
+            <span class="touch:hidden">Press <KbdShortcut action="playPause" /> to exit</span>
             <span class="hidden touch:inline">Click here to exit</span>
           </VampCard>
           <VampCard
@@ -340,22 +348,22 @@ fetchShow();
       <div
         class="absolute inset-0 transition-all lg:relative lg:inset-auto lg:size-full"
         :class="[
-          settings.current.ui.selectedTab !== 'mixer' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : '',
-          settings.current.ui.panelVisible.mixer ? 'lg:w-96' : 'lg:w-0',
+          settings.current.workspace.selectedTab !== 'mixer' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : '',
+          settings.current.workspace.panelVisible.mixer ? 'lg:w-96' : 'lg:w-0',
         ]"
       >
         <MixerPanel
           class="absolute inset-0 min-h-0"
           :class="[
-            settings.current.ui.panelVisible.mixer ? 'lg:opacity-100' : 'lg:opacity-0',
+            settings.current.workspace.panelVisible.mixer ? 'lg:opacity-100' : 'lg:opacity-0',
           ]"
           :song="song"
         />
         <Button
           class="absolute top-2 right-full z-10 hidden transition-all lg:block"
-          :class="settings.current.ui.panelVisible.mixer ? 'rounded-r-none' : ''"
+          :class="settings.current.workspace.panelVisible.mixer ? 'rounded-r-none' : ''"
           aria-label="Show Markers Panel"
-          :icon="`pi ${settings.current.ui.panelVisible.mixer ? 'pi-chevron-right' : 'pi-chevron-left'}`"
+          :icon="`pi ${settings.current.workspace.panelVisible.mixer ? 'pi-chevron-right' : 'pi-chevron-left'}`"
           severity="secondary"
           rounded
           @click="settings.togglePanelVisible('mixer')"

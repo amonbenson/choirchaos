@@ -5,12 +5,13 @@ import InputText from "primevue/inputtext";
 import Select from "primevue/select";
 import Slider from "primevue/slider";
 import Toolbar from "primevue/toolbar";
-import { computed, type ComputedRef } from "vue";
+import { computed, type ComputedRef, ref } from "vue";
 
 import Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
 
 import PopoverButton from "./PopoverButton.vue";
+import SettingsDialog from "./SettingsDialog.vue";
 import DottedHalfNoteSvg from "./svg/DottedHalfNoteSvg.vue";
 import DottedQuarterNoteSvg from "./svg/DottedQuarterNoteSvg.vue";
 import HalfNoteSvg from "./svg/HalfNoteSvg.vue";
@@ -48,6 +49,7 @@ const songId = defineModel<string>();
 const songIndex = computed(() => props.songs?.findIndex(s => s.id === songId.value) ?? 0);
 
 const player = usePlayerStore();
+const settingsVisible = ref(false);
 
 const vampState = computed(() => player.ready && player.currentVamp ? (player.currentVamp.manualExit ? "exiting" : "vamping") : "none");
 
@@ -117,10 +119,21 @@ const playbackSpeedPercentage = computed({
 
       <template #end>
         <div class="flex items-center justify-end gap-4 sm:gap-8">
+          <!-- Settings -->
+          <Button
+            class="-m-4"
+            icon="pi pi-cog"
+            severity="secondary"
+            aria-label="Settings"
+            rounded
+            text
+            size="large"
+            @click="settingsVisible = true"
+          />
           <!-- Measure -->
-          <div class="flex max-w-24 items-center justify-end gap-1 sm:w-24">
+          <div class="flex items-center justify-end gap-1">
             <PopoverButton
-              button-class="min-w-8 max-w-12 whitespace-nowrap"
+              button-class="w-12 whitespace-nowrap"
               :label="player.ready ? player.currentMeasure[0] : '-'"
             >
               <template #default="{ setFocusTarget }">
@@ -270,6 +283,8 @@ const playbackSpeedPercentage = computed({
         </div>
       </template>
     </Toolbar>
+
+    <SettingsDialog v-model="settingsVisible" />
 
     <!-- Progress Bar -->
     <!-- <div

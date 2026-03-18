@@ -57,18 +57,32 @@ function matchesShortcut(e: KeyboardEvent, shortcut: string): boolean {
   return normalizedEventKey === normalizedKey;
 }
 
-// Registers global keyboard shortcuts from a keymap of shortcut → action.
-// preventDefault is called for every matched shortcut.
-export function useGlobalShortcuts(keymap: Record<string, () => void>): void {
+// The set of named actions that can be bound to keyboard shortcuts.
+export type ShortcutAction
+  = | "playPause"
+    | "previousMeasure"
+    | "nextMeasure"
+    | "rewind"
+    | "forward"
+    | "toggleVamp"
+    | "toggleSegue";
+
+// Registers global keyboard shortcuts from a key-string -> action mapping and
+// an action -> handler mapping. The split between bindings and handlers allows
+// bindings to be serialised to settings while handlers stay as live functions.
+export function useGlobalShortcuts(
+  bindings: Readonly<Record<string, ShortcutAction>>,
+  actions: Record<ShortcutAction, () => void>,
+): void {
   useEventListener(window, "keydown", (e: KeyboardEvent) => {
     if (isInputFocused()) {
       return;
     }
 
-    for (const [shortcut, action] of Object.entries(keymap)) {
+    for (const [shortcut, action] of Object.entries(bindings)) {
       if (matchesShortcut(e, shortcut)) {
         e.preventDefault();
-        action();
+        actions[action]();
         break;
       }
     }
