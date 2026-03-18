@@ -38,11 +38,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY_PRIVATE }}" > ~/.ssh/id_rsa
+          echo "${{ secrets.DOKKU_SSH_KEY_PRIVATE }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H goatlessband.com >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ vars.DOKKU_HOST }} >> ~/.ssh/known_hosts
 
       - name: Push to dokku server
         run: |
-          git remote add dokku dokku@goatlessband.com:choirchaos
+          git remote add dokku dokku@${{ vars.DOKKU_HOST }}:${{ vars.DOKKU_APP }}
           git push dokku main
