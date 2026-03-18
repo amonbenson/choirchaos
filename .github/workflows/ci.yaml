@@ -46,3 +46,26 @@ jobs:
         run: npm ci
       - name: Build
         run: npm run build
+
+  deploy:
+    needs: [lint, typecheck, build]
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # pull all commits, because we need to push the full history (otherwise we get a shallow update not allowed error)
+
+      - name: Setup SSH key
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DOKKU_SSH_KEY_PRIVATE }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ vars.DOKKU_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Push to dokku server
+        run: |
+          git remote add dokku dokku@${{ vars.DOKKU_HOST }}:${{ vars.DOKKU_APP }}
+          git push dokku main
