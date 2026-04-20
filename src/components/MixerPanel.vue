@@ -103,27 +103,35 @@ function applyWithPseudoTrack(track: Track, action: (track: Track, ...args: any[
   }
 }
 
-const trackTweens = ref<GSAPTween[]>([]);
-watch(tracks, () => {
+const trackTweens = ref<Record<number, GSAPTween>>({});
+watch(trackGroups, () => {
+  const trackIndices = Object.values(trackGroups.value).flatMap(t => t.map(track => track.mixer.index));
+
   // configure animations
-  if (tracks.value.length !== trackTweens.value.length) {
-    trackTweens.value = [];
+  if (JSON.stringify(trackIndices) !== JSON.stringify(Object.keys(trackTweens.value))) {
+    trackTweens.value = {};
     const cs = getComputedStyle(document.documentElement);
     const colorFrom = cs.getPropertyValue("--p-primary-color").trim();
     const colorTo = cs.getPropertyValue("--p-slider-track-background").trim();
-    for (const mixerIndex of Object.values(tracks.value).flatMap(t => t.mixer.index)) {
+
+    for (const mixerIndex of trackIndices) {
       const tween = gsap.fromTo(
         `#mixer-track-slider-${mixerIndex}`,
         { background: colorFrom },
         { background: colorTo, duration: 1.0 },
       );
       tween.seek(tween.endTime()); // start at the end (normal gray state)
-      trackTweens.value.push(tween);
+      trackTweens.value[mixerIndex] = tween;
     }
   }
 }, { immediate: true, flush: "post" });
 
 function triggerEventAnimation(trackIndex: number): void {
+  // Use -1 as the pseudo-track index for merged accompaniment tracks
+  if (settingsStore.current.playback.mergeAccompaniment && nonVocalTrackIndices.value.includes(trackIndex)) {
+    trackIndex = -1;
+  }
+
   trackTweens.value[trackIndex]?.restart();
 }
 
