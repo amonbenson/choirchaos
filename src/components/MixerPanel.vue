@@ -7,9 +7,26 @@ import Slider from "primevue/slider";
 import { computed, ref, watch } from "vue";
 
 import type Song from "@/core/models/song";
-import Track from "@/core/models/track";
+import Track, { type TrackClassification } from "@/core/models/track";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
+
+class MergedTrack {
+  constructor(
+    public tracks: Track[],
+    public title: string,
+    public classification: TrackClassification = "Accompaniment",
+    public program: number = 0,
+  ) {}
+
+  get mixer(): Track["mixer"] {
+    return this.tracks[0].mixer;
+  }
+
+  applyToEach(fn: (track: Track, ...args: any[]) => void, ...args: any[]): void {
+    this.tracks.forEach(t => fn(t, ...args));
+  }
+}
 
 const player = usePlayerStore();
 const settingsStore = useSettingsStore();
@@ -20,12 +37,16 @@ const props = defineProps<{
 
 const tracks = computed(() => props.song?.tracks ?? []);
 
-const tracksByClassification = computed<Record<string, Track[]>>(() => {
+const tracksByClassification = computed<Record<string, (Track | MergedTrack)[]>>(() => {
   // Group all tracks by classification (Anything non-vocal is considered accompaniment)
-  const accompanimentTracks = tracks.value.filter(t => t.classification !== "Vocal");
+  const nonVocalTracks = tracks.value.filter(t => t.classification !== "Vocal");
+  const accompanimentTracks = settingsStore.current.appearance.mergeAccompaniment
+    ? [new MergedTrack(nonVocalTracks, "Accompaniment (Merged)")]
+    : nonVocalTracks;
+
   const vocalTracks = tracks.value.filter(t => t.classification === "Vocal");
 
-  const groups: Record<string, Track[]> = {
+  const groups: Record<string, (Track | MergedTrack)[]> = {
     Accompaniment: accompanimentTracks,
     Vocal: vocalTracks,
   };
@@ -40,27 +61,47 @@ const tracksByClassification = computed<Record<string, Track[]>>(() => {
   return groups;
 });
 
-function setTrackMute(track: Track): void {
+function setTrackMute(track: Track | MergedTrack): void {
   const next = !track.mixer.mute;
-  props.song?.setTrackMute(track.mixer.index, next);
   settingsStore.updateTrackMixer(track.title, { mute: next });
+
+  if (track instanceof MergedTrack) {
+    track.applyToEach(setTrackMute);
+  } else {
+    props.song?.setTrackMute(track.mixer.index, next);
+  }
 }
 
-function setTrackSolo(track: Track): void {
+function setTrackSolo(track: Track | MergedTrack): void {
   const next = !track.mixer.solo;
-  props.song?.setTrackSolo(track.mixer.index, next);
   settingsStore.updateTrackMixer(track.title, { solo: next });
+
+  if (track instanceof MergedTrack) {
+    track.applyToEach(setTrackSolo);
+  } else {
+    props.song?.setTrackSolo(track.mixer.index, next);
+  }
 }
 
-function setTrackHighlight(track: Track): void {
+function setTrackHighlight(track: Track | MergedTrack): void {
   const next = !track.mixer.highlight;
-  props.song?.setTrackHighlight(track.mixer.index, next);
   settingsStore.updateTrackMixer(track.title, { highlight: next });
+
+  if (track instanceof MergedTrack) {
+    track.applyToEach(setTrackHighlight);
+  } else {
+    props.song?.setTrackHighlight(track.mixer.index, next);
+  }
 }
 
-function setTrackGain(track: Track, value: number): void {
-  props.song?.setTrackGain(track.mixer.index, value);
+function setTrackGain(track: Track | MergedTrack, value: number): void {
   settingsStore.updateTrackMixer(track.title, { gain: value });
+
+  if (track instanceof MergedTrack) {
+    track.applyToEach(setTrackGain, value);
+  } else {
+    props.song?.setTrackGain(track.mixer.index, value);
+  }
 }
 
 const trackFlashTriggered = ref<boolean[]>([]);
@@ -81,19 +122,23 @@ player.onNote((event) => {
   });
 });
 
-// Refresh tracks whenever the song changes
+// Refresh track state from settings
 watch(() => props.song, (song) => {
   if (!song) {
     return;
   }
 
   // Apply settings
-  for (const track of song.tracks) {
-    const stored = settingsStore.getTrackMixer(track.title);
-    song.setTrackGain(track.mixer.index, stored.gain);
-    song.setTrackMute(track.mixer.index, stored.mute);
-    song.setTrackSolo(track.mixer.index, stored.solo);
-    song.setTrackHighlight(track.mixer.index, stored.highlight);
+  for (const metaTrack of Object.values(tracksByClassification.value).flat()) {
+    const stored = settingsStore.getTrackMixer(metaTrack.title);
+
+    const tracks = metaTrack instanceof MergedTrack ? metaTrack.tracks : [metaTrack];
+    for (const track of tracks) {
+      song.setTrackGain(track.mixer.index, stored.gain);
+      song.setTrackMute(track.mixer.index, stored.mute);
+      song.setTrackSolo(track.mixer.index, stored.solo);
+      song.setTrackHighlight(track.mixer.index, stored.highlight);
+    }
   }
 
   // Reset flash triggers
