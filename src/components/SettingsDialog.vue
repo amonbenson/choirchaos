@@ -178,6 +178,20 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                 @update:model-value="settings.updatePlayback({ segueEnabled: $event })"
               />
             </div>
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <div class="font-medium">
+                  Merge accompaniment tracks
+                </div>
+                <div class="text-sm text-muted-color">
+                  Combine all accompaniment tracks into a single track in the mixer.
+                </div>
+              </div>
+              <ToggleSwitch
+                :model-value="settings.current.playback.mergeAccompaniment"
+                @update:model-value="settings.updatePlayback({ mergeAccompaniment: $event })"
+              />
+            </div>
           </div>
         </TabPanel>
 

@@ -21,6 +21,7 @@ export type PlaybackSettings = {
   speed: number;
   transposition: number;
   segueEnabled: boolean;
+  mergeAccompaniment: boolean;
 };
 
 export type TrackMixerEntry = {
@@ -83,6 +84,7 @@ function defaultSettings(): Settings {
       speed: 1.0,
       transposition: 0,
       segueEnabled: true,
+      mergeAccompaniment: true,
     },
     mixer: {
       tracks: {},
@@ -183,6 +185,9 @@ function mergeWithDefaults(defaults: Settings, raw: Record<string, unknown>): Se
       segueEnabled: typeof playback.segueEnabled === "boolean"
         ? playback.segueEnabled
         : defaults.playback.segueEnabled,
+      mergeAccompaniment: typeof playback.mergeAccompaniment === "boolean"
+        ? playback.mergeAccompaniment
+        : defaults.playback.mergeAccompaniment,
     },
     mixer: {
       tracks: isObject(mixer.tracks)
@@ -299,6 +304,12 @@ export const useSettingsStore = defineStore(STORE_NAME, () => {
 
   function updatePlayback(update: Partial<PlaybackSettings>): void {
     settings.value.playback = { ...settings.value.playback, ...update };
+
+    // Reset track mixer settings if merging was changed
+    if (update.mergeAccompaniment !== undefined) {
+      settings.value.mixer.tracks = {};
+    }
+
     saveSettings(settings.value);
   }
 

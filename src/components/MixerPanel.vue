@@ -4,11 +4,10 @@ import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
 import Panel from "primevue/panel";
 import Slider from "primevue/slider";
-import { computed, type Ref, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 
 import type Song from "@/core/models/song";
-import type { TrackClassification } from "@/core/models/track";
-import type Track from "@/core/models/track";
+import Track from "@/core/models/track";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -20,15 +19,32 @@ const props = defineProps<{
 }>();
 
 const tracks = computed(() => props.song?.tracks ?? []);
-const trackByClassification = computed(() => {
-  const groups: Record<TrackClassification, Track[]> = {
-    Accompaniment: [],
-    Percussion: [],
-    Vocal: [],
+
+// Pseudo-track for controlling all non-vocal tracks at once (if enabled in settings)
+const nonVocalTrackIndices = computed<number[]>(() => tracks.value.filter(t => t.classification !== "Vocal").map(t => t.mixer.index));
+const nonVocalReferenceTrack = computed<Track | undefined>(() => tracks.value[nonVocalTrackIndices.value[0]]);
+const nonVocalPseudoTrack = computed<Track | undefined>(() => nonVocalReferenceTrack.value
+  ? new Track("Accompaniment", "Accompaniment", 0, { ...nonVocalReferenceTrack.value.mixer, index: -1 })
+  : undefined);
+
+const trackGroups = computed<Record<string, Track[]>>(() => {
+  // Group all tracks by classification (Anything non-vocal is considered accompaniment)
+  const accompanimentTracks = settingsStore.current.playback.mergeAccompaniment
+    ? nonVocalPseudoTrack.value ? [nonVocalPseudoTrack.value] : []
+    : tracks.value.filter(t => t.classification !== "Vocal");
+
+  const vocalTracks = tracks.value.filter(t => t.classification === "Vocal");
+
+  const groups: Record<string, Track[]> = {
+    Accompaniment: accompanimentTracks,
+    Vocal: vocalTracks,
   };
 
-  for (const track of tracks.value) {
-    groups[track.classification].push(track);
+  // Remove groups that have no tracks
+  for (const classification in groups) {
+    if (groups[classification].length === 0) {
+      delete groups[classification];
+    }
   }
 
   return groups;
@@ -72,7 +88,22 @@ function setTrackGain(track: Track, value: number): void {
   settingsStore.updateTrackMixer(track.title, { gain: value });
 }
 
-const trackTweens: Ref<GSAPTween[]> = ref([]);
+function applyWithPseudoTrack(track: Track, action: (track: Track, ...args: any[]) => void, ...args: any[]): void {
+  if (track.mixer.index === -1) {
+    // Apply to all non-vocal tracks
+    for (const index of nonVocalTrackIndices.value) {
+      const realTrack = tracks.value.find(t => t.mixer.index === index);
+      if (realTrack) {
+        action(realTrack, ...args);
+      }
+    }
+  } else {
+    // Apply to the single track directly
+    action(track, ...args);
+  }
+}
+
+const trackTweens = ref<GSAPTween[]>([]);
 watch(tracks, () => {
   // configure animations
   if (tracks.value.length !== trackTweens.value.length) {
@@ -80,9 +111,9 @@ watch(tracks, () => {
     const cs = getComputedStyle(document.documentElement);
     const colorFrom = cs.getPropertyValue("--p-primary-color").trim();
     const colorTo = cs.getPropertyValue("--p-slider-track-background").trim();
-    for (let i = 0; i < tracks.value.length; i++) {
+    for (const mixerIndex of Object.values(tracks.value).flatMap(t => t.mixer.index)) {
       const tween = gsap.fromTo(
-        `#mixer-track-slider-${i}`,
+        `#mixer-track-slider-${mixerIndex}`,
         { background: colorFrom },
         { background: colorTo, duration: 1.0 },
       );
@@ -114,67 +145,65 @@ player.onNote((event) => {
       class="flex flex-col items-stretch justify-stretch gap-12"
     >
       <div
-        v-for="trackGroup, classification in trackByClassification"
+        v-for="trackGroup, classification in trackGroups"
         :key="classification"
         class="flex flex-col items-stretch justify-stretch gap-2"
       >
-        <template v-if="trackGroup.length > 0">
-          <h3 class="font-bold">
-            {{ classification }}
-          </h3>
-          <div class="flex flex-col items-stretch justify-stretch gap-4">
+        <h3 class="font-bold">
+          {{ classification }}
+        </h3>
+        <div class="flex flex-col items-stretch justify-stretch gap-4">
+          <div
+            v-for="track in trackGroup"
+            :key="track.title"
+            class="flex flex-col items-stretch justify-stretch gap-2"
+          >
+            <h4 v-if="trackGroup.length > 1 || classification === 'Vocal'">
+              {{ track.title.replace(/^-*/, '') }}
+            </h4>
             <div
-              v-for="track in trackGroup"
-              :key="track.title"
-              class="flex flex-col items-stretch justify-stretch gap-2"
+              class="flex items-center justify-stretch gap-4"
+              :class="{ 'opacity-50': track.mixer.effectiveMute }"
             >
-              <h4 v-if="track.title !== classification">
-                {{ track.title.replace(/^-*/, '') }}
-              </h4>
-              <div
-                class="flex items-center justify-stretch gap-4"
-                :class="{ 'opacity-50': track.mixer.effectiveMute }"
-              >
-                <ButtonGroup>
-                  <Button
-                    label="M"
-                    aria-label="Mute"
-                    class="w-8"
-                    :severity="track.mixer.mute ? 'primary' : 'secondary'"
-                    size="small"
-                    @click="setTrackMute(track)"
-                  />
-                  <Button
-                    label="S"
-                    aria-label="Solo"
-                    class="w-8"
-                    :severity="track.mixer.solo ? 'warn' : 'secondary'"
-                    size="small"
-                    @click="setTrackSolo(track)"
-                  />
-                  <Button
-                    icon="pi pi-eye"
-                    aria-label="Highlight"
-                    class="w-8"
-                    :severity="track.mixer.highlight ? 'info' : 'secondary'"
-                    size="small"
-                    @click="setTrackHighlight(track)"
-                  />
-                </ButtonGroup>
-                <Slider
-                  :model-value="track.mixer.gain"
-                  class="mx-2 flex-1"
-                  :min="0"
-                  :max="1"
-                  :step="0.001"
-                  pt:range:class="bg-primary"
-                  :pt:range:id="`mixer-track-slider-${track.mixer.index}`"
-                  @update:model-value="setTrackGain(track, $event as number)"
+              <ButtonGroup>
+                <Button
+                  label="M"
+                  aria-label="Mute"
+                  class="w-8"
+                  :severity="track.mixer.mute ? 'primary' : 'secondary'"
+                  size="small"
+                  @click="applyWithPseudoTrack(track, setTrackMute)"
                 />
-              </div>
+                <Button
+                  label="S"
+                  aria-label="Solo"
+                  class="w-8"
+                  :severity="track.mixer.solo ? 'warn' : 'secondary'"
+                  size="small"
+                  @click="applyWithPseudoTrack(track, setTrackSolo)"
+                />
+                <Button
+                  icon="pi pi-eye"
+                  aria-label="Highlight"
+                  class="w-8"
+                  :severity="track.mixer.highlight ? 'info' : 'secondary'"
+                  size="small"
+                  @click="applyWithPseudoTrack(track, setTrackHighlight)"
+                />
+              </ButtonGroup>
+              <Slider
+                :model-value="track.mixer.gain"
+                class="mx-2 flex-1"
+                :min="0"
+                :max="1"
+                :step="0.001"
+                pt:range:class="bg-primary"
+                :pt:range:id="`mixer-track-slider-${track.mixer.index}`"
+                @update:model-value="applyWithPseudoTrack(track, setTrackGain, $event as number)"
+              />
             </div>
           </div>
-        </template>
+        </div>
       </div>
     </div>
 
