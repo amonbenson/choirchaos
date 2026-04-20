@@ -26,7 +26,6 @@
     "axios": "^1.13.6",
     "events": "^3.3.0",
     "file-saver": "^2.0.5",
-    "gsap": "^3.14.2",
     "midi-json-parser": "^8.1.72",
     "p5": "^2.2.2",
     "pdfjs-dist": "^5.5.207",

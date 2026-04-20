@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import gsap from "gsap";
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
 import Panel from "primevue/panel";
