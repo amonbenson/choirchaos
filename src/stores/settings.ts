@@ -15,13 +15,21 @@ export type WorkspaceSettings = {
 
 export type AppearanceSettings = {
   theme: "system" | "light" | "dark";
+  mergeAccompaniment: boolean;
+  transportButtonVisible: {
+    measure: boolean;
+    transposition: boolean;
+    tempo: boolean;
+    timeSignature: boolean;
+    vamp: boolean;
+    segue: boolean;
+  };
 };
 
 export type PlaybackSettings = {
   speed: number;
   transposition: number;
   segueEnabled: boolean;
-  mergeAccompaniment: boolean;
 };
 
 export type TrackMixerEntry = {
@@ -79,12 +87,20 @@ function defaultSettings(): Settings {
     },
     appearance: {
       theme: "system",
+      mergeAccompaniment: true,
+      transportButtonVisible: {
+        measure: true,
+        transposition: true,
+        tempo: true,
+        timeSignature: false,
+        vamp: true,
+        segue: true,
+      },
     },
     playback: {
       speed: 1.0,
       transposition: 0,
       segueEnabled: true,
-      mergeAccompaniment: true,
     },
     mixer: {
       tracks: {},
@@ -174,6 +190,31 @@ function mergeWithDefaults(defaults: Settings, raw: Record<string, unknown>): Se
       theme: isOneOf(appearance.theme, ["system", "light", "dark"] as const)
         ? appearance.theme
         : defaults.appearance.theme,
+      mergeAccompaniment: typeof appearance.mergeAccompaniment === "boolean"
+        ? appearance.mergeAccompaniment
+        : defaults.appearance.mergeAccompaniment,
+      transportButtonVisible: isObject(appearance.transportButtonVisible)
+        ? {
+            measure: typeof appearance.transportButtonVisible.measure === "boolean"
+              ? appearance.transportButtonVisible.measure
+              : defaults.appearance.transportButtonVisible.measure,
+            transposition: typeof appearance.transportButtonVisible.transposition === "boolean"
+              ? appearance.transportButtonVisible.transposition
+              : defaults.appearance.transportButtonVisible.transposition,
+            tempo: typeof appearance.transportButtonVisible.tempo === "boolean"
+              ? appearance.transportButtonVisible.tempo
+              : defaults.appearance.transportButtonVisible.tempo,
+            timeSignature: typeof appearance.transportButtonVisible.timeSignature === "boolean"
+              ? appearance.transportButtonVisible.timeSignature
+              : defaults.appearance.transportButtonVisible.timeSignature,
+            vamp: typeof appearance.transportButtonVisible.vamp === "boolean"
+              ? appearance.transportButtonVisible.vamp
+              : defaults.appearance.transportButtonVisible.vamp,
+            segue: typeof appearance.transportButtonVisible.segue === "boolean"
+              ? appearance.transportButtonVisible.segue
+              : defaults.appearance.transportButtonVisible.segue,
+          }
+        : defaults.appearance.transportButtonVisible,
     },
     playback: {
       speed: typeof playback.speed === "number"
@@ -185,9 +226,6 @@ function mergeWithDefaults(defaults: Settings, raw: Record<string, unknown>): Se
       segueEnabled: typeof playback.segueEnabled === "boolean"
         ? playback.segueEnabled
         : defaults.playback.segueEnabled,
-      mergeAccompaniment: typeof playback.mergeAccompaniment === "boolean"
-        ? playback.mergeAccompaniment
-        : defaults.playback.mergeAccompaniment,
     },
     mixer: {
       tracks: isObject(mixer.tracks)
@@ -299,17 +337,17 @@ export const useSettingsStore = defineStore(STORE_NAME, () => {
 
   function updateAppearance(update: Partial<AppearanceSettings>): void {
     settings.value.appearance = { ...settings.value.appearance, ...update };
-    saveSettings(settings.value);
-  }
-
-  function updatePlayback(update: Partial<PlaybackSettings>): void {
-    settings.value.playback = { ...settings.value.playback, ...update };
 
     // Reset track mixer settings if merging was changed
     if (update.mergeAccompaniment !== undefined) {
       settings.value.mixer.tracks = {};
     }
 
+    saveSettings(settings.value);
+  }
+
+  function updatePlayback(update: Partial<PlaybackSettings>): void {
+    settings.value.playback = { ...settings.value.playback, ...update };
     saveSettings(settings.value);
   }
 

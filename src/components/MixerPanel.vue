@@ -29,7 +29,7 @@ const nonVocalPseudoTrack = computed<Track | undefined>(() => nonVocalReferenceT
 
 const trackGroups = computed<Record<string, Track[]>>(() => {
   // Group all tracks by classification (Anything non-vocal is considered accompaniment)
-  const accompanimentTracks = settingsStore.current.playback.mergeAccompaniment
+  const accompanimentTracks = settingsStore.current.appearance.mergeAccompaniment
     ? nonVocalPseudoTrack.value ? [nonVocalPseudoTrack.value] : []
     : tracks.value.filter(t => t.classification !== "Vocal");
 
@@ -128,7 +128,7 @@ watch(trackGroups, () => {
 
 function triggerEventAnimation(trackIndex: number): void {
   // Use -1 as the pseudo-track index for merged accompaniment tracks
-  if (settingsStore.current.playback.mergeAccompaniment && nonVocalTrackIndices.value.includes(trackIndex)) {
+  if (settingsStore.current.appearance.mergeAccompaniment && nonVocalTrackIndices.value.includes(trackIndex)) {
     trackIndex = -1;
   }
 

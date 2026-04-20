@@ -9,6 +9,7 @@ import { computed, type ComputedRef, ref } from "vue";
 
 import Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
+import { useSettingsStore } from "@/stores/settings";
 
 import PopoverButton from "./PopoverButton.vue";
 import SettingsDialog from "./SettingsDialog.vue";
@@ -49,7 +50,10 @@ const songId = defineModel<string>();
 const songIndex = computed(() => props.songs?.findIndex(s => s.id === songId.value) ?? 0);
 
 const player = usePlayerStore();
+const settingsStore = useSettingsStore();
 const settingsVisible = ref(false);
+
+const visibleButtons = computed(() => settingsStore.current.appearance.transportButtonVisible);
 
 const vampState = computed(() => player.ready && player.currentVamp ? (player.currentVamp.manualExit ? "exiting" : "vamping") : "none");
 
@@ -119,19 +123,11 @@ const playbackSpeedPercentage = computed({
 
       <template #end>
         <div class="flex items-center justify-end gap-4 sm:gap-8">
-          <!-- Settings -->
-          <Button
-            class="-m-4"
-            icon="pi pi-cog"
-            severity="secondary"
-            aria-label="Settings"
-            rounded
-            text
-            size="large"
-            @click="settingsVisible = true"
-          />
           <!-- Measure -->
-          <div class="flex items-center justify-end gap-1">
+          <div
+            v-if="visibleButtons.measure"
+            class="flex items-center justify-end gap-1"
+          >
             <PopoverButton
               button-class="w-12 whitespace-nowrap"
               :label="player.ready ? player.currentMeasure[0] : '-'"
@@ -165,6 +161,7 @@ const playbackSpeedPercentage = computed({
 
           <!-- Transposition -->
           <PopoverButton
+            v-if="visibleButtons.transposition"
             button-class="w-16 whitespace-nowrap"
             :label="`${player.playbackTransposition > 0 ? '+' : ''}${player.playbackTransposition}&nbsp;HT`"
             :active="player.playbackTransposition !== 0"
@@ -206,6 +203,7 @@ const playbackSpeedPercentage = computed({
 
           <!-- Tempo -->
           <PopoverButton
+            v-if="visibleButtons.tempo"
             button-class="w-22 whitespace-nowrap"
             :active="Math.round(playbackSpeedPercentage) !== 100"
           >
@@ -249,16 +247,18 @@ const playbackSpeedPercentage = computed({
             </template>
           </PopoverButton>
 
-          <!-- Signature -->
-          <!-- <Button
+          <!-- Time Signature -->
+          <Button
+            v-if="visibleButtons.timeSignature"
             class="cursor-default"
             severity="secondary"
           >
             {{ player.currentTimeSignature[0] }}&nbsp;/&nbsp;{{ Math.pow(2, player.currentTimeSignature[1]) }}
-          </Button> -->
+          </Button>
 
           <!-- Vamp -->
           <Button
+            v-if="visibleButtons.vamp"
             class="w-24 whitespace-nowrap"
             :disabled="vampState === 'none'"
             :label="{
@@ -274,11 +274,23 @@ const playbackSpeedPercentage = computed({
 
           <!-- Segue -->
           <Button
+            v-if="visibleButtons.segue"
             class="w-24 whitespace-nowrap"
             :disabled="player.currentSegue === undefined"
             label="Segue"
             :severity="player.currentSegue?.enabled ? 'primary': 'secondary'"
             @click="emit('toggleSegue')"
+          />
+
+          <!-- Settings -->
+          <Button
+            class="-m-1 -ml-4"
+            icon="pi pi-cog"
+            severity="secondary"
+            aria-label="Settings"
+            rounded
+            text
+            @click="settingsVisible = true"
           />
         </div>
       </template>
