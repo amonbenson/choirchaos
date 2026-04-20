@@ -22,6 +22,17 @@ const settings = useSettingsStore();
 
 // --- Appearance --------------------------------------------------------------
 
+type TransportButtonKey = keyof AppearanceSettings["transportButtonVisible"];
+
+const TRANSPORT_BUTTON_LABELS: Record<TransportButtonKey, string> = {
+  measure: "Measure",
+  transposition: "Transpose",
+  tempo: "Tempo",
+  timeSignature: "Time Sig.",
+  vamp: "Vamp",
+  segue: "Segue",
+};
+
 const THEME_OPTIONS: { label: string; value: AppearanceSettings["theme"] }[] = [
   { label: "System", value: "system" },
   { label: "Light", value: "light" },
@@ -31,6 +42,19 @@ const THEME_OPTIONS: { label: string; value: AppearanceSettings["theme"] }[] = [
 const theme = computed({
   get: () => settings.current.appearance.theme,
   set: (value: AppearanceSettings["theme"]) => settings.updateAppearance({ theme: value }),
+});
+
+// Transport buttons as array instead of boolean map
+const transportButtons = computed({
+  get: () => Object.entries(settings.current.appearance.transportButtonVisible)
+    .filter(([, visible]) => visible)
+    .map(([key]) => key as TransportButtonKey),
+  set: (visibleButtons: TransportButtonKey[]) => {
+    const updated = Object.fromEntries(
+      Object.keys(TRANSPORT_BUTTON_LABELS).map(key => [key, visibleButtons.includes(key as TransportButtonKey)]),
+    ) as AppearanceSettings["transportButtonVisible"];
+    settings.updateAppearance({ transportButtonVisible: updated });
+  },
 });
 
 // --- Keyboard shortcuts ------------------------------------------------------
@@ -156,6 +180,49 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                 option-label="label"
                 option-value="value"
                 :allow-empty="false"
+              />
+            </div>
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <div class="font-medium">
+                  Merge accompaniment tracks
+                </div>
+                <div class="text-sm text-muted-color">
+                  Combine all accompaniment tracks into a single track in the mixer.
+                </div>
+              </div>
+              <ToggleSwitch
+                :model-value="settings.current.appearance.mergeAccompaniment"
+                @update:model-value="settings.updateAppearance({ mergeAccompaniment: $event })"
+              />
+            </div>
+            <div class="flex flex-col gap-2">
+              <div>
+                <div class="font-medium">
+                  Transport bar buttons
+                </div>
+                <div class="text-sm text-muted-color">
+                  Choose which controls are visible in the transport bar.
+                </div>
+              </div>
+              <!-- <div class="flex gap-4 rounded bg-black p-2">
+                <Button
+                  v-for="(label, key) in TRANSPORT_BUTTON_LABELS"
+                  :key="key"
+                  :label="label"
+                  :severity="settings.current.appearance.transportButtonVisible[key as TransportButtonKey] ? 'primary' : 'secondary'"
+                  size="small"
+                  fluid
+                  @click="settings.updateAppearance({ transportButtonVisible: { ...settings.current.appearance.transportButtonVisible, [key]: !settings.current.appearance.transportButtonVisible[key as TransportButtonKey] } })"
+                />
+              </div> -->
+              <SelectButton
+                v-model="transportButtons"
+                :options="Object.entries(TRANSPORT_BUTTON_LABELS).map(([key, label]) => ({ label, value: key }))"
+                option-label="label"
+                option-value="value"
+                multiple
+                fluid
               />
             </div>
           </div>

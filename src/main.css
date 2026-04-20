@@ -4,6 +4,7 @@
 
 @theme {
   --color-surface: var(--p-content-background);
+  --color-surface-alt: var(--p-content-hover-background);
 }
 
 @layer base {
