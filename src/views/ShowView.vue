@@ -13,6 +13,7 @@ import VampCard from "@/components/VampCard.vue";
 import { useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
 import Show from "@/core/models/show";
 import type Song from "@/core/models/song";
+import { consumePendingShow } from "@/router/router";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -27,16 +28,14 @@ const props = defineProps<{
 }>();
 
 // store show and current song data from pocketbase
-const show: Ref<Show | undefined> = ref();
+const show = ref<Show | undefined>();
 const showLoading = ref(true);
 
-const song: ComputedRef<Song | undefined> = computed(() => show.value?.songs.find(s => s.id === props.songId));
+const song = ref<Song | undefined>();
 const songLoading = ref(true);
 
 const songs = computed(() => show.value?.songs ?? []);
 const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
-
-const autoplayNextSong = ref(false);
 
 const vampCardType = computed(() => {
   if (player.playing) {
@@ -132,9 +131,38 @@ function toggleSegue(): void {
   player.toggleSegue();
 }
 
-function selectSong(songId?: string, autoplay: boolean = false): void {
-  autoplayNextSong.value = autoplay;
+player.onSegue(() => {
+  // Select the next song
+  const nextSong = show.value?.songs[songIndex.value + 1];
+  if (!nextSong) {
+    return;
+  }
 
+  selectSong(nextSong.id, true);
+});
+
+// SETTINGS
+
+onMounted(() => {
+  // Apply initial playback modifiers from settings store
+  player.playbackSpeed = settings.current.playback.speed;
+  player.playbackTransposition = settings.current.playback.transposition;
+  player.setSegueEnabled(settings.current.playback.segueEnabled);
+});
+
+watch(() => player.playbackSpeed, value => settings.updatePlayback({ speed: value }));
+watch(() => player.playbackTransposition, value => settings.updatePlayback({ transposition: value }));
+
+// Apply the global segue setting whenever the current song changes or the setting is toggled.
+watch(() => [song.value, settings.current.playback.segueEnabled], () => {
+  if (player.currentSegue !== undefined) {
+    player.setSegueEnabled(settings.current.playback.segueEnabled);
+  }
+});
+
+// DATA LOADING PROCEDURE
+
+function selectSong(songId?: string, autoplay: boolean = false): void {
   // route to the correct song
   if (songId && songId !== props.songId) {
     router.replace({
@@ -143,115 +171,58 @@ function selectSong(songId?: string, autoplay: boolean = false): void {
         showId: props.showId,
         songId,
       },
+      query: {
+        ...(autoplay ? { autoplay: "1" } : {}),
+      },
     });
   }
 }
 
-// reload when the show id changes
-watch([show, song], async () => {
-  if (show.value && song.value) {
-    try {
-      songLoading.value = true;
-      await player.load(song.value!);
-
-      // Start playing immediately
-      if (autoplayNextSong.value) {
-        autoplayNextSong.value = false;
-        player.play();
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      songLoading.value = false;
-    }
-  }
-});
-
-// handle segue
-player.onSegue(() => {
-  // Check the current song
-  const currentIndex = show.value?.songs.findIndex(s => s.id === song.value?.id) ?? -1;
-  if (currentIndex === -1) {
-    return;
-  }
-
-  // Select the next song
-  const nextSong = show.value?.songs[currentIndex + 1];
-  if (nextSong) {
-    selectSong(nextSong.id, true);
-  }
-});
-
-// fetch the show data from pocketbase on setup
-async function fetchShow(): Promise<void> {
+// Reload whenever song id changes (and initially)
+watch(() => props.songId, async (songId) => {
   try {
     showLoading.value = true;
-    const showObj = await Show.get(route.params.showId as string);
+    songLoading.value = true;
 
-    // mark expensive/large reference properties as raw so vue doesn't try to make them reactive.
-    // They cannot be changed anyway unless the whole show object is replaced
-    for (const song of showObj.songs) {
-      song.$midiSystemEvents = markRaw(song.$midiSystemEvents);
-
-      for (const track of song.tracks) {
-        track.$midiTrackEvents = markRaw(track.$midiTrackEvents);
-      }
-
-      for (const measure of song.measures.items()) {
-        measure.$beatTicks = markRaw(measure.$beatTicks);
-      }
+    // If no song id was selected, clear the current song
+    if (songId === undefined) {
+      song.value = undefined;
+      return;
     }
 
-    // // inject missing marker information
-    // const res = await axios.get("/test/mti/license_activate.json");
-    // for (const song of showObj.songs) {
-    //   const mtiSong = res.data.show.songs.find((s: any) => s.title === song.title);
-    //   for (const marker of song.events.markers.items()) {
-    //     const mtiMarker = mtiSong.changes.markers.find((m: any) => m.location.measure === marker.start[0] && m.location.beat === marker.start[1]+1);
-    //     if (!mtiMarker) {
-    //       console.error("missing mti marker!");
-    //       continue;
-    //     }
+    // Load show if not already done so
+    if (!show.value) {
+      const pending = consumePendingShow();
+      show.value = pending ?? await Show.get(props.showId);
+    }
 
-    //     marker.marker = mtiMarker.text;
-    //   }
+    showLoading.value = false;
 
-    //   // await song.update();
-    //   // console.log("update!", song.title);
-    // }
+    // Select the song
+    song.value = show.value.songs.find(s => s.id === songId);
+    if (!song.value) {
+      console.error(`Internal error: ShowView was created with an invalid song id: ${songId}`);
+      return;
+    }
 
-    // set the show
-    show.value = showObj;
+    // Load the selected song
+    await player.load(song.value);
 
-    const songObj = showObj.songs.find(s => s.id === props.songId) ?? null;
-    if (!songObj) {
-      // if no valid song is selected, route to the first song
-      selectSong(showObj.songs[0]?.id);
+    // Start playing immediately if autoplay was enabled
+    if (route.query.autoplay) {
+      // Consume the flag
+      const { autoplay: _, ...query } = route.query;
+      router.replace({ ...route, query });
+
+      player.play();
     }
   } catch (err) {
     console.error(err);
   } finally {
     showLoading.value = false;
+    songLoading.value = false;
   }
-}
-
-onMounted(() => {
-  // Apply playback modifiers from settings store
-  player.playbackSpeed = settings.current.playback.speed;
-  player.playbackTransposition = settings.current.playback.transposition;
-});
-
-watch(() => player.playbackSpeed, value => settings.updatePlayback({ speed: value }));
-watch(() => player.playbackTransposition, value => settings.updatePlayback({ transposition: value }));
-
-// Apply the global segue setting whenever the current song changes or the setting is toggled.
-watchEffect(() => {
-  if (player.currentSegue !== undefined) {
-    player.setSegueEnabled(settings.current.playback.segueEnabled);
-  }
-});
-
-fetchShow();
+}, { immediate: true });
 </script>
 
 <template>
