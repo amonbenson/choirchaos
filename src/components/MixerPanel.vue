@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import gsap from "gsap";
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
 import Panel from "primevue/panel";
@@ -7,9 +6,26 @@ import Slider from "primevue/slider";
 import { computed, ref, watch } from "vue";
 
 import type Song from "@/core/models/song";
-import Track from "@/core/models/track";
+import Track, { type TrackClassification } from "@/core/models/track";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
+
+class MergedTrack {
+  constructor(
+    public tracks: Track[],
+    public title: string,
+    public classification: TrackClassification = "Accompaniment",
+    public program: number = 0,
+  ) {}
+
+  get mixer(): Track["mixer"] {
+    return this.tracks[0].mixer;
+  }
+
+  applyToEach(fn: (track: Track, ...args: any[]) => void, ...args: any[]): void {
+    this.tracks.forEach(t => fn(t, ...args));
+  }
+}
 
 const player = usePlayerStore();
 const settingsStore = useSettingsStore();
@@ -20,22 +36,16 @@ const props = defineProps<{
 
 const tracks = computed(() => props.song?.tracks ?? []);
 
-// Pseudo-track for controlling all non-vocal tracks at once (if enabled in settings)
-const nonVocalTrackIndices = computed<number[]>(() => tracks.value.filter(t => t.classification !== "Vocal").map(t => t.mixer.index));
-const nonVocalReferenceTrack = computed<Track | undefined>(() => tracks.value[nonVocalTrackIndices.value[0]]);
-const nonVocalPseudoTrack = computed<Track | undefined>(() => nonVocalReferenceTrack.value
-  ? new Track("Accompaniment", "Accompaniment", 0, { ...nonVocalReferenceTrack.value.mixer, index: -1 })
-  : undefined);
-
-const trackGroups = computed<Record<string, Track[]>>(() => {
+const tracksByClassification = computed<Record<string, (Track | MergedTrack)[]>>(() => {
   // Group all tracks by classification (Anything non-vocal is considered accompaniment)
+  const nonVocalTracks = tracks.value.filter(t => t.classification !== "Vocal");
   const accompanimentTracks = settingsStore.current.appearance.mergeAccompaniment
-    ? nonVocalPseudoTrack.value ? [nonVocalPseudoTrack.value] : []
-    : tracks.value.filter(t => t.classification !== "Vocal");
+    ? [new MergedTrack(nonVocalTracks, "Accompaniment (Merged)")]
+    : nonVocalTracks;
 
   const vocalTracks = tracks.value.filter(t => t.classification === "Vocal");
 
-  const groups: Record<string, Track[]> = {
+  const groups: Record<string, (Track | MergedTrack)[]> = {
     Accompaniment: accompanimentTracks,
     Vocal: vocalTracks,
   };
@@ -50,95 +60,90 @@ const trackGroups = computed<Record<string, Track[]>>(() => {
   return groups;
 });
 
-// Apply persisted mixer settings whenever the song changes
+function setTrackMute(track: Track | MergedTrack): void {
+  const next = !track.mixer.mute;
+  settingsStore.updateTrackMixer(track.title, { mute: next });
+
+  if (track instanceof MergedTrack) {
+    track.applyToEach(setTrackMute);
+  } else {
+    props.song?.setTrackMute(track.mixer.index, next);
+  }
+}
+
+function setTrackSolo(track: Track | MergedTrack): void {
+  const next = !track.mixer.solo;
+  settingsStore.updateTrackMixer(track.title, { solo: next });
+
+  if (track instanceof MergedTrack) {
+    track.applyToEach(setTrackSolo);
+  } else {
+    props.song?.setTrackSolo(track.mixer.index, next);
+  }
+}
+
+function setTrackHighlight(track: Track | MergedTrack): void {
+  const next = !track.mixer.highlight;
+  settingsStore.updateTrackMixer(track.title, { highlight: next });
+
+  if (track instanceof MergedTrack) {
+    track.applyToEach(setTrackHighlight);
+  } else {
+    props.song?.setTrackHighlight(track.mixer.index, next);
+  }
+}
+
+function setTrackGain(track: Track | MergedTrack, value: number): void {
+  settingsStore.updateTrackMixer(track.title, { gain: value });
+
+  if (track instanceof MergedTrack) {
+    track.applyToEach(setTrackGain, value);
+  } else {
+    props.song?.setTrackGain(track.mixer.index, value);
+  }
+}
+
+const trackFlashTriggered = ref<boolean[]>([]);
+
+player.onNote((event) => {
+  // Skip if already triggered or the track is muted
+  if (trackFlashTriggered.value[event.trackIndex] || tracks.value[event.trackIndex].mixer.effectiveGain < 0.01) {
+    return;
+  }
+
+  // Trigger the flash
+  trackFlashTriggered.value[event.trackIndex] = true;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      // Reset to default state
+      trackFlashTriggered.value[event.trackIndex] = false;
+    });
+  });
+});
+
+// Refresh track state from settings
 watch(() => props.song, (song) => {
   if (!song) {
     return;
   }
 
-  for (const track of song.tracks) {
-    const stored = settingsStore.getTrackMixer(track.title);
-    song.setTrackGain(track.mixer.index, stored.gain);
-    song.setTrackMute(track.mixer.index, stored.mute);
-    song.setTrackSolo(track.mixer.index, stored.solo);
-    song.setTrackHighlight(track.mixer.index, stored.highlight);
+  // Apply settings
+  for (const metaTrack of Object.values(tracksByClassification.value).flat()) {
+    const stored = settingsStore.getTrackMixer(metaTrack.title);
+
+    const tracks = metaTrack instanceof MergedTrack ? metaTrack.tracks : [metaTrack];
+    for (const track of tracks) {
+      song.setTrackGain(track.mixer.index, stored.gain);
+      song.setTrackMute(track.mixer.index, stored.mute);
+      song.setTrackSolo(track.mixer.index, stored.solo);
+      song.setTrackHighlight(track.mixer.index, stored.highlight);
+    }
   }
+
+  // Reset flash triggers
+  trackFlashTriggered.value = Array(song.tracks.length).fill(false);
 }, { immediate: true });
 
-function setTrackMute(track: Track): void {
-  const next = !track.mixer.mute;
-  props.song?.setTrackMute(track.mixer.index, next);
-  settingsStore.updateTrackMixer(track.title, { mute: next });
-}
-
-function setTrackSolo(track: Track): void {
-  const next = !track.mixer.solo;
-  props.song?.setTrackSolo(track.mixer.index, next);
-  settingsStore.updateTrackMixer(track.title, { solo: next });
-}
-
-function setTrackHighlight(track: Track): void {
-  const next = !track.mixer.highlight;
-  props.song?.setTrackHighlight(track.mixer.index, next);
-  settingsStore.updateTrackMixer(track.title, { highlight: next });
-}
-
-function setTrackGain(track: Track, value: number): void {
-  props.song?.setTrackGain(track.mixer.index, value);
-  settingsStore.updateTrackMixer(track.title, { gain: value });
-}
-
-function applyWithPseudoTrack(track: Track, action: (track: Track, ...args: any[]) => void, ...args: any[]): void {
-  if (track.mixer.index === -1) {
-    // Apply to all non-vocal tracks
-    for (const index of nonVocalTrackIndices.value) {
-      const realTrack = tracks.value.find(t => t.mixer.index === index);
-      if (realTrack) {
-        action(realTrack, ...args);
-      }
-    }
-  } else {
-    // Apply to the single track directly
-    action(track, ...args);
-  }
-}
-
-const trackTweens = ref<Record<number, GSAPTween>>({});
-watch(trackGroups, () => {
-  const trackIndices = Object.values(trackGroups.value).flatMap(t => t.map(track => track.mixer.index));
-
-  // configure animations
-  if (JSON.stringify(trackIndices) !== JSON.stringify(Object.keys(trackTweens.value))) {
-    trackTweens.value = {};
-    const cs = getComputedStyle(document.documentElement);
-    const colorFrom = cs.getPropertyValue("--p-primary-color").trim();
-    const colorTo = cs.getPropertyValue("--p-slider-track-background").trim();
-
-    for (const mixerIndex of trackIndices) {
-      const tween = gsap.fromTo(
-        `#mixer-track-slider-${mixerIndex}`,
-        { background: colorFrom },
-        { background: colorTo, duration: 1.0 },
-      );
-      tween.seek(tween.endTime()); // start at the end (normal gray state)
-      trackTweens.value[mixerIndex] = tween;
-    }
-  }
-}, { immediate: true, flush: "post" });
-
-function triggerEventAnimation(trackIndex: number): void {
-  // Use -1 as the pseudo-track index for merged accompaniment tracks
-  if (settingsStore.current.appearance.mergeAccompaniment && nonVocalTrackIndices.value.includes(trackIndex)) {
-    trackIndex = -1;
-  }
-
-  trackTweens.value[trackIndex]?.restart();
-}
-
-player.onNote((event) => {
-  // trigger the flash event
-  triggerEventAnimation(event.trackIndex);
-});
 </script>
 
 <template>
@@ -153,7 +158,7 @@ player.onNote((event) => {
       class="flex flex-col items-stretch justify-stretch gap-12"
     >
       <div
-        v-for="trackGroup, classification in trackGroups"
+        v-for="trackGroup, classification in tracksByClassification"
         :key="classification"
         class="flex flex-col items-stretch justify-stretch gap-2"
       >
@@ -180,7 +185,7 @@ player.onNote((event) => {
                   class="w-8"
                   :severity="track.mixer.mute ? 'primary' : 'secondary'"
                   size="small"
-                  @click="applyWithPseudoTrack(track, setTrackMute)"
+                  @click="setTrackMute(track)"
                 />
                 <Button
                   label="S"
@@ -188,7 +193,7 @@ player.onNote((event) => {
                   class="w-8"
                   :severity="track.mixer.solo ? 'warn' : 'secondary'"
                   size="small"
-                  @click="applyWithPseudoTrack(track, setTrackSolo)"
+                  @click="setTrackSolo(track)"
                 />
                 <Button
                   icon="pi pi-eye"
@@ -196,7 +201,7 @@ player.onNote((event) => {
                   class="w-8"
                   :severity="track.mixer.highlight ? 'info' : 'secondary'"
                   size="small"
-                  @click="applyWithPseudoTrack(track, setTrackHighlight)"
+                  @click="setTrackHighlight(track)"
                 />
               </ButtonGroup>
               <Slider
@@ -205,9 +210,8 @@ player.onNote((event) => {
                 :min="0"
                 :max="1"
                 :step="0.001"
-                pt:range:class="bg-primary"
-                :pt:range:id="`mixer-track-slider-${track.mixer.index}`"
-                @update:model-value="applyWithPseudoTrack(track, setTrackGain, $event as number)"
+                :pt:range:class="trackFlashTriggered[track.mixer.index] ? 'bg-primary transition-none' : 'bg-(--p-slider-track-background) transition-colors duration-500'"
+                @update:model-value="setTrackGain(track, $event as number)"
               />
             </div>
           </div>
