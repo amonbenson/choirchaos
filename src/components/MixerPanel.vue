@@ -167,7 +167,7 @@ watch(() => props.song, (song) => {
         </h3>
         <div class="flex flex-col items-stretch justify-stretch gap-4">
           <div
-            v-for="track, i in trackGroup"
+            v-for="track in trackGroup"
             :key="track.title"
             class="flex flex-col items-stretch justify-stretch gap-2"
           >
