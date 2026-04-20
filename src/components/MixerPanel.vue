@@ -20,19 +20,9 @@ const props = defineProps<{
 
 const tracks = computed(() => props.song?.tracks ?? []);
 
-// Pseudo-track for controlling all non-vocal tracks at once (if enabled in settings)
-const nonVocalTrackIndices = computed<number[]>(() => tracks.value.filter(t => t.classification !== "Vocal").map(t => t.mixer.index));
-const nonVocalReferenceTrack = computed<Track | undefined>(() => tracks.value[nonVocalTrackIndices.value[0]]);
-const nonVocalPseudoTrack = computed<Track | undefined>(() => nonVocalReferenceTrack.value
-  ? new Track("Accompaniment", "Accompaniment", 0, { ...nonVocalReferenceTrack.value.mixer, index: -1 })
-  : undefined);
-
-const trackGroups = computed<Record<string, Track[]>>(() => {
+const tracksByClassification = computed<Record<string, Track[]>>(() => {
   // Group all tracks by classification (Anything non-vocal is considered accompaniment)
-  const accompanimentTracks = settingsStore.current.appearance.mergeAccompaniment
-    ? nonVocalPseudoTrack.value ? [nonVocalPseudoTrack.value] : []
-    : tracks.value.filter(t => t.classification !== "Vocal");
-
+  const accompanimentTracks = tracks.value.filter(t => t.classification !== "Vocal");
   const vocalTracks = tracks.value.filter(t => t.classification === "Vocal");
 
   const groups: Record<string, Track[]> = {
@@ -49,21 +39,6 @@ const trackGroups = computed<Record<string, Track[]>>(() => {
 
   return groups;
 });
-
-// Apply persisted mixer settings whenever the song changes
-watch(() => props.song, (song) => {
-  if (!song) {
-    return;
-  }
-
-  for (const track of song.tracks) {
-    const stored = settingsStore.getTrackMixer(track.title);
-    song.setTrackGain(track.mixer.index, stored.gain);
-    song.setTrackMute(track.mixer.index, stored.mute);
-    song.setTrackSolo(track.mixer.index, stored.solo);
-    song.setTrackHighlight(track.mixer.index, stored.highlight);
-  }
-}, { immediate: true });
 
 function setTrackMute(track: Track): void {
   const next = !track.mixer.mute;
@@ -88,57 +63,43 @@ function setTrackGain(track: Track, value: number): void {
   settingsStore.updateTrackMixer(track.title, { gain: value });
 }
 
-function applyWithPseudoTrack(track: Track, action: (track: Track, ...args: any[]) => void, ...args: any[]): void {
-  if (track.mixer.index === -1) {
-    // Apply to all non-vocal tracks
-    for (const index of nonVocalTrackIndices.value) {
-      const realTrack = tracks.value.find(t => t.mixer.index === index);
-      if (realTrack) {
-        action(realTrack, ...args);
-      }
-    }
-  } else {
-    // Apply to the single track directly
-    action(track, ...args);
-  }
-}
-
-const trackTweens = ref<Record<number, GSAPTween>>({});
-watch(trackGroups, () => {
-  const trackIndices = Object.values(trackGroups.value).flatMap(t => t.map(track => track.mixer.index));
-
-  // configure animations
-  if (JSON.stringify(trackIndices) !== JSON.stringify(Object.keys(trackTweens.value))) {
-    trackTweens.value = {};
-    const cs = getComputedStyle(document.documentElement);
-    const colorFrom = cs.getPropertyValue("--p-primary-color").trim();
-    const colorTo = cs.getPropertyValue("--p-slider-track-background").trim();
-
-    for (const mixerIndex of trackIndices) {
-      const tween = gsap.fromTo(
-        `#mixer-track-slider-${mixerIndex}`,
-        { background: colorFrom },
-        { background: colorTo, duration: 1.0 },
-      );
-      tween.seek(tween.endTime()); // start at the end (normal gray state)
-      trackTweens.value[mixerIndex] = tween;
-    }
-  }
-}, { immediate: true, flush: "post" });
-
-function triggerEventAnimation(trackIndex: number): void {
-  // Use -1 as the pseudo-track index for merged accompaniment tracks
-  if (settingsStore.current.appearance.mergeAccompaniment && nonVocalTrackIndices.value.includes(trackIndex)) {
-    trackIndex = -1;
-  }
-
-  trackTweens.value[trackIndex]?.restart();
-}
+const trackFlashTriggered = ref<boolean[]>([]);
 
 player.onNote((event) => {
-  // trigger the flash event
-  triggerEventAnimation(event.trackIndex);
+  // Skip if already triggered or the track is muted
+  if (trackFlashTriggered.value[event.trackIndex] || tracks.value[event.trackIndex].mixer.effectiveGain < 0.01) {
+    return;
+  }
+
+  // Trigger the flash
+  trackFlashTriggered.value[event.trackIndex] = true;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      // Reset to default state
+      trackFlashTriggered.value[event.trackIndex] = false;
+    });
+  });
 });
+
+// Refresh tracks whenever the song changes
+watch(() => props.song, (song) => {
+  if (!song) {
+    return;
+  }
+
+  // Apply settings
+  for (const track of song.tracks) {
+    const stored = settingsStore.getTrackMixer(track.title);
+    song.setTrackGain(track.mixer.index, stored.gain);
+    song.setTrackMute(track.mixer.index, stored.mute);
+    song.setTrackSolo(track.mixer.index, stored.solo);
+    song.setTrackHighlight(track.mixer.index, stored.highlight);
+  }
+
+  // Reset flash triggers
+  trackFlashTriggered.value = Array(song.tracks.length).fill(false);
+}, { immediate: true });
+
 </script>
 
 <template>
@@ -153,7 +114,7 @@ player.onNote((event) => {
       class="flex flex-col items-stretch justify-stretch gap-12"
     >
       <div
-        v-for="trackGroup, classification in trackGroups"
+        v-for="trackGroup, classification in tracksByClassification"
         :key="classification"
         class="flex flex-col items-stretch justify-stretch gap-2"
       >
@@ -162,7 +123,7 @@ player.onNote((event) => {
         </h3>
         <div class="flex flex-col items-stretch justify-stretch gap-4">
           <div
-            v-for="track in trackGroup"
+            v-for="track, i in trackGroup"
             :key="track.title"
             class="flex flex-col items-stretch justify-stretch gap-2"
           >
@@ -180,7 +141,7 @@ player.onNote((event) => {
                   class="w-8"
                   :severity="track.mixer.mute ? 'primary' : 'secondary'"
                   size="small"
-                  @click="applyWithPseudoTrack(track, setTrackMute)"
+                  @click="setTrackMute(track)"
                 />
                 <Button
                   label="S"
@@ -188,7 +149,7 @@ player.onNote((event) => {
                   class="w-8"
                   :severity="track.mixer.solo ? 'warn' : 'secondary'"
                   size="small"
-                  @click="applyWithPseudoTrack(track, setTrackSolo)"
+                  @click="setTrackSolo(track)"
                 />
                 <Button
                   icon="pi pi-eye"
@@ -196,7 +157,7 @@ player.onNote((event) => {
                   class="w-8"
                   :severity="track.mixer.highlight ? 'info' : 'secondary'"
                   size="small"
-                  @click="applyWithPseudoTrack(track, setTrackHighlight)"
+                  @click="setTrackHighlight(track)"
                 />
               </ButtonGroup>
               <Slider
@@ -205,9 +166,8 @@ player.onNote((event) => {
                 :min="0"
                 :max="1"
                 :step="0.001"
-                pt:range:class="bg-primary"
-                :pt:range:id="`mixer-track-slider-${track.mixer.index}`"
-                @update:model-value="applyWithPseudoTrack(track, setTrackGain, $event as number)"
+                :pt:range:class="trackFlashTriggered[track.mixer.index] ? 'bg-primary transition-none' : 'bg-(--p-slider-track-background) transition-colors duration-500'"
+                @update:model-value="setTrackGain(track, $event as number)"
               />
             </div>
           </div>
