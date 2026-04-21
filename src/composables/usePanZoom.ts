@@ -42,8 +42,8 @@ export function usePanZoom(
 
   // ── Mouse / pointer events ──────────────────────────────────────────────────
 
-  let lastX: number | undefined;
-  let lastY: number | undefined;
+  let lastPos: { x: number; y: number } | undefined;
+  let mouseTapStart: { x: number; y: number } | undefined;
 
   function onPointerDown(e: PointerEvent): void {
     if (e.pointerType !== "mouse") {
@@ -55,8 +55,8 @@ export function usePanZoom(
     }
 
     pressing = true;
-    lastX = e.clientX;
-    lastY = e.clientY;
+    lastPos = { x: e.clientX, y: e.clientY };
+    mouseTapStart = { x: e.clientX, y: e.clientY };
     activeCursor();
   }
 
@@ -65,11 +65,14 @@ export function usePanZoom(
       return;
     }
 
-    if (pressing && lastX !== undefined && lastY !== undefined) {
-      transform.pan.x += e.clientX - lastX;
-      transform.pan.y += e.clientY - lastY;
-      lastX = e.clientX;
-      lastY = e.clientY;
+    if (pressing && lastPos) {
+      transform.pan.x += e.clientX - lastPos.x;
+      transform.pan.y += e.clientY - lastPos.y;
+      lastPos = { x: e.clientX, y: e.clientY };
+      if (mouseTapStart && Math.hypot(e.clientX - mouseTapStart.x, e.clientY - mouseTapStart.y) > TAP_MAX_MOVEMENT) {
+        mouseTapStart = undefined;
+      }
+
       onRedraw();
     }
   }
@@ -79,9 +82,14 @@ export function usePanZoom(
       return;
     }
 
+    if (mouseTapStart) {
+      const pos = containerPos(e.clientX, e.clientY);
+      onTap?.(pos.x, pos.y);
+      mouseTapStart = undefined;
+    }
+
     pressing = false;
-    lastX = undefined;
-    lastY = undefined;
+    lastPos = undefined;
     idleCursor();
   }
 

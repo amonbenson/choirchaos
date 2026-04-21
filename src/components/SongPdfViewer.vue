@@ -148,13 +148,6 @@ function findMeasureAt(transform: PageTransform, x: number, y: number): Measure 
   return undefined;
 }
 
-function mousePressed(_: { s: p5; transform: PageTransform }): void {
-  // move to selected measure
-  if (hoverMeasure.value) {
-    player.setMeasure(hoverMeasure.value.value);
-  }
-}
-
 function tap({ x, y, transform }: { x: number; y: number; transform: PageTransform }): void {
   const measure = findMeasureAt(transform, x, y);
   if (measure) {
@@ -239,7 +232,6 @@ function drawPageOverlay({ s, p }: { s: p5; p: number; transform: PageTransform 
     :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
     :cursor="cursor"
     @draw-page-overlay="drawPageOverlay"
-    @mouse-pressed="mousePressed"
     @mouse-moved="mouseMoved"
     @tap="tap"
   />
