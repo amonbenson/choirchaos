@@ -267,7 +267,7 @@ defineExpose({
 <template>
   <div
     ref="container"
-    class="pdf-canvas-container relative overflow-hidden"
+    class="pdf-canvas-container relative size-full overflow-hidden"
   />
 </template>
 

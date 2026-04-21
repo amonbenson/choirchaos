@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import type p5 from "p5";
+import type Button from "primevue/button";
 import { computed, type ComputedRef, type Ref, ref, watch } from "vue";
 
 import type Measure from "@/core/models/measure";
 import type { MeasureLayout } from "@/core/models/measure";
-import type Song from "@/core/models/song";
+import Song from "@/core/models/song";
 import type PageTransform from "@/core/pdf/pageTransform";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
+import { getAccessFlags, NoPermissions } from "@/pocketbase/auth";
 import { usePlayerStore } from "@/stores/player";
 
 import PdfViewer from "./PdfViewer.vue";
@@ -17,6 +19,8 @@ const player = usePlayerStore();
 const props = defineProps<{
   song?: Song;
 }>();
+
+const access = computed(() => getAccessFlags(props.song?.permissions ?? NoPermissions));
 
 const pdfViewer = ref();
 const cursor: Ref<string | undefined> = ref();
@@ -227,12 +231,17 @@ function drawPageOverlay({ s, p }: { s: p5; p: number; transform: PageTransform 
 </script>
 
 <template>
-  <PdfViewer
-    ref="pdfViewer"
-    :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
-    :cursor="cursor"
-    @draw-page-overlay="drawPageOverlay"
-    @mouse-moved="mouseMoved"
-    @tap="tap"
-  />
+  <div class="relative size-full">
+    <PdfViewer
+      ref="pdfViewer"
+      :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
+      :cursor="cursor"
+      @draw-page-overlay="drawPageOverlay"
+      @mouse-moved="mouseMoved"
+      @tap="tap"
+    />
+    <div class="absolute top-2 left-2 flex gap-1">
+      {{ access }}
+    </div>
+  </div>
 </template>

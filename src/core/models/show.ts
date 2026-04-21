@@ -1,4 +1,5 @@
 import { pb, type PbRecord } from "@/pocketbase";
+import { NoPermissions, type PermissionContext } from "@/pocketbase/auth";
 
 import type { UrlOrFile } from "../utils/file";
 import { compareNumberings } from "../utils/numbering";
@@ -10,19 +11,37 @@ export default class Show {
     public title: string,
     public thumbnail?: UrlOrFile,
     public songs: Song[] = [],
+
+    public permissions: PermissionContext = NoPermissions,
   ) {
     this.songs.sort((a, b) => compareNumberings(a.number, b.number));
   }
 
   public toRecord(): PbRecord {
+    const { title, thumbnail, songs: _, permissions } = this;
+
     return {
-      title: this.title,
-      thumbnail: this.thumbnail,
+      title,
+      thumbnail,
+      ...permissions,
     };
   }
 
-  public static fromRecord({ id, title, thumbnail, expand }: PbRecord): Show {
-    return new Show(id, title, thumbnail, expand?.songs_via_show?.map((s: Song) => Song.fromRecord(s)) ?? []);
+  public static fromRecord({ id, title, thumbnail, expand, owner, editors, viewers, visibility }: PbRecord): Show {
+    const permissions = {
+      owner,
+      editors,
+      viewers,
+      visibility,
+    };
+
+    return new Show(
+      id,
+      title,
+      thumbnail,
+      expand?.songs_via_show?.map((s: Song) => Song.fromRecord(s, permissions)) ?? [],
+      permissions,
+    );
   }
 
   public async create(): Promise<PbRecord> {

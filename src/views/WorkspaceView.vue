@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
-import { computed, type ComputedRef, markRaw, onMounted, type Ref, ref, watch, watchEffect } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import KbdShortcut from "@/components/KbdShortcut.vue";
@@ -13,6 +13,7 @@ import VampCard from "@/components/VampCard.vue";
 import { useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
 import Show from "@/core/models/show";
 import type Song from "@/core/models/song";
+import { getAccessFlags, NoAccess, type PermissionContext } from "@/pocketbase/auth";
 import { consumePendingShow } from "@/router/router";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
