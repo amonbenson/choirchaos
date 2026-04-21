@@ -5,7 +5,7 @@ import { createRouter, createWebHistory, type RouteLocationNormalized } from "vu
 import Show from "@/core/models/show";
 import { login } from "@/pocketbase/auth";
 import HomeView from "@/views/HomeView.vue";
-import ShowView from "@/views/ShowView.vue";
+import WorkspaceView from "@/views/WorkspaceView.vue";
 
 let pendingShow: Show | undefined;
 
@@ -91,14 +91,14 @@ const routes = [
   {
     name: "show",
     path: "/show/:showId",
-    component: ShowView,
+    component: WorkspaceView,
     props: true,
     beforeEnter: resolveFirstSong,
   },
   {
     name: "song",
     path: "/show/:showId/song/:songId",
-    component: ShowView,
+    component: WorkspaceView,
     props: true,
   },
   // { name: "mti", path: "/mti", component: () => import("@/views/MTIImportView.vue") },
