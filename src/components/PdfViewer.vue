@@ -39,7 +39,6 @@ const { pages } = usePdfPages(toRef(props, "url"), { onUpdate: redrawAll });
 const isGrabbing = ref(false);
 
 usePanZoom(wrapper, transform.value, {
-  cursor: toRef(props, "cursor"),
   onRedraw: redrawAll,
   onTap: (x, y) => emit("tap", { x, y, transform: transform.value }),
 });
