@@ -3,11 +3,6 @@ import { onMounted, onUnmounted, type Ref } from "vue";
 
 import type PageTransform from "@/core/pdf/pageTransform";
 
-// Attaches pan, zoom, and tap gesture handling to a container element.
-// - Mouse drag / single-finger pan and tap: handled by @vueuse/gesture onDrag
-// - Wheel scroll / Ctrl+scroll zoom: handled by @vueuse/gesture onWheel
-// - Two-finger touch pinch/zoom: handled by native touch listeners
-//   (touch preventDefault stops pointer events so onDrag ignores touch)
 export function usePanZoom(
   container: Ref<HTMLElement | undefined>,
   transform: PageTransform,
@@ -23,16 +18,21 @@ export function usePanZoom(
     return { x: clientX - rect.left, y: clientY - rect.top };
   }
 
-  // ── Mouse drag + tap (via @vueuse/gesture) ──────────────────────────────────
+  // ── Mouse drag + tap (@vueuse/gesture) ──────────────────────────────────────
+  // onPinch is intentionally NOT registered here — combining onPinch + onWheel
+  // in useGesture causes double wheel-listener registration that breaks scroll
+  // on Windows. Touch pinch is handled with native listeners below instead.
 
-  // Track which button started the gesture so middle-button taps don't trigger onTap.
-  // useGesture clears `buttons` to 0 before firing the tap callback, so we need this
-  // separately.
+  // useGesture clears `buttons` to 0 before the tap callback fires, so track
+  // the initial button separately to guard against middle-button taps.
   let gestureStartButton = 0;
 
   function onPointerDown(e: PointerEvent): void {
     gestureStartButton = e.button;
   }
+
+  onMounted(() => container.value?.addEventListener("pointerdown", onPointerDown));
+  onUnmounted(() => container.value?.removeEventListener("pointerdown", onPointerDown));
 
   useGesture(
     {
@@ -51,6 +51,7 @@ export function usePanZoom(
         onRedraw();
       },
 
+      // No onPinch — see note above. Ctrl/meta+scroll zoom handled here instead.
       onWheel: ({ delta, event }) => {
         event.preventDefault();
         const pos = containerPos(event.clientX, event.clientY);
@@ -72,9 +73,9 @@ export function usePanZoom(
     },
   );
 
-  // ── Touch: single-finger pan + two-finger pinch/zoom ────────────────────────
-  // Calling preventDefault() on touchstart suppresses the synthetic pointer
-  // events for touch, so onDrag above only ever sees mouse input.
+  // ── Two-finger touch pinch/zoom (native) ────────────────────────────────────
+  // preventDefault on touchstart suppresses synthetic pointer events, so onDrag
+  // above only ever sees mouse input.
 
   let activeTouches: { id: number; x: number; y: number }[] = [];
   let tapStart: { id: number; x: number; y: number } | undefined;
@@ -99,6 +100,7 @@ export function usePanZoom(
     if (e.touches.length === 1) {
       const touch = e.touches[0]!;
       const prev = activeTouches.find(t => t.id === touch.identifier);
+
       if (prev) {
         transform.pan.x += touch.clientX - prev.x;
         transform.pan.y += touch.clientY - prev.y;
@@ -113,11 +115,13 @@ export function usePanZoom(
       const [t1, t2] = Array.from(e.touches) as [Touch, Touch];
       const prevT1 = activeTouches.find(t => t.id === t1.identifier);
       const prevT2 = activeTouches.find(t => t.id === t2.identifier);
+
       if (prevT1 && prevT2) {
         const prevDist = Math.hypot(prevT2.x - prevT1.x, prevT2.y - prevT1.y);
         const currDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
         const prevCenter = containerPos((prevT1.x + prevT2.x) / 2, (prevT1.y + prevT2.y) / 2);
         const currCenter = containerPos((t1.clientX + t2.clientX) / 2, (t1.clientY + t2.clientY) / 2);
+
         if (prevDist > 0) {
           transform.setZoom(transform.zoom * (currDist / prevDist), prevCenter);
           transform.pan.x += currCenter.x - prevCenter.x;
@@ -136,6 +140,7 @@ export function usePanZoom(
 
     if (tapStart) {
       const changed = Array.from(e.changedTouches).find(t => t.identifier === tapStart!.id);
+
       if (changed && Math.hypot(changed.clientX - tapStart.x, changed.clientY - tapStart.y) <= TAP_MAX_MOVEMENT) {
         const pos = containerPos(changed.clientX, changed.clientY);
         onTap?.(pos.x, pos.y);
@@ -149,7 +154,6 @@ export function usePanZoom(
 
   onMounted(() => {
     const el = container.value!;
-    el.addEventListener("pointerdown", onPointerDown);
     el.addEventListener("touchstart", onTouchStart, { passive: false });
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("touchend", onTouchEnd, { passive: false });
@@ -162,7 +166,6 @@ export function usePanZoom(
       return;
     }
 
-    el.removeEventListener("pointerdown", onPointerDown);
     el.removeEventListener("touchstart", onTouchStart);
     el.removeEventListener("touchmove", onTouchMove);
     el.removeEventListener("touchend", onTouchEnd);

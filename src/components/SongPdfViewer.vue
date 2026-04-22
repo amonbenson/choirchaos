@@ -292,7 +292,7 @@ const cursor = computed(() => {
           <!-- Playbar -->
           <div
             v-if="currentWrittenMeasure?.value === measure.value && currentPlayingMeasure"
-            class="absolute top-0 h-full w-[max(1.5%,1px)] -translate-x-1/2 rounded-full bg-primary-500"
+            class="absolute top-0 h-full w-[max(1.5%,1px)] -translate-x-1/2 rounded-full bg-primary"
             :style="{ left: `${currentPlayingMeasureProgress * 100}%` }"
           />
         </div>
