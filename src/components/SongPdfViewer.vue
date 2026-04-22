@@ -207,6 +207,71 @@ function isMeasureHighlighted(measure: Measure): boolean {
 //     s.pop();
 //   }
 // }
+
+const drawRect = ref<MeasureLayout | undefined>();
+
+function pageRelative(e: PointerEvent, pageEl: EventTarget): { x: number; y: number } {
+  const rect = (pageEl as HTMLElement).getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) / rect.width,
+    y: (e.clientY - rect.top) / rect.height,
+  };
+}
+
+function onDrawStart(e: PointerEvent, page: number): void {
+  const pos = pageRelative(e, e.currentTarget!);
+  drawRect.value = { page, x: pos.x, y: pos.y, width: 0, height: 0 };
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+}
+
+function onDrawMove(e: PointerEvent): void {
+  if (!drawRect.value) {
+    return;
+  }
+
+  const pos = pageRelative(e, e.currentTarget!);
+  drawRect.value = {
+    ...drawRect.value,
+    width: pos.x - drawRect.value.x,
+    height: pos.y - drawRect.value.y,
+  };
+}
+
+function onDrawEnd(): void {
+  // Get the drawn rectangle and reset state
+  const rect = drawRect.value;
+  drawRect.value = undefined;
+  currentTool.value = "edit";
+
+  if (!rect) {
+    return;
+  }
+
+  // Ask the user how many measures to add
+  const numMeasures = parseInt(prompt("How many measures to add?", "4") ?? "NaN");
+  if (isNaN(numMeasures) || numMeasures <= 0) {
+    return;
+  }
+
+  // Divide the rectangle into the specified number of measures
+  for (let i = 0; i < numMeasures; i++) {
+    const measureLayout = {
+      page: rect.page,
+      x: rect.x + (rect.width / numMeasures) * i,
+      y: rect.y,
+      width: rect.width / numMeasures,
+      height: rect.height,
+    } satisfies MeasureLayout;
+
+    // Get the first measure without a layout assigned
+    const measure = props.song?.measures.items().find(m => !m.layout);
+    if (!measure) {
+      return;
+    }
+
+    measure.layout = measureLayout;
+  }
+}
 </script>
 
 <template>
@@ -219,7 +284,10 @@ function isMeasureHighlighted(measure: Measure): boolean {
       <div
         v-for="page of visiblePages"
         :key="page.pageNumber"
-        class="pointer-events-none absolute"
+        class="absolute"
+        :class="currentTool === 'add'
+          ? 'pointer-events-auto cursor-crosshair'
+          : 'pointer-events-none cursor-default'"
         :style="{
           left: `${page.x * 100}%`,
           top: `${page.y * 100}%`,
@@ -252,6 +320,28 @@ function isMeasureHighlighted(measure: Measure): boolean {
             v-if="currentWrittenMeasure?.value === measure.value && currentPlayingMeasure"
             class="absolute top-0 h-full w-[max(1.5%,1px)] -translate-x-1/2 rounded-full bg-primary"
             :style="{ left: `${currentPlayingMeasureProgress * 100}%` }"
+          />
+        </div>
+
+        <!-- Draw capture overlay (add mode only) — sits above measure divs -->
+        <div
+          v-if="currentTool === 'add'"
+          class="absolute inset-0"
+          @pointerdown="onDrawStart($event, page.pageNumber)"
+          @pointermove="onDrawMove"
+          @pointerup="onDrawEnd"
+          @pointercancel="onDrawEnd"
+        >
+          <!-- Rectangle preview -->
+          <div
+            v-if="drawRect?.page === page.pageNumber"
+            class="pointer-events-none absolute border border-primary bg-primary/20"
+            :style="{
+              left: `${Math.min(drawRect.x, drawRect.x + drawRect.width) * 100}%`,
+              top: `${Math.min(drawRect.y, drawRect.y + drawRect.height) * 100}%`,
+              width: `${Math.abs(drawRect.width) * 100}%`,
+              height: `${Math.abs(drawRect.height) * 100}%`,
+            }"
           />
         </div>
       </div>

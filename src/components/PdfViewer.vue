@@ -38,6 +38,7 @@ const isGrabbing = ref(false);
 
 usePanZoom(wrapper, transform.value, {
   onRedraw: redrawAll,
+  panZone: container,
 });
 
 function setup(): void {

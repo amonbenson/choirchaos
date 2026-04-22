@@ -10,6 +10,7 @@ export function usePanZoom(
   transform: PageTransform,
   options: {
     onRedraw: () => void;
+    panZone?: Ref<HTMLElement | undefined>;
   },
 ): void {
   const { onRedraw } = options;
@@ -36,16 +37,13 @@ export function usePanZoom(
   let movedBeyondTap = false;
 
   useEventListener(container, "pointerdown", (e: PointerEvent) => {
-    if (e.pointerType !== "mouse") {
+    // Only pan when the click originates inside the pan zone, not on UI overlays.
+    const zone = options.panZone?.value ?? container.value;
+    if (e.pointerType !== "mouse" || !zone?.contains(e.target as Node)) {
       return;
     }
 
-    // Only capture pointer when the pan area (canvas) itself is the target,
-    // not UI overlays like buttons or measure divs.
-    if (e.target instanceof HTMLCanvasElement) {
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    }
-
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     lastPos = { x: e.clientX, y: e.clientY };
     movedBeyondTap = false;
   });
