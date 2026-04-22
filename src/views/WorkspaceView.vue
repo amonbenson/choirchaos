@@ -34,6 +34,7 @@ const showLoading = ref(true);
 
 const song = ref<Song | undefined>();
 const songLoading = ref(true);
+const editMode = ref(false);
 
 const songs = computed(() => show.value?.songs ?? []);
 const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
@@ -273,6 +274,7 @@ watch(() => props.songId, async (songId) => {
             settings.current.workspace.panelVisible.markers ? 'lg:opacity-100' : 'lg:opacity-0',
           ]"
           :song="song"
+          :edit-mode="editMode"
         />
         <Button
           class="absolute top-2 left-full z-10 hidden transition-all lg:block"
@@ -294,6 +296,7 @@ watch(() => props.songId, async (songId) => {
           <SongPdfViewer
             class="size-full"
             :song="song"
+            @update:edit-mode="editMode = $event"
           />
         </div>
         <div class="absolute bottom-4 left-1/2 w-[calc(100%-2rem)] -translate-x-1/2 md:w-72 lg:bottom-16">

@@ -2,8 +2,8 @@
 import Button from "primevue/button";
 import { computed, type ComputedRef, type Ref, ref, watch } from "vue";
 
-import type Measure from "@/core/models/measure";
-import type { MeasureLayout } from "@/core/models/measure";
+import Measure from "@/core/models/measure";
+import { type MeasureLayout } from "@/core/models/measure";
 import Song from "@/core/models/song";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
@@ -18,8 +18,14 @@ const props = defineProps<{
   song?: Song;
 }>();
 
+const emit = defineEmits<{
+  "update:editMode": [value: boolean];
+}>();
+
 const access = computed(() => getAccessFlags(props.song?.permissions ?? NoPermissions));
 const currentTool = ref<"pan" | "edit" | "add">("pan");
+
+watch(currentTool, tool => emit("update:editMode", tool !== "pan"), { immediate: true });
 
 const pdfViewer = ref();
 
@@ -141,17 +147,6 @@ const currentPlayingMeasureProgress = computed(() => {
   return Math.max(0, Math.min(1, (player.position - mStart) / mLength));
 });
 
-// function mouseMoved({ transform, x, y }: { s: p5; transform: PageTransform; x: number; y: number }): void {
-//   // check if we are hovering a measure
-//   const newHoverMeasure = findMeasureAt(transform, x, y);
-
-//   // set new hover measure and redraw on change
-//   if (newHoverMeasure !== hoverMeasure.value) {
-//     hoverMeasure.value = newHoverMeasure;
-//     pdfViewer.value?.redrawOverlay();
-//   }
-// }
-
 function isMeasureHighlighted(measure: Measure): boolean {
   for (const i of measure.$activeTrackIndices) {
     if (highlightedTracks.value.has(i)) {
@@ -161,52 +156,6 @@ function isMeasureHighlighted(measure: Measure): boolean {
 
   return false;
 }
-
-// function drawPageOverlay({ s, p }: { s: p5; p: number; transform: PageTransform }): void {
-//   if (!props.song) {
-//     return;
-//   }
-
-//   s.noStroke();
-
-//   // render measures
-//   for (const measure of (measuresByPage.value[p] ?? [])) {
-//     if (!measure.layout) {
-//       continue;
-//     }
-
-//     // transform to measure space
-//     s.push();
-//     s.translate(measure.layout.x, measure.layout.y);
-//     s.scale(measure.layout.width, measure.layout.height);
-
-//     const lineWidth = 0.005 / measure.layout.width;
-
-//     // highlight hovering measure
-//     if (measure === hoverMeasure.value) {
-//       s.fill("#10b98122");
-//       s.rect(0, 0, 1, 1);
-//     }
-
-//     // highlight marked measure
-//     if (isMeasureHighlighted(measure)) {
-//       s.fill("#74d4ff44");
-//       s.rect(0, 0, 1, 1);
-//     }
-
-//     // draw playbar
-//     if (currentWrittenMeasure?.value?.value === measure.value && currentPlayingMeasure.value) {
-//       const mStart = currentPlayingMeasure.value.$beatTicks[0] ?? 0;
-//       const mLength = currentPlayingMeasure.value.$tickLength ?? 960;
-//       const measureProgress = Math.max(0, Math.min(1, (player.position - mStart) / mLength));
-
-//       s.fill("#10b981ff");
-//       s.rect(measureProgress, 0, lineWidth, 1);
-//     }
-
-//     s.pop();
-//   }
-// }
 
 const drawRect = ref<MeasureLayout | undefined>();
 
