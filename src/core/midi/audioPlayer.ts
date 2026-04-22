@@ -52,4 +52,8 @@ export default class AudioPlayer {
       this.play();
     }
   }
+
+  connect(destination: AudioNode): void {
+    this._sources.forEach(s => s.connect(destination));
+  }
 }

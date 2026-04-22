@@ -328,6 +328,7 @@ const playbackSpeedPercentage = computed({
         :model-value="player.position"
         :min="0"
         :max="player.duration"
+        :step="0.01"
         class="group w-full bg-transparent"
         pt:handle:class="scale-50 group-hover:scale-100 active:scale-100 transition-transform z-1"
         pt:range:class="h-1"

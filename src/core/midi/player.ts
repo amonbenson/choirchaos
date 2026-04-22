@@ -329,7 +329,36 @@ export default class MidiPlayer extends EventEmitter {
     }
   }
 
+  private _updateAudioMode(): void {
+    if (!this._audioPlayer) {
+      return;
+    }
+
+    // sync the current position to the audio player
+    this._updatePosition(this._audioPlayer.position * 1000);
+
+    // lookup current measure by the nearest $audioSecond value
+    const measure = this._currentSong?.measures.search(
+      { $audioSecond: this._audioPlayer.position } as Measure,
+      {
+        comparator: (a, b) => (a.$audioSecond ?? 0) - (b.$audioSecond ?? 0),
+        direction: "backward",
+        inclusive: true,
+        extend: true,
+      },
+    );
+    if (measure) {
+      this._updateCurrentMeasure(measure.reference(0));
+    }
+  }
+
   private _handleStep(deltaTime: number): void {
+    // audio has its separate handler
+    if (this._mode === "audio") {
+      this._updateAudioMode();
+      return;
+    }
+
     // stop when the end is reached
     if (this._position >= this._duration) {
       this.pause();
@@ -489,11 +518,19 @@ export default class MidiPlayer extends EventEmitter {
     this._updatePlaying(true);
     this._resetAudioClockReference();
     this._updater.start();
+
+    if (this._audioPlayer) {
+      this._audioPlayer.play();
+    }
   }
 
   pause(): void {
     if (this._status !== "ready" || !this._playing) {
       return;
+    }
+
+    if (this._audioPlayer) {
+      this._audioPlayer.pause();
     }
 
     this._updater.stop();
@@ -518,6 +555,13 @@ export default class MidiPlayer extends EventEmitter {
 
   seek(position: Tick): void {
     if (this._status !== "ready") {
+      return;
+    }
+
+    // Special handling for audio mode
+    if (this._mode === "audio" && this._audioPlayer) {
+      this._audioPlayer.seek(position * 1000);
+      this._updateAudioMode();
       return;
     }
 
@@ -610,6 +654,11 @@ export default class MidiPlayer extends EventEmitter {
     // select mode
     this._mode = song.playerMode;
 
+    // set the song, resume the audio context, and create the master chain
+    this._currentSong = song;
+    this.resumeAudioContext();
+    this._setupMasterChain();
+
     switch (this._mode) {
       case "midi":
         await this.loadMidi(song);
@@ -649,11 +698,6 @@ export default class MidiPlayer extends EventEmitter {
 
     // store segue info
     this._updateCurrentSegue(song.events.segue ? { enabled: true } : undefined);
-
-    // set the song, resume the audio context, and create the master chain
-    this._currentSong = song;
-    this.resumeAudioContext();
-    this._setupMasterChain();
 
     // update status and seek to position 0. This will also intialize the current measure and tick duration
     this._updateStatus("ready");
@@ -697,14 +741,21 @@ export default class MidiPlayer extends EventEmitter {
 
     // Get the song duration from the shortest mp3 buffer
     const audioDuration = Math.min(...this._audioBuffers.map(b => b.duration));
-    this._updateDuration(audioDuration);
+    this._updateDuration(audioDuration * 1000); // convert to ms
+    this._updatePosition(0);
 
     const measures = song.measures.items();
     const finalMeasure = [...measures].reverse().find(m => (m.$audioSecond ?? Infinity) <= audioDuration) ?? measures[0];
     this._updateFinalMeasure(finalMeasure.reference(0));
 
+    // Set tempo and time signature to default values (they won't be used in audio mode, but this keeps the UI consistent)
+    this._updateCurrentTempo(120);
+    this._updateCurrentTimeSignature([4, 2]);
+    this._updateCurrentMeasure(song.measures.first()?.reference(0) ?? ["1", 0]);
+
     // Create the audio player
     this._audioPlayer = new AudioPlayer(this._audioContext, this._audioBuffers);
+    this._audioPlayer.connect(this._masterInput!);
   }
 
   async loadMidi(song: Song): Promise<void> {
@@ -906,6 +957,8 @@ export default class MidiPlayer extends EventEmitter {
     this.pause();
 
     this._player = undefined;
+    this._audioPlayer = undefined;
+
     this._updatePosition(0);
     this._updateDuration(0);
     this._updateStatus("idle");
