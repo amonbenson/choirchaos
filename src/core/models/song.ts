@@ -1,5 +1,5 @@
 import { pb, type PbRecord } from "@/pocketbase";
-import { NoPermissions, type PermissionContext } from "@/pocketbase/auth";
+import { NoPermissions, type Permissions } from "@/pocketbase/auth";
 
 import type { MidiSystemEvents } from "../midi/player";
 import type { Tick } from "../midi/types";
@@ -33,7 +33,7 @@ export default class Song {
       vamps: new MeasureEventList<VampEvent>(),
       segue: false,
     },
-    public permissions: PermissionContext = NoPermissions,
+    public permissions: Permissions = NoPermissions,
     public $midiSystemEvents: MidiSystemEvents | object = {},
   ) {
     // set track indices
@@ -137,7 +137,7 @@ export default class Song {
     };
   }
 
-  public static fromRecord({ id, number, title, midiFile, jsonFile, pdfFile, tracks, measures, events }: PbRecord, showPermissions?: PermissionContext): Song {
+  public static fromRecord({ id, number, title, midiFile, jsonFile, pdfFile, tracks, measures, events }: PbRecord, showPermissions?: Permissions): Song {
     return new Song(
       id,
       number,

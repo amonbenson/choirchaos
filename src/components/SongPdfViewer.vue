@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type p5 from "p5";
-import type Button from "primevue/button";
+import Button from "primevue/button";
 import { computed, type ComputedRef, type Ref, ref, watch } from "vue";
 
 import type Measure from "@/core/models/measure";
@@ -21,11 +21,11 @@ const props = defineProps<{
 }>();
 
 const access = computed(() => getAccessFlags(props.song?.permissions ?? NoPermissions));
+const currentTool = ref<"pan" | "edit" | "add">("pan");
 
 const pdfViewer = ref();
-const cursor: Ref<string | undefined> = ref();
 
-const measuresByPage: ComputedRef<{ [key: number]: Measure[] }> = computed(() => {
+const measuresByPage = computed<{ [key: number]: Measure[] }>(() => {
   if (!props.song) {
     return {};
   }
@@ -180,68 +180,129 @@ function isMeasureHighlighted(measure: Measure): boolean {
   return false;
 }
 
-function drawPageOverlay({ s, p }: { s: p5; p: number; transform: PageTransform }): void {
-  if (!props.song) {
-    return;
-  }
+// function drawPageOverlay({ s, p }: { s: p5; p: number; transform: PageTransform }): void {
+//   if (!props.song) {
+//     return;
+//   }
 
+//   s.noStroke();
+
+//   // render measures
+//   for (const measure of (measuresByPage.value[p] ?? [])) {
+//     if (!measure.layout) {
+//       continue;
+//     }
+
+//     // transform to measure space
+//     s.push();
+//     s.translate(measure.layout.x, measure.layout.y);
+//     s.scale(measure.layout.width, measure.layout.height);
+
+//     const lineWidth = 0.005 / measure.layout.width;
+
+//     // highlight hovering measure
+//     if (measure === hoverMeasure.value) {
+//       s.fill("#10b98122");
+//       s.rect(0, 0, 1, 1);
+//     }
+
+//     // highlight marked measure
+//     if (isMeasureHighlighted(measure)) {
+//       s.fill("#74d4ff44");
+//       s.rect(0, 0, 1, 1);
+//     }
+
+//     // draw playbar
+//     if (currentWrittenMeasure?.value?.value === measure.value && currentPlayingMeasure.value) {
+//       const mStart = currentPlayingMeasure.value.$beatTicks[0] ?? 0;
+//       const mLength = currentPlayingMeasure.value.$tickLength ?? 960;
+//       const measureProgress = Math.max(0, Math.min(1, (player.position - mStart) / mLength));
+
+//       s.fill("#10b981ff");
+//       s.rect(measureProgress, 0, lineWidth, 1);
+//     }
+
+//     s.pop();
+//   }
+// }
+
+const cursor = computed(() => {
   // update cursor. setting it to undefined will show the default for the pdf viewport (grab)
-  cursor.value = hoverMeasure.value ? "pointer" : undefined;
-
-  s.noStroke();
-
-  // render measures
-  for (const measure of (measuresByPage.value[p] ?? [])) {
-    if (!measure.layout) {
-      continue;
-    }
-
-    // transform to measure space
-    s.push();
-    s.translate(measure.layout.x, measure.layout.y);
-    s.scale(measure.layout.width, measure.layout.height);
-
-    const lineWidth = 0.005 / measure.layout.width;
-
-    // highlight hovering measure
-    if (measure === hoverMeasure.value) {
-      s.fill("#10b98122");
-      s.rect(0, 0, 1, 1);
-    }
-
-    // highlight marked measure
-    if (isMeasureHighlighted(measure)) {
-      s.fill("#74d4ff44");
-      s.rect(0, 0, 1, 1);
-    }
-
-    // draw playbar
-    if (currentWrittenMeasure?.value?.value === measure.value && currentPlayingMeasure.value) {
-      const mStart = currentPlayingMeasure.value.$beatTicks[0] ?? 0;
-      const mLength = currentPlayingMeasure.value.$tickLength ?? 960;
-      const measureProgress = Math.max(0, Math.min(1, (player.position - mStart) / mLength));
-
-      s.fill("#10b981ff");
-      s.rect(measureProgress, 0, lineWidth, 1);
-    }
-
-    s.pop();
+  switch (currentTool.value) {
+    case "pan":
+      return hoverMeasure.value ? "pointer" : undefined;
+    case "add":
+      return "cross";
+    case "edit":
+      return "arrow";
+    default:
+      return undefined;
   }
-}
+});
 </script>
 
 <template>
-  <div class="relative size-full">
-    <PdfViewer
-      ref="pdfViewer"
-      :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
-      :cursor="cursor"
-      @draw-page-overlay="drawPageOverlay"
-      @mouse-moved="mouseMoved"
-      @tap="tap"
-    />
-    <div class="absolute top-2 left-2 flex gap-1">
-      {{ access }}
-    </div>
-  </div>
+  <PdfViewer
+    ref="pdfViewer"
+    :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
+    :cursor="cursor"
+    @mouse-moved="mouseMoved"
+    @tap="tap"
+  >
+    <template #default="{ visiblePages }">
+      <!-- Measure Overlays -->
+      <div
+        v-for="page of visiblePages"
+        :key="page.pageNumber"
+        class="pointer-events-none absolute"
+        :style="{
+          left: `${page.x * 100}%`,
+          top: `${page.y * 100}%`,
+          width: `${page.width * 100}%`,
+          height: `${page.height * 100}%`,
+        }"
+      >
+        <div
+          v-for="measure of (measuresByPage[page.pageNumber] ?? []).filter(m => m.layout)"
+          :key="measure.value"
+          class="pointer-events-auto absolute cursor-pointer bg-primary/0 transition-colors hover:bg-primary/25"
+          :class="[
+            currentTool === 'pan'
+              ? 'bg-primary/0'
+              : (isMeasureHighlighted(measure)
+                ? 'bg-sky-400/25'
+                : 'bg-primary/25 hover:bg-primary/50')
+          ]"
+          :style="{
+            left: `${measure.layout!.x * 100}%`,
+            top: `${measure.layout!.y * 100}%`,
+            width: `${measure.layout!.width * 100}%`,
+            height: `${measure.layout!.height * 100}%`,
+          }"
+        />
+      </div>
+
+      <!-- Edit Buttons -->
+      <div
+        v-if="access.editor"
+        class="absolute top-2 left-12 flex items-center justify-center gap-2"
+      >
+        <Button
+          icon="pi pi-pencil"
+          :severity="currentTool === 'pan' ? 'secondary' : 'primary'"
+          rounded
+          @click="currentTool = currentTool === 'pan' ? 'edit' : 'pan'"
+        />
+
+        <Button
+          v-if="currentTool !== 'pan'"
+          icon="pi pi-plus"
+          :severity="currentTool === 'add' ? 'primary' : 'secondary'"
+          rounded
+          size="small"
+          @click="currentTool = currentTool === 'add' ? 'edit' : 'add'"
+        />
+      </div>
+    </template>
+  </PdfViewer>
 </template>

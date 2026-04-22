@@ -13,7 +13,7 @@ import VampCard from "@/components/VampCard.vue";
 import { useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
 import Show from "@/core/models/show";
 import type Song from "@/core/models/song";
-import { getAccessFlags, NoAccess, type PermissionContext } from "@/pocketbase/auth";
+import { getAccessFlags, NoAccess, type Permissions } from "@/pocketbase/auth";
 import { consumePendingShow } from "@/router/router";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";

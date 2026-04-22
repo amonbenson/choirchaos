@@ -12,7 +12,7 @@ export function usePanZoom(
     onRedraw: () => void;
     onTap?: (x: number, y: number) => void;
   },
-): void {
+) {
   const { cursor, onRedraw, onTap } = options;
 
   let pressing = false;

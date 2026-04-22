@@ -14,33 +14,33 @@ export function isLoggedIn(): boolean {
   return !!pb.authStore.token;
 }
 
-export type PermissionContext = {
+export type Permissions = {
   owner?: string;
   editors: string[];
   viewers: string[];
   visibility: "private" | "unlisted" | "public";
 };
 
-export const NoPermissions: PermissionContext = Object.freeze({
+export const NoPermissions: Permissions = Object.freeze({
   owner: undefined,
   editors: [],
   viewers: [],
   visibility: "private",
 });
 
-export type AccessFlags = {
+export type UserAccess = {
   owner: boolean;
   editor: boolean;
   viewer: boolean;
 };
 
-export const NoAccess: AccessFlags = Object.freeze({
+export const NoAccess: UserAccess = Object.freeze({
   owner: false,
   editor: false,
   viewer: false,
 });
 
-export function getAccessFlags(context: Partial<PermissionContext>, userId?: string): AccessFlags {
+export function getAccessFlags(context: Partial<Permissions>, userId?: string): UserAccess {
   // Use the logged in user if no explicit id was provided
   const resolvedUserId = userId ?? pb.authStore.record?.id;
 

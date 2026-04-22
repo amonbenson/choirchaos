@@ -1,5 +1,5 @@
 import { pb, type PbRecord } from "@/pocketbase";
-import { NoPermissions, type PermissionContext } from "@/pocketbase/auth";
+import { NoPermissions, type Permissions } from "@/pocketbase/auth";
 
 import type { UrlOrFile } from "../utils/file";
 import { compareNumberings } from "../utils/numbering";
@@ -12,7 +12,7 @@ export default class Show {
     public thumbnail?: UrlOrFile,
     public songs: Song[] = [],
 
-    public permissions: PermissionContext = NoPermissions,
+    public permissions: Permissions = NoPermissions,
   ) {
     this.songs.sort((a, b) => compareNumberings(a.number, b.number));
   }
