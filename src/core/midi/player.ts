@@ -9,8 +9,10 @@ import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
 import { type BinarySearchOptions } from "../utils/binarySearch";
 import { resolveUrl } from "../utils/file";
 import { SetIntervalUpdater, type Updater } from "../utils/updater";
+import AudioPlayer from "./audioPlayer";
 import { MeasureEvent, MidiEvent, MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "./events";
 import type { Tick, TimeSignature } from "./types";
+import WarpMap from "./warp";
 
 const STEP_DURATION = 1 / 50;
 const POSITION_UPDATE_DURATION = 1 / 50;
@@ -80,15 +82,20 @@ export default class MidiPlayer extends EventEmitter {
     track: [],
   };
 
+  private _warpMap = new WarpMap();
+
   private _vamps: MidiPlayerVamp[] = [];
   private _currentVamp?: MidiPlayerVampState;
   private _currentSegue?: MidiPlayerSegueState;
 
   private _audioContext = new AudioContext();
-  private _player: any = undefined;
-  private _instruments: { [key: number]: any } = {};
   private _masterInput: AudioNode | undefined = undefined;
   private _chainOutput: GainNode | undefined;
+
+  private _player: any = undefined;
+  private _instruments: { [key: number]: any } = {};
+
+  private _audioPlayer: AudioPlayer | undefined;
 
   private _playbackSpeed: number = 1.0;
   private _playbackTransposition: number = 0;
@@ -99,6 +106,7 @@ export default class MidiPlayer extends EventEmitter {
   } = { seconds: 0, ticks: 0 };
 
   private _audioClockTickPosition: number = 0;
+  private _audioBuffers: AudioBuffer[] = [];
 
   private _updater: Updater = new SetIntervalUpdater(delta => this._handleStep(delta), {
     interval: STEP_DURATION,
@@ -613,6 +621,40 @@ export default class MidiPlayer extends EventEmitter {
         break;
     }
 
+    // handle song measure events
+    this._vamps = [];
+    this._updateCurrentVamp(undefined);
+    this._updateCurrentSegue(undefined);
+
+    for (const markerEvent of song.events.markers.items()) {
+      markerEvent.$startTick = song.findMeasure(markerEvent.start[0])?.$beatTicks[0];
+      markerEvent.$endTick = song.findMeasure(markerEvent.end[0])?.$beatTicks[0];
+    }
+
+    for (const vampEvent of song.events.vamps.items()) {
+      vampEvent.$startTick = song.findMeasure(vampEvent.start[0])?.$beatTicks[0];
+      vampEvent.$endTick = song.findMeasure(vampEvent.end[0])?.$beatTicks[0];
+
+      // store vamp definition
+      if (vampEvent.$startTick !== undefined && vampEvent.$endTick !== undefined) {
+        this._vamps.push({
+          start: vampEvent.$startTick,
+          end: vampEvent.$endTick,
+          iterations: vampEvent.iterations,
+        });
+      } else {
+        console.error("Could not resolve location of Vamp:", vampEvent);
+      }
+    }
+
+    // store segue info
+    this._updateCurrentSegue(song.events.segue ? { enabled: true } : undefined);
+
+    // set the song, resume the audio context, and create the master chain
+    this._currentSong = song;
+    this.resumeAudioContext();
+    this._setupMasterChain();
+
     // update status and seek to position 0. This will also intialize the current measure and tick duration
     this._updateStatus("ready");
     this.seek(0);
@@ -623,6 +665,46 @@ export default class MidiPlayer extends EventEmitter {
     if (song.audioFiles.length === 0) {
       throw new Error(`No audio files in song '${song.title}'`);
     }
+
+    // Create the warp map
+    this._warpMap.setMarkers(song.warpMarkers ?? []);
+
+    // Load all audio files
+    this._audioBuffers = await Promise.all(
+      song.audioFiles.map(async (file) => {
+        const res = await axios.get(resolveUrl(file, "songs", song.id), {
+          validateStatus: status => status === 200,
+          responseType: "arraybuffer",
+        });
+        return this._audioContext.decodeAudioData(res.data);
+      }),
+    );
+
+    // Populate $audioSecond for each measure using the warp map
+    song.measures.items().forEach((measure, i) => {
+      measure.$audioSecond = this._warpMap.measureToTime(i);
+    });
+
+    // Reset the midi events
+    this._midi_events = {
+      system: {
+        measure: new MidiEventList(),
+        tempo: new MidiEventList(),
+        timeSignature: new MidiEventList(),
+      },
+      track: [],
+    };
+
+    // Get the song duration from the shortest mp3 buffer
+    const audioDuration = Math.min(...this._audioBuffers.map(b => b.duration));
+    this._updateDuration(audioDuration);
+
+    const measures = song.measures.items();
+    const finalMeasure = [...measures].reverse().find(m => (m.$audioSecond ?? Infinity) <= audioDuration) ?? measures[0];
+    this._updateFinalMeasure(finalMeasure.reference(0));
+
+    // Create the audio player
+    this._audioPlayer = new AudioPlayer(this._audioContext, this._audioBuffers);
   }
 
   async loadMidi(song: Song): Promise<void> {
@@ -776,37 +858,7 @@ export default class MidiPlayer extends EventEmitter {
       Object.assign(track.$midiTrackEvents, this._midi_events.track[t]);
     }
 
-    // handle song measure events
-    this._vamps = [];
-    this._updateCurrentVamp(undefined);
-    this._updateCurrentSegue(undefined);
-
-    for (const markerEvent of song.events.markers.items()) {
-      markerEvent.$startTick = song.findMeasure(markerEvent.start[0])?.$beatTicks[0];
-      markerEvent.$endTick = song.findMeasure(markerEvent.end[0])?.$beatTicks[0];
-    }
-
-    for (const vampEvent of song.events.vamps.items()) {
-      vampEvent.$startTick = song.findMeasure(vampEvent.start[0])?.$beatTicks[0];
-      vampEvent.$endTick = song.findMeasure(vampEvent.end[0])?.$beatTicks[0];
-
-      // store vamp definition
-      if (vampEvent.$startTick !== undefined && vampEvent.$endTick !== undefined) {
-        this._vamps.push({
-          start: vampEvent.$startTick,
-          end: vampEvent.$endTick,
-          iterations: vampEvent.iterations,
-        });
-      } else {
-        console.error("Could not resolve location of Vamp:", vampEvent);
-      }
-    }
-
-    // store segue info
-    this._updateCurrentSegue(song.events.segue ? { enabled: true } : undefined);
-
     // store additional song-specific settings
-    this._currentSong = song;
     this._ppqn = midiJson.score.ppqn;
 
     // find the last measure to compute the duration
@@ -830,12 +882,8 @@ export default class MidiPlayer extends EventEmitter {
       this._updateFinalMeasure(finalMeasureEvent?.measure ?? ["1", 0]);
     }
 
-    // resume the audio context and create a player
-    this.resumeAudioContext();
+    // create a player
     this._player = new window.WebAudioFontPlayer();
-
-    // setup effects chain
-    this._setupMasterChain();
 
     // load soundfonts
     // TODO: point the url to our own server

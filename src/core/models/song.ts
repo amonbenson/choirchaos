@@ -3,6 +3,7 @@ import { NoPermissions, type Permissions } from "@/pocketbase/auth";
 
 import type { MidiSystemEvents, PlayerMode } from "../midi/player";
 import type { Tick } from "../midi/types";
+import type { WarpMarker } from "../midi/warp";
 import { binarySearch } from "../utils/binarySearch";
 import type { UrlOrFile } from "../utils/file";
 import type { Numbering } from "../utils/numbering";
@@ -36,6 +37,7 @@ export default class Song {
       vamps: new MeasureEventList<VampEvent>(),
       segue: false,
     },
+    public warpMarkers: WarpMarker[] = [],
     public permissions: Permissions = NoPermissions,
     public $midiSystemEvents: MidiSystemEvents | object = {},
   ) {
@@ -43,7 +45,6 @@ export default class Song {
     this.tracks.forEach((track, i) => track.mixer.index = i);
 
     // select audio mode
-    this.audioFiles = [];
     if (this.midiFile) {
       this.playerMode = "midi";
     } else if (this.audioFiles.length > 0) {
@@ -141,6 +142,7 @@ export default class Song {
       midiFile: this.midiFile,
       jsonFile: this.jsonFile,
       pdfFile: this.pdfFile,
+      audioFiles: this.audioFiles,
       tracks: this.tracks.map(t => t.json()),
       measures: this.measures.items().map(m => m.json()),
       events: {
@@ -148,10 +150,11 @@ export default class Song {
         vamps: this.events.vamps.items().map(v => v.json()),
         segue: this.events.segue,
       },
+      warpMarkers: this.warpMarkers,
     };
   }
 
-  public static fromRecord({ id, number, title, midiFile, jsonFile, pdfFile, audioFiles, tracks, measures, events }: PbRecord, showPermissions?: Permissions): Song {
+  public static fromRecord({ id, number, title, midiFile, jsonFile, pdfFile, audioFiles, tracks, measures, events, warpMarkers }: PbRecord, showPermissions?: Permissions): Song {
     return new Song(
       id,
       number,
@@ -167,6 +170,7 @@ export default class Song {
         vamps: new MeasureEventList<VampEvent>(events.vamps.map((v: PbRecord) => VampEvent.fromJson(v))),
         segue: events.segue,
       },
+      warpMarkers,
       showPermissions ?? NoPermissions,
     );
   }

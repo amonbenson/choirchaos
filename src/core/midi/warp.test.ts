@@ -1,44 +1,61 @@
 import { describe, expect, it } from "vitest";
 
-import WarpMap from "./warp";
+import WarpMap, { DEFAULT_SECONDS_PER_MEASURE } from "./warp";
 
-function map(...pairs: [tick: number, time: number][]): WarpMap {
+function map(...pairs: [measure: number, time: number][]): WarpMap {
   const w = new WarpMap();
-  for (const [tick, time] of pairs) {
-    w.addMarker({ tick, time });
+  for (const [measure, time] of pairs) {
+    w.addMarker({ measure, time });
   }
   return w;
 }
 
 describe("WarpMap", () => {
   it("interpolates linearly between markers", () => {
-    const w = map([0, 0], [100, 10]);
-    expect(w.tickToTime(50)).toBe(5);
-    expect(w.timeToTick(7.5)).toBe(75);
+    const w = map([0, 0], [10, 20]); // 2 s/measure
+    expect(w.measureToTime(5)).toBe(10);
+    expect(w.timeToMeasure(15)).toBe(7.5);
   });
 
   it("extrapolates before and after markers using outermost slope", () => {
-    const w = map([0, 0], [100, 10]); // slope = 0.1 s/tick
-    expect(w.tickToTime(-50)).toBe(-5);
-    expect(w.tickToTime(200)).toBe(20);
+    const w = map([0, 0], [10, 20]); // 2 s/measure
+    expect(w.measureToTime(-5)).toBe(-10);
+    expect(w.measureToTime(20)).toBe(40);
   });
 
-  it("roundtrips tick → time → tick", () => {
-    const w = map([0, 0], [480, 2], [960, 3]);
-    for (const tick of [0, 100, 480, 720, 960, 1200]) {
-      expect(w.timeToTick(w.tickToTime(tick))).toBeCloseTo(tick);
+  it("roundtrips measure → time → measure", () => {
+    const w = map([0, 0], [8, 12], [16, 20]);
+    for (const m of [0, 3, 8, 12, 16, 20]) {
+      expect(w.timeToMeasure(w.measureToTime(m))).toBeCloseTo(m);
     }
   });
 
-  it("rejects duplicate ticks and crossing times", () => {
-    const w = map([0, 0], [100, 10]);
-    expect(() => w.addMarker({ tick: 100, time: 5 })).toThrow();
-    expect(() => w.addMarker({ tick: 50, time: 15 })).toThrow();
+  it("uses DEFAULT_SECONDS_PER_MEASURE with no markers", () => {
+    const w = new WarpMap();
+    expect(w.measureToTime(1)).toBeCloseTo(DEFAULT_SECONDS_PER_MEASURE);
+    expect(w.timeToMeasure(DEFAULT_SECONDS_PER_MEASURE)).toBeCloseTo(1);
+  });
+
+  it("uses DEFAULT_SECONDS_PER_MEASURE with one marker, offset to fit it", () => {
+    const w = map([4, 10]); // measure 4 → 10s
+    expect(w.measureToTime(4)).toBe(10);
+    expect(w.measureToTime(5)).toBeCloseTo(10 + DEFAULT_SECONDS_PER_MEASURE);
+  });
+
+  it("rejects non-integer measures", () => {
+    const w = new WarpMap();
+    expect(() => w.addMarker({ measure: 1.5, time: 3 })).toThrow();
+  });
+
+  it("rejects duplicate measures and crossing times", () => {
+    const w = map([0, 0], [10, 20]);
+    expect(() => w.addMarker({ measure: 10, time: 5 })).toThrow();
+    expect(() => w.addMarker({ measure: 5, time: 25 })).toThrow();
   });
 
   it("removes a marker and rebuilds correctly", () => {
-    const w = map([0, 0], [100, 5], [200, 10]);
-    w.removeMarker(100);
-    expect(w.tickToTime(100)).toBe(5); // interpolated from remaining [0,0]→[200,10]
+    const w = map([0, 0], [5, 5], [10, 20]);
+    w.removeMarker(5);
+    expect(w.measureToTime(5)).toBeCloseTo(10); // interpolated from [0,0]→[10,20]
   });
 });

@@ -32,6 +32,7 @@ export default class Measure {
     public $beatTicks: number[] = [],
     public $tickLength?: number,
     public $activeTrackIndices: Set<number> = new Set(),
+    public $audioSecond?: number,
   ) {}
 
   public reference(beat: BeatNumber): MeasureReference {
