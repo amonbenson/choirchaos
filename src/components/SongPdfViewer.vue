@@ -324,6 +324,20 @@ function onDrawEnd(): void {
           @click="currentTool = currentTool === 'add' ? 'edit' : 'add'"
         />
       </div>
+
+      <!-- Save Button -->
+      <div
+        v-if="access.editor && currentTool !== 'pan'"
+        class="absolute bottom-2 left-2"
+      >
+        <Button
+          icon="pi pi-save"
+          label="Save"
+          severity="primary"
+          rounded
+          @click="song?.update()"
+        />
+      </div>
     </template>
   </PdfViewer>
 </template>
