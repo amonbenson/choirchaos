@@ -1,7 +1,7 @@
 import { pb, type PbRecord } from "@/pocketbase";
 import { NoPermissions, type Permissions } from "@/pocketbase/auth";
 
-import type { MidiSystemEvents } from "../midi/player";
+import type { MidiSystemEvents, PlayerMode } from "../midi/player";
 import type { Tick } from "../midi/types";
 import { binarySearch } from "../utils/binarySearch";
 import type { UrlOrFile } from "../utils/file";
@@ -19,6 +19,8 @@ export type SongEvents = {
 };
 
 export default class Song {
+  public playerMode: PlayerMode;
+
   constructor(
     public readonly id: string,
     public number: Numbering,
@@ -26,6 +28,7 @@ export default class Song {
     public midiFile?: UrlOrFile,
     public jsonFile?: UrlOrFile,
     public pdfFile?: UrlOrFile,
+    public audioFiles: UrlOrFile[] = [],
     public tracks: Track[] = [],
     public measures: MeasureList = new MeasureList(),
     public events: SongEvents = {
@@ -38,6 +41,17 @@ export default class Song {
   ) {
     // set track indices
     this.tracks.forEach((track, i) => track.mixer.index = i);
+
+    // select audio mode
+    this.audioFiles = [];
+    if (this.midiFile) {
+      this.playerMode = "midi";
+    } else if (this.audioFiles.length > 0) {
+      this.playerMode = "audio";
+    } else {
+      console.warn("Song contains neither a midi nor audio tracks.");
+      this.playerMode = "none";
+    }
   }
 
   public findMeasureIndex(value: Numbering, ignoreRepeats: boolean = false): number {
@@ -137,7 +151,7 @@ export default class Song {
     };
   }
 
-  public static fromRecord({ id, number, title, midiFile, jsonFile, pdfFile, tracks, measures, events }: PbRecord, showPermissions?: Permissions): Song {
+  public static fromRecord({ id, number, title, midiFile, jsonFile, pdfFile, audioFiles, tracks, measures, events }: PbRecord, showPermissions?: Permissions): Song {
     return new Song(
       id,
       number,
@@ -145,6 +159,7 @@ export default class Song {
       midiFile,
       jsonFile,
       pdfFile,
+      audioFiles,
       tracks.map((t: PbRecord) => Track.fromJson(t)),
       new MeasureList(measures.map((m: PbRecord) => Measure.fromJson(m))),
       {

@@ -52,8 +52,11 @@ export type MidiPlayerEvents = {
   track: MidiTrackEvents[];
 };
 
+export type PlayerMode = "none" | "midi" | "audio";
+
 export default class MidiPlayer extends EventEmitter {
   private _status: MidiPlayerStatus = "idle";
+  private _mode: PlayerMode = "none";
   private _playing = false;
 
   private _ppqn = 480;
@@ -596,6 +599,33 @@ export default class MidiPlayer extends EventEmitter {
 
     this._updateStatus("loading");
 
+    // select mode
+    this._mode = song.playerMode;
+
+    switch (this._mode) {
+      case "midi":
+        await this.loadMidi(song);
+        break;
+      case "audio":
+        await this.loadAudio(song);
+        break;
+      default:
+        break;
+    }
+
+    // update status and seek to position 0. This will also intialize the current measure and tick duration
+    this._updateStatus("ready");
+    this.seek(0);
+  }
+
+  async loadAudio(song: Song): Promise<void> {
+    // download the audio files
+    if (song.audioFiles.length === 0) {
+      throw new Error(`No audio files in song '${song.title}'`);
+    }
+  }
+
+  async loadMidi(song: Song): Promise<void> {
     // download the midi and metadata files
     if (!song.midiFile) {
       throw new Error(`Midi file missing from song '${song.title}'`);
@@ -818,10 +848,6 @@ export default class MidiPlayer extends EventEmitter {
 
     // wait until all soundfonts have loaded
     await new Promise(resolve => this._player.loader.waitLoad(resolve));
-
-    // update status and seek to position 0. This will also intialize the current measure and tick duration
-    this._updateStatus("ready");
-    this.seek(0);
   }
 
   unload(): void {
