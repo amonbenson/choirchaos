@@ -10,7 +10,6 @@ type P5Sketch = p5 & { canvas?: HTMLCanvasElement };
 
 const props = defineProps<{
   url: string | undefined;
-  cursor?: string | undefined;
 }>();
 
 const emit = defineEmits([
@@ -19,7 +18,6 @@ const emit = defineEmits([
   "mousePressed",
   "mouseReleased",
   "mouseMoved",
-  "tap",
 ]);
 
 const wrapper = ref<HTMLDivElement | undefined>();
@@ -40,7 +38,6 @@ const isGrabbing = ref(false);
 
 usePanZoom(wrapper, transform.value, {
   onRedraw: redrawAll,
-  onTap: (x, y) => emit("tap", { x, y, transform: transform.value }),
 });
 
 function setup(): void {
@@ -285,7 +282,7 @@ defineExpose({
 <template>
   <div
     ref="wrapper"
-    class="relative size-full overflow-hidden"
+    class="relative size-full touch-none overflow-hidden"
   >
     <div
       ref="container"

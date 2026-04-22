@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import type p5 from "p5";
 import Button from "primevue/button";
 import { computed, type ComputedRef, type Ref, ref, watch } from "vue";
 
 import type Measure from "@/core/models/measure";
 import type { MeasureLayout } from "@/core/models/measure";
 import Song from "@/core/models/song";
-import type PageTransform from "@/core/pdf/pageTransform";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
 import { getAccessFlags, NoPermissions } from "@/pocketbase/auth";
@@ -50,8 +48,6 @@ const highlightedTracks: ComputedRef<Set<number>> = computed(() => new Set(props
 
 const currentPlayingMeasure: Ref<Measure | undefined> = ref();
 const currentWrittenMeasure: Ref<Measure | undefined> = ref();
-
-const hoverMeasure: Ref<Measure | undefined> = ref();
 
 watch(() => player.position, () => {
   // Update the current measures
@@ -145,29 +141,6 @@ const currentPlayingMeasureProgress = computed(() => {
   return Math.max(0, Math.min(1, (player.position - mStart) / mLength));
 });
 
-function findMeasureAt(transform: PageTransform, x: number, y: number): Measure | undefined {
-  const { p, x: px, y: py } = transform.screenToPage({ x, y });
-  for (const measure of (measuresByPage.value[p] ?? [])) {
-    if (!measure.layout) {
-      continue;
-    }
-
-    const l = measure.layout;
-    if (px >= l.x && px < l.x + l.width && py >= l.y && py < l.y + l.height) {
-      return measure;
-    }
-  }
-
-  return undefined;
-}
-
-function tap({ x, y, transform }: { x: number; y: number; transform: PageTransform }): void {
-  const measure = findMeasureAt(transform, x, y);
-  if (measure) {
-    player.setMeasure(measure.value);
-  }
-}
-
 // function mouseMoved({ transform, x, y }: { s: p5; transform: PageTransform; x: number; y: number }): void {
 //   // check if we are hovering a measure
 //   const newHoverMeasure = findMeasureAt(transform, x, y);
@@ -234,28 +207,12 @@ function isMeasureHighlighted(measure: Measure): boolean {
 //     s.pop();
 //   }
 // }
-
-const cursor = computed(() => {
-  // update cursor. setting it to undefined will show the default for the pdf viewport (grab)
-  switch (currentTool.value) {
-    case "pan":
-      return hoverMeasure.value ? "pointer" : undefined;
-    case "add":
-      return "cross";
-    case "edit":
-      return "arrow";
-    default:
-      return undefined;
-  }
-});
 </script>
 
 <template>
   <PdfViewer
     ref="pdfViewer"
     :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
-    :cursor="cursor"
-    @tap="tap"
   >
     <template #default="{ visiblePages }">
       <!-- Measure Overlays -->
@@ -288,6 +245,7 @@ const cursor = computed(() => {
             height: `${measure.layout!.height * 100}%`,
           }"
           @contextmenu.stop
+          @click="currentTool === 'pan' && player.setMeasure(measure.value)"
         >
           <!-- Playbar -->
           <div

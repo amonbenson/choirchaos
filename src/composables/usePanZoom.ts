@@ -10,29 +10,44 @@ export function usePanZoom(
   transform: PageTransform,
   options: {
     onRedraw: () => void;
-    onTap?: (x: number, y: number) => void;
   },
 ): void {
-  const { onRedraw, onTap } = options;
+  const { onRedraw } = options;
 
   function containerPos(clientX: number, clientY: number): { x: number; y: number } {
     const rect = container.value!.getBoundingClientRect();
     return { x: clientX - rect.left, y: clientY - rect.top };
   }
 
+  // Suppresses the next click event when a pan/zoom gesture was detected.
+  let didGesture = false;
+
+  useEventListener(container, "click", (e: MouseEvent) => {
+    if (didGesture) {
+      e.stopPropagation();
+      e.preventDefault();
+      didGesture = false;
+    }
+  }, { capture: true });
+
   // ── Mouse ──────────────────────────────────────────────────────────────────
 
   let lastPos: { x: number; y: number } | undefined;
-  let tapOrigin: { x: number; y: number; button: number } | undefined;
+  let movedBeyondTap = false;
 
   useEventListener(container, "pointerdown", (e: PointerEvent) => {
     if (e.pointerType !== "mouse") {
       return;
     }
 
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    // Only capture pointer when the pan area (canvas) itself is the target,
+    // not UI overlays like buttons or measure divs.
+    if (e.target instanceof HTMLCanvasElement) {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    }
+
     lastPos = { x: e.clientX, y: e.clientY };
-    tapOrigin = e.button !== 1 ? { x: e.clientX, y: e.clientY, button: e.button } : undefined;
+    movedBeyondTap = false;
   });
 
   useEventListener(container, "pointermove", (e: PointerEvent) => {
@@ -43,8 +58,9 @@ export function usePanZoom(
     transform.pan.x += e.clientX - lastPos.x;
     transform.pan.y += e.clientY - lastPos.y;
     lastPos = { x: e.clientX, y: e.clientY };
-    if (tapOrigin && Math.hypot(e.clientX - tapOrigin.x, e.clientY - tapOrigin.y) > TAP_MAX_MOVEMENT) {
-      tapOrigin = undefined;
+
+    if (!movedBeyondTap && Math.hypot(e.movementX, e.movementY) > TAP_MAX_MOVEMENT) {
+      movedBeyondTap = true;
     }
 
     onRedraw();
@@ -55,13 +71,12 @@ export function usePanZoom(
       return;
     }
 
-    if (tapOrigin && e.button === tapOrigin.button) {
-      const { x, y } = containerPos(e.clientX, e.clientY);
-      onTap?.(x, y);
+    if (movedBeyondTap) {
+      didGesture = true;
     }
 
     lastPos = undefined;
-    tapOrigin = undefined;
+    movedBeyondTap = false;
   });
 
   useEventListener(container, "pointercancel", (e: PointerEvent) => {
@@ -70,7 +85,7 @@ export function usePanZoom(
     }
 
     lastPos = undefined;
-    tapOrigin = undefined;
+    movedBeyondTap = false;
   });
 
   // ── Wheel ──────────────────────────────────────────────────────────────────
@@ -89,39 +104,40 @@ export function usePanZoom(
   }, { passive: false });
 
   // ── Touch ──────────────────────────────────────────────────────────────────
-  // preventDefault on touchstart suppresses synthetic pointer events so the
-  // mouse handlers above only ever see real mouse input.
+  // touch-action: none on the wrapper prevents browser scroll/zoom without
+  // needing preventDefault here, which allows synthetic click events to fire
+  // naturally on tapped HTML elements.
 
   let activeTouches: { id: number; x: number; y: number }[] = [];
-  let touchTapOrigin: { id: number; x: number; y: number } | undefined;
 
   const syncTouches = (e: TouchEvent): void => {
     activeTouches = Array.from(e.touches).map(t => ({ id: t.identifier, x: t.clientX, y: t.clientY }));
   };
 
   useEventListener(container, "touchstart", (e: TouchEvent) => {
-    e.preventDefault();
-    const t = e.touches[0]!;
-    touchTapOrigin = e.touches.length === 1 ? { id: t.identifier, x: t.clientX, y: t.clientY } : undefined;
+    if (e.touches.length >= 2) {
+      didGesture = true;
+    }
+
     syncTouches(e);
-  }, { passive: false });
+  });
 
   useEventListener(container, "touchmove", (e: TouchEvent) => {
-    e.preventDefault();
-
     if (e.touches.length === 1) {
       const touch = e.touches[0]!;
       const prev = activeTouches.find(p => p.id === touch.identifier);
       if (prev) {
-        transform.pan.x += touch.clientX - prev.x;
-        transform.pan.y += touch.clientY - prev.y;
-      }
+        const dx = touch.clientX - prev.x;
+        const dy = touch.clientY - prev.y;
+        transform.pan.x += dx;
+        transform.pan.y += dy;
 
-      if (touchTapOrigin && Math.hypot(touch.clientX - touchTapOrigin.x, touch.clientY - touchTapOrigin.y) > TAP_MAX_MOVEMENT) {
-        touchTapOrigin = undefined;
+        if (Math.hypot(dx, dy) > TAP_MAX_MOVEMENT) {
+          didGesture = true;
+        }
       }
     } else if (e.touches.length === 2) {
-      touchTapOrigin = undefined;
+      didGesture = true;
       const t1 = e.touches[0]!;
       const t2 = e.touches[1]!;
       const p1 = activeTouches.find(p => p.id === t1.identifier);
@@ -141,25 +157,14 @@ export function usePanZoom(
 
     syncTouches(e);
     onRedraw();
-  }, { passive: false });
+  });
 
   useEventListener(container, "touchend", (e: TouchEvent) => {
-    e.preventDefault();
-    if (touchTapOrigin) {
-      const changed = Array.from(e.changedTouches).find(t => t.identifier === touchTapOrigin!.id);
-      if (changed && Math.hypot(changed.clientX - touchTapOrigin.x, changed.clientY - touchTapOrigin.y) <= TAP_MAX_MOVEMENT) {
-        const { x, y } = containerPos(changed.clientX, changed.clientY);
-        onTap?.(x, y);
-      }
-
-      touchTapOrigin = undefined;
-    }
-
     syncTouches(e);
-  }, { passive: false });
+  });
 
   useEventListener(container, "touchcancel", () => {
-    touchTapOrigin = undefined;
+    didGesture = true;
     activeTouches = [];
   });
 }
