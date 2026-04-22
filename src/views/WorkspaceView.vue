@@ -35,6 +35,7 @@ const showLoading = ref(true);
 const song = ref<Song | undefined>();
 const songLoading = ref(true);
 const editMode = ref(false);
+const canEdit = computed(() => !!song.value && getAccessFlags(song.value.permissions).editor);
 
 const songs = computed(() => show.value?.songs ?? []);
 const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
@@ -234,12 +235,15 @@ watch(() => props.songId, async (songId) => {
       :model-value="songId"
       :songs="show?.songs"
       :loading="showLoading || songLoading"
+      :edit-mode="editMode"
+      :can-edit="canEdit"
       @update:model-value="selectSong($event)"
       @play-pause="playPause"
       @rewind="rewind"
       @forward="forward"
       @toggle-vamp="toggleVamp"
       @toggle-segue="toggleSegue"
+      @toggle-edit-mode="editMode = !editMode"
     />
     <ButtonGroup class="w-full lg:hidden">
       <Button
@@ -296,7 +300,7 @@ watch(() => props.songId, async (songId) => {
           <SongPdfViewer
             class="size-full"
             :song="song"
-            @update:edit-mode="editMode = $event"
+            :edit-mode="editMode"
           />
         </div>
         <div class="absolute bottom-4 left-1/2 w-[calc(100%-2rem)] -translate-x-1/2 md:w-72 lg:bottom-16">

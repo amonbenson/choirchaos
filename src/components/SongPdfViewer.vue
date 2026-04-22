@@ -16,16 +16,17 @@ const player = usePlayerStore();
 
 const props = defineProps<{
   song?: Song;
-}>();
-
-const emit = defineEmits<{
-  "update:editMode": [value: boolean];
+  editMode?: boolean;
 }>();
 
 const access = computed(() => getAccessFlags(props.song?.permissions ?? NoPermissions));
-const currentTool = ref<"pan" | "edit" | "add">("pan");
+const currentTool = ref<"edit" | "add">("edit");
 
-watch(currentTool, tool => emit("update:editMode", tool !== "pan"), { immediate: true });
+watch(() => props.editMode, (value) => {
+  if (!value) {
+    currentTool.value = "edit";
+  }
+});
 
 const pdfViewer = ref();
 
@@ -249,7 +250,7 @@ function onDrawEnd(): void {
           :key="measure.value"
           class="pointer-events-auto absolute cursor-pointer transition-colors select-none"
           :class="[
-            currentTool === 'pan'
+            !editMode
               ? (isMeasureHighlighted(measure)
                 ? 'bg-sky-400/25 hover:bg-sky-400/45'
                 : 'bg-primary/0 hover:bg-primary/25')
@@ -266,7 +267,7 @@ function onDrawEnd(): void {
         >
           <!-- Measure number -->
           <div
-            v-if="currentTool !== 'pan'"
+            v-if="editMode"
             class="pointer-events-none absolute top-1/2 left-1/2 -translate-1/2 text-2xl font-bold text-black"
           >
             {{ measure.value }}
@@ -303,33 +304,18 @@ function onDrawEnd(): void {
         </div>
       </div>
 
-      <!-- Edit Buttons -->
+      <!-- Bottom edit bar -->
       <div
-        v-if="access.editor"
-        class="absolute top-2 left-12 flex items-center justify-center gap-2"
+        v-if="access.editor && editMode"
+        class="absolute right-2 bottom-2 flex gap-2"
       >
         <Button
-          icon="pi pi-pencil"
-          :severity="currentTool === 'pan' ? 'secondary' : 'primary'"
-          rounded
-          @click="currentTool = currentTool === 'pan' ? 'edit' : 'pan'"
-        />
-
-        <Button
-          v-if="currentTool !== 'pan'"
           icon="pi pi-plus"
+          label="Layout"
           :severity="currentTool === 'add' ? 'primary' : 'secondary'"
           rounded
-          size="small"
           @click="currentTool = currentTool === 'add' ? 'edit' : 'add'"
         />
-      </div>
-
-      <!-- Save Button -->
-      <div
-        v-if="access.editor && currentTool !== 'pan'"
-        class="absolute bottom-2 left-2"
-      >
         <Button
           icon="pi pi-save"
           label="Save"

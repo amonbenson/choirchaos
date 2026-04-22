@@ -36,6 +36,8 @@ const NOTE_VALUE_SVG_MAP: Record<NoteValue, object> = {
 const props = defineProps<{
   songs?: Song[];
   loading?: boolean;
+  editMode?: boolean;
+  canEdit?: boolean;
 }>();
 
 const emit = defineEmits([
@@ -44,6 +46,7 @@ const emit = defineEmits([
   "playPause",
   "toggleVamp",
   "toggleSegue",
+  "toggleEditMode",
 ]);
 
 const songId = defineModel<string>();
@@ -118,6 +121,15 @@ const playbackSpeedPercentage = computed({
           rounded
           text
           @click="emit('forward')"
+        />
+        <Button
+          v-if="canEdit"
+          icon="pi pi-pencil"
+          :severity="editMode ? 'primary' : 'secondary'"
+          aria-label="Toggle Edit Mode"
+          rounded
+          text
+          @click="emit('toggleEditMode')"
         />
       </template>
 
