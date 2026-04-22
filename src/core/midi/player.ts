@@ -337,18 +337,15 @@ export default class MidiPlayer extends EventEmitter {
     // sync the current position to the audio player
     this._updatePosition(this._audioPlayer.position * 1000);
 
-    // lookup current measure by the nearest $audioSecond value
-    const measure = this._currentSong?.measures.search(
-      { $audioSecond: this._audioPlayer.position } as Measure,
-      {
-        comparator: (a, b) => (a.$audioSecond ?? 0) - (b.$audioSecond ?? 0),
-        direction: "backward",
-        inclusive: true,
-        extend: true,
-      },
-    );
-    if (measure) {
-      this._updateCurrentMeasure(measure.reference(0));
+    // lookup current measure from the measure event list (same approach as seek)
+    const k = { tick: this._position };
+    const measureEvent = this._midi_events.system.measure.search(k as MeasureEvent, {
+      direction: "backward",
+      inclusive: true,
+      extend: true,
+    });
+    if (measureEvent) {
+      this._updateCurrentMeasure(measureEvent.measure);
     }
   }
 
@@ -560,8 +557,29 @@ export default class MidiPlayer extends EventEmitter {
 
     // Special handling for audio mode
     if (this._mode === "audio" && this._audioPlayer) {
-      this._audioPlayer.seek(position * 1000);
-      this._updateAudioMode();
+      const wasPlaying = this._playing;
+      this.pause();
+
+      this._audioPlayer.seek(position / 1000);
+      this._updatePosition(position);
+
+      const k = { tick: this._position };
+      const options: BinarySearchOptions<MidiEvent, MidiEvent> = {
+        direction: "backward",
+        inclusive: true,
+        extend: true,
+      };
+      const events = [
+        this._midi_events.system.measure.search(k as MeasureEvent, options)!,
+        this._midi_events.system.tempo.search(k as TempoEvent, options)!,
+        this._midi_events.system.timeSignature.search(k as TimeSignatureEvent, options)!,
+      ];
+      events.forEach(event => this._handleEvent(event));
+
+      if (wasPlaying) {
+        this.play();
+      }
+
       return;
     }
 
@@ -704,8 +722,18 @@ export default class MidiPlayer extends EventEmitter {
     this.seek(0);
   }
 
+  private _resetMidiEvents(): void {
+    this._midi_events = {
+      system: {
+        measure: new MidiEventList(),
+        tempo: new MidiEventList(),
+        timeSignature: new MidiEventList(),
+      },
+      track: [],
+    };
+  }
+
   async loadAudio(song: Song): Promise<void> {
-    // download the audio files
     if (song.audioFiles.length === 0) {
       throw new Error(`No audio files in song '${song.title}'`);
     }
@@ -713,7 +741,7 @@ export default class MidiPlayer extends EventEmitter {
     // Create the warp map
     this._warpMap.setMarkers(song.warpMarkers ?? []);
 
-    // Load all audio files
+    // Load all audio files in parallel
     this._audioBuffers = await Promise.all(
       song.audioFiles.map(async (file) => {
         const res = await axios.get(resolveUrl(file, "songs", song.id), {
@@ -724,34 +752,34 @@ export default class MidiPlayer extends EventEmitter {
       }),
     );
 
-    // Populate $audioSecond for each measure using the warp map
-    song.measures.items().forEach((measure, i) => {
-      measure.$audioSecond = this._warpMap.measureToTime(i);
-    });
+    this._resetMidiEvents();
 
-    // Reset the midi events
-    this._midi_events = {
-      system: {
-        measure: new MidiEventList(),
-        tempo: new MidiEventList(),
-        timeSignature: new MidiEventList(),
-      },
-      track: [],
-    };
-
-    // Get the song duration from the shortest mp3 buffer
-    const audioDuration = Math.min(...this._audioBuffers.map(b => b.duration));
-    this._updateDuration(audioDuration * 1000); // convert to ms
-    this._updatePosition(0);
-
+    // Populate $beatTicks for each measure (1 tick = 1 ms) and build measure events
     const measures = song.measures.items();
-    const finalMeasure = [...measures].reverse().find(m => (m.$audioSecond ?? Infinity) <= audioDuration) ?? measures[0];
-    this._updateFinalMeasure(finalMeasure.reference(0));
+    for (let i = 0; i < measures.length; i++) {
+      const measure = measures[i]!;
+      const startMs = this._warpMap.measureToTime(i) * 1000;
+      const endMs = this._warpMap.measureToTime(i + 1) * 1000;
+      const beatDurationMs = (endMs - startMs) / measure.beats;
 
-    // Set tempo and time signature to default values (they won't be used in audio mode, but this keeps the UI consistent)
-    this._updateCurrentTempo(120);
-    this._updateCurrentTimeSignature([4, 2]);
-    this._updateCurrentMeasure(song.measures.first()?.reference(0) ?? ["1", 0]);
+      measure.$beatTicks = Array.from({ length: measure.beats }, (_, b) => startMs + b * beatDurationMs);
+      measure.$tickLength = endMs - startMs;
+
+      this._midi_events.system.measure.insert(new MeasureEvent(startMs, measure.reference(0)));
+    }
+
+    // Single default tempo event: 125 BPM → 125/60 × 480 ppqn = 1000 ticks/s = 1 tick/ms
+    this._midi_events.system.tempo.insert(new TempoEvent(0, 125));
+    // Single default time signature event
+    this._midi_events.system.timeSignature.insert(new TimeSignatureEvent(0, [4, 2]));
+
+    // Duration from shortest audio buffer (in ms)
+    const audioDuration = Math.min(...this._audioBuffers.map(b => b.duration)) * 1000;
+    this._updateDuration(audioDuration);
+
+    // Final measure: last measure whose start tick falls within the audio duration
+    const finalMeasure = [...measures].reverse().find(m => (m.$beatTicks[0] ?? Infinity) <= audioDuration) ?? measures[0]!;
+    this._updateFinalMeasure(finalMeasure.reference(0));
 
     // Create the audio player
     this._audioPlayer = new AudioPlayer(this._audioContext, this._audioBuffers);
@@ -779,14 +807,7 @@ export default class MidiPlayer extends EventEmitter {
       }),
     ]);
 
-    this._midi_events = {
-      system: {
-        measure: new MidiEventList(),
-        tempo: new MidiEventList(),
-        timeSignature: new MidiEventList(),
-      },
-      track: [],
-    };
+    this._resetMidiEvents();
 
     // TODO: calling BinarySortedList.insert is very inefficient here.
     // Generate a normal array and pass it to the constructor to sort it in one go instead.
