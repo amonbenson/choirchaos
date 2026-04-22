@@ -135,7 +135,16 @@ watch(highlightedTracks, () => {
   pdfViewer.value?.redrawOverlay();
 });
 
-// Returns the measure at the given screen-space coordinates, or undefined if none.
+const currentPlayingMeasureProgress = computed(() => {
+  if (!currentPlayingMeasure.value) {
+    return 0;
+  }
+
+  const mStart = currentPlayingMeasure.value.$beatTicks[0] ?? 0;
+  const mLength = currentPlayingMeasure.value.$tickLength ?? 960;
+  return Math.max(0, Math.min(1, (player.position - mStart) / mLength));
+});
+
 function findMeasureAt(transform: PageTransform, x: number, y: number): Measure | undefined {
   const { p, x: px, y: py } = transform.screenToPage({ x, y });
   for (const measure of (measuresByPage.value[p] ?? [])) {
@@ -159,16 +168,16 @@ function tap({ x, y, transform }: { x: number; y: number; transform: PageTransfo
   }
 }
 
-function mouseMoved({ transform, x, y }: { s: p5; transform: PageTransform; x: number; y: number }): void {
-  // check if we are hovering a measure
-  const newHoverMeasure = findMeasureAt(transform, x, y);
+// function mouseMoved({ transform, x, y }: { s: p5; transform: PageTransform; x: number; y: number }): void {
+//   // check if we are hovering a measure
+//   const newHoverMeasure = findMeasureAt(transform, x, y);
 
-  // set new hover measure and redraw on change
-  if (newHoverMeasure !== hoverMeasure.value) {
-    hoverMeasure.value = newHoverMeasure;
-    pdfViewer.value?.redrawOverlay();
-  }
-}
+//   // set new hover measure and redraw on change
+//   if (newHoverMeasure !== hoverMeasure.value) {
+//     hoverMeasure.value = newHoverMeasure;
+//     pdfViewer.value?.redrawOverlay();
+//   }
+// }
 
 function isMeasureHighlighted(measure: Measure): boolean {
   for (const i of measure.$activeTrackIndices) {
@@ -246,7 +255,6 @@ const cursor = computed(() => {
     ref="pdfViewer"
     :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
     :cursor="cursor"
-    @mouse-moved="mouseMoved"
     @tap="tap"
   >
     <template #default="{ visiblePages }">
@@ -265,7 +273,7 @@ const cursor = computed(() => {
         <div
           v-for="measure of (measuresByPage[page.pageNumber] ?? []).filter(m => m.layout)"
           :key="measure.value"
-          class="pointer-events-auto absolute cursor-pointer transition-colors"
+          class="pointer-events-auto absolute cursor-pointer transition-colors select-none"
           :class="[
             currentTool === 'pan'
               ? (isMeasureHighlighted(measure)
@@ -279,7 +287,15 @@ const cursor = computed(() => {
             width: `${measure.layout!.width * 100}%`,
             height: `${measure.layout!.height * 100}%`,
           }"
-        />
+          @contextmenu.stop
+        >
+          <!-- Playbar -->
+          <div
+            v-if="currentWrittenMeasure?.value === measure.value && currentPlayingMeasure"
+            class="absolute top-0 h-full w-1 -translate-x-1/2 bg-primary"
+            :style="{ left: `${currentPlayingMeasureProgress * 100}%` }"
+          />
+        </div>
       </div>
 
       <!-- Edit Buttons -->

@@ -22,6 +22,7 @@ const emit = defineEmits([
   "tap",
 ]);
 
+const wrapper = ref<HTMLDivElement | undefined>();
 const container = ref<HTMLDivElement | undefined>();
 
 const p5Instance = shallowRef<p5 | undefined>();
@@ -37,7 +38,7 @@ const { pages } = usePdfPages(toRef(props, "url"), { onUpdate: redrawAll });
 
 const isGrabbing = ref(false);
 
-usePanZoom(container, transform.value, {
+usePanZoom(wrapper, transform.value, {
   cursor: toRef(props, "cursor"),
   onRedraw: redrawAll,
   onTap: (x, y) => emit("tap", { x, y, transform: transform.value }),
@@ -283,7 +284,10 @@ defineExpose({
 </script>
 
 <template>
-  <div class="relative size-full overflow-hidden">
+  <div
+    ref="wrapper"
+    class="relative size-full overflow-hidden"
+  >
     <div
       ref="container"
       class="pdf-canvas-container ansolute size-full overflow-hidden"

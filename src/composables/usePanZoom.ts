@@ -18,6 +18,7 @@ export function usePanZoom(
   let pressing = false;
 
   function setCursor(value: string): void {
+    // This is now handled in PdfViewer directly
     // if (container.value) {
     //   container.value.style.cursor = value;
     // }
@@ -56,7 +57,7 @@ export function usePanZoom(
 
     pressing = true;
     lastPos = { x: e.clientX, y: e.clientY };
-    mouseTapStart = { x: e.clientX, y: e.clientY };
+    mouseTapStart = e.button === 0 ? { x: e.clientX, y: e.clientY } : undefined;
     activeCursor();
   }
 
