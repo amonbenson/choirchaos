@@ -253,7 +253,7 @@ function onDrawEnd(): void {
               ? (isMeasureHighlighted(measure)
                 ? 'bg-sky-400/25 hover:bg-sky-400/45'
                 : 'bg-primary/0 hover:bg-primary/25')
-              : 'bg-primary/25 hover:bg-primary/45'
+              : 'border border-primary bg-primary/25 hover:bg-primary/45'
           ]"
           :style="{
             left: `${measure.layout!.x * 100}%`,
@@ -262,8 +262,16 @@ function onDrawEnd(): void {
             height: `${measure.layout!.height * 100}%`,
           }"
           @contextmenu.stop
-          @click="currentTool === 'pan' && player.setMeasure(measure.value)"
+          @click="player.setMeasure(measure.value)"
         >
+          <!-- Measure number -->
+          <div
+            v-if="currentTool !== 'pan'"
+            class="pointer-events-none absolute top-1/2 left-1/2 -translate-1/2 text-2xl font-bold text-black"
+          >
+            {{ measure.value }}
+          </div>
+
           <!-- Playbar -->
           <div
             v-if="currentWrittenMeasure?.value === measure.value && currentPlayingMeasure"
@@ -281,7 +289,7 @@ function onDrawEnd(): void {
           @pointerup="onDrawEnd"
           @pointercancel="onDrawEnd"
         >
-          <!-- Rectangle preview -->
+          <!-- Preview rectangle -->
           <div
             v-if="drawRect?.page === page.pageNumber"
             class="pointer-events-none absolute border border-primary bg-primary/20"
