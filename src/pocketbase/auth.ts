@@ -1,6 +1,6 @@
 import type { RecordAuthResponse, RecordModel } from "pocketbase";
 
-import { pb, type PbRecord } from ".";
+import { pb } from ".";
 
 export async function login(usernameOrEmail: string, password: string): Promise<RecordAuthResponse<RecordModel>> {
   return await pb.collection("users").authWithPassword(usernameOrEmail, password);
