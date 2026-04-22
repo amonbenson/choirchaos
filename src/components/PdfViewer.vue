@@ -35,6 +35,8 @@ const visiblePages = shallowRef<{ x: number; y: number; width: number; height: n
 
 const { pages } = usePdfPages(toRef(props, "url"), { onUpdate: redrawAll });
 
+const isGrabbing = ref(false);
+
 usePanZoom(container, transform.value, {
   cursor: toRef(props, "cursor"),
   onRedraw: redrawAll,
@@ -285,6 +287,11 @@ defineExpose({
     <div
       ref="container"
       class="pdf-canvas-container ansolute size-full overflow-hidden"
+      :class="isGrabbing ? 'cursor-grabbing' : 'cursor-grab'"
+      @mousedown="isGrabbing = true"
+      @mouseup="isGrabbing = false"
+      @mouseleave="isGrabbing = false"
+      @focusout="isGrabbing = false"
     />
 
     <slot

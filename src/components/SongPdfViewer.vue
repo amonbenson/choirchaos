@@ -265,13 +265,13 @@ const cursor = computed(() => {
         <div
           v-for="measure of (measuresByPage[page.pageNumber] ?? []).filter(m => m.layout)"
           :key="measure.value"
-          class="pointer-events-auto absolute cursor-pointer bg-primary/0 transition-colors hover:bg-primary/25"
+          class="pointer-events-auto absolute cursor-pointer transition-colors"
           :class="[
             currentTool === 'pan'
-              ? 'bg-primary/0'
-              : (isMeasureHighlighted(measure)
-                ? 'bg-sky-400/25'
-                : 'bg-primary/25 hover:bg-primary/50')
+              ? (isMeasureHighlighted(measure)
+                ? 'bg-sky-400/25 hover:bg-sky-400/45'
+                : 'bg-primary/0 hover:bg-primary/25')
+              : 'bg-primary/25 hover:bg-primary/45'
           ]"
           :style="{
             left: `${measure.layout!.x * 100}%`,

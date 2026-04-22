@@ -12,15 +12,15 @@ export function usePanZoom(
     onRedraw: () => void;
     onTap?: (x: number, y: number) => void;
   },
-) {
+): void {
   const { cursor, onRedraw, onTap } = options;
 
   let pressing = false;
 
   function setCursor(value: string): void {
-    if (container.value) {
-      container.value.style.cursor = value;
-    }
+    // if (container.value) {
+    //   container.value.style.cursor = value;
+    // }
   }
 
   function idleCursor(): void {
