@@ -212,6 +212,10 @@ export default class MidiPlayer extends EventEmitter {
     return this._midi_events;
   }
 
+  get mode(): PlayerMode {
+    return this._mode;
+  }
+
   get ppqn(): number {
     return this._ppqn;
   }
@@ -1001,6 +1005,7 @@ export default class MidiPlayer extends EventEmitter {
 
     this._player = undefined;
     this._audioPlayer = undefined;
+    this._mode = "none";
 
     this._updatePosition(0);
     this._updateDuration(0);

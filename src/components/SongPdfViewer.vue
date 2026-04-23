@@ -312,7 +312,7 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
           <!-- Playbar -->
           <div
             v-if="currentWrittenMeasure?.value === measure.value && currentPlayingMeasure"
-            class="absolute top-0 h-full w-[max(2%,1px)] -translate-x-1/2 rounded-full bg-primary"
+            class="absolute top-0 h-full w-1 -translate-x-1/2 rounded-full bg-primary"
             :style="{ left: `${currentPlayingMeasureProgress * 100}%` }"
           />
 

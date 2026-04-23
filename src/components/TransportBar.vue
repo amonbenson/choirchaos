@@ -6,6 +6,7 @@ import Select from "primevue/select";
 import Slider from "primevue/slider";
 import Toolbar from "primevue/toolbar";
 import { computed, type ComputedRef, ref } from "vue";
+import { t } from "vue-router/dist/index-DFCq6eJK.js";
 
 import Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
@@ -157,7 +158,8 @@ const playbackSpeedPercentage = computed({
             .
             <PopoverButton
               button-class="w-8 whitespace-nowrap"
-              :label="player.ready ? String(player.currentMeasure[1] + 1) : '-'"
+              :label="player.ready && player.mode === 'midi' ? String(player.currentMeasure[1] + 1) : '-'"
+              :disabled="player.mode !== 'midi'"
             >
               <template #default="{ setFocusTarget }">
                 <InputNumber
@@ -220,11 +222,17 @@ const playbackSpeedPercentage = computed({
             :active="Math.round(playbackSpeedPercentage) !== 100"
           >
             <template #button>
-              <component
-                :is="NOTE_VALUE_SVG_MAP[tempoNoteValue]"
-                class="mx-[-15%] inline size-6 fill-current"
-              />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * writtenTempo) : "-" }}
+              <template v-if="player.mode === 'midi'">
+                <component
+                  :is="NOTE_VALUE_SVG_MAP[tempoNoteValue]"
+                  class="mx-[-15%] inline size-6 fill-current"
+                />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * writtenTempo) : "-" }}
+              </template>
+              <template v-else>
+                Tempo
+              </template>
             </template>
+
             <template #default="{ setFocusTarget }">
               <div class="flex items-center justify-stretch gap-4">
                 <Button
@@ -265,7 +273,12 @@ const playbackSpeedPercentage = computed({
             class="cursor-default"
             severity="secondary"
           >
-            {{ player.currentTimeSignature[0] }}&nbsp;/&nbsp;{{ Math.pow(2, player.currentTimeSignature[1]) }}
+            <template v-if="player.mode === 'midi'">
+              {{ player.currentTimeSignature[0] }}&nbsp;/&nbsp;{{ Math.pow(2, player.currentTimeSignature[1]) }}
+            </template>
+            <template v-else>
+              &ndash;&nbsp;/&nbsp;&ndash;
+            </template>
           </Button>
 
           <!-- Vamp -->

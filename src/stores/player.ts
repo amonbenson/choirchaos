@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { markRaw, onScopeDispose } from "vue";
+import { markRaw, onScopeDispose, watch } from "vue";
 
 import { useEvent } from "@/composables/event";
 import type { NoteEvent } from "@/core/midi/events";
@@ -54,6 +54,11 @@ export const usePlayerStore = defineStore("player", () => {
   const events = useEvent(globalPlayer, "statusChanged", {
     initial: markRaw(globalPlayer.midi_events),
     getter: player => markRaw(player.midi_events),
+  });
+
+  const mode = useEvent(globalPlayer, "statusChanged", {
+    initial: globalPlayer.mode,
+    getter: player => player.mode,
   });
 
   const ppqn = useEvent(globalPlayer, "statusChanged", {
@@ -148,6 +153,7 @@ export const usePlayerStore = defineStore("player", () => {
     currentMeasure,
     finalMeasure,
     events,
+    mode,
     ppqn,
     playbackSpeed,
     playbackTransposition,
