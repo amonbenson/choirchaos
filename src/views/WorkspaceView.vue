@@ -10,6 +10,7 @@ import MixerPanel from "@/components/MixerPanel.vue";
 import SongPdfViewer from "@/components/SongPdfViewer.vue";
 import TransportBar from "@/components/TransportBar.vue";
 import VampCard from "@/components/VampCard.vue";
+import WarpPanel from "@/components/WarpPanel.vue";
 import { useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
 import Show from "@/core/models/show";
 import type Song from "@/core/models/song";
@@ -229,7 +230,7 @@ watch(() => props.songId, async (songId) => {
 </script>
 
 <template>
-  <div class="grid size-full grid-cols-1 grid-rows-[auto_auto_1fr] gap-2 overflow-hidden p-2 lg:grid-cols-[auto_1fr_auto] lg:grid-rows-[auto_1fr]">
+  <div class="grid size-full grid-cols-1 grid-rows-[auto_auto_1fr_auto] gap-2 overflow-hidden p-2 lg:grid-cols-[auto_1fr_auto] lg:grid-rows-[auto_1fr_auto]">
     <TransportBar
       class="lg:col-span-3"
       :model-value="songId"
@@ -349,5 +350,12 @@ watch(() => props.songId, async (songId) => {
         />
       </div>
     </div>
+
+    <!-- Warp Panel (audio mode) -->
+    <WarpPanel
+      v-if="editMode"
+      class="lg:col-span-3"
+      :song="song"
+    />
   </div>
 </template>

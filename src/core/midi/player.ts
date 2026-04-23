@@ -220,6 +220,10 @@ export default class MidiPlayer extends EventEmitter {
     return this._currentSong;
   }
 
+  get audioBuffers(): AudioBuffer[] {
+    return this._audioBuffers;
+  }
+
   get playbackSpeed(): number {
     return this._playbackSpeed;
   }

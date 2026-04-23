@@ -7,6 +7,7 @@ function map(...pairs: [measure: number, time: number][]): WarpMap {
   for (const [measure, time] of pairs) {
     w.addMarker({ measure, time });
   }
+
   return w;
 }
 
