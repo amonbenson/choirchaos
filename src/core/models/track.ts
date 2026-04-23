@@ -7,6 +7,7 @@ export default class Track {
     public title: string,
     public classification: TrackClassification = "Accompaniment",
     public program: number = 0,
+    public audioFile: string = "",
     public mixer: {
       index: number;
       mute: boolean;
@@ -32,10 +33,11 @@ export default class Track {
       title: this.title,
       classification: this.classification,
       program: this.program,
+      audioFile: this.audioFile,
     };
   }
 
-  public static fromJson({ title, classification, program }: any): Track {
-    return new Track(title, classification, program);
+  public static fromJson({ title, classification, program, audioFile }: any): Track {
+    return new Track(title, classification, program, audioFile);
   }
 }

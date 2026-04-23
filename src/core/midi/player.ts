@@ -351,6 +351,12 @@ export default class MidiPlayer extends EventEmitter {
     if (measureEvent) {
       this._updateCurrentMeasure(measureEvent.measure);
     }
+
+    // sync track gains (setGain is a no-op when value unchanged)
+    const tracks = this._currentSong?.tracks ?? [];
+    for (let i = 0; i < tracks.length; i++) {
+      this._audioPlayer.setGain(i, tracks[i]!.mixer.effectiveGain);
+    }
   }
 
   private _handleStep(deltaTime: number): void {
@@ -746,7 +752,7 @@ export default class MidiPlayer extends EventEmitter {
     this._warpMap.setMarkers(song.warpMarkers ?? []);
 
     // Load all audio files in parallel
-    this._audioBuffers = await Promise.all(
+    const audioBuffers = await Promise.all(
       song.audioFiles.map(async (file) => {
         const res = await axios.get(resolveUrl(file, "songs", song.id), {
           validateStatus: status => status === 200,
@@ -755,6 +761,18 @@ export default class MidiPlayer extends EventEmitter {
         return this._audioContext.decodeAudioData(res.data);
       }),
     );
+
+    // Order audio buffers by tracks
+    this._audioBuffers = song.tracks.map((track) => {
+      const bufferIndex = song.audioFiles.findIndex(file => file === track.audioFile);
+      const buffer = audioBuffers[bufferIndex];
+
+      if (!buffer) {
+        throw new Error(`Audio file '${track.audioFile}' for track '${track.title}' not found in song '${song.title}'`);
+      }
+
+      return buffer;
+    });
 
     this._resetMidiEvents();
 
