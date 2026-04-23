@@ -811,12 +811,8 @@ export default class MidiPlayer extends EventEmitter {
     const finalMeasure = [...measures].reverse().find(m => (m.$beatTicks[0] ?? Infinity) <= audioDuration) ?? measures[0]!;
     this._updateFinalMeasure(finalMeasure.reference(0));
 
-<<<<<<< HEAD
     // Create the audio player (register worklet once per context)
     await AudioPlayer.register(this._audioContext);
-=======
-    // Create the audio player
->>>>>>> main
     this._audioPlayer = new AudioPlayer(this._audioContext, this._audioBuffers);
     this._audioPlayer.connect(this._masterInput!);
   }
