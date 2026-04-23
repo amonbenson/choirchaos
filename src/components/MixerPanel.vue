@@ -121,6 +121,15 @@ player.onNote((event) => {
   });
 });
 
+const isAudioMode = computed(() => player.mode === "audio");
+
+function trackAmplitude(track: Track | MergedTrack): number {
+  const indices = track instanceof MergedTrack
+    ? track.tracks.map(t => t.mixer.index)
+    : [track.mixer.index];
+  return Math.max(0, ...indices.map(i => player.trackAmplitudes[i] ?? 0));
+}
+
 // Refresh track state from settings
 watch(() => props.song, (song) => {
   if (!song) {
@@ -204,15 +213,28 @@ watch(() => props.song, (song) => {
                   @click="setTrackHighlight(track)"
                 />
               </ButtonGroup>
-              <Slider
-                :model-value="track.mixer.gain"
-                class="mx-2 flex-1"
-                :min="0"
-                :max="1"
-                :step="0.001"
-                :pt:range:class="trackFlashTriggered[track.mixer.index] ? 'bg-primary transition-none' : 'bg-(--p-slider-track-background) transition-colors duration-500'"
-                @update:model-value="setTrackGain(track, $event as number)"
-              />
+              <div class="relative mx-2 flex-1">
+                <Slider
+                  :model-value="track.mixer.gain"
+                  class="w-full"
+                  :min="0"
+                  :max="1"
+                  :step="0.001"
+                  :pt:range:class="!isAudioMode && trackFlashTriggered[track.mixer.index] ? 'bg-primary transition-none' : 'bg-(--p-slider-track-background) transition-colors duration-500'"
+                  pt:handle="!z-[2]"
+                  @update:model-value="setTrackGain(track, $event as number)"
+                />
+                <!-- VU bar: sits above track (z-1) but below thumb (z-2) -->
+                <div
+                  v-if="isAudioMode"
+                  class="pointer-events-none absolute inset-0 z-1 flex items-center"
+                >
+                  <div
+                    class="h-0.75 rounded-full bg-primary/70 transition-none"
+                    :style="{ width: `${trackAmplitude(track) * 100}%` }"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>

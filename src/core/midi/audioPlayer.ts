@@ -1,12 +1,20 @@
 import { SoundTouchNode } from "@soundtouchjs/audio-worklet";
 import processorUrl from "@soundtouchjs/audio-worklet/processor?url";
 
+const ANALYSER_FFT_SIZE = 256;
+const ANALYSER_GAIN = Math.pow(10, 10 / 20); // analyzer output boost
+const ANALYSER_ATTACK = 0.9; // rise factor per tick at 50 Hz → fast but not instant
+const ANALYSER_RELEASE = 0.97; // decay factor per tick at 50 Hz → ~1 s half-life
+
 export default class AudioPlayer {
   private _sources: AudioBufferSourceNode[] = [];
   private _soundtouchNodes: SoundTouchNode[];
   private _gainNodes: GainNode[];
+  private _analysers: AnalyserNode[];
+  private _analyserBuffers: Float32Array<ArrayBuffer>[];
 
   private _gainValues: number[];
+  private _smoothedAmplitudes: number[];
   private _tempoValue = 1;
   private _pitchValue = 0;
 
@@ -20,20 +28,48 @@ export default class AudioPlayer {
 
   constructor(private _context: AudioContext, private _buffers: AudioBuffer[]) {
     this._soundtouchNodes = _buffers.map(() => new SoundTouchNode(_context));
-
     this._gainNodes = _buffers.map(() => _context.createGain());
     this._gainValues = _buffers.map(() => 1);
+    this._smoothedAmplitudes = _buffers.map(() => 0);
+
+    this._analysers = _buffers.map(() => {
+      const a = _context.createAnalyser();
+      a.fftSize = ANALYSER_FFT_SIZE;
+      a.smoothingTimeConstant = 0.8;
+      return a;
+    });
+    this._analyserBuffers = this._analysers.map(a => new Float32Array(a.fftSize) as Float32Array<ArrayBuffer>);
 
     _buffers.forEach((_, i) => {
       const c = _context.createDynamicsCompressor();
-      c.threshold.value = -4;
-      c.knee.value = 2;
-      c.ratio.value = 1.5;
-      c.attack.value = 0.001;
-      c.release.value = 0.1;
-      // SoundTouchNode → DynamicsCompressor → GainNode
+      c.threshold.value = -12;
+      c.knee.value = 1.7;
+      c.ratio.value = 2.0;
+      c.attack.value = 0.01;
+      c.release.value = 0.2;
+      // SoundTouchNode → DynamicsCompressor → GainNode → AnalyserNode
       this._soundtouchNodes[i]!.connect(c);
       c.connect(this._gainNodes[i]!);
+      this._gainNodes[i]!.connect(this._analysers[i]!);
+    });
+  }
+
+  getAmplitudes(): number[] {
+    return this._analysers.map((analyser, i) => {
+      analyser.getFloatTimeDomainData(this._analyserBuffers[i]!);
+      const buf = this._analyserBuffers[i]!;
+      let sum = 0;
+      for (let s = 0; s < buf.length; s++) {
+        sum += buf[s]! * buf[s]!;
+      }
+
+      const rms = Math.sqrt(sum / buf.length) * ANALYSER_GAIN;
+      const prev = this._smoothedAmplitudes[i]!;
+      const smoothed = rms > prev
+        ? prev + (rms - prev) * ANALYSER_ATTACK // lerp toward peak
+        : prev * ANALYSER_RELEASE; // multiplicative decay
+      this._smoothedAmplitudes[i] = smoothed;
+      return Math.min(1, smoothed);
     });
   }
 
@@ -133,6 +169,6 @@ export default class AudioPlayer {
   }
 
   connect(destination: AudioNode): void {
-    this._gainNodes.forEach(g => g.connect(destination));
+    this._analysers.forEach(a => a.connect(destination));
   }
 }
