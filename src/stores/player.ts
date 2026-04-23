@@ -78,6 +78,10 @@ export const usePlayerStore = defineStore("player", () => {
     setter: (player, value) => player.playbackTransposition = value,
   });
 
+  const trackAmplitudes = useEvent<MidiPlayer, number[]>(globalPlayer, "trackAmplitudesChanged", {
+    initial: [],
+  });
+
   function seek(position: number): void {
     globalPlayer.seek(position);
   }
@@ -157,6 +161,7 @@ export const usePlayerStore = defineStore("player", () => {
     ppqn,
     playbackSpeed,
     playbackTransposition,
+    trackAmplitudes,
     player: globalPlayer,
   };
 });

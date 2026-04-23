@@ -365,6 +365,9 @@ export default class MidiPlayer extends EventEmitter {
     // sync global tempo and pitch
     this._audioPlayer.setTempo(this._playbackSpeed);
     this._audioPlayer.setPitch(this._playbackTransposition);
+
+    // emit per-track RMS amplitudes for VU meters
+    this.emit("trackAmplitudesChanged", this._audioPlayer.getAmplitudes());
   }
 
   private _handleStep(deltaTime: number): void {
