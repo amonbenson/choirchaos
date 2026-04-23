@@ -228,7 +228,7 @@ const playbackSpeedPercentage = computed({
                 />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * writtenTempo) : "-" }}
               </template>
               <template v-else>
-                Tempo
+                {{ Math.round(playbackSpeedPercentage) === 100 ? 'Tempo' : `${Math.round(playbackSpeedPercentage)} %` }}
               </template>
             </template>
 

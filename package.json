@@ -20,6 +20,7 @@
   "dependencies": {
     "@primeuix/themes": "^2.0.3",
     "@primevue/forms": "^4.5.4",
+    "@soundtouchjs/audio-worklet": "^1.0.10",
     "@tailwindcss/vite": "^4.2.1",
     "@types/events": "^3.0.3",
     "@vueuse/core": "^14.2.1",
@@ -34,6 +35,7 @@
     "pocketbase": "^0.26.8",
     "primeicons": "^7.0.0",
     "primevue": "^4.5.4",
+    "soundtouch-ts": "^1.1.1",
     "tailwindcss": "^4.2.1",
     "tailwindcss-primeui": "^0.6.1",
     "vue": "^3.5.30",
