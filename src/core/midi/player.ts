@@ -356,11 +356,15 @@ export default class MidiPlayer extends EventEmitter {
       this._updateCurrentMeasure(measureEvent.measure);
     }
 
-    // sync track gains (setGain is a no-op when value unchanged)
+    // sync track gains
     const tracks = this._currentSong?.tracks ?? [];
     for (let i = 0; i < tracks.length; i++) {
       this._audioPlayer.setGain(i, tracks[i]!.mixer.effectiveGain);
     }
+
+    // sync global tempo and pitch
+    this._audioPlayer.setTempo(this._playbackSpeed);
+    this._audioPlayer.setPitch(this._playbackTransposition);
   }
 
   private _handleStep(deltaTime: number): void {
@@ -807,7 +811,8 @@ export default class MidiPlayer extends EventEmitter {
     const finalMeasure = [...measures].reverse().find(m => (m.$beatTicks[0] ?? Infinity) <= audioDuration) ?? measures[0]!;
     this._updateFinalMeasure(finalMeasure.reference(0));
 
-    // Create the audio player
+    // Create the audio player (register worklet once per context)
+    await AudioPlayer.register(this._audioContext);
     this._audioPlayer = new AudioPlayer(this._audioContext, this._audioBuffers);
     this._audioPlayer.connect(this._masterInput!);
   }
