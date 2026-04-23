@@ -230,7 +230,12 @@ watch(() => props.songId, async (songId) => {
 </script>
 
 <template>
-  <div class="grid size-full grid-cols-1 grid-rows-[auto_auto_1fr_auto] gap-2 overflow-hidden p-2 lg:grid-cols-[auto_1fr_auto] lg:grid-rows-[auto_1fr_auto]">
+  <div
+    class="grid size-full grid-cols-1 gap-2 overflow-hidden p-2 lg:grid-cols-[auto_1fr_auto]"
+    :class="editMode
+      ? 'grid-rows-[auto_auto_1fr_auto] lg:grid-rows-[auto_1fr_auto]'
+      : 'grid-rows-[auto_auto_1fr] lg:grid-rows-[auto_1fr]'"
+  >
     <TransportBar
       class="lg:col-span-3"
       :model-value="songId"
