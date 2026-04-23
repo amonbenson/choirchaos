@@ -1,32 +1,41 @@
 <script setup lang="ts">
-import type p5 from "p5";
+import Button from "primevue/button";
 import { computed, type ComputedRef, type Ref, ref, watch } from "vue";
 
-import type Measure from "@/core/models/measure";
-import type { MeasureLayout } from "@/core/models/measure";
-import type Song from "@/core/models/song";
-import type PageTransform from "@/core/pdf/pageTransform";
+import Measure, { type MeasureLayout } from "@/core/models/measure";
+import Song from "@/core/models/song";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
+import { getAccessFlags, NoPermissions } from "@/pocketbase/auth";
 import { usePlayerStore } from "@/stores/player";
 
+import Draggable from "./Draggable.vue";
 import PdfViewer from "./PdfViewer.vue";
 
 const player = usePlayerStore();
 
 const props = defineProps<{
   song?: Song;
+  editMode?: boolean;
 }>();
 
+const access = computed(() => getAccessFlags(props.song?.permissions ?? NoPermissions));
+const currentTool = ref<"edit" | "add">("edit");
 const pdfViewer = ref();
-const cursor: Ref<string | undefined> = ref();
 
-const measuresByPage: ComputedRef<{ [key: number]: Measure[] }> = computed(() => {
+watch(() => props.editMode, (value) => {
+  if (!value) {
+    currentTool.value = "edit";
+  }
+});
+
+// ── Measure data ──────────────────────────────────────────────────────────────
+
+const measuresByPage = computed<{ [key: number]: Measure[] }>(() => {
   if (!props.song) {
     return {};
   }
 
-  // group measures into separate pages
   const groups: { [key: number]: Measure[] } = {};
   for (const measure of props.song.measures.items()) {
     if (measure.layout) {
@@ -42,136 +51,9 @@ const measuresByPage: ComputedRef<{ [key: number]: Measure[] }> = computed(() =>
   return groups;
 });
 
-const highlightedTracks: ComputedRef<Set<number>> = computed(() => new Set(props.song?.tracks.flatMap((t, i) => t.mixer.highlight ? [i] : []) ?? []));
-
-const currentPlayingMeasure: Ref<Measure | undefined> = ref();
-const currentWrittenMeasure: Ref<Measure | undefined> = ref();
-
-const hoverMeasure: Ref<Measure | undefined> = ref();
-
-watch(() => player.position, () => {
-  // Update the current measures
-  currentPlayingMeasure.value = props.song?.findMeasure(player.currentMeasure[0]);
-  currentWrittenMeasure.value = props.song?.findMeasure(player.currentMeasure[0], true);
-
-  // Update the pdf viewer
-  pdfViewer.value?.redrawOverlay();
-});
-
-// Move to page 0 and set current measure on song change
-watch(() => props.song, () => {
-  if (props.song) {
-    pdfViewer.value?.zoomToPage(0);
-    pdfViewer.value?.redrawAll();
-
-    currentPlayingMeasure.value = props.song?.measures.first();
-    currentWrittenMeasure.value = props.song?.measures.first();
-  }
-});
-
-// Move to next page on measure change
-watch(currentWrittenMeasure, () => {
-  if (!pdfViewer.value) {
-    return;
-  }
-
-  const layout: MeasureLayout | undefined = currentWrittenMeasure.value?.layout;
-  if (!layout) {
-    return;
-  }
-
-  const measureTopLeft: PageCoordinate = {
-    x: layout.x,
-    y: layout.y,
-    p: layout.page,
-  };
-  const measureBottomRight: PageCoordinate = {
-    x: layout.x + layout.width,
-    y: layout.y + layout.height,
-    p: layout.page,
-  };
-
-  const isMeasureVisible = (): boolean => pdfViewer.value.isLocationVisible(measureTopLeft) && pdfViewer.value.isLocationVisible(measureBottomRight);
-
-  // If the whole measure is within view, cancel
-  if (isMeasureVisible()) {
-    return;
-  }
-
-  // Get the measure's left edge
-  const staffLineCenter: PageCoordinate = {
-    x: 0.5,
-    y: layout.y + layout.height / 2,
-    p: layout.page,
-  };
-
-  // Move only the horizontal axis first. If that isn't enough, move both axes
-  pdfViewer.value.moveToLocation(staffLineCenter, { axis: "horizontal" });
-
-  // If the measure still isn't visible, move both axes
-  if (!isMeasureVisible()) {
-    pdfViewer.value.moveToLocation(staffLineCenter, { axis: "both" });
-  }
-
-  // If the measure still isn't visible, that means we are so zoomed in, that the full staff width doesn't fit.
-  // In that case, move to the center of the measure
-  if (!isMeasureVisible()) {
-    pdfViewer.value.moveToLocation({
-      x: layout.x + layout.width / 2,
-      y: layout.y + layout.height / 2,
-      p: layout.page,
-    }, { axis: "both" });
-  }
-
-  pdfViewer.value.redrawAll();
-});
-
-// Redraw when track highlighting changes
-watch(highlightedTracks, () => {
-  pdfViewer.value?.redrawOverlay();
-});
-
-// Returns the measure at the given screen-space coordinates, or undefined if none.
-function findMeasureAt(transform: PageTransform, x: number, y: number): Measure | undefined {
-  const { p, x: px, y: py } = transform.screenToPage({ x, y });
-  for (const measure of (measuresByPage.value[p] ?? [])) {
-    if (!measure.layout) {
-      continue;
-    }
-
-    const l = measure.layout;
-    if (px >= l.x && px < l.x + l.width && py >= l.y && py < l.y + l.height) {
-      return measure;
-    }
-  }
-
-  return undefined;
-}
-
-function mousePressed(_: { s: p5; transform: PageTransform }): void {
-  // move to selected measure
-  if (hoverMeasure.value) {
-    player.setMeasure(hoverMeasure.value.value);
-  }
-}
-
-function tap({ x, y, transform }: { x: number; y: number; transform: PageTransform }): void {
-  const measure = findMeasureAt(transform, x, y);
-  if (measure) {
-    player.setMeasure(measure.value);
-  }
-}
-
-function mouseMoved({ transform, x, y }: { s: p5; transform: PageTransform; x: number; y: number }): void {
-  // check if we are hovering a measure
-  const newHoverMeasure = findMeasureAt(transform, x, y);
-
-  // set new hover measure and redraw on change
-  if (newHoverMeasure !== hoverMeasure.value) {
-    hoverMeasure.value = newHoverMeasure;
-    pdfViewer.value?.redrawOverlay();
-  }
-}
+const highlightedTracks: ComputedRef<Set<number>> = computed(
+  () => new Set(props.song?.tracks.flatMap((t, i) => t.mixer.highlight ? [i] : []) ?? []),
+);
 
 function isMeasureHighlighted(measure: Measure): boolean {
   for (const i of measure.$activeTrackIndices) {
@@ -183,52 +65,199 @@ function isMeasureHighlighted(measure: Measure): boolean {
   return false;
 }
 
-function drawPageOverlay({ s, p }: { s: p5; p: number; transform: PageTransform }): void {
-  if (!props.song) {
+// ── Playback sync ─────────────────────────────────────────────────────────────
+
+const currentPlayingMeasure: Ref<Measure | undefined> = ref();
+const currentWrittenMeasure: Ref<Measure | undefined> = ref();
+
+watch(() => player.position, () => {
+  currentPlayingMeasure.value = props.song?.findMeasure(player.currentMeasure[0]);
+  currentWrittenMeasure.value = props.song?.findMeasure(player.currentMeasure[0], true);
+  pdfViewer.value?.redrawOverlay();
+});
+
+watch(() => props.song, () => {
+  if (props.song) {
+    pdfViewer.value?.zoomToPage(0);
+    pdfViewer.value?.redrawAll();
+    currentPlayingMeasure.value = props.song?.measures.first();
+    currentWrittenMeasure.value = props.song?.measures.first();
+  }
+});
+
+const currentPlayingMeasureProgress = computed(() => {
+  if (!currentPlayingMeasure.value) {
+    return 0;
+  }
+
+  const mStart = currentPlayingMeasure.value.$beatTicks[0] ?? 0;
+  const mLength = currentPlayingMeasure.value.$tickLength ?? 960;
+  return Math.max(0, Math.min(1, (player.position - mStart) / mLength));
+});
+
+watch(highlightedTracks, () => {
+  pdfViewer.value?.redrawOverlay();
+});
+
+// ── Auto-scroll to current measure ───────────────────────────────────────────
+
+watch(currentWrittenMeasure, () => {
+  if (!pdfViewer.value) {
     return;
   }
 
-  // update cursor. setting it to undefined will show the default for the pdf viewport (grab)
-  cursor.value = hoverMeasure.value ? "pointer" : undefined;
+  const layout: MeasureLayout | undefined = currentWrittenMeasure.value?.layout;
+  if (!layout) {
+    return;
+  }
 
-  s.noStroke();
+  const tl: PageCoordinate = { x: layout.x, y: layout.y, p: layout.page };
+  const br: PageCoordinate = { x: layout.x + layout.width, y: layout.y + layout.height, p: layout.page };
+  const isVisible = (): boolean => pdfViewer.value.isLocationVisible(tl) && pdfViewer.value.isLocationVisible(br);
 
-  // render measures
-  for (const measure of (measuresByPage.value[p] ?? [])) {
-    if (!measure.layout) {
-      continue;
+  if (isVisible()) {
+    return;
+  }
+
+  const center: PageCoordinate = { x: 0.5, y: layout.y + layout.height / 2, p: layout.page };
+  pdfViewer.value.moveToLocation(center, { axis: "horizontal" });
+
+  if (!isVisible()) {
+    pdfViewer.value.moveToLocation(center, { axis: "both" });
+  }
+
+  if (!isVisible()) {
+    pdfViewer.value.moveToLocation(
+      { x: layout.x + layout.width / 2, y: layout.y + layout.height / 2, p: layout.page },
+      { axis: "both" },
+    );
+  }
+
+  pdfViewer.value.redrawAll();
+});
+
+// ── Draw layout ───────────────────────────────────────────────────────────────
+
+const drawRect = ref<MeasureLayout | undefined>();
+
+function pageRelative(e: PointerEvent, el: EventTarget): { x: number; y: number } {
+  const rect = (el as HTMLElement).getBoundingClientRect();
+  return { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height };
+}
+
+function onDrawStart(e: PointerEvent, page: number): void {
+  const pos = pageRelative(e, e.currentTarget!);
+  drawRect.value = { page, x: pos.x, y: pos.y, width: 0, height: 0 };
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+}
+
+function onDrawMove(e: PointerEvent): void {
+  if (!drawRect.value) {
+    return;
+  }
+
+  const pos = pageRelative(e, e.currentTarget!);
+  drawRect.value = { ...drawRect.value, width: pos.x - drawRect.value.x, height: pos.y - drawRect.value.y };
+}
+
+function onDrawEnd(): void {
+  const rect = drawRect.value;
+  drawRect.value = undefined;
+  // currentTool.value = "edit";
+
+  if (!rect) {
+    return;
+  }
+
+  const numMeasures = parseInt(prompt("How many measures to add?", "4") ?? "NaN");
+  if (isNaN(numMeasures) || numMeasures <= 0) {
+    return;
+  }
+
+  for (let i = 0; i < numMeasures; i++) {
+    const measure = props.song?.measures.items().find(m => !m.layout);
+    if (!measure) {
+      return;
     }
 
-    // transform to measure space
-    s.push();
-    s.translate(measure.layout.x, measure.layout.y);
-    s.scale(measure.layout.width, measure.layout.height);
+    measure.layout = {
+      page: rect.page,
+      x: rect.x + (rect.width / numMeasures) * i,
+      y: rect.y,
+      width: rect.width / numMeasures,
+      height: rect.height,
+    };
+  }
+}
 
-    const lineWidth = 0.005 / measure.layout.width;
+// ── Resize handles ────────────────────────────────────────────────────────────
 
-    // highlight hovering measure
-    if (measure === hoverMeasure.value) {
-      s.fill("#10b98122");
-      s.rect(0, 0, 1, 1);
+type HandleDirection = "top" | "right" | "bottom" | "left";
+
+const pageDivRefs = new Map<number, HTMLElement>();
+
+function setPageDivRef(el: Element | null, pageNumber: number): void {
+  if (el instanceof HTMLElement) {
+    pageDivRefs.set(pageNumber, el);
+  } else {
+    pageDivRefs.delete(pageNumber);
+  }
+}
+
+function isSimilar(a: number, b: number): boolean {
+  return Math.abs(a - b) < 0.01;
+}
+
+function sameStaff(measure: Measure): Measure[] {
+  return (measuresByPage.value[measure.layout!.page] ?? []).filter(other =>
+    isSimilar(other.layout!.y, measure.layout!.y)
+    && isSimilar(other.layout!.y + other.layout!.height, measure.layout!.y + measure.layout!.height),
+  );
+}
+
+function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): void {
+  const pageEl = pageDivRefs.get(measure.layout!.page);
+  if (!pageEl) {
+    return;
+  }
+
+  const dx = event.delta.x / pageEl.clientWidth;
+  const dy = event.delta.y / pageEl.clientHeight;
+  const staff = sameStaff(measure);
+
+  switch (handle) {
+    case "top":
+      staff.forEach((m) => {
+        m.layout!.y += dy;
+        m.layout!.height -= dy;
+      });
+      break;
+    case "bottom":
+      staff.forEach((m) => {
+        m.layout!.height += dy;
+      });
+      break;
+    case "left": {
+      const left = staff[staff.indexOf(measure) - 1];
+      if (left) {
+        left.layout!.width += dx;
+      }
+
+      measure.layout!.x += dx;
+      measure.layout!.width -= dx;
+      break;
     }
 
-    // highlight marked measure
-    if (isMeasureHighlighted(measure)) {
-      s.fill("#74d4ff44");
-      s.rect(0, 0, 1, 1);
+    case "right": {
+      const right = staff[staff.indexOf(measure) + 1];
+      measure.layout!.width += dx;
+      if (right) {
+        right.layout!.x += dx;
+        right.layout!.width -= dx;
+      }
+
+      break;
     }
-
-    // draw playbar
-    if (currentWrittenMeasure?.value?.value === measure.value && currentPlayingMeasure.value) {
-      const mStart = currentPlayingMeasure.value.$beatTicks[0] ?? 0;
-      const mLength = currentPlayingMeasure.value.$tickLength ?? 960;
-      const measureProgress = Math.max(0, Math.min(1, (player.position - mStart) / mLength));
-
-      s.fill("#10b981ff");
-      s.rect(measureProgress, 0, lineWidth, 1);
-    }
-
-    s.pop();
   }
 }
 </script>
@@ -237,10 +266,170 @@ function drawPageOverlay({ s, p }: { s: p5; p: number; transform: PageTransform 
   <PdfViewer
     ref="pdfViewer"
     :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
-    :cursor="cursor"
-    @draw-page-overlay="drawPageOverlay"
-    @mouse-pressed="mousePressed"
-    @mouse-moved="mouseMoved"
-    @tap="tap"
-  />
+  >
+    <template #default="{ visiblePages }">
+      <!-- Measure Overlays -->
+      <div
+        v-for="page of visiblePages"
+        :key="page.pageNumber"
+        :ref="(el) => setPageDivRef(el as Element | null, page.pageNumber)"
+        class="absolute"
+        :class="currentTool === 'add'
+          ? 'pointer-events-auto cursor-crosshair'
+          : 'pointer-events-none cursor-default'"
+        :style="{
+          left: `${page.x * 100}%`,
+          top: `${page.y * 100}%`,
+          width: `${page.width * 100}%`,
+          height: `${page.height * 100}%`,
+        }"
+      >
+        <div
+          v-for="measure of (measuresByPage[page.pageNumber] ?? []).filter(m => m.layout)"
+          :key="measure.value"
+          class="pointer-events-auto absolute transition-colors select-none"
+          :class="[
+            editMode ? 'cursor-default border border-primary bg-primary/25 hover:bg-primary/45' : 'cursor-pointer',
+            !editMode && (isMeasureHighlighted(measure) ? 'bg-sky-400/25 hover:bg-sky-400/45' : 'bg-primary/0 hover:bg-primary/25'),
+          ]"
+          :style="{
+            left: `${measure.layout!.x * 100}%`,
+            top: `${measure.layout!.y * 100}%`,
+            width: `${measure.layout!.width * 100}%`,
+            height: `${measure.layout!.height * 100}%`,
+          }"
+          @contextmenu.stop
+          @click="!editMode && player.setMeasure(measure.value)"
+        >
+          <!-- Measure number (edit mode) -->
+          <div
+            v-if="editMode"
+            class="pointer-events-none absolute top-1/2 left-1/2 -translate-1/2 text-2xl font-bold text-black"
+          >
+            {{ measure.value }}
+          </div>
+
+          <!-- Playbar -->
+          <div
+            v-if="currentWrittenMeasure?.value === measure.value && currentPlayingMeasure"
+            class="absolute top-0 h-full w-1 -translate-x-1/2 rounded-full bg-primary"
+            :style="{ left: `${currentPlayingMeasureProgress * 100}%` }"
+          />
+
+          <!-- Delete layout button (edit mode) -->
+          <Button
+            v-if="editMode"
+            class="absolute top-0 right-3 translate-x-1/2 -translate-y-1/2 scale-50"
+            icon="pi pi-times"
+            severity="danger"
+            size="small"
+            rounded
+            @click.stop="measure.layout = undefined"
+          />
+
+          <!-- Resize handles (edit mode) -->
+          <template v-if="editMode">
+            <Draggable @drag="onHandleDrag($event, measure, 'top')">
+              <template #default="{ passRef }">
+                <Button
+                  :ref="(c: any) => passRef(c?.$el)"
+                  class="absolute top-0 left-1/2 -translate-1/2 scale-50 cursor-ns-resize"
+                  icon="pi pi-arrows-v"
+                  severity="secondary"
+                  size="small"
+                  rounded
+                  pt:icon:class="pointer-events-none"
+                  @click.stop
+                />
+              </template>
+            </Draggable>
+            <Draggable @drag="onHandleDrag($event, measure, 'right')">
+              <template #default="{ passRef }">
+                <Button
+                  :ref="(c: any) => passRef(c?.$el)"
+                  class="absolute top-1/2 left-full -translate-1/2 scale-50 cursor-ew-resize"
+                  icon="pi pi-arrows-h"
+                  severity="secondary"
+                  size="small"
+                  rounded
+                  pt:icon:class="pointer-events-none"
+                  @click.stop
+                />
+              </template>
+            </Draggable>
+            <Draggable @drag="onHandleDrag($event, measure, 'bottom')">
+              <template #default="{ passRef }">
+                <Button
+                  :ref="(c: any) => passRef(c?.$el)"
+                  class="absolute top-full left-1/2 -translate-1/2 scale-50 cursor-ns-resize"
+                  icon="pi pi-arrows-v"
+                  severity="secondary"
+                  size="small"
+                  rounded
+                  pt:icon:class="pointer-events-none"
+                  @click.stop
+                />
+              </template>
+            </Draggable>
+            <Draggable @drag="onHandleDrag($event, measure, 'left')">
+              <template #default="{ passRef }">
+                <Button
+                  :ref="(c: any) => passRef(c?.$el)"
+                  class="absolute top-1/2 left-0 -translate-1/2 scale-50 cursor-ew-resize"
+                  icon="pi pi-arrows-h"
+                  severity="secondary"
+                  size="small"
+                  rounded
+                  pt:icon:class="pointer-events-none"
+                  @click.stop
+                />
+              </template>
+            </Draggable>
+          </template>
+        </div>
+
+        <!-- Draw capture overlay (add mode only) -->
+        <div
+          v-if="currentTool === 'add'"
+          class="absolute inset-0"
+          @pointerdown="onDrawStart($event, page.pageNumber)"
+          @pointermove="onDrawMove"
+          @pointerup="onDrawEnd"
+          @pointercancel="onDrawEnd"
+        >
+          <div
+            v-if="drawRect?.page === page.pageNumber"
+            class="pointer-events-none absolute border border-primary bg-primary/20"
+            :style="{
+              left: `${Math.min(drawRect.x, drawRect.x + drawRect.width) * 100}%`,
+              top: `${Math.min(drawRect.y, drawRect.y + drawRect.height) * 100}%`,
+              width: `${Math.abs(drawRect.width) * 100}%`,
+              height: `${Math.abs(drawRect.height) * 100}%`,
+            }"
+          />
+        </div>
+      </div>
+
+      <!-- Bottom edit bar -->
+      <div
+        v-if="access.editor && editMode"
+        class="absolute right-2 bottom-2 flex gap-2"
+      >
+        <Button
+          icon="pi pi-plus"
+          label="Layout"
+          :severity="currentTool === 'add' ? 'primary' : 'secondary'"
+          rounded
+          @click="currentTool = currentTool === 'add' ? 'edit' : 'add'"
+        />
+        <Button
+          icon="pi pi-save"
+          label="Save"
+          severity="primary"
+          rounded
+          @click="song?.update()"
+        />
+      </div>
+    </template>
+  </PdfViewer>
 </template>

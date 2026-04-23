@@ -56,6 +56,11 @@ export const usePlayerStore = defineStore("player", () => {
     getter: player => markRaw(player.midi_events),
   });
 
+  const mode = useEvent(globalPlayer, "statusChanged", {
+    initial: globalPlayer.mode,
+    getter: player => player.mode,
+  });
+
   const ppqn = useEvent(globalPlayer, "statusChanged", {
     initial: globalPlayer.ppqn,
     getter: player => player.ppqn,
@@ -148,6 +153,7 @@ export const usePlayerStore = defineStore("player", () => {
     currentMeasure,
     finalMeasure,
     events,
+    mode,
     ppqn,
     playbackSpeed,
     playbackTransposition,

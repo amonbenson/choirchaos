@@ -36,6 +36,8 @@ const NOTE_VALUE_SVG_MAP: Record<NoteValue, object> = {
 const props = defineProps<{
   songs?: Song[];
   loading?: boolean;
+  editMode?: boolean;
+  canEdit?: boolean;
 }>();
 
 const emit = defineEmits([
@@ -44,6 +46,7 @@ const emit = defineEmits([
   "playPause",
   "toggleVamp",
   "toggleSegue",
+  "toggleEditMode",
 ]);
 
 const songId = defineModel<string>();
@@ -119,6 +122,15 @@ const playbackSpeedPercentage = computed({
           text
           @click="emit('forward')"
         />
+        <Button
+          v-if="canEdit"
+          icon="pi pi-pencil"
+          :severity="editMode ? 'primary' : 'secondary'"
+          aria-label="Toggle Edit Mode"
+          rounded
+          text
+          @click="emit('toggleEditMode')"
+        />
       </template>
 
       <template #end>
@@ -145,7 +157,8 @@ const playbackSpeedPercentage = computed({
             .
             <PopoverButton
               button-class="w-8 whitespace-nowrap"
-              :label="player.ready ? String(player.currentMeasure[1] + 1) : '-'"
+              :label="player.ready && player.mode === 'midi' ? String(player.currentMeasure[1] + 1) : '-'"
+              :disabled="player.mode !== 'midi'"
             >
               <template #default="{ setFocusTarget }">
                 <InputNumber
@@ -208,11 +221,17 @@ const playbackSpeedPercentage = computed({
             :active="Math.round(playbackSpeedPercentage) !== 100"
           >
             <template #button>
-              <component
-                :is="NOTE_VALUE_SVG_MAP[tempoNoteValue]"
-                class="mx-[-15%] inline size-6 fill-current"
-              />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * writtenTempo) : "-" }}
+              <template v-if="player.mode === 'midi'">
+                <component
+                  :is="NOTE_VALUE_SVG_MAP[tempoNoteValue]"
+                  class="mx-[-15%] inline size-6 fill-current"
+                />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * writtenTempo) : "-" }}
+              </template>
+              <template v-else>
+                Tempo
+              </template>
             </template>
+
             <template #default="{ setFocusTarget }">
               <div class="flex items-center justify-stretch gap-4">
                 <Button
@@ -253,7 +272,12 @@ const playbackSpeedPercentage = computed({
             class="cursor-default"
             severity="secondary"
           >
-            {{ player.currentTimeSignature[0] }}&nbsp;/&nbsp;{{ Math.pow(2, player.currentTimeSignature[1]) }}
+            <template v-if="player.mode === 'midi'">
+              {{ player.currentTimeSignature[0] }}&nbsp;/&nbsp;{{ Math.pow(2, player.currentTimeSignature[1]) }}
+            </template>
+            <template v-else>
+              &ndash;&nbsp;/&nbsp;&ndash;
+            </template>
           </Button>
 
           <!-- Vamp -->

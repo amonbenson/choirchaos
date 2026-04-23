@@ -221,12 +221,31 @@ export class BinarySortedList<T> {
     return this._items.slice(a, b);
   }
 
+  remove(item: T): boolean {
+    const index = this.searchIndex(item);
+    if (index === -1) {
+      return false;
+    }
+
+    this._items.splice(index, 1);
+    return true;
+  }
+
+  removeAt(index: number): void {
+    this._items.splice(index, 1);
+  }
+
   sort(): void {
     this._items.sort(this._options.comparator);
   }
 
   items(): T[] {
     return this._items;
+  }
+
+  setItems(items: T[]): void {
+    this._items = Array.isArray(items) ? items : [];
+    this.sort();
   }
 
   first(): T | undefined {

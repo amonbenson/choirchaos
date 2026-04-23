@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
-import { computed, type ComputedRef, markRaw, onMounted, type Ref, ref, watch, watchEffect } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import KbdShortcut from "@/components/KbdShortcut.vue";
@@ -10,9 +10,12 @@ import MixerPanel from "@/components/MixerPanel.vue";
 import SongPdfViewer from "@/components/SongPdfViewer.vue";
 import TransportBar from "@/components/TransportBar.vue";
 import VampCard from "@/components/VampCard.vue";
+import WarpPanel from "@/components/WarpPanel.vue";
 import { useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
 import Show from "@/core/models/show";
 import type Song from "@/core/models/song";
+import { getAccessFlags } from "@/pocketbase/auth";
+import { consumePendingShow } from "@/router/router";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -27,16 +30,16 @@ const props = defineProps<{
 }>();
 
 // store show and current song data from pocketbase
-const show: Ref<Show | undefined> = ref();
+const show = ref<Show | undefined>();
 const showLoading = ref(true);
 
-const song: ComputedRef<Song | undefined> = computed(() => show.value?.songs.find(s => s.id === props.songId));
+const song = ref<Song | undefined>();
 const songLoading = ref(true);
+const editMode = ref(false);
+const canEdit = computed(() => !!song.value && getAccessFlags(song.value.permissions).editor);
 
 const songs = computed(() => show.value?.songs ?? []);
 const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
-
-const autoplayNextSong = ref(false);
 
 const vampCardType = computed(() => {
   if (player.playing) {
@@ -132,9 +135,38 @@ function toggleSegue(): void {
   player.toggleSegue();
 }
 
-function selectSong(songId?: string, autoplay: boolean = false): void {
-  autoplayNextSong.value = autoplay;
+player.onSegue(() => {
+  // Select the next song
+  const nextSong = show.value?.songs[songIndex.value + 1];
+  if (!nextSong) {
+    return;
+  }
 
+  selectSong(nextSong.id, true);
+});
+
+// SETTINGS
+
+onMounted(() => {
+  // Apply initial playback modifiers from settings store
+  player.playbackSpeed = settings.current.playback.speed;
+  player.playbackTransposition = settings.current.playback.transposition;
+  player.setSegueEnabled(settings.current.playback.segueEnabled);
+});
+
+watch(() => player.playbackSpeed, value => settings.updatePlayback({ speed: value }));
+watch(() => player.playbackTransposition, value => settings.updatePlayback({ transposition: value }));
+
+// Apply the global segue setting whenever the current song changes or the setting is toggled.
+watch(() => [song.value, settings.current.playback.segueEnabled], () => {
+  if (player.currentSegue !== undefined) {
+    player.setSegueEnabled(settings.current.playback.segueEnabled);
+  }
+});
+
+// DATA LOADING PROCEDURE
+
+function selectSong(songId?: string, autoplay: boolean = false): void {
   // route to the correct song
   if (songId && songId !== props.songId) {
     router.replace({
@@ -143,130 +175,81 @@ function selectSong(songId?: string, autoplay: boolean = false): void {
         showId: props.showId,
         songId,
       },
+      query: {
+        ...(autoplay ? { autoplay: "1" } : {}),
+      },
     });
   }
 }
 
-// reload when the show id changes
-watch([show, song], async () => {
-  if (show.value && song.value) {
-    try {
-      songLoading.value = true;
-      await player.load(song.value!);
-
-      // Start playing immediately
-      if (autoplayNextSong.value) {
-        autoplayNextSong.value = false;
-        player.play();
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      songLoading.value = false;
-    }
-  }
-});
-
-// handle segue
-player.onSegue(() => {
-  // Check the current song
-  const currentIndex = show.value?.songs.findIndex(s => s.id === song.value?.id) ?? -1;
-  if (currentIndex === -1) {
-    return;
-  }
-
-  // Select the next song
-  const nextSong = show.value?.songs[currentIndex + 1];
-  if (nextSong) {
-    selectSong(nextSong.id, true);
-  }
-});
-
-// fetch the show data from pocketbase on setup
-async function fetchShow(): Promise<void> {
+// Reload whenever song id changes (and initially)
+watch(() => props.songId, async (songId) => {
   try {
     showLoading.value = true;
-    const showObj = await Show.get(route.params.showId as string);
+    songLoading.value = true;
 
-    // mark expensive/large reference properties as raw so vue doesn't try to make them reactive.
-    // They cannot be changed anyway unless the whole show object is replaced
-    for (const song of showObj.songs) {
-      song.$midiSystemEvents = markRaw(song.$midiSystemEvents);
-
-      for (const track of song.tracks) {
-        track.$midiTrackEvents = markRaw(track.$midiTrackEvents);
-      }
-
-      for (const measure of song.measures.items()) {
-        measure.$beatTicks = markRaw(measure.$beatTicks);
-      }
+    // If no song id was selected, clear the current song
+    if (songId === undefined) {
+      song.value = undefined;
+      return;
     }
 
-    // // inject missing marker information
-    // const res = await axios.get("/test/mti/license_activate.json");
-    // for (const song of showObj.songs) {
-    //   const mtiSong = res.data.show.songs.find((s: any) => s.title === song.title);
-    //   for (const marker of song.events.markers.items()) {
-    //     const mtiMarker = mtiSong.changes.markers.find((m: any) => m.location.measure === marker.start[0] && m.location.beat === marker.start[1]+1);
-    //     if (!mtiMarker) {
-    //       console.error("missing mti marker!");
-    //       continue;
-    //     }
+    // Load show if not already done so
+    if (!show.value) {
+      const pending = consumePendingShow();
+      show.value = pending ?? await Show.get(props.showId);
+    }
 
-    //     marker.marker = mtiMarker.text;
-    //   }
+    showLoading.value = false;
 
-    //   // await song.update();
-    //   // console.log("update!", song.title);
-    // }
+    // Select the song
+    song.value = show.value.songs.find(s => s.id === songId);
+    if (!song.value) {
+      console.error(`Internal error: ShowView was created with an invalid song id: ${songId}`);
+      return;
+    }
 
-    // set the show
-    show.value = showObj;
+    // Load the selected song
+    await player.load(song.value);
 
-    const songObj = showObj.songs.find(s => s.id === props.songId) ?? null;
-    if (!songObj) {
-      // if no valid song is selected, route to the first song
-      selectSong(showObj.songs[0]?.id);
+    // Start playing immediately if autoplay was enabled
+    if (route.query.autoplay) {
+      // Consume the flag
+      const { autoplay: _, ...query } = route.query;
+      router.replace({ ...route, query });
+
+      player.play();
     }
   } catch (err) {
     console.error(err);
   } finally {
     showLoading.value = false;
+    songLoading.value = false;
   }
-}
-
-onMounted(() => {
-  // Apply playback modifiers from settings store
-  player.playbackSpeed = settings.current.playback.speed;
-  player.playbackTransposition = settings.current.playback.transposition;
-});
-
-watch(() => player.playbackSpeed, value => settings.updatePlayback({ speed: value }));
-watch(() => player.playbackTransposition, value => settings.updatePlayback({ transposition: value }));
-
-// Apply the global segue setting whenever the current song changes or the setting is toggled.
-watchEffect(() => {
-  if (player.currentSegue !== undefined) {
-    player.setSegueEnabled(settings.current.playback.segueEnabled);
-  }
-});
-
-fetchShow();
+}, { immediate: true });
 </script>
 
 <template>
-  <div class="grid size-full grid-cols-1 grid-rows-[auto_auto_1fr] gap-2 overflow-hidden p-2 lg:grid-cols-[auto_1fr_auto] lg:grid-rows-[auto_1fr]">
+  <div
+    class="grid size-full grid-cols-1 gap-2 overflow-hidden p-2 lg:grid-cols-[auto_1fr_auto]"
+    :class="editMode
+      ? 'grid-rows-[auto_auto_1fr_auto] lg:grid-rows-[auto_1fr_auto]'
+      : 'grid-rows-[auto_auto_1fr] lg:grid-rows-[auto_1fr]'"
+  >
     <TransportBar
       class="lg:col-span-3"
       :model-value="songId"
       :songs="show?.songs"
       :loading="showLoading || songLoading"
+      :edit-mode="editMode"
+      :can-edit="canEdit"
       @update:model-value="selectSong($event)"
       @play-pause="playPause"
       @rewind="rewind"
       @forward="forward"
       @toggle-vamp="toggleVamp"
       @toggle-segue="toggleSegue"
+      @toggle-edit-mode="editMode = !editMode"
     />
     <ButtonGroup class="w-full lg:hidden">
       <Button
@@ -301,6 +284,7 @@ fetchShow();
             settings.current.workspace.panelVisible.markers ? 'lg:opacity-100' : 'lg:opacity-0',
           ]"
           :song="song"
+          :edit-mode="editMode"
         />
         <Button
           class="absolute top-2 left-full z-10 hidden transition-all lg:block"
@@ -322,6 +306,7 @@ fetchShow();
           <SongPdfViewer
             class="size-full"
             :song="song"
+            :edit-mode="editMode"
           />
         </div>
         <div class="absolute bottom-4 left-1/2 w-[calc(100%-2rem)] -translate-x-1/2 md:w-72 lg:bottom-16">
@@ -370,5 +355,12 @@ fetchShow();
         />
       </div>
     </div>
+
+    <!-- Warp Panel (audio mode) -->
+    <WarpPanel
+      v-if="editMode"
+      class="lg:col-span-3"
+      :song="song"
+    />
   </div>
 </template>

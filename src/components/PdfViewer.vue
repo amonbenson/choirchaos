@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import p5 from "p5";
-import { onBeforeUnmount, onMounted, type Ref, ref, type ShallowRef, shallowRef, toRef } from "vue";
+import { onBeforeUnmount, onMounted, ref, shallowRef, toRef } from "vue";
 
 import { usePanZoom } from "@/composables/usePanZoom";
 import { usePdfPages } from "@/composables/usePdfPages";
@@ -10,7 +10,6 @@ type P5Sketch = p5 & { canvas?: HTMLCanvasElement };
 
 const props = defineProps<{
   url: string | undefined;
-  cursor?: string | undefined;
 }>();
 
 const emit = defineEmits([
@@ -19,25 +18,27 @@ const emit = defineEmits([
   "mousePressed",
   "mouseReleased",
   "mouseMoved",
-  "tap",
 ]);
 
-const container: Ref<HTMLDivElement | undefined> = ref();
+const wrapper = ref<HTMLDivElement | undefined>();
+const container = ref<HTMLDivElement | undefined>();
 
-const p5Instance: ShallowRef<p5 | undefined> = shallowRef();
-const sketch: ShallowRef<P5Sketch | undefined> = shallowRef();
+const p5Instance = shallowRef<p5 | undefined>();
+const sketch = shallowRef<P5Sketch | undefined>();
 
-const overlayInstance: ShallowRef<p5 | undefined> = shallowRef();
-const overlaySketch: ShallowRef<P5Sketch | undefined> = shallowRef();
+const overlayInstance = shallowRef<p5 | undefined>();
+const overlaySketch = shallowRef<P5Sketch | undefined>();
 
-const transform: PageTransform = new PageTransform({ x: 100, y: 100 }, 750);
+const transform = shallowRef(new PageTransform({ x: 100, y: 100 }, 750));
+const visiblePages = shallowRef<{ x: number; y: number; width: number; height: number; pageNumber: number }[]>([]);
 
 const { pages } = usePdfPages(toRef(props, "url"), { onUpdate: redrawAll });
 
-usePanZoom(container, transform, {
-  cursor: toRef(props, "cursor"),
+const isGrabbing = ref(false);
+
+usePanZoom(wrapper, transform.value, {
   onRedraw: redrawAll,
-  onTap: (x, y) => emit("tap", { x, y, transform }),
+  panZone: container,
 });
 
 function setup(): void {
@@ -51,10 +52,10 @@ function draw(): void {
   const s = sketch.value!;
   s.clear();
 
-  const pageRange = transform.getVisiblePageRange(s.width, pages.value.length);
+  const pageRange = transform.value.getVisiblePageRange(s.width, pages.value.length);
 
   for (let p = pageRange[0]; p < pageRange[1]; p++) {
-    transform.pushPageTransform(s, p);
+    transform.value.pushPageTransform(s, p);
 
     const page = pages.value[p];
     if (!page) {
@@ -99,15 +100,30 @@ function setupOverlay(): void {
   emit("setup", { s });
 }
 
+function rangeArray([start, end]: [number, number]): number[] {
+  return Array.from({ length: end - start }, (_, i) => i + start);
+}
+
 function drawOverlay(): void {
   const s = overlaySketch.value!;
   s.clear();
 
-  const pageRange = transform.getVisiblePageRange(s.width, pages.value.length);
+  const pageRange = transform.value.getVisiblePageRange(s.width, pages.value.length);
+  visiblePages.value = rangeArray(pageRange).map((p) => {
+    const { x, y } = transform.value.pageToScreen({ x: 0, y: 0, p });
+    const { x: width, y: height } = transform.value.pageToScreen({ x: 1, y: 1, p }, true);
+    return {
+      pageNumber: p,
+      x: x / s.width,
+      y: y / s.height,
+      width: width / s.width,
+      height: height / s.height,
+    };
+  });
 
   for (let p = pageRange[0]; p < pageRange[1]; p++) {
-    transform.pushPageTransform(s, p);
-    emit("drawPageOverlay", { s, p, transform });
+    transform.value.pushPageTransform(s, p);
+    emit("drawPageOverlay", { s, p, transform: transform.value });
     s.pop();
   }
 }
@@ -126,8 +142,8 @@ function handleResize(): void {
   overlaySketch.value.resizeCanvas(w, h);
 
   if (pw > 100 && ph > 100 && w > 100 && h > 100) {
-    transform.pan.x += (w - pw) / 2;
-    transform.pan.y += (h - ph) / 2;
+    transform.value.pan.x += (w - pw) / 2;
+    transform.value.pan.y += (h - ph) / 2;
   }
 }
 
@@ -149,7 +165,7 @@ function onPointerDownForEmit(e: PointerEvent): void {
     return;
   }
 
-  emit("mousePressed", { s: overlaySketch.value, transform });
+  emit("mousePressed", { s: overlaySketch.value, transform: transform.value });
 }
 
 function onPointerUpForEmit(e: PointerEvent): void {
@@ -157,7 +173,7 @@ function onPointerUpForEmit(e: PointerEvent): void {
     return;
   }
 
-  emit("mouseReleased", { s: overlaySketch.value, transform });
+  emit("mouseReleased", { s: overlaySketch.value, transform: transform.value });
 }
 
 function onPointerMoveForEmit(e: PointerEvent): void {
@@ -166,7 +182,7 @@ function onPointerMoveForEmit(e: PointerEvent): void {
   }
 
   const pos = containerPos(e.clientX, e.clientY);
-  emit("mouseMoved", { s: overlaySketch.value, transform, x: pos.x, y: pos.y });
+  emit("mouseMoved", { s: overlaySketch.value, transform: transform.value, x: pos.x, y: pos.y });
 }
 
 onMounted(() => {
@@ -208,7 +224,7 @@ function isLocationVisible(pc: PageCoordinate): boolean {
     return false;
   }
 
-  return transform.contains(pc, overlaySketch.value.width, overlaySketch.value.height);
+  return transform.value.contains(pc, overlaySketch.value.width, overlaySketch.value.height);
 }
 
 export type MoveToLocationOptions = Partial<{
@@ -227,14 +243,14 @@ function moveToLocation(target: PageCoordinate, options: MoveToLocationOptions =
   const offsetY = options.offsetY ?? 0.5;
   const axis = options.axis ?? "both";
 
-  const vc = transform.pageToViewport(target);
+  const vc = transform.value.pageToViewport(target);
 
   if (["both", "horizontal"].includes(axis)) {
-    transform.pan.x = -vc.x * transform.zoom + s.width * offsetX;
+    transform.value.pan.x = -vc.x * transform.value.zoom + s.width * offsetX;
   }
 
   if (["both", "vertical"].includes(axis)) {
-    transform.pan.y = -vc.y * transform.zoom + s.height * offsetY;
+    transform.value.pan.y = -vc.y * transform.value.zoom + s.height * offsetY;
   }
 }
 
@@ -248,7 +264,7 @@ function zoomToPage(page: number): void {
   const padding = 0.95;
   const zoomByWidth = s.width / Math.SQRT1_2 * padding;
   const zoomByHeight = s.height * padding;
-  transform.zoom = Math.min(zoomByWidth, zoomByHeight);
+  transform.value.zoom = Math.min(zoomByWidth, zoomByHeight);
 
   // Move to the center of the page
   moveToLocation({ p: page, x: 0.5, y: 0.5 });
@@ -266,9 +282,24 @@ defineExpose({
 
 <template>
   <div
-    ref="container"
-    class="pdf-canvas-container relative overflow-hidden"
-  />
+    ref="wrapper"
+    class="relative size-full touch-none overflow-hidden"
+  >
+    <div
+      ref="container"
+      class="pdf-canvas-container ansolute size-full overflow-hidden"
+      :class="isGrabbing ? 'cursor-grabbing' : 'cursor-grab'"
+      @mousedown="isGrabbing = true"
+      @mouseup="isGrabbing = false"
+      @mouseleave="isGrabbing = false"
+      @focusout="isGrabbing = false"
+    />
+
+    <slot
+      class="absolute"
+      v-bind="{ transform, visiblePages }"
+    />
+  </div>
 </template>
 
 <style scoped>

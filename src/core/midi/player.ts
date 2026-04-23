@@ -9,8 +9,10 @@ import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
 import { type BinarySearchOptions } from "../utils/binarySearch";
 import { resolveUrl } from "../utils/file";
 import { SetIntervalUpdater, type Updater } from "../utils/updater";
+import AudioPlayer from "./audioPlayer";
 import { MeasureEvent, MidiEvent, MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "./events";
 import type { Tick, TimeSignature } from "./types";
+import WarpMap from "./warp";
 
 const STEP_DURATION = 1 / 50;
 const POSITION_UPDATE_DURATION = 1 / 50;
@@ -52,8 +54,11 @@ export type MidiPlayerEvents = {
   track: MidiTrackEvents[];
 };
 
+export type PlayerMode = "none" | "midi" | "audio";
+
 export default class MidiPlayer extends EventEmitter {
   private _status: MidiPlayerStatus = "idle";
+  private _mode: PlayerMode = "none";
   private _playing = false;
 
   private _ppqn = 480;
@@ -77,15 +82,20 @@ export default class MidiPlayer extends EventEmitter {
     track: [],
   };
 
+  private _warpMap = new WarpMap();
+
   private _vamps: MidiPlayerVamp[] = [];
   private _currentVamp?: MidiPlayerVampState;
   private _currentSegue?: MidiPlayerSegueState;
 
   private _audioContext = new AudioContext();
-  private _player: any = undefined;
-  private _instruments: { [key: number]: any } = {};
   private _masterInput: AudioNode | undefined = undefined;
   private _chainOutput: GainNode | undefined;
+
+  private _player: any = undefined;
+  private _instruments: { [key: number]: any } = {};
+
+  private _audioPlayer: AudioPlayer | undefined;
 
   private _playbackSpeed: number = 1.0;
   private _playbackTransposition: number = 0;
@@ -96,6 +106,7 @@ export default class MidiPlayer extends EventEmitter {
   } = { seconds: 0, ticks: 0 };
 
   private _audioClockTickPosition: number = 0;
+  private _audioBuffers: AudioBuffer[] = [];
 
   private _updater: Updater = new SetIntervalUpdater(delta => this._handleStep(delta), {
     interval: STEP_DURATION,
@@ -201,12 +212,20 @@ export default class MidiPlayer extends EventEmitter {
     return this._midi_events;
   }
 
+  get mode(): PlayerMode {
+    return this._mode;
+  }
+
   get ppqn(): number {
     return this._ppqn;
   }
 
   get currentSong(): Song | undefined {
     return this._currentSong;
+  }
+
+  get audioBuffers(): AudioBuffer[] {
+    return this._audioBuffers;
   }
 
   get playbackSpeed(): number {
@@ -318,7 +337,39 @@ export default class MidiPlayer extends EventEmitter {
     }
   }
 
+  private _updateAudioMode(): void {
+    if (!this._audioPlayer) {
+      return;
+    }
+
+    // sync the current position to the audio player
+    this._updatePosition(this._audioPlayer.position * 1000);
+
+    // lookup current measure from the measure event list (same approach as seek)
+    const k = { tick: this._position };
+    const measureEvent = this._midi_events.system.measure.search(k as MeasureEvent, {
+      direction: "backward",
+      inclusive: true,
+      extend: true,
+    });
+    if (measureEvent) {
+      this._updateCurrentMeasure(measureEvent.measure);
+    }
+
+    // sync track gains (setGain is a no-op when value unchanged)
+    const tracks = this._currentSong?.tracks ?? [];
+    for (let i = 0; i < tracks.length; i++) {
+      this._audioPlayer.setGain(i, tracks[i]!.mixer.effectiveGain);
+    }
+  }
+
   private _handleStep(deltaTime: number): void {
+    // audio has its separate handler
+    if (this._mode === "audio") {
+      this._updateAudioMode();
+      return;
+    }
+
     // stop when the end is reached
     if (this._position >= this._duration) {
       this.pause();
@@ -478,11 +529,19 @@ export default class MidiPlayer extends EventEmitter {
     this._updatePlaying(true);
     this._resetAudioClockReference();
     this._updater.start();
+
+    if (this._audioPlayer) {
+      this._audioPlayer.play();
+    }
   }
 
   pause(): void {
     if (this._status !== "ready" || !this._playing) {
       return;
+    }
+
+    if (this._audioPlayer) {
+      this._audioPlayer.pause();
     }
 
     this._updater.stop();
@@ -507,6 +566,34 @@ export default class MidiPlayer extends EventEmitter {
 
   seek(position: Tick): void {
     if (this._status !== "ready") {
+      return;
+    }
+
+    // Special handling for audio mode
+    if (this._mode === "audio" && this._audioPlayer) {
+      const wasPlaying = this._playing;
+      this.pause();
+
+      this._audioPlayer.seek(position / 1000);
+      this._updatePosition(position);
+
+      const k = { tick: this._position };
+      const options: BinarySearchOptions<MidiEvent, MidiEvent> = {
+        direction: "backward",
+        inclusive: true,
+        extend: true,
+      };
+      const events = [
+        this._midi_events.system.measure.search(k as MeasureEvent, options)!,
+        this._midi_events.system.tempo.search(k as TempoEvent, options)!,
+        this._midi_events.system.timeSignature.search(k as TimeSignatureEvent, options)!,
+      ];
+      events.forEach(event => this._handleEvent(event));
+
+      if (wasPlaying) {
+        this.play();
+      }
+
       return;
     }
 
@@ -596,6 +683,136 @@ export default class MidiPlayer extends EventEmitter {
 
     this._updateStatus("loading");
 
+    // select mode
+    this._mode = song.playerMode;
+
+    // set the song, resume the audio context, and create the master chain
+    this._currentSong = song;
+    this.resumeAudioContext();
+    this._setupMasterChain();
+
+    switch (this._mode) {
+      case "midi":
+        await this.loadMidi(song);
+        break;
+      case "audio":
+        await this.loadAudio(song);
+        break;
+      default:
+        break;
+    }
+
+    // handle song measure events
+    this._vamps = [];
+    this._updateCurrentVamp(undefined);
+    this._updateCurrentSegue(undefined);
+
+    for (const markerEvent of song.events.markers.items()) {
+      markerEvent.$startTick = song.findMeasure(markerEvent.start[0])?.$beatTicks[0];
+      markerEvent.$endTick = song.findMeasure(markerEvent.end[0])?.$beatTicks[0];
+    }
+
+    for (const vampEvent of song.events.vamps.items()) {
+      vampEvent.$startTick = song.findMeasure(vampEvent.start[0])?.$beatTicks[0];
+      vampEvent.$endTick = song.findMeasure(vampEvent.end[0])?.$beatTicks[0];
+
+      // store vamp definition
+      if (vampEvent.$startTick !== undefined && vampEvent.$endTick !== undefined) {
+        this._vamps.push({
+          start: vampEvent.$startTick,
+          end: vampEvent.$endTick,
+          iterations: vampEvent.iterations,
+        });
+      } else {
+        console.error("Could not resolve location of Vamp:", vampEvent);
+      }
+    }
+
+    // store segue info
+    this._updateCurrentSegue(song.events.segue ? { enabled: true } : undefined);
+
+    // update status and seek to position 0. This will also intialize the current measure and tick duration
+    this._updateStatus("ready");
+    this.seek(0);
+  }
+
+  private _resetMidiEvents(): void {
+    this._midi_events = {
+      system: {
+        measure: new MidiEventList(),
+        tempo: new MidiEventList(),
+        timeSignature: new MidiEventList(),
+      },
+      track: [],
+    };
+  }
+
+  async loadAudio(song: Song): Promise<void> {
+    if (song.audioFiles.length === 0) {
+      throw new Error(`No audio files in song '${song.title}'`);
+    }
+
+    // Create the warp map
+    this._warpMap.setMarkers(song.warpMarkers ?? []);
+
+    // Load all audio files in parallel
+    const audioBuffers = await Promise.all(
+      song.audioFiles.map(async (file) => {
+        const res = await axios.get(resolveUrl(file, "songs", song.id), {
+          validateStatus: status => status === 200,
+          responseType: "arraybuffer",
+        });
+        return this._audioContext.decodeAudioData(res.data);
+      }),
+    );
+
+    // Order audio buffers by tracks
+    this._audioBuffers = song.tracks.map((track) => {
+      const bufferIndex = song.audioFiles.findIndex(file => file === track.audioFile);
+      const buffer = audioBuffers[bufferIndex];
+
+      if (!buffer) {
+        throw new Error(`Audio file '${track.audioFile}' for track '${track.title}' not found in song '${song.title}'`);
+      }
+
+      return buffer;
+    });
+
+    this._resetMidiEvents();
+
+    // Populate $beatTicks for each measure (1 tick = 1 ms) and build measure events
+    const measures = song.measures.items();
+    for (let i = 0; i < measures.length; i++) {
+      const measure = measures[i]!;
+      const startMs = this._warpMap.measureToTime(i) * 1000;
+      const endMs = this._warpMap.measureToTime(i + 1) * 1000;
+      const beatDurationMs = (endMs - startMs) / measure.beats;
+
+      measure.$beatTicks = Array.from({ length: measure.beats }, (_, b) => startMs + b * beatDurationMs);
+      measure.$tickLength = endMs - startMs;
+
+      this._midi_events.system.measure.insert(new MeasureEvent(startMs, measure.reference(0)));
+    }
+
+    // Single default tempo event: 125 BPM → 125/60 × 480 ppqn = 1000 ticks/s = 1 tick/ms
+    this._midi_events.system.tempo.insert(new TempoEvent(0, 125));
+    // Single default time signature event
+    this._midi_events.system.timeSignature.insert(new TimeSignatureEvent(0, [4, 2]));
+
+    // Duration from shortest audio buffer (in ms)
+    const audioDuration = Math.min(...this._audioBuffers.map(b => b.duration)) * 1000;
+    this._updateDuration(audioDuration);
+
+    // Final measure: last measure whose start tick falls within the audio duration
+    const finalMeasure = [...measures].reverse().find(m => (m.$beatTicks[0] ?? Infinity) <= audioDuration) ?? measures[0]!;
+    this._updateFinalMeasure(finalMeasure.reference(0));
+
+    // Create the audio player
+    this._audioPlayer = new AudioPlayer(this._audioContext, this._audioBuffers);
+    this._audioPlayer.connect(this._masterInput!);
+  }
+
+  async loadMidi(song: Song): Promise<void> {
     // download the midi and metadata files
     if (!song.midiFile) {
       throw new Error(`Midi file missing from song '${song.title}'`);
@@ -616,14 +833,7 @@ export default class MidiPlayer extends EventEmitter {
       }),
     ]);
 
-    this._midi_events = {
-      system: {
-        measure: new MidiEventList(),
-        tempo: new MidiEventList(),
-        timeSignature: new MidiEventList(),
-      },
-      track: [],
-    };
+    this._resetMidiEvents();
 
     // TODO: calling BinarySortedList.insert is very inefficient here.
     // Generate a normal array and pass it to the constructor to sort it in one go instead.
@@ -746,37 +956,7 @@ export default class MidiPlayer extends EventEmitter {
       Object.assign(track.$midiTrackEvents, this._midi_events.track[t]);
     }
 
-    // handle song measure events
-    this._vamps = [];
-    this._updateCurrentVamp(undefined);
-    this._updateCurrentSegue(undefined);
-
-    for (const markerEvent of song.events.markers.items()) {
-      markerEvent.$startTick = song.findMeasure(markerEvent.start[0])?.$beatTicks[0];
-      markerEvent.$endTick = song.findMeasure(markerEvent.end[0])?.$beatTicks[0];
-    }
-
-    for (const vampEvent of song.events.vamps.items()) {
-      vampEvent.$startTick = song.findMeasure(vampEvent.start[0])?.$beatTicks[0];
-      vampEvent.$endTick = song.findMeasure(vampEvent.end[0])?.$beatTicks[0];
-
-      // store vamp definition
-      if (vampEvent.$startTick !== undefined && vampEvent.$endTick !== undefined) {
-        this._vamps.push({
-          start: vampEvent.$startTick,
-          end: vampEvent.$endTick,
-          iterations: vampEvent.iterations,
-        });
-      } else {
-        console.error("Could not resolve location of Vamp:", vampEvent);
-      }
-    }
-
-    // store segue info
-    this._updateCurrentSegue(song.events.segue ? { enabled: true } : undefined);
-
     // store additional song-specific settings
-    this._currentSong = song;
     this._ppqn = midiJson.score.ppqn;
 
     // find the last measure to compute the duration
@@ -800,12 +980,8 @@ export default class MidiPlayer extends EventEmitter {
       this._updateFinalMeasure(finalMeasureEvent?.measure ?? ["1", 0]);
     }
 
-    // resume the audio context and create a player
-    this.resumeAudioContext();
+    // create a player
     this._player = new window.WebAudioFontPlayer();
-
-    // setup effects chain
-    this._setupMasterChain();
 
     // load soundfonts
     // TODO: point the url to our own server
@@ -818,10 +994,6 @@ export default class MidiPlayer extends EventEmitter {
 
     // wait until all soundfonts have loaded
     await new Promise(resolve => this._player.loader.waitLoad(resolve));
-
-    // update status and seek to position 0. This will also intialize the current measure and tick duration
-    this._updateStatus("ready");
-    this.seek(0);
   }
 
   unload(): void {
@@ -832,6 +1004,9 @@ export default class MidiPlayer extends EventEmitter {
     this.pause();
 
     this._player = undefined;
+    this._audioPlayer = undefined;
+    this._mode = "none";
+
     this._updatePosition(0);
     this._updateDuration(0);
     this._updateStatus("idle");
