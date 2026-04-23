@@ -6,7 +6,6 @@ import Select from "primevue/select";
 import Slider from "primevue/slider";
 import Toolbar from "primevue/toolbar";
 import { computed, type ComputedRef, ref } from "vue";
-import { t } from "vue-router/dist/index-DFCq6eJK.js";
 
 import Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";

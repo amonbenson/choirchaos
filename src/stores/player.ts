@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { markRaw, onScopeDispose, watch } from "vue";
+import { markRaw, onScopeDispose } from "vue";
 
 import { useEvent } from "@/composables/event";
 import type { NoteEvent } from "@/core/midi/events";
