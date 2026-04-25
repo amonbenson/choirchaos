@@ -9,7 +9,7 @@ const ANALYSER_RELEASE = 0.97; // decay factor per tick at 50 Hz → ~1 s half-l
 
 export default class AudioPlayer {
   private _sources: AudioBufferSourceNode[] = [];
-  private _soundtouchNodes: SoundTouchNode[];
+  private _soundtouchNode: SoundTouchNode;
   private _gainNodes: GainNode[];
   private _analysers: AnalyserNode[];
   private _analyserBuffers: Float32Array<ArrayBuffer>[];
@@ -33,7 +33,7 @@ export default class AudioPlayer {
     private _buffers: AudioBuffer[],
     onAmplitudes: (amplitudes: number[]) => void,
   ) {
-    this._soundtouchNodes = _buffers.map(() => new SoundTouchNode(_context));
+    this._soundtouchNode = new SoundTouchNode(_context);
     this._gainNodes = _buffers.map(() => _context.createGain());
     this._gainValues = _buffers.map(() => 1);
     this._smoothedAmplitudes = _buffers.map(() => 0);
@@ -46,17 +46,10 @@ export default class AudioPlayer {
     });
     this._analyserBuffers = this._analysers.map(a => new Float32Array(a.fftSize) as Float32Array<ArrayBuffer>);
 
+    // GainNode[i] → AnalyserNode[i] → SoundTouchNode (shared) → destination (via connect())
     _buffers.forEach((_, i) => {
-      const c = _context.createDynamicsCompressor();
-      c.threshold.value = -12;
-      c.knee.value = 1.7;
-      c.ratio.value = 2.0;
-      c.attack.value = 0.01;
-      c.release.value = 0.2;
-      // SoundTouchNode → DynamicsCompressor → GainNode → AnalyserNode
-      this._soundtouchNodes[i]!.connect(c);
-      c.connect(this._gainNodes[i]!);
       this._gainNodes[i]!.connect(this._analysers[i]!);
+      this._analysers[i]!.connect(this._soundtouchNode);
     });
 
     this._amplitudeInterval = setInterval(() => {
@@ -140,9 +133,7 @@ export default class AudioPlayer {
   // Combine user semitone shift with compensation for BufferSource.playbackRate pitch change.
   private _applyPitch(): void {
     const semitones = this._pitchValue - 12 * Math.log2(this._tempoValue);
-    for (const node of this._soundtouchNodes) {
-      node.pitchSemitones.value = semitones;
-    }
+    this._soundtouchNode.pitchSemitones.value = semitones;
   }
 
   play(): void {
@@ -155,7 +146,7 @@ export default class AudioPlayer {
       const src = this._context.createBufferSource();
       src.buffer = buffer;
       src.playbackRate.value = this._tempoValue;
-      src.connect(this._soundtouchNodes[i]!);
+      src.connect(this._gainNodes[i]!);
       src.start(0, this._refPosition);
       return src;
     });
@@ -187,6 +178,6 @@ export default class AudioPlayer {
   }
 
   connect(destination: AudioNode): void {
-    this._analysers.forEach(a => a.connect(destination));
+    this._soundtouchNode.connect(destination);
   }
 }
