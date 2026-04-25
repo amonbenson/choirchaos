@@ -352,6 +352,17 @@ export default class MidiPlayer extends EventEmitter {
     // sync the current position to the audio player
     this._updatePosition(this._audioPlayer.position * 1000);
 
+    // stop when the end is reached
+    if (this._position >= this._duration) {
+      this.pause();
+
+      if (this._currentSegue?.enabled) {
+        this.emit("segue");
+      }
+
+      return;
+    }
+
     // lookup current measure from the measure event list (same approach as seek)
     const k = { tick: this._position };
     const measureEvent = this._midi_events.system.measure.search(k as MeasureEvent, {
