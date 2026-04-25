@@ -365,9 +365,6 @@ export default class MidiPlayer extends EventEmitter {
     // sync global tempo and pitch
     this._audioPlayer.setTempo(this._playbackSpeed);
     this._audioPlayer.setPitch(this._playbackTransposition);
-
-    // emit per-track RMS amplitudes for VU meters
-    this.emit("trackAmplitudesChanged", this._audioPlayer.getAmplitudes());
   }
 
   private _handleStep(deltaTime: number): void {
@@ -816,7 +813,12 @@ export default class MidiPlayer extends EventEmitter {
 
     // Create the audio player (register worklet once per context)
     await AudioPlayer.register(this._audioContext);
-    this._audioPlayer = new AudioPlayer(this._audioContext, this._audioBuffers);
+    this._audioPlayer?.dispose();
+    this._audioPlayer = new AudioPlayer(
+      this._audioContext,
+      this._audioBuffers,
+      amplitudes => this.emit("trackAmplitudesChanged", amplitudes),
+    );
     this._audioPlayer.connect(this._masterInput!);
   }
 
@@ -1012,6 +1014,7 @@ export default class MidiPlayer extends EventEmitter {
     this.pause();
 
     this._player = undefined;
+    this._audioPlayer?.dispose();
     this._audioPlayer = undefined;
     this._mode = "none";
 

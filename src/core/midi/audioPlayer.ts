@@ -2,6 +2,7 @@ import { SoundTouchNode } from "@soundtouchjs/audio-worklet";
 import processorUrl from "@soundtouchjs/audio-worklet/processor?url";
 
 const ANALYSER_FFT_SIZE = 256;
+const ANALYSER_INTERVAL_MS = 1000 / 30;
 const ANALYSER_GAIN = Math.pow(10, 10 / 20); // analyzer output boost
 const ANALYSER_ATTACK = 0.9; // rise factor per tick at 50 Hz → fast but not instant
 const ANALYSER_RELEASE = 0.97; // decay factor per tick at 50 Hz → ~1 s half-life
@@ -15,6 +16,7 @@ export default class AudioPlayer {
 
   private _gainValues: number[];
   private _smoothedAmplitudes: number[];
+  private _amplitudeInterval: ReturnType<typeof setInterval> | null = null;
   private _tempoValue = 1;
   private _pitchValue = 0;
 
@@ -26,7 +28,11 @@ export default class AudioPlayer {
     await SoundTouchNode.register(context, processorUrl);
   }
 
-  constructor(private _context: AudioContext, private _buffers: AudioBuffer[]) {
+  constructor(
+    private _context: AudioContext,
+    private _buffers: AudioBuffer[],
+    onAmplitudes: (amplitudes: number[]) => void,
+  ) {
     this._soundtouchNodes = _buffers.map(() => new SoundTouchNode(_context));
     this._gainNodes = _buffers.map(() => _context.createGain());
     this._gainValues = _buffers.map(() => 1);
@@ -52,9 +58,20 @@ export default class AudioPlayer {
       c.connect(this._gainNodes[i]!);
       this._gainNodes[i]!.connect(this._analysers[i]!);
     });
+
+    this._amplitudeInterval = setInterval(() => {
+      onAmplitudes(this._computeAmplitudes());
+    }, ANALYSER_INTERVAL_MS);
   }
 
-  getAmplitudes(): number[] {
+  dispose(): void {
+    if (this._amplitudeInterval !== null) {
+      clearInterval(this._amplitudeInterval);
+      this._amplitudeInterval = null;
+    }
+  }
+
+  private _computeAmplitudes(): number[] {
     return this._analysers.map((analyser, i) => {
       analyser.getFloatTimeDomainData(this._analyserBuffers[i]!);
       const buf = this._analyserBuffers[i]!;
@@ -154,6 +171,7 @@ export default class AudioPlayer {
     this._sources.forEach(s => s.stop());
     this._sources = [];
     this._playing = false;
+    this._smoothedAmplitudes.fill(0);
   }
 
   seek(seconds: number): void {
