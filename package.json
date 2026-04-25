@@ -15,7 +15,8 @@
     "typecheck": "vue-tsc --build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "bundlemti": "vite-node ./scripts/bundlemti.ts"
+    "bundlemti": "vite-node ./scripts/bundlemti.ts",
+    "postinstall": "cp node_modules/rubberband-web/public/rubberband-processor.js public/"
   },
   "dependencies": {
     "@primeuix/themes": "^2.0.3",
