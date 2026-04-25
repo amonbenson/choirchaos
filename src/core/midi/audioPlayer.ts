@@ -7,9 +7,19 @@ const ANALYSER_GAIN = Math.pow(10, 10 / 20); // analyzer output boost
 const ANALYSER_ATTACK = 0.9; // rise factor per tick at 50 Hz → fast but not instant
 const ANALYSER_RELEASE = 0.97; // decay factor per tick at 50 Hz → ~1 s half-life
 
+export type TrackOptions = {
+  highPassFilter?: boolean;
+};
+
+export type AudioPlayerOptions = {
+  tracks: TrackOptions[];
+  onAmplitudes: (amplitudes: number[]) => void;
+};
+
 export default class AudioPlayer {
   private _sources: AudioBufferSourceNode[] = [];
   private _soundtouchNode: SoundTouchNode;
+  private _trackInputs: AudioNode[];
   private _gainNodes: GainNode[];
   private _analysers: AnalyserNode[];
   private _analyserBuffers: Float32Array<ArrayBuffer>[];
@@ -31,7 +41,7 @@ export default class AudioPlayer {
   constructor(
     private _context: AudioContext,
     private _buffers: AudioBuffer[],
-    onAmplitudes: (amplitudes: number[]) => void,
+    options: AudioPlayerOptions,
   ) {
     this._soundtouchNode = new SoundTouchNode(_context);
     this._gainNodes = _buffers.map(() => _context.createGain());
@@ -46,14 +56,29 @@ export default class AudioPlayer {
     });
     this._analyserBuffers = this._analysers.map(a => new Float32Array(a.fftSize) as Float32Array<ArrayBuffer>);
 
-    // GainNode[i] → AnalyserNode[i] → SoundTouchNode (shared) → destination (via connect())
+    // Per-track chain: [HighPassFilter →] GainNode → AnalyserNode → SoundTouchNode (shared)
+    // HighPassFilter is only inserted for tracks with highPassFilter: true.
+    this._trackInputs = _buffers.map((_, i) => {
+      const trackOpts = options.tracks[i];
+
+      if (trackOpts?.highPassFilter) {
+        const hpf = _context.createBiquadFilter();
+        hpf.type = "highpass";
+        hpf.frequency.value = 100;
+        hpf.connect(this._gainNodes[i]!);
+        return hpf;
+      }
+
+      return this._gainNodes[i]!;
+    });
+
     _buffers.forEach((_, i) => {
       this._gainNodes[i]!.connect(this._analysers[i]!);
       this._analysers[i]!.connect(this._soundtouchNode);
     });
 
     this._amplitudeInterval = setInterval(() => {
-      onAmplitudes(this._computeAmplitudes());
+      options.onAmplitudes(this._computeAmplitudes());
     }, ANALYSER_INTERVAL_MS);
   }
 
@@ -146,7 +171,7 @@ export default class AudioPlayer {
       const src = this._context.createBufferSource();
       src.buffer = buffer;
       src.playbackRate.value = this._tempoValue;
-      src.connect(this._gainNodes[i]!);
+      src.connect(this._trackInputs[i]!);
       src.start(0, this._refPosition);
       return src;
     });

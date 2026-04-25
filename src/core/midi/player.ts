@@ -478,7 +478,7 @@ export default class MidiPlayer extends EventEmitter {
     const compressor = ctx.createDynamicsCompressor();
     compressor.threshold.value = -12;
     compressor.knee.value = 12;
-    compressor.ratio.value = 3;
+    compressor.ratio.value = 2.5;
     compressor.attack.value = 0.005;
     compressor.release.value = 0.15;
 
@@ -817,7 +817,10 @@ export default class MidiPlayer extends EventEmitter {
     this._audioPlayer = new AudioPlayer(
       this._audioContext,
       this._audioBuffers,
-      amplitudes => this.emit("trackAmplitudesChanged", amplitudes),
+      {
+        tracks: song.tracks.map(t => ({ highPassFilter: t.classification === "Vocal" })),
+        onAmplitudes: amplitudes => this.emit("trackAmplitudesChanged", amplitudes),
+      },
     );
     this._audioPlayer.connect(this._masterInput!);
   }
