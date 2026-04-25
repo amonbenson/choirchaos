@@ -1,3 +1,4 @@
+import { copyFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 
 // import vueDevTools from "vite-plugin-vue-devtools";
@@ -13,6 +14,15 @@ const viteEnv = loadEnv(process.env.NODE_ENV as string, process.cwd());
 export default defineConfig({
   base: viteEnv.VITE_BASE_URL,
   plugins: [
+    {
+      name: "copy-rubberband-processor",
+      buildStart() {
+        copyFileSync(
+          "node_modules/rubberband-web/public/rubberband-processor.js",
+          "public/rubberband-processor.js",
+        );
+      },
+    },
     vue(),
     // vueDevTools(),
     tailwindcss(),
