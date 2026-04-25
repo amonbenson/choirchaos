@@ -861,16 +861,14 @@ export default class MidiPlayer extends EventEmitter {
     const finalMeasure = [...measures].reverse().find(m => (m.$beatTicks[0] ?? Infinity) <= audioDuration) ?? measures[0]!;
     this._updateFinalMeasure(finalMeasure.reference(0));
 
-    // Create the audio player (register worklet once per context)
-    await AudioPlayer.register(this._audioContext);
     this._audioPlayer?.dispose();
-    this._audioPlayer = new AudioPlayer(
+    this._audioPlayer = await AudioPlayer.create(
       this._audioContext,
       this._audioBuffers,
       {
         tracks: song.tracks.map(t => ({
-          highPassFilter: t.classification === "Vocal", // add +100 Hz filter to reduce muddiness of vocals
-          compressor: true, // add compression to all tracks to glue dynamic range together
+          highPassFilter: t.classification === "Vocal",
+          compressor: t.classification === "Vocal",
         })),
         onAmplitudes: amplitudes => this.emit("trackAmplitudesChanged", amplitudes),
       },
