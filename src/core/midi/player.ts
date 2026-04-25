@@ -868,7 +868,10 @@ export default class MidiPlayer extends EventEmitter {
       this._audioContext,
       this._audioBuffers,
       {
-        tracks: song.tracks.map(t => ({ highPassFilter: t.classification === "Vocal" })),
+        tracks: song.tracks.map(t => ({
+          highPassFilter: t.classification === "Vocal", // add +100 Hz filter to reduce muddiness of vocals
+          compressor: true, // add compression to all tracks to glue dynamic range together
+        })),
         onAmplitudes: amplitudes => this.emit("trackAmplitudesChanged", amplitudes),
       },
     );
