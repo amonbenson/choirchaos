@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { useElementSize, useEventListener } from "@vueuse/core";
+import Button from "primevue/button";
+import ButtonGroup from "primevue/buttongroup";
 import Panel from "primevue/panel";
 import { computed, ref, watch } from "vue";
 
@@ -123,7 +125,66 @@ const waveformPath = computed(() => {
 
 // ── Playhead ─────────────────────────────────────────────────────────────────
 
-const playheadX = computed(() => timeToX(player.position / 1000));
+const isDraggingPlayhead = ref(false);
+const draggingPlayheadTime = ref(0);
+let playheadDragStartClientX = 0;
+let playheadDragStartTime = 0;
+
+const playheadTime = computed(() =>
+  isDraggingPlayhead.value ? draggingPlayheadTime.value : player.position / 1000,
+);
+
+const playheadX = computed(() => timeToX(playheadTime.value));
+
+function startPlayheadDrag(e: PointerEvent): void {
+  isDraggingPlayhead.value = true;
+  draggingPlayheadTime.value = player.position / 1000;
+  playheadDragStartClientX = e.clientX;
+  playheadDragStartTime = player.position / 1000;
+}
+
+const playheadGap = computed(() =>
+  gaps.value.find(g => playheadTime.value >= g.leftTime && playheadTime.value <= g.rightTime) ?? null,
+);
+
+const canAddMarkerAtPlayhead = computed(() => {
+  const gap = playheadGap.value;
+  return gap !== null
+    && gap.count > 0
+    && playheadTime.value > 0
+    && playheadTime.value < totalDuration.value;
+});
+
+function addMarkerAtPlayhead(): void {
+  if (!props.song || !canAddMarkerAtPlayhead.value) {
+    return;
+  }
+
+  const gap = playheadGap.value!;
+  const time = playheadTime.value;
+  let newIdx: number;
+
+  if (gap.count === 1) {
+    newIdx = gap.leftMeasure + 1;
+  } else {
+    const available = measures.value.slice(gap.leftMeasure + 1, gap.rightMeasure);
+    const input = prompt(`Insert warp marker at measure:\nAvailable: ${available.map(m => m.value).join(", ")}`);
+    if (!input) {
+      return;
+    }
+
+    const found = available.findIndex(m => m.value === input.trim());
+    if (found === -1) {
+      return;
+    }
+
+    newIdx = gap.leftMeasure + 1 + found;
+  }
+
+  props.song!.warpMarkers = [...markers.value, { measure: newIdx, time }]
+    .sort((a, b) => a.measure - b.measure);
+  reloadWarp();
+}
 
 // ── Markers & gaps ───────────────────────────────────────────────────────────
 
@@ -160,54 +221,19 @@ const gaps = computed((): Gap[] => {
 
 // ── Marker interactions ──────────────────────────────────────────────────────
 
-async function reloadPlayer(): Promise<void> {
+function reloadWarp(): void {
   if (!props.song) {
     return;
   }
 
   const pos = player.position;
-  await player.load(props.song);
+  player.syncWarp(props.song);
   player.seek(pos);
-}
-
-function addMarkerInGap(gap: Gap): void {
-  if (gap.count <= 0) {
-    return;
-  }
-
-  let newIdx: number;
-
-  if (gap.count === 1) {
-    newIdx = gap.leftMeasure + 1;
-  } else {
-    const available = measures.value.slice(gap.leftMeasure + 1, gap.rightMeasure);
-    const input = prompt(`Insert warp marker at measure:\nAvailable: ${available.map(m => m.value).join(", ")}`);
-
-    if (!input) {
-      return;
-    }
-
-    const found = available.findIndex(m => m.value === input.trim());
-
-    if (found === -1) {
-      return;
-    }
-
-    newIdx = gap.leftMeasure + 1 + found;
-  }
-
-  // Linearly interpolate time within the gap
-  const frac = (newIdx - gap.leftMeasure) / (gap.rightMeasure - gap.leftMeasure);
-  const newTime = gap.leftTime + frac * (gap.rightTime - gap.leftTime);
-
-  props.song!.warpMarkers = [...markers.value, { measure: newIdx, time: newTime }]
-    .sort((a, b) => a.measure - b.measure);
-  reloadPlayer();
 }
 
 function deleteMarker(measure: number): void {
   props.song!.warpMarkers = markers.value.filter(m => m.measure !== measure);
-  reloadPlayer();
+  reloadWarp();
 }
 
 // ── Drag ─────────────────────────────────────────────────────────────────────
@@ -231,25 +257,34 @@ function startDrag(marker: { measure: number; time: number }, e: PointerEvent, g
 }
 
 useEventListener(window, "pointermove", (e: PointerEvent) => {
-  if (draggingMeasure.value === null) {
-    return;
+  if (draggingMeasure.value !== null) {
+    const dt = (e.clientX - dragStartClientX) / pxPerSec.value;
+    dragTime.value = Math.max(dragLeftBound + 0.001, Math.min(dragRightBound - 0.001, dragStartTime + dt));
   }
 
-  const dt = (e.clientX - dragStartClientX) / pxPerSec.value;
-  dragTime.value = Math.max(dragLeftBound + 0.001, Math.min(dragRightBound - 0.001, dragStartTime + dt));
+  if (isDraggingPlayhead.value) {
+    const dt = (e.clientX - playheadDragStartClientX) / pxPerSec.value;
+    draggingPlayheadTime.value = Math.max(0, Math.min(totalDuration.value, playheadDragStartTime + dt));
+
+    // Seek while dragging
+    player.seek(draggingPlayheadTime.value * 1000);
+  }
 });
 
 useEventListener(window, "pointerup", () => {
-  if (draggingMeasure.value === null) {
-    return;
+  if (draggingMeasure.value !== null) {
+    const measure = draggingMeasure.value;
+    draggingMeasure.value = null;
+    props.song!.warpMarkers = markers.value.map(m =>
+      m.measure === measure ? { measure: m.measure, time: dragTime.value } : m,
+    );
+    reloadWarp();
   }
 
-  const measure = draggingMeasure.value;
-  draggingMeasure.value = null;
-  props.song!.warpMarkers = markers.value.map(m =>
-    m.measure === measure ? { measure: m.measure, time: dragTime.value } : m,
-  );
-  reloadPlayer();
+  if (isDraggingPlayhead.value) {
+    isDraggingPlayhead.value = false;
+    player.seek(draggingPlayheadTime.value * 1000);
+  }
 });
 
 function markerX(marker: { measure: number; time: number }): number {
@@ -282,13 +317,15 @@ function onWheel(e: WheelEvent): void {
     pt:content-wrapper="h-full"
     pt:content="h-full p-0"
   >
-    <!-- <template #header>
-      <span class="text-xs font-semibold tracking-wide text-muted-color uppercase">Warp</span>
+    <template #header>
+      <span class="font-bold">Audio Synchronization</span>
+
       <div class="flex-1" />
       <ButtonGroup>
         <Button
           icon="pi pi-search-minus"
           size="small"
+          severity="secondary"
           text
           rounded
           aria-label="Zoom out"
@@ -297,21 +334,23 @@ function onWheel(e: WheelEvent): void {
         <Button
           icon="pi pi-search-plus"
           size="small"
+          severity="secondary"
           text
           rounded
           aria-label="Zoom in"
           @click="pxPerSec *= 1.5"
         />
+        <Button
+          icon="pi pi-expand"
+          size="small"
+          severity="secondary"
+          text
+          rounded
+          aria-label="Fit to view"
+          @click="fitToView"
+        />
       </ButtonGroup>
-      <Button
-        icon="pi pi-expand"
-        size="small"
-        text
-        rounded
-        aria-label="Fit to view"
-        @click="fitToView"
-      />
-    </template> -->
+    </template>
 
     <!-- Waveform area -->
     <div
@@ -337,28 +376,6 @@ function onWheel(e: WheelEvent): void {
         />
       </svg>
 
-      <!-- Marker label strip (top 24 px): "+" insertion zones -->
-      <div class="absolute inset-x-0 top-0 h-6">
-        <div
-          v-for="(gap, i) in gaps"
-          :key="`gap-${i}`"
-          class="group absolute top-0 h-full"
-          :class="gap.count > 0 ? 'cursor-pointer' : 'pointer-events-none'"
-          :style="{
-            left: `${Math.max(0, timeToX(gap.leftTime))}px`,
-            width: `${Math.max(0, Math.min(W, timeToX(gap.rightTime)) - Math.max(0, timeToX(gap.leftTime)))}px`,
-          }"
-          @click="addMarkerInGap(gap)"
-        >
-          <div
-            v-if="gap.count > 0"
-            class="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100"
-          >
-            <span class="rounded bg-white px-1.5 py-0.5 text-[10px] font-bold text-black">+</span>
-          </div>
-        </div>
-      </div>
-
       <!-- Markers -->
       <div
         v-for="(marker, i) in markers"
@@ -376,7 +393,7 @@ function onWheel(e: WheelEvent): void {
         >
           {{ measures[marker.measure]?.value ?? marker.measure }}
           <span
-            class="leading-none opacity-0 transition-opacity group-hover:opacity-60 hover:opacity-100!"
+            class="cursor-pointer leading-none opacity-0 transition-opacity group-hover:opacity-60 hover:opacity-100!"
             title="Delete marker"
             @click.stop="deleteMarker(marker.measure)"
           >x</span>
@@ -388,9 +405,28 @@ function onWheel(e: WheelEvent): void {
 
       <!-- Playhead -->
       <div
-        class="pointer-events-none absolute top-0 bottom-0 w-1 rounded-full bg-primary-400 opacity-80"
+        class="group absolute top-0 bottom-0"
         :style="{ left: `${playheadX}px` }"
-      />
+      >
+        <!-- "+" chip: hover to add a warp marker at current measure/time -->
+        <div
+          v-if="canAddMarkerAtPlayhead && !isDraggingPlayhead"
+          class="invisible absolute top-0 z-10 flex h-6 -translate-x-1/2 cursor-pointer items-center rounded bg-primary-400 px-2 text-[10px] font-bold text-white select-none group-hover:visible"
+          @pointerdown.stop
+          @click.stop="addMarkerAtPlayhead"
+        >
+          +
+        </div>
+
+        <!-- Visible line -->
+        <div class="pointer-events-none absolute top-6 bottom-0 w-1 -translate-x-1/2 rounded-b-full bg-primary-400 opacity-80 group-hover:opacity-100" />
+
+        <!-- Drag zone -->
+        <div
+          class="absolute inset-y-0 w-4 -translate-x-1/2 cursor-ew-resize"
+          @pointerdown.prevent="startPlayheadDrag"
+        />
+      </div>
     </div>
   </Panel>
 </template>

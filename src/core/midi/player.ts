@@ -806,9 +806,6 @@ export default class MidiPlayer extends EventEmitter {
       throw new Error(`No audio files in song '${song.title}'`);
     }
 
-    // Create the warp map
-    this._warpMap.setMarkers(song.warpMarkers ?? []);
-
     // Load all audio files in parallel
     const audioBuffers = await Promise.all(
       song.audioFiles.map(async (file) => {
@@ -832,6 +829,36 @@ export default class MidiPlayer extends EventEmitter {
       return buffer;
     });
 
+    // Build warp-derived timing (can be re-run cheaply without re-fetching audio)
+    this._syncWarpInternal(song);
+
+    this._audioPlayer?.dispose();
+    this._audioPlayer = await AudioPlayer.create(
+      this._audioContext,
+      this._audioBuffers,
+      {
+        tracks: song.tracks.map(t => ({
+          highPassFilter: t.classification === "Vocal",
+          compressor: t.classification === "Vocal",
+        })),
+        onAmplitudes: amplitudes => this.emit("trackAmplitudesChanged", amplitudes),
+      },
+    );
+    this._audioPlayer.connect(this._masterInput!);
+  }
+
+  // Rebuilds warp-derived timing (measure tick positions, event lists, duration) from
+  // the current warp markers without re-fetching audio. Safe to call while ready.
+  syncWarp(song: Song): void {
+    if (this._status !== "ready" || this._mode !== "audio") {
+      return;
+    }
+
+    this._syncWarpInternal(song);
+  }
+
+  private _syncWarpInternal(song: Song): void {
+    this._warpMap.setMarkers(song.warpMarkers ?? []);
     this._resetMidiEvents();
 
     // Populate $beatTicks for each measure (1 tick = 1 ms) and build measure events
@@ -860,20 +887,6 @@ export default class MidiPlayer extends EventEmitter {
     // Final measure: last measure whose start tick falls within the audio duration
     const finalMeasure = [...measures].reverse().find(m => (m.$beatTicks[0] ?? Infinity) <= audioDuration) ?? measures[0]!;
     this._updateFinalMeasure(finalMeasure.reference(0));
-
-    this._audioPlayer?.dispose();
-    this._audioPlayer = await AudioPlayer.create(
-      this._audioContext,
-      this._audioBuffers,
-      {
-        tracks: song.tracks.map(t => ({
-          highPassFilter: t.classification === "Vocal",
-          compressor: t.classification === "Vocal",
-        })),
-        onAmplitudes: amplitudes => this.emit("trackAmplitudesChanged", amplitudes),
-      },
-    );
-    this._audioPlayer.connect(this._masterInput!);
   }
 
   async loadMidi(song: Song): Promise<void> {
