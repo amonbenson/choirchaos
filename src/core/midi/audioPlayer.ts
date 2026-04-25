@@ -115,6 +115,7 @@ export default class AudioPlayer {
       clearInterval(this._amplitudeInterval);
       this._amplitudeInterval = null;
     }
+
     this._rubberBandNode.close();
   }
 
