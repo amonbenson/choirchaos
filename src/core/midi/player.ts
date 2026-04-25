@@ -90,7 +90,9 @@ export default class MidiPlayer extends EventEmitter {
 
   // 'playback' uses a larger hardware buffer (~100ms vs ~11ms for 'interactive'),
   // giving the OS enough headroom to absorb Bluetooth A2DP jitter without underruns.
-  private _audioContext = new AudioContext({ latencyHint: "playback" });
+  // sampleRate is pinned to 48kHz so Firefox does not inherit the Bluetooth HFP device
+  // rate (8/16kHz) when a headset is already connected at AudioContext creation time.
+  private _audioContext = new AudioContext({ latencyHint: "playback", sampleRate: 48000 });
   private _masterInput: AudioNode | undefined = undefined;
   private _chainOutput: GainNode | undefined;
 
