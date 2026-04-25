@@ -160,13 +160,13 @@ const gaps = computed((): Gap[] => {
 
 // ── Marker interactions ──────────────────────────────────────────────────────
 
-async function reloadPlayer(): Promise<void> {
+function reloadWarp(): void {
   if (!props.song) {
     return;
   }
 
   const pos = player.position;
-  await player.load(props.song);
+  player.syncWarp(props.song);
   player.seek(pos);
 }
 
@@ -202,12 +202,12 @@ function addMarkerInGap(gap: Gap): void {
 
   props.song!.warpMarkers = [...markers.value, { measure: newIdx, time: newTime }]
     .sort((a, b) => a.measure - b.measure);
-  reloadPlayer();
+  reloadWarp();
 }
 
 function deleteMarker(measure: number): void {
   props.song!.warpMarkers = markers.value.filter(m => m.measure !== measure);
-  reloadPlayer();
+  reloadWarp();
 }
 
 // ── Drag ─────────────────────────────────────────────────────────────────────
@@ -249,7 +249,7 @@ useEventListener(window, "pointerup", () => {
   props.song!.warpMarkers = markers.value.map(m =>
     m.measure === measure ? { measure: m.measure, time: dragTime.value } : m,
   );
-  reloadPlayer();
+  reloadWarp();
 });
 
 function markerX(marker: { measure: number; time: number }): number {
