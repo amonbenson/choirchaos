@@ -88,7 +88,9 @@ export default class MidiPlayer extends EventEmitter {
   private _currentVamp?: MidiPlayerVampState;
   private _currentSegue?: MidiPlayerSegueState;
 
-  private _audioContext = new AudioContext();
+  // 'playback' uses a larger hardware buffer (~100ms vs ~11ms for 'interactive'),
+  // giving the OS enough headroom to absorb Bluetooth A2DP jitter without underruns.
+  private _audioContext = new AudioContext({ latencyHint: "playback" });
   private _masterInput: AudioNode | undefined = undefined;
   private _chainOutput: GainNode | undefined;
 
@@ -116,6 +118,11 @@ export default class MidiPlayer extends EventEmitter {
 
   private _timeSinceLastPositionUpdate = 0;
   private _barlineCrossedDuringLastStep = false;
+
+  constructor() {
+    super();
+    this._setupAudioContextMonitoring();
+  }
 
   get status(): MidiPlayerStatus {
     return this._status;
@@ -345,6 +352,17 @@ export default class MidiPlayer extends EventEmitter {
     // sync the current position to the audio player
     this._updatePosition(this._audioPlayer.position * 1000);
 
+    // stop when the end is reached
+    if (this._position >= this._duration) {
+      this.pause();
+
+      if (this._currentSegue?.enabled) {
+        this.emit("segue");
+      }
+
+      return;
+    }
+
     // lookup current measure from the measure event list (same approach as seek)
     const k = { tick: this._position };
     const measureEvent = this._midi_events.system.measure.search(k as MeasureEvent, {
@@ -365,9 +383,6 @@ export default class MidiPlayer extends EventEmitter {
     // sync global tempo and pitch
     this._audioPlayer.setTempo(this._playbackSpeed);
     this._audioPlayer.setPitch(this._playbackTransposition);
-
-    // emit per-track RMS amplitudes for VU meters
-    this.emit("trackAmplitudesChanged", this._audioPlayer.getAmplitudes());
   }
 
   private _handleStep(deltaTime: number): void {
@@ -482,7 +497,7 @@ export default class MidiPlayer extends EventEmitter {
     compressor.threshold.value = -12;
     compressor.knee.value = 12;
     compressor.ratio.value = 3;
-    compressor.attack.value = 0.005;
+    compressor.attack.value = 0.015;
     compressor.release.value = 0.15;
 
     // 3. Three-band EQ (low shelf / mid peak / high shelf, all flat by default)
@@ -517,10 +532,42 @@ export default class MidiPlayer extends EventEmitter {
     this._chainOutput = output;
   }
 
+  private _setupAudioContextMonitoring(): void {
+    // Auto-resume when the OS suspends or interrupts the context mid-playback
+    // (triggered by Bluetooth reconnects, phone calls, tab switches, etc.).
+    this._audioContext.addEventListener("statechange", () => {
+      if (this._playing && this._audioContext.state !== "running") {
+        this._audioContext.resume().catch(() => {});
+      }
+    });
+
+    // Zombie detection: on iOS Safari with Bluetooth, the context can report
+    // state="running" while producing no audio and currentTime stops advancing.
+    // Emit "audioContextZombie" so the UI can prompt the user to reload.
+    let lastTime = 0;
+    let lastAt = 0;
+    setInterval(() => {
+      if (!this._playing || this._audioContext.state !== "running") {
+        lastTime = this._audioContext.currentTime;
+        lastAt = performance.now();
+        return;
+      }
+
+      const elapsed = (performance.now() - lastAt) / 1000;
+      const advanced = this._audioContext.currentTime - lastTime;
+
+      if (elapsed > 0.5 && advanced < elapsed * 0.5) {
+        this.emit("audioContextZombie");
+      }
+
+      lastTime = this._audioContext.currentTime;
+      lastAt = performance.now();
+    }, 500);
+  }
+
   resumeAudioContext(): void {
-    // try to resume the audio context
     if (this._audioContext.state !== "running") {
-      this._audioContext.resume().then(() => {});
+      this._audioContext.resume().catch(() => {});
     }
   }
 
@@ -816,7 +863,15 @@ export default class MidiPlayer extends EventEmitter {
 
     // Create the audio player (register worklet once per context)
     await AudioPlayer.register(this._audioContext);
-    this._audioPlayer = new AudioPlayer(this._audioContext, this._audioBuffers);
+    this._audioPlayer?.dispose();
+    this._audioPlayer = new AudioPlayer(
+      this._audioContext,
+      this._audioBuffers,
+      {
+        tracks: song.tracks.map(t => ({ highPassFilter: t.classification === "Vocal" })),
+        onAmplitudes: amplitudes => this.emit("trackAmplitudesChanged", amplitudes),
+      },
+    );
     this._audioPlayer.connect(this._masterInput!);
   }
 
@@ -1012,6 +1067,7 @@ export default class MidiPlayer extends EventEmitter {
     this.pause();
 
     this._player = undefined;
+    this._audioPlayer?.dispose();
     this._audioPlayer = undefined;
     this._mode = "none";
 
