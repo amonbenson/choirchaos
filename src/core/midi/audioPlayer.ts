@@ -9,6 +9,7 @@ const ANALYSER_RELEASE = 0.97; // decay factor per tick at 50 Hz → ~1 s half-l
 
 export type TrackOptions = {
   highPassFilter?: boolean;
+  compressor?: boolean;
 };
 
 export type AudioPlayerOptions = {
@@ -73,7 +74,21 @@ export default class AudioPlayer {
     });
 
     _buffers.forEach((_, i) => {
-      this._gainNodes[i]!.connect(this._analysers[i]!);
+      const trackOpts = options.tracks[i];
+      let node: AudioNode = this._gainNodes[i]!;
+
+      if (trackOpts?.compressor) {
+        const c = _context.createDynamicsCompressor();
+        c.threshold.value = -12;
+        c.knee.value = 1.7;
+        c.ratio.value = 2.0;
+        c.attack.value = 0.01;
+        c.release.value = 0.2;
+        node.connect(c);
+        node = c;
+      }
+
+      node.connect(this._analysers[i]!);
       this._analysers[i]!.connect(this._soundtouchNode);
     });
 
