@@ -88,7 +88,9 @@ export default class MidiPlayer extends EventEmitter {
   private _currentVamp?: MidiPlayerVampState;
   private _currentSegue?: MidiPlayerSegueState;
 
-  private _audioContext = new AudioContext();
+  // 'playback' uses a larger hardware buffer (~100ms vs ~11ms for 'interactive'),
+  // giving the OS enough headroom to absorb Bluetooth A2DP jitter without underruns.
+  private _audioContext = new AudioContext({ latencyHint: "playback" });
   private _masterInput: AudioNode | undefined = undefined;
   private _chainOutput: GainNode | undefined;
 
@@ -116,6 +118,11 @@ export default class MidiPlayer extends EventEmitter {
 
   private _timeSinceLastPositionUpdate = 0;
   private _barlineCrossedDuringLastStep = false;
+
+  constructor() {
+    super();
+    this._setupAudioContextMonitoring();
+  }
 
   get status(): MidiPlayerStatus {
     return this._status;
@@ -478,8 +485,8 @@ export default class MidiPlayer extends EventEmitter {
     const compressor = ctx.createDynamicsCompressor();
     compressor.threshold.value = -12;
     compressor.knee.value = 12;
-    compressor.ratio.value = 2.5;
-    compressor.attack.value = 0.005;
+    compressor.ratio.value = 3;
+    compressor.attack.value = 0.015;
     compressor.release.value = 0.15;
 
     // 3. Three-band EQ (low shelf / mid peak / high shelf, all flat by default)
@@ -514,10 +521,42 @@ export default class MidiPlayer extends EventEmitter {
     this._chainOutput = output;
   }
 
+  private _setupAudioContextMonitoring(): void {
+    // Auto-resume when the OS suspends or interrupts the context mid-playback
+    // (triggered by Bluetooth reconnects, phone calls, tab switches, etc.).
+    this._audioContext.addEventListener("statechange", () => {
+      if (this._playing && this._audioContext.state !== "running") {
+        this._audioContext.resume().catch(() => {});
+      }
+    });
+
+    // Zombie detection: on iOS Safari with Bluetooth, the context can report
+    // state="running" while producing no audio and currentTime stops advancing.
+    // Emit "audioContextZombie" so the UI can prompt the user to reload.
+    let lastTime = 0;
+    let lastAt = 0;
+    setInterval(() => {
+      if (!this._playing || this._audioContext.state !== "running") {
+        lastTime = this._audioContext.currentTime;
+        lastAt = performance.now();
+        return;
+      }
+
+      const elapsed = (performance.now() - lastAt) / 1000;
+      const advanced = this._audioContext.currentTime - lastTime;
+
+      if (elapsed > 0.5 && advanced < elapsed * 0.5) {
+        this.emit("audioContextZombie");
+      }
+
+      lastTime = this._audioContext.currentTime;
+      lastAt = performance.now();
+    }, 500);
+  }
+
   resumeAudioContext(): void {
-    // try to resume the audio context
     if (this._audioContext.state !== "running") {
-      this._audioContext.resume().then(() => {});
+      this._audioContext.resume().catch(() => {});
     }
   }
 
