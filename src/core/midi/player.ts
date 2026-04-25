@@ -90,9 +90,7 @@ export default class MidiPlayer extends EventEmitter {
 
   // 'playback' uses a larger hardware buffer (~100ms vs ~11ms for 'interactive'),
   // giving the OS enough headroom to absorb Bluetooth A2DP jitter without underruns.
-  // sampleRate is pinned to 48kHz so Firefox does not inherit the Bluetooth HFP device
-  // rate (8/16kHz) when a headset is already connected at AudioContext creation time.
-  private _audioContext = new AudioContext({ latencyHint: "playback", sampleRate: 48000 });
+  private _audioContext = new AudioContext({ latencyHint: "playback" });
   private _masterInput: AudioNode | undefined = undefined;
   private _chainOutput: GainNode | undefined;
 
@@ -863,16 +861,14 @@ export default class MidiPlayer extends EventEmitter {
     const finalMeasure = [...measures].reverse().find(m => (m.$beatTicks[0] ?? Infinity) <= audioDuration) ?? measures[0]!;
     this._updateFinalMeasure(finalMeasure.reference(0));
 
-    // Create the audio player (register worklet once per context)
-    await AudioPlayer.register(this._audioContext);
     this._audioPlayer?.dispose();
-    this._audioPlayer = new AudioPlayer(
+    this._audioPlayer = await AudioPlayer.create(
       this._audioContext,
       this._audioBuffers,
       {
         tracks: song.tracks.map(t => ({
-          highPassFilter: t.classification === "Vocal", // add +100 Hz filter to reduce muddiness of vocals
-          compressor: true, // add compression to all tracks to glue dynamic range together
+          highPassFilter: t.classification === "Vocal",
+          compressor: t.classification === "Vocal",
         })),
         onAmplitudes: amplitudes => this.emit("trackAmplitudesChanged", amplitudes),
       },

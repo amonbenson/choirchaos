@@ -1,5 +1,9 @@
-import { SoundTouchNode } from "@soundtouchjs/audio-worklet";
-import processorUrl from "@soundtouchjs/audio-worklet/processor?url";
+import type { RubberBandNode } from "rubberband-web";
+import { createRubberBandNode } from "rubberband-web";
+
+// Processor is served from public/ — copied there by the postinstall script.
+// BASE_URL handles deployments at subpaths correctly.
+const processorUrl = `${import.meta.env.BASE_URL}rubberband-processor.js`;
 
 const ANALYSER_FFT_SIZE = 256;
 const ANALYSER_INTERVAL_MS = 1000 / 30;
@@ -19,7 +23,7 @@ export type AudioPlayerOptions = {
 
 export default class AudioPlayer {
   private _sources: AudioBufferSourceNode[] = [];
-  private _soundtouchNode: SoundTouchNode;
+  private _rubberBandNode: RubberBandNode;
   private _trackInputs: AudioNode[];
   private _gainNodes: GainNode[];
   private _analysers: AnalyserNode[];
@@ -35,18 +39,28 @@ export default class AudioPlayer {
   private _refPosition = 0;
   private _playing = false;
 
-  static async register(context: AudioContext): Promise<void> {
-    await SoundTouchNode.register(context, processorUrl);
+  static async create(
+    context: AudioContext,
+    buffers: AudioBuffer[],
+    options: AudioPlayerOptions,
+  ): Promise<AudioPlayer> {
+    const rubberBandNode = await createRubberBandNode(context, processorUrl, {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [2],
+    });
+    return new AudioPlayer(context, buffers, options, rubberBandNode);
   }
 
-  constructor(
+  private constructor(
     private _context: AudioContext,
     private _buffers: AudioBuffer[],
     options: AudioPlayerOptions,
+    rubberBandNode: RubberBandNode,
   ) {
-    this._soundtouchNode = new SoundTouchNode(_context);
+    this._rubberBandNode = rubberBandNode;
     this._gainNodes = _buffers.map(() => _context.createGain());
-    this._gainValues = _buffers.map(() => 1);
+    this._gainValues = _buffers.map(() => 0.7);
     this._smoothedAmplitudes = _buffers.map(() => 0);
 
     this._analysers = _buffers.map(() => {
@@ -57,8 +71,7 @@ export default class AudioPlayer {
     });
     this._analyserBuffers = this._analysers.map(a => new Float32Array(a.fftSize) as Float32Array<ArrayBuffer>);
 
-    // Per-track chain: [HighPassFilter →] GainNode → AnalyserNode → SoundTouchNode (shared)
-    // HighPassFilter is only inserted for tracks with highPassFilter: true.
+    // Per-track chain: [HighPassFilter →] GainNode → [Compressor →] AnalyserNode → RubberBandNode (shared)
     this._trackInputs = _buffers.map((_, i) => {
       const trackOpts = options.tracks[i];
 
@@ -89,7 +102,7 @@ export default class AudioPlayer {
       }
 
       node.connect(this._analysers[i]!);
-      this._analysers[i]!.connect(this._soundtouchNode);
+      this._analysers[i]!.connect(this._rubberBandNode);
     });
 
     this._amplitudeInterval = setInterval(() => {
@@ -102,6 +115,8 @@ export default class AudioPlayer {
       clearInterval(this._amplitudeInterval);
       this._amplitudeInterval = null;
     }
+
+    this._rubberBandNode.close();
   }
 
   private _computeAmplitudes(): number[] {
@@ -173,7 +188,7 @@ export default class AudioPlayer {
   // Combine user semitone shift with compensation for BufferSource.playbackRate pitch change.
   private _applyPitch(): void {
     const semitones = this._pitchValue - 12 * Math.log2(this._tempoValue);
-    this._soundtouchNode.pitchSemitones.value = semitones;
+    this._rubberBandNode.setPitch(Math.pow(2, semitones / 12));
   }
 
   play(): void {
@@ -218,6 +233,6 @@ export default class AudioPlayer {
   }
 
   connect(destination: AudioNode): void {
-    this._soundtouchNode.connect(destination);
+    this._rubberBandNode.connect(destination);
   }
 }
