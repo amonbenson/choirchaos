@@ -7,19 +7,21 @@ import Song from "@/core/models/song";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
 import { getAccessFlags, NoPermissions } from "@/pocketbase/auth";
+import { useAuthStore } from "@/stores/auth";
 import { usePlayerStore } from "@/stores/player";
 
 import Draggable from "./Draggable.vue";
 import PdfViewer from "./PdfViewer.vue";
 
 const player = usePlayerStore();
+const auth = useAuthStore();
 
 const props = defineProps<{
   song?: Song;
   editMode?: boolean;
 }>();
 
-const access = computed(() => getAccessFlags(props.song?.permissions ?? NoPermissions));
+const access = computed(() => getAccessFlags(props.song?.permissions ?? NoPermissions, auth.user?.id));
 const currentTool = ref<"edit" | "add">("edit");
 const pdfViewer = ref();
 

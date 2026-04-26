@@ -6,6 +6,15 @@ export async function login(usernameOrEmail: string, password: string): Promise<
   return await pb.collection("users").authWithPassword(usernameOrEmail, password);
 }
 
+export async function register(name: string, email: string, password: string): Promise<RecordAuthResponse<RecordModel>> {
+  await pb.collection("users").create({ name, email, password, passwordConfirm: password });
+  return login(email, password);
+}
+
+export async function loginWithOAuth2(provider: string): Promise<void> {
+  await pb.collection("users").authWithOAuth2({ provider });
+}
+
 export async function logout(): Promise<void> {
   pb.authStore.clear();
 }

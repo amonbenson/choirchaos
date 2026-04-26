@@ -5,18 +5,18 @@ import InputText from "primevue/inputtext";
 import Select from "primevue/select";
 import Slider from "primevue/slider";
 import Toolbar from "primevue/toolbar";
-import { computed, type ComputedRef, ref } from "vue";
+import { computed, type ComputedRef } from "vue";
 
 import Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
 import PopoverButton from "./PopoverButton.vue";
-import SettingsDialog from "./SettingsDialog.vue";
 import DottedHalfNoteSvg from "./svg/DottedHalfNoteSvg.vue";
 import DottedQuarterNoteSvg from "./svg/DottedQuarterNoteSvg.vue";
 import HalfNoteSvg from "./svg/HalfNoteSvg.vue";
 import QuarterNoteSvg from "./svg/QuarterNoteSvg.vue";
+import UserMenuButton from "./UserMenuButton.vue";
 
 type NoteValue = "quarter" | "half" | "dottedQuarter" | "dottedHalf";
 
@@ -54,7 +54,6 @@ const songIndex = computed(() => props.songs?.findIndex(s => s.id === songId.val
 
 const player = usePlayerStore();
 const settingsStore = useSettingsStore();
-const settingsVisible = ref(false);
 
 const visibleButtons = computed(() => settingsStore.current.appearance.transportButtonVisible);
 
@@ -306,21 +305,11 @@ const playbackSpeedPercentage = computed({
             @click="emit('toggleSegue')"
           />
 
-          <!-- Settings -->
-          <Button
-            class="-m-1 -ml-4"
-            icon="pi pi-cog"
-            severity="secondary"
-            aria-label="Settings"
-            rounded
-            text
-            @click="settingsVisible = true"
-          />
+          <!-- User menu -->
+          <UserMenuButton class="-m-1 -ml-4" />
         </div>
       </template>
     </Toolbar>
-
-    <SettingsDialog v-model="settingsVisible" />
 
     <!-- Progress Bar -->
     <!-- <div

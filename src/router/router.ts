@@ -3,7 +3,8 @@ import { markRaw } from "vue";
 import { createRouter, createWebHistory, type RouteLocationNormalized } from "vue-router";
 
 import Show from "@/core/models/show";
-import { login } from "@/pocketbase/auth";
+import { isLoggedIn, login } from "@/pocketbase/auth";
+import AuthView from "@/views/AuthView.vue";
 import HomeView from "@/views/HomeView.vue";
 import WorkspaceView from "@/views/WorkspaceView.vue";
 
@@ -70,9 +71,13 @@ async function resolveFirstSong(to: RouteLocationNormalized): Promise<any> {
     }
   } catch (err) {
     if (err instanceof ClientResponseError) {
-      // Show was not found. Return to homepage
-      if (to.name !== "home") {
-        return { name: "home" };
+      if (err.status === 404) {
+        // Show was not found. If we are not logged in, redirect to login. Otherwise, redirect to home.
+        if (!isLoggedIn()) {
+          return { name: "login", query: { redirect: to.fullPath } };
+        } else {
+          return { name: "home" };
+        }
       }
     } else {
       // Re-throw any other kind of error
@@ -82,6 +87,11 @@ async function resolveFirstSong(to: RouteLocationNormalized): Promise<any> {
 }
 
 const routes = [
+  {
+    name: "login",
+    path: "/login",
+    component: AuthView,
+  },
   {
     name: "home",
     path: "/",
