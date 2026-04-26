@@ -11,7 +11,7 @@ import SongPdfViewer from "@/components/SongPdfViewer.vue";
 import TransportBar from "@/components/TransportBar.vue";
 import VampCard from "@/components/VampCard.vue";
 import WarpPanel from "@/components/WarpPanel.vue";
-import { useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
+import { type ShortcutAction, useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
 import Show from "@/core/models/show";
 import type Song from "@/core/models/song";
 import { getAccessFlags } from "@/pocketbase/auth";
@@ -54,7 +54,7 @@ const vampCardType = computed(() => {
   return "pause";
 });
 
-useGlobalShortcuts(settings.current.shortcuts, {
+useGlobalShortcuts(settings.current.shortcuts.bindings as unknown as Record<string, ShortcutAction>, {
   playPause: () => vampCardType.value === "vamp" ? toggleVamp() : playPause(),
   previousMeasure,
   nextMeasure,
@@ -154,8 +154,8 @@ onMounted(() => {
   player.setSegueEnabled(settings.current.playback.segueEnabled);
 });
 
-watch(() => player.playbackSpeed, value => settings.updatePlayback({ speed: value }));
-watch(() => player.playbackTransposition, value => settings.updatePlayback({ transposition: value }));
+watch(() => player.playbackSpeed, value => settings.update({ playback: { speed: value } }));
+watch(() => player.playbackTransposition, value => settings.update({ playback: { transposition: value } }));
 
 // Apply the global segue setting whenever the current song changes or the setting is toggled.
 watch(() => [song.value, settings.current.playback.segueEnabled], () => {
@@ -211,6 +211,7 @@ watch(() => props.songId, async (songId) => {
 
     // Load the selected song
     await player.load(song.value);
+    player.setSegueEnabled(settings.current.playback.segueEnabled);
 
     // Start playing immediately if autoplay was enabled
     if (route.query.autoplay) {
@@ -262,7 +263,7 @@ watch(() => props.songId, async (songId) => {
         :label="name"
         :severity="settings.current.workspace.selectedTab === tab ? 'primary' : 'secondary'"
         fluid
-        @click="settings.updateWorkspace({ selectedTab: tab })"
+        @click="settings.update({ workspace: { selectedTab: tab } })"
       />
     </ButtonGroup>
     <!--

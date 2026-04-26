@@ -57,7 +57,7 @@ function formatKey(key: string): string {
 
 // Find the first binding for this action (reactive to settings changes).
 const parts = computed(() => {
-  const entry = Object.entries(settingsStore.current.shortcuts)
+  const entry = Object.entries(settingsStore.current.shortcuts.bindings)
     .find(([, action]) => action === props.action);
   if (!entry) {
     return [];
