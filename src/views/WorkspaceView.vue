@@ -16,9 +16,11 @@ import Show from "@/core/models/show";
 import type Song from "@/core/models/song";
 import { getAccessFlags } from "@/pocketbase/auth";
 import { consumePendingShow } from "@/router/router";
+import { useAuthStore } from "@/stores/auth";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
+const auth = useAuthStore();
 const settings = useSettingsStore();
 const player = usePlayerStore();
 const route = useRoute();
@@ -36,7 +38,7 @@ const showLoading = ref(true);
 const song = ref<Song | undefined>();
 const songLoading = ref(true);
 const editMode = ref(false);
-const canEdit = computed(() => !!song.value && getAccessFlags(song.value.permissions).editor);
+const canEdit = computed(() => !!song.value && getAccessFlags(song.value.permissions, auth.user?.id).editor);
 
 const songs = computed(() => show.value?.songs ?? []);
 const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
@@ -145,6 +147,16 @@ player.onSegue(() => {
   selectSong(nextSong.id, true);
 });
 
+// Redirect home on logout if the show is no longer accessible
+watch(() => auth.user, (user) => {
+  if (show.value) {
+    const access = getAccessFlags(show.value.permissions, user?.id);
+    if (!access.viewer) {
+      router.replace({ name: "home" });
+    }
+  }
+});
+
 // SETTINGS
 
 onMounted(() => {
@@ -188,12 +200,6 @@ watch(() => props.songId, async (songId) => {
     showLoading.value = true;
     songLoading.value = true;
 
-    // If no song id was selected, clear the current song
-    if (songId === undefined) {
-      song.value = undefined;
-      return;
-    }
-
     // Load show if not already done so
     if (!show.value) {
       const pending = consumePendingShow();
@@ -201,6 +207,12 @@ watch(() => props.songId, async (songId) => {
     }
 
     showLoading.value = false;
+
+    // If no song id was selected, clear the current song
+    if (songId === undefined) {
+      song.value = undefined;
+      return;
+    }
 
     // Select the song
     song.value = show.value.songs.find(s => s.id === songId);
