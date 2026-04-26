@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import Button from "primevue/button";
-import { onMounted, type Ref, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { ref, watch } from "vue";
+import { useRouter } from "vue-router";
 
 import HeaderBar from "@/components/HeaderBar.vue";
 import Show from "@/core/models/show";

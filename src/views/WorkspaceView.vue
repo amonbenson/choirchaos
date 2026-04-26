@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { storeToRefs } from "pinia";
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
 import { computed, onMounted, ref, watch } from "vue";
@@ -150,9 +149,11 @@ player.onSegue(() => {
 
 // Redirect home on logout if the show is no longer accessible
 watch(() => auth.user, (user) => {
-  const access = getAccessFlags(show.value.permissions, user?.id);
-  if (!access.viewer) {
-    router.replace({ name: "home" });
+  if (show.value) {
+    const access = getAccessFlags(show.value.permissions, user?.id);
+    if (!access.viewer) {
+      router.replace({ name: "home" });
+    }
   }
 });
 
