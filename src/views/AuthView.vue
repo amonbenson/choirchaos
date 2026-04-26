@@ -95,7 +95,11 @@ async function handleGoogle(): Promise<void> {
           <!-- Sign In -->
           <TabPanel value="login">
             <div class="flex flex-col gap-4 py-4">
+<<<<<<< HEAD
               <!-- <Button
+=======
+              <Button
+>>>>>>> 9368888813511ca8182ace60a626a364e3790b45
                 label="Continue with Google"
                 severity="secondary"
                 icon="pi pi-google"
@@ -104,7 +108,11 @@ async function handleGoogle(): Promise<void> {
                 @click="handleGoogle"
               />
 
+<<<<<<< HEAD
               <Divider>OR</Divider> -->
+=======
+              <Divider>OR</Divider>
+>>>>>>> 9368888813511ca8182ace60a626a364e3790b45
 
               <div class="flex flex-col gap-2">
                 <label for="login-email">Email</label>
@@ -151,7 +159,11 @@ async function handleGoogle(): Promise<void> {
           <!-- Register -->
           <TabPanel value="register">
             <div class="flex flex-col gap-4 py-4">
+<<<<<<< HEAD
               <!-- <Button
+=======
+              <Button
+>>>>>>> 9368888813511ca8182ace60a626a364e3790b45
                 label="Continue with Google"
                 severity="secondary"
                 icon="pi pi-google"
@@ -160,7 +172,11 @@ async function handleGoogle(): Promise<void> {
                 @click="handleGoogle"
               />
 
+<<<<<<< HEAD
               <Divider>OR</Divider> -->
+=======
+              <Divider>OR</Divider>
+>>>>>>> 9368888813511ca8182ace60a626a364e3790b45
 
               <div class="flex flex-col gap-2">
                 <label for="register-name">Name</label>
