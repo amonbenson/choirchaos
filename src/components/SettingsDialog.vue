@@ -12,7 +12,7 @@ import ToggleSwitch from "primevue/toggleswitch";
 import { computed, ref, watch } from "vue";
 
 import type { ShortcutAction } from "@/composables/useGlobalShortcuts";
-import type { AppearanceSettings, ShortcutSettings } from "@/stores/settings";
+import type { AppearanceSettings, TransportButtonKey } from "@/stores/settings";
 import { useSettingsStore } from "@/stores/settings";
 
 import KbdShortcut from "./KbdShortcut.vue";
@@ -21,8 +21,6 @@ const visible = defineModel<boolean>({ default: false });
 const settings = useSettingsStore();
 
 // --- Appearance --------------------------------------------------------------
-
-type TransportButtonKey = keyof AppearanceSettings["transportButtonVisible"];
 
 const TRANSPORT_BUTTON_LABELS: Record<TransportButtonKey, string> = {
   measure: "Measure",
@@ -41,7 +39,7 @@ const THEME_OPTIONS: { label: string; value: AppearanceSettings["theme"] }[] = [
 
 const theme = computed({
   get: () => settings.current.appearance.theme,
-  set: (value: AppearanceSettings["theme"]) => settings.updateAppearance({ theme: value }),
+  set: (value: AppearanceSettings["theme"]) => settings.update({ appearance: { theme: value } }),
 });
 
 // Transport buttons as array instead of boolean map
@@ -52,8 +50,8 @@ const transportButtons = computed({
   set: (visibleButtons: TransportButtonKey[]) => {
     const updated = Object.fromEntries(
       Object.keys(TRANSPORT_BUTTON_LABELS).map(key => [key, visibleButtons.includes(key as TransportButtonKey)]),
-    ) as AppearanceSettings["transportButtonVisible"];
-    settings.updateAppearance({ transportButtonVisible: updated });
+    ) as Record<TransportButtonKey, boolean>;
+    settings.update({ appearance: { transportButtonVisible: updated as any } });
   },
 });
 
@@ -74,7 +72,7 @@ const ACTIONS = Object.keys(ACTION_LABELS) as ShortcutAction[];
 const recording = ref<ShortcutAction | null>(null);
 
 function getBinding(action: ShortcutAction): string | undefined {
-  return Object.entries(settings.current.shortcuts).find(([, a]) => a === action)?.[0];
+  return Object.entries(settings.current.shortcuts.bindings).find(([, a]) => a === action)?.[0];
 }
 
 function startRecording(action: ShortcutAction): void {
@@ -82,10 +80,10 @@ function startRecording(action: ShortcutAction): void {
 }
 
 function clearBinding(action: ShortcutAction): void {
-  const updated: ShortcutSettings = Object.fromEntries(
-    Object.entries(settings.current.shortcuts).filter(([, a]) => a !== action),
-  );
-  settings.updateShortcuts(updated);
+  const bindings = Object.fromEntries(
+    Object.entries(settings.current.shortcuts.bindings).filter(([, a]) => a !== action),
+  ) as Record<string, ShortcutAction>;
+  settings.update({ shortcuts: { bindings } });
 }
 
 // Cancel recording when the dialog is closed.
@@ -131,11 +129,11 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
 
   const combo = parts.join("+");
 
-  const updated: ShortcutSettings = Object.fromEntries(
-    Object.entries(settings.current.shortcuts).filter(([, a]) => a !== recording.value),
-  );
-  updated[combo] = recording.value!;
-  settings.updateShortcuts(updated);
+  const bindings = Object.fromEntries(
+    Object.entries(settings.current.shortcuts.bindings).filter(([, a]) => a !== recording.value),
+  ) as Record<string, ShortcutAction>;
+  bindings[combo] = recording.value!;
+  settings.update({ shortcuts: { bindings } });
   recording.value = null;
 }, { capture: true });
 </script>
@@ -193,7 +191,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
               </div>
               <ToggleSwitch
                 :model-value="settings.current.appearance.mergeAccompaniment"
-                @update:model-value="settings.updateAppearance({ mergeAccompaniment: $event })"
+                @update:model-value="settings.update({ appearance: { mergeAccompaniment: $event } })"
               />
             </div>
             <div class="flex flex-col gap-2">
@@ -242,7 +240,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
               </div>
               <ToggleSwitch
                 :model-value="settings.current.playback.segueEnabled"
-                @update:model-value="settings.updatePlayback({ segueEnabled: $event })"
+                @update:model-value="settings.update({ playback: { segueEnabled: $event } })"
               />
             </div>
           </div>
