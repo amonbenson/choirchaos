@@ -135,6 +135,88 @@ export default class Song {
     this._updateEffectiveParameters();
   }
 
+  private _syncPlayerMode(): void {
+    if (this.midiFile) {
+      this.playerMode = "midi";
+    } else if (this.audioFiles.length > 0) {
+      this.playerMode = "audio";
+    } else {
+      this.playerMode = "none";
+    }
+  }
+
+  public async uploadMidiFile(file: File): Promise<void> {
+    const formData = new FormData();
+    formData.append("midiFile", file);
+    const record = await pb.collection("songs").update(this.id, formData);
+    this.midiFile = record.midiFile;
+    this._syncPlayerMode();
+  }
+
+  public async removeMidiFile(): Promise<void> {
+    await pb.collection("songs").update(this.id, { midiFile: null });
+    this.midiFile = undefined;
+    this.tracks.splice(0, this.tracks.length);
+    this._syncPlayerMode();
+    await this.update();
+  }
+
+  public async uploadAudioFile(file: File): Promise<string> {
+    const prevFilenames = new Set(
+      this.audioFiles.map(f => (typeof f === "string" ? f : f.name)),
+    );
+    const formData = new FormData();
+    formData.append("audioFiles", file);
+    const record = await pb.collection("songs").update(this.id, formData);
+    const newFilename = (record.audioFiles as string[]).find(f => !prevFilenames.has(f));
+    if (!newFilename) {
+      throw new Error("File upload failed: could not determine uploaded filename");
+    }
+
+    this.audioFiles.push(newFilename);
+    this._syncPlayerMode();
+    return newFilename;
+  }
+
+  public async removeAudioFile(filename: string): Promise<void> {
+    await pb.collection("songs").update(this.id, { "audioFiles-": filename });
+    const idx = this.audioFiles.findIndex(
+      f => (typeof f === "string" ? f : f.name) === filename,
+    );
+    if (idx !== -1) {
+      this.audioFiles.splice(idx, 1);
+    }
+
+    for (let i = this.tracks.length - 1; i >= 0; i--) {
+      if (this.tracks[i]!.audioFile === filename) {
+        this.tracks.splice(i, 1);
+      }
+    }
+
+    this.tracks.forEach((t, i) => (t.mixer.index = i));
+    this._syncPlayerMode();
+    await this.update();
+  }
+
+  public async addTrack(track: Track): Promise<void> {
+    track.mixer.index = this.tracks.length;
+    this.tracks.push(track);
+    await this.update();
+  }
+
+  public async removeTrack(index: number): Promise<void> {
+    this.tracks.splice(index, 1);
+    this.tracks.forEach((t, i) => (t.mixer.index = i));
+    await this.update();
+  }
+
+  public async moveTrack(fromIndex: number, toIndex: number): Promise<void> {
+    const [track] = this.tracks.splice(fromIndex, 1);
+    this.tracks.splice(toIndex, 0, track!);
+    this.tracks.forEach((t, i) => (t.mixer.index = i));
+    await this.update();
+  }
+
   public toRecord(): PbRecord {
     return {
       number: this.number,
