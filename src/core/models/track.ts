@@ -2,12 +2,19 @@ import type { MidiTrackEvents } from "../midi/player";
 
 export type TrackClassification = "Accompaniment" | "Percussion" | "Vocal";
 
+export type TrackPatch = Partial<{
+  title: string;
+  classification: TrackClassification;
+  program: number;
+  audioFile: string;
+}>;
+
 export default class Track {
   constructor(
-    public title: string,
-    public classification: TrackClassification = "Accompaniment",
-    public program: number = 0,
-    public audioFile: string = "",
+    public readonly title: string,
+    public readonly classification: TrackClassification = "Accompaniment",
+    public readonly program: number = 0,
+    public readonly audioFile: string = "",
     public mixer: {
       index: number;
       mute: boolean;
@@ -28,7 +35,25 @@ export default class Track {
     public $midiTrackEvents: MidiTrackEvents | object = {},
   ) {}
 
-  public json(): any {
+  public _applyPatch(patch: TrackPatch): void {
+    if (patch.title !== undefined) {
+      (this as any).title = patch.title;
+    }
+
+    if (patch.classification !== undefined) {
+      (this as any).classification = patch.classification;
+    }
+
+    if (patch.program !== undefined) {
+      (this as any).program = Math.max(0, Math.min(127, patch.program));
+    }
+
+    if (patch.audioFile !== undefined) {
+      (this as any).audioFile = patch.audioFile;
+    }
+  }
+
+  public serialize(): any {
     return {
       title: this.title,
       classification: this.classification,
@@ -37,7 +62,7 @@ export default class Track {
     };
   }
 
-  public static fromJson({ title, classification, program, audioFile }: any): Track {
+  public static deserialize({ title, classification, program, audioFile }: any): Track {
     return new Track(title, classification, program, audioFile);
   }
 }

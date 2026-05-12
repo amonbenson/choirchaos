@@ -155,7 +155,7 @@ const canAddMarkerAtPlayhead = computed(() => {
     && playheadTime.value < totalDuration.value;
 });
 
-function addMarkerAtPlayhead(): void {
+async function addMarkerAtPlayhead(): Promise<void> {
   if (!props.song || !canAddMarkerAtPlayhead.value) {
     return;
   }
@@ -181,8 +181,7 @@ function addMarkerAtPlayhead(): void {
     newIdx = gap.leftMeasure + 1 + found;
   }
 
-  props.song!.warpMarkers = [...markers.value, { measure: newIdx, time }]
-    .sort((a, b) => a.measure - b.measure);
+  await props.song.addWarpMarker({ measure: newIdx, time });
   reloadWarp();
 }
 
@@ -231,8 +230,8 @@ function reloadWarp(): void {
   player.seek(pos);
 }
 
-function deleteMarker(measure: number): void {
-  props.song!.warpMarkers = markers.value.filter(m => m.measure !== measure);
+async function deleteMarker(measure: number): Promise<void> {
+  await props.song!.removeWarpMarker(measure);
   reloadWarp();
 }
 
@@ -271,13 +270,11 @@ useEventListener(window, "pointermove", (e: PointerEvent) => {
   }
 });
 
-useEventListener(window, "pointerup", () => {
+useEventListener(window, "pointerup", async () => {
   if (draggingMeasure.value !== null) {
     const measure = draggingMeasure.value;
     draggingMeasure.value = null;
-    props.song!.warpMarkers = markers.value.map(m =>
-      m.measure === measure ? { measure: m.measure, time: dragTime.value } : m,
-    );
+    await props.song!.setWarpMarker(measure, dragTime.value);
     reloadWarp();
   }
 
