@@ -131,27 +131,6 @@ function trackAmplitude(track: Track | MergedTrack): number {
   return Math.max(0, ...indices.map(i => player.trackAmplitudes[i] ?? 0));
 }
 
-watch(() => props.song, (song) => {
-  if (!song) {
-    return;
-  }
-
-  for (const metaTrack of Object.values(tracksByClassification.value).flat()) {
-    const stored = settingsStore.getTrackMixer(metaTrack.title);
-
-    const tracks = metaTrack instanceof MergedTrack ? metaTrack.tracks : [metaTrack];
-    for (const track of tracks) {
-      song.setTrackGain(track.mixer.index, stored.gain);
-      song.setTrackMute(track.mixer.index, stored.mute);
-      song.setTrackSolo(track.mixer.index, stored.solo);
-      song.setTrackHighlight(track.mixer.index, stored.highlight);
-    }
-  }
-
-  trackFlashTriggered.value = Array(song.tracks.length).fill(false);
-  pendingMode.value = null;
-}, { immediate: true });
-
 // ── Edit mode ────────────────────────────────────────────────────────────────
 
 const CLASSIFICATIONS: TrackClassification[] = ["Vocal", "Accompaniment", "Percussion"];
@@ -173,6 +152,33 @@ const songMode = computed((): "empty" | "midi" | "mp3" => {
 });
 
 const pendingMode = ref<"midi" | "mp3" | null>(null);
+
+watch(songMode, (mode) => {
+  if (mode !== "empty") {
+    pendingMode.value = null;
+  }
+});
+
+watch(() => props.song, (song) => {
+  if (!song) {
+    return;
+  }
+
+  for (const metaTrack of Object.values(tracksByClassification.value).flat()) {
+    const stored = settingsStore.getTrackMixer(metaTrack.title);
+
+    const tracks = metaTrack instanceof MergedTrack ? metaTrack.tracks : [metaTrack];
+    for (const track of tracks) {
+      song.setTrackGain(track.mixer.index, stored.gain);
+      song.setTrackMute(track.mixer.index, stored.mute);
+      song.setTrackSolo(track.mixer.index, stored.solo);
+      song.setTrackHighlight(track.mixer.index, stored.highlight);
+    }
+  }
+
+  trackFlashTriggered.value = Array(song.tracks.length).fill(false);
+  pendingMode.value = null;
+}, { immediate: true });
 
 watch(songMode, (mode) => {
   if (mode !== "empty") {
@@ -428,61 +434,63 @@ async function handleTrackProgramChange(index: number, value: number | null): Pr
           <div
             v-for="track, i in song.tracks"
             :key="i"
-            class="flex items-center gap-1"
+            class="flex flex-col gap-1"
           >
-            <!-- Reorder -->
-            <div class="flex flex-col">
-              <Button
-                icon="pi pi-chevron-up"
+            <!-- Row 1: reorder + title + delete -->
+            <div class="flex items-center gap-1">
+              <div class="flex flex-col">
+                <Button
+                  icon="pi pi-chevron-up"
+                  size="small"
+                  text
+                  rounded
+                  :disabled="i === 0"
+                  @click="handleTrackMoveUp(i)"
+                />
+                <Button
+                  icon="pi pi-chevron-down"
+                  size="small"
+                  text
+                  rounded
+                  :disabled="i === song.tracks.length - 1"
+                  @click="handleTrackMoveDown(i)"
+                />
+              </div>
+              <InputText
                 size="small"
-                text
-                rounded
-                :disabled="i === 0"
-                @click="handleTrackMoveUp(i)"
+                class="min-w-0 flex-1"
+                :model-value="track.title"
+                @change="handleTrackTitleChange(i, ($event.target as HTMLInputElement).value)"
               />
               <Button
-                icon="pi pi-chevron-down"
+                icon="pi pi-trash"
                 size="small"
+                severity="danger"
                 text
                 rounded
-                :disabled="i === song.tracks.length - 1"
-                @click="handleTrackMoveDown(i)"
+                @click="handleMidiTrackDelete(i)"
               />
             </div>
-            <!-- Title -->
-            <InputText
-              size="small"
-              class="min-w-0 flex-1"
-              :model-value="track.title"
-              @change="handleTrackTitleChange(i, ($event.target as HTMLInputElement).value)"
-            />
-            <!-- Classification -->
-            <Select
-              size="small"
-              class="w-32 shrink-0"
-              :model-value="track.classification"
-              :options="CLASSIFICATIONS"
-              @update:model-value="handleTrackClassificationChange(i, $event)"
-            />
-            <!-- Program number -->
-            <InputNumber
-              size="small"
-              class="w-14 shrink-0"
-              :model-value="track.program"
-              :min="0"
-              :max="127"
-              :use-grouping="false"
-              @update:model-value="handleTrackProgramChange(i, $event)"
-            />
-            <!-- Delete -->
-            <Button
-              icon="pi pi-trash"
-              size="small"
-              severity="danger"
-              text
-              rounded
-              @click="handleMidiTrackDelete(i)"
-            />
+            <!-- Row 2: classification + program number -->
+            <div class="flex items-center gap-2 pl-8">
+              <Select
+                size="small"
+                class="flex-1"
+                :model-value="track.classification"
+                :options="CLASSIFICATIONS"
+                @update:model-value="handleTrackClassificationChange(i, $event)"
+              />
+              <InputNumber
+                size="small"
+                class="w-20 shrink-0"
+                :model-value="track.program"
+                :min="0"
+                :max="127"
+                :use-grouping="false"
+                :show-buttons="false"
+                @update:model-value="handleTrackProgramChange(i, $event)"
+              />
+            </div>
           </div>
           <span
             v-if="song.tracks.length === 0"
