@@ -356,6 +356,7 @@ watch(() => props.songId, async (songId) => {
             settings.current.workspace.panelVisible.mixer ? 'lg:opacity-100' : 'lg:opacity-0',
           ]"
           :song="song"
+          :edit-mode="editMode"
         />
         <Button
           class="absolute top-2 right-full z-10 hidden transition-all lg:block"

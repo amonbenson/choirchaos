@@ -334,7 +334,7 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
             <Draggable @drag="onHandleDrag($event, measure, 'top')">
               <template #default="{ passRef }">
                 <Button
-                  :ref="(c: any) => passRef(c?.$el)"
+                  :ref="(c: any) => c && passRef(c.$el)"
                   class="absolute top-0 left-1/2 -translate-1/2 scale-50 cursor-ns-resize"
                   icon="pi pi-arrows-v"
                   severity="secondary"
@@ -348,7 +348,7 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
             <Draggable @drag="onHandleDrag($event, measure, 'right')">
               <template #default="{ passRef }">
                 <Button
-                  :ref="(c: any) => passRef(c?.$el)"
+                  :ref="(c: any) => c && passRef(c.$el)"
                   class="absolute top-1/2 left-full -translate-1/2 scale-50 cursor-ew-resize"
                   icon="pi pi-arrows-h"
                   severity="secondary"
@@ -362,7 +362,7 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
             <Draggable @drag="onHandleDrag($event, measure, 'bottom')">
               <template #default="{ passRef }">
                 <Button
-                  :ref="(c: any) => passRef(c?.$el)"
+                  :ref="(c: any) => c && passRef(c.$el)"
                   class="absolute top-full left-1/2 -translate-1/2 scale-50 cursor-ns-resize"
                   icon="pi pi-arrows-v"
                   severity="secondary"
@@ -376,7 +376,7 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
             <Draggable @drag="onHandleDrag($event, measure, 'left')">
               <template #default="{ passRef }">
                 <Button
-                  :ref="(c: any) => passRef(c?.$el)"
+                  :ref="(c: any) => c && passRef(c.$el)"
                   class="absolute top-1/2 left-0 -translate-1/2 scale-50 cursor-ew-resize"
                   icon="pi pi-arrows-h"
                   severity="secondary"
