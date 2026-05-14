@@ -42,6 +42,89 @@ export type WorkerOutMessage
 const SCALE_HIGH = 2.0;
 const SCALE_LOW = 0.5;
 
+const RENDER_MAX_ATTEMPTS = 3;
+const RENDER_RETRY_DELAY_MS = 500;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+// createImageBitmap() is preferred over OffscreenCanvas.transferToImageBitmap()
+// for two reasons:
+//   1. It keeps pixel data in CPU memory and avoids GPU context-loss issues that
+//      cause transferToImageBitmap() to silently return a zero-dimension bitmap
+//      under memory pressure on Safari/WebKit (https://bugs.webkit.org/show_bug.cgi?id=254974).
+//   2. It returns a Promise, so failures surface as exceptions rather than
+//      silent empty bitmaps.
+// transferToImageBitmap() is used as a fallback only if createImageBitmap()
+// itself returns a zero-dimension result.
+async function canvasToBitmap(canvas: OffscreenCanvas): Promise<ImageBitmap> {
+  const bmp = await createImageBitmap(canvas);
+  if (bmp.width > 0 && bmp.height > 0) {
+    return bmp;
+  }
+
+  bmp.close();
+
+  const transferred = canvas.transferToImageBitmap();
+  if (transferred.width === 0 || transferred.height === 0) {
+    transferred.close();
+    throw new Error(`Rendered canvas (${canvas.width}×${canvas.height}) produced an empty bitmap`);
+  }
+
+  return transferred;
+}
+
+// Renders a single PDF page to high- and low-res ImageBitmaps. Retries up to
+// RENDER_MAX_ATTEMPTS times with exponential backoff. Each attempt re-renders
+// from the page proxy so that a lost canvas context (which clears pixel data)
+// is recovered rather than retried with stale data.
+async function renderWithRetry(
+  doc: PDFDocumentProxy,
+  pageNum: number,
+): Promise<{ bitmap: ImageBitmap; bitmapLow: ImageBitmap }> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < RENDER_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise<void>(r => setTimeout(r, RENDER_RETRY_DELAY_MS * attempt));
+    }
+
+    const pageProxy = await doc.getPage(pageNum);
+    try {
+      const vpHigh = pageProxy.getViewport({ scale: SCALE_HIGH });
+      const vpLow = pageProxy.getViewport({ scale: SCALE_LOW });
+
+      const canvasHigh = new OffscreenCanvas(Math.ceil(vpHigh.width), Math.ceil(vpHigh.height));
+      const ctxHigh = canvasHigh.getContext("2d");
+      if (!ctxHigh) {
+        throw new Error("Could not obtain 2D context (too many active contexts?)");
+      }
+
+      await pageProxy.render({ canvasContext: ctxHigh as unknown as CanvasRenderingContext2D, canvas: canvasHigh as unknown as HTMLCanvasElement, viewport: vpHigh }).promise;
+
+      const canvasLow = new OffscreenCanvas(Math.ceil(vpLow.width), Math.ceil(vpLow.height));
+      const ctxLow = canvasLow.getContext("2d");
+      if (!ctxLow) {
+        throw new Error("Could not obtain 2D context (too many active contexts?)");
+      }
+
+      await pageProxy.render({ canvasContext: ctxLow as unknown as CanvasRenderingContext2D, canvas: canvasLow as unknown as HTMLCanvasElement, viewport: vpLow }).promise;
+
+      const [bitmap, bitmapLow] = await Promise.all([
+        canvasToBitmap(canvasHigh),
+        canvasToBitmap(canvasLow),
+      ]);
+
+      return { bitmap, bitmapLow };
+    } catch (err) {
+      lastError = err;
+    } finally {
+      pageProxy.cleanup();
+    }
+  }
+
+  throw lastError;
+}
+
 // ── Document cache ───────────────────────────────────────────────────────────
 
 const docCache = new Map<string, Promise<PDFDocumentProxy>>();
@@ -81,27 +164,7 @@ workerSelf.onmessage = async (e: MessageEvent<WorkerInMessage>) => {
   if (msg.type === "render") {
     try {
       const doc = await getDoc(msg.url);
-      const pageProxy = await doc.getPage(msg.page + 1);
-
-      const vpHigh = pageProxy.getViewport({ scale: SCALE_HIGH });
-      const vpLow = pageProxy.getViewport({ scale: SCALE_LOW });
-
-      // Render high-res version
-      const canvasHigh = new OffscreenCanvas(Math.ceil(vpHigh.width), Math.ceil(vpHigh.height));
-      const ctxHigh = canvasHigh.getContext("2d")!;
-      await pageProxy.render({ canvasContext: ctxHigh as unknown as CanvasRenderingContext2D, canvas: canvasHigh as unknown as HTMLCanvasElement, viewport: vpHigh }).promise;
-
-      // Render low-res version (used for mipmap when many pages are visible)
-      const canvasLow = new OffscreenCanvas(Math.ceil(vpLow.width), Math.ceil(vpLow.height));
-      const ctxLow = canvasLow.getContext("2d")!;
-      await pageProxy.render({ canvasContext: ctxLow as unknown as CanvasRenderingContext2D, canvas: canvasLow as unknown as HTMLCanvasElement, viewport: vpLow }).promise;
-
-      pageProxy.cleanup();
-
-      // transferToImageBitmap() moves pixel data to GPU memory and frees the
-      // OffscreenCanvas backing store, keeping memory usage low.
-      const bitmap = canvasHigh.transferToImageBitmap();
-      const bitmapLow = canvasLow.transferToImageBitmap();
+      const { bitmap, bitmapLow } = await renderWithRetry(doc, msg.page + 1);
 
       const out: WorkerOutMessage = { type: "rendered", id: msg.id, bitmap, bitmapLow };
       workerSelf.postMessage(out, [bitmap, bitmapLow]);
