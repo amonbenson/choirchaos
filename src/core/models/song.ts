@@ -283,6 +283,14 @@ export default class Song {
     await this._save({ measures: this._serializeMeasures() });
   }
 
+  public async addMeasures(measures: Measure[]): Promise<void> {
+    for (const measure of measures) {
+      this.measures.insert(measure);
+    }
+
+    await this._save({ measures: this._serializeMeasures() });
+  }
+
   public async removeMeasure(measure: Measure): Promise<void> {
     this.measures.remove(measure);
     await this._save({ measures: this._serializeMeasures() });
