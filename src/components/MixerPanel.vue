@@ -253,13 +253,14 @@ async function handleAudioUpload(event: Event): Promise<void> {
 
   uploading.value = true;
   try {
-    for (const file of files) {
-      const filename = await props.song.uploadAudioFile(file);
-      const title = inferTrackTitle(file.name);
-      const classification = inferTrackClassification(file.name);
-      await props.song.addTrack(new Track(title, classification, 0, filename));
-    }
-
+    const filenames = await props.song.uploadAudioFiles(files);
+    const newTracks = files.map((file, i) => new Track(
+      inferTrackTitle(file.name),
+      inferTrackClassification(file.name),
+      0,
+      filenames[i] ?? "",
+    ));
+    await props.song.addTracks(newTracks);
     await player.load(props.song);
   } finally {
     uploading.value = false;
