@@ -858,7 +858,7 @@ export default class MidiPlayer extends EventEmitter {
   }
 
   private _syncWarpInternal(song: Song): void {
-    this._warpMap.setMarkers(song.warpMarkers ?? []);
+    this._warpMap.setMarkers([...song.warpMarkers]);
     this._resetMidiEvents();
 
     // Populate $beatTicks for each measure (1 tick = 1 ms) and build measure events
