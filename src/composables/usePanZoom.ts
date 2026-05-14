@@ -99,6 +99,7 @@ export function usePanZoom(
       transform.pan.x -= e.deltaX;
       transform.pan.y -= e.deltaY;
     }
+
     options.onInteract?.();
 
     onRedraw();
