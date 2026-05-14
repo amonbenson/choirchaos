@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import p5 from "p5";
-import { onBeforeUnmount, onMounted, ref, shallowRef, toRef } from "vue";
+import { onBeforeUnmount, onMounted, ref, shallowRef, toRef, watch } from "vue";
 
 import { usePanZoom } from "@/composables/usePanZoom";
 import { usePdfPages } from "@/composables/usePdfPages";
@@ -12,13 +12,14 @@ const props = defineProps<{
   url: string | undefined;
 }>();
 
-const emit = defineEmits([
-  "setup",
-  "drawPageOverlay",
-  "mousePressed",
-  "mouseReleased",
-  "mouseMoved",
-]);
+const emit = defineEmits<{
+  setup: [payload: { s: p5 }];
+  drawPageOverlay: [payload: { s: p5; p: number; transform: PageTransform }];
+  mousePressed: [payload: { s: p5; transform: PageTransform }];
+  mouseReleased: [payload: { s: p5; transform: PageTransform }];
+  mouseMoved: [payload: { s: p5; transform: PageTransform; x: number; y: number }];
+  loadingChange: [loading: boolean];
+}>();
 
 const wrapper = ref<HTMLDivElement | undefined>();
 const container = ref<HTMLDivElement | undefined>();
@@ -32,7 +33,12 @@ const overlaySketch = shallowRef<P5Sketch | undefined>();
 const transform = shallowRef(new PageTransform({ x: 100, y: 100 }, 750));
 const visiblePages = shallowRef<{ x: number; y: number; width: number; height: number; pageNumber: number }[]>([]);
 
-const { pages } = usePdfPages(toRef(props, "url"), { onUpdate: redrawAll });
+const { pages, documentStatus } = usePdfPages(toRef(props, "url"), { onUpdate: redrawAll });
+
+watch([documentStatus, pages], ([status, currentPages]) => {
+  const firstPageReady = currentPages[0]?.status === "ready";
+  emit("loadingChange", status === "loading" || (status === "ready" && !firstPageReady));
+}, { immediate: true });
 
 const isGrabbing = ref(false);
 

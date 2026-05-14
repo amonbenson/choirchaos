@@ -4,6 +4,7 @@ import ButtonGroup from "primevue/buttongroup";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import BabySvenja from "@/components/BabySvenja.vue";
 import KbdShortcut from "@/components/KbdShortcut.vue";
 import MarkerPanel from "@/components/MarkerPanel.vue";
 import MixerPanel from "@/components/MixerPanel.vue";
@@ -240,6 +241,9 @@ watch(() => props.songId, async (songId) => {
     songLoading.value = false;
   }
 }, { immediate: true });
+
+// PDF Loader
+const pdfLoading = ref(false);
 </script>
 
 <template>
@@ -320,6 +324,7 @@ watch(() => props.songId, async (songId) => {
             class="size-full"
             :song="song"
             :edit-mode="editMode"
+            @pdf-loading="pdfLoading = $event"
           />
         </div>
         <div class="absolute bottom-4 left-1/2 w-[calc(100%-2rem)] -translate-x-1/2 md:w-72 lg:bottom-16">
@@ -339,6 +344,15 @@ watch(() => props.songId, async (songId) => {
           >
             Loading the next song
           </VampCard>
+        </div>
+        <div
+          v-if="player.loading || pdfLoading"
+          class="absolute top-0 left-0 flex size-full flex-col items-center justify-center bg-black/50 text-white select-none"
+        >
+          <BabySvenja class="w-full max-w-lg" />
+          <p class="text-xl">
+            Loading {{ player.loading ? "audio data" : "PDF" }} ...
+          </p>
         </div>
       </div>
 
