@@ -205,12 +205,12 @@ function inferTrackTitle(filename: string): string {
 function inferTrackClassification(filename: string): TrackClassification {
   const name = filename.toLowerCase();
 
-  if (/drum|perc(ussion)?|cymbal|snare|kick|timpani|bongo|conga|tambourine/.test(name)) {
-    return "Percussion";
+  if (/accomp|piano|inst/.test(name)) {
+    return "Accompaniment";
   }
 
-  if (/accompan|piano|instrumental|organ|guitar|bass|synth|keyboard|string|brass|wind|horn|trumpet|trombone|cello|violin|viola|harp|flute|clarinet|oboe|sax(ophone)?/.test(name)) {
-    return "Accompaniment";
+  if (/drum|perc/.test(name)) {
+    return "Percussion";
   }
 
   return "Vocal";
