@@ -21,6 +21,10 @@ const props = defineProps<{
   editMode?: boolean;
 }>();
 
+const emit = defineEmits<{
+  "pdf-loading": [loading: boolean];
+}>();
+
 const access = computed(() => getAccessFlags(props.song?.permissions ?? NoPermissions, auth.user?.id));
 const currentTool = ref<"edit" | "add">("edit");
 const pdfViewer = ref();
@@ -276,6 +280,7 @@ function deleteMeasureLayout(measure: Measure): void {
   <PdfViewer
     ref="pdfViewer"
     :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
+    @loading-change="emit('pdf-loading', $event)"
   >
     <template #default="{ visiblePages }">
       <!-- Measure Overlays -->

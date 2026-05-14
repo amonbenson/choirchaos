@@ -28,6 +28,7 @@ export default class AudioPlayer {
   private _gainNodes: GainNode[];
   private _analysers: AnalyserNode[];
   private _analyserBuffers: Float32Array<ArrayBuffer>[];
+  private _keepAlive: ConstantSourceNode;
 
   private _gainValues: number[];
   private _smoothedAmplitudes: number[];
@@ -86,6 +87,23 @@ export default class AudioPlayer {
       return this._gainNodes[i]!;
     });
 
+    // Stereo bus before rubberband with an explicit 2-channel config.
+    // A ConstantSourceNode (offset=0, silent) keeps the bus permanently active so
+    // rubberband's AudioWorklet always receives a properly-formatted 2-channel
+    // input. Without this, Edge passes inputs[0]=[] once all sources stop, causing
+    // rubberband to crash with "Invalid channel index 1".
+    const stereoBus = _context.createGain();
+    stereoBus.channelCount = 2;
+    stereoBus.channelCountMode = "explicit";
+    stereoBus.channelInterpretation = "speakers";
+
+    this._keepAlive = _context.createConstantSource();
+    this._keepAlive.offset.value = 0;
+    this._keepAlive.start();
+    this._keepAlive.connect(stereoBus);
+
+    stereoBus.connect(this._rubberBandNode);
+
     _buffers.forEach((_, i) => {
       const trackOpts = options.tracks[i];
       let node: AudioNode = this._gainNodes[i]!;
@@ -102,7 +120,7 @@ export default class AudioPlayer {
       }
 
       node.connect(this._analysers[i]!);
-      this._analysers[i]!.connect(this._rubberBandNode);
+      this._analysers[i]!.connect(stereoBus);
     });
 
     this._amplitudeInterval = setInterval(() => {
@@ -116,6 +134,7 @@ export default class AudioPlayer {
       this._amplitudeInterval = null;
     }
 
+    this._keepAlive.stop();
     this._rubberBandNode.close();
   }
 

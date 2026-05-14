@@ -45,7 +45,8 @@ export function usePdfPages(url: Ref<string | undefined>, options?: { onUpdate?:
     });
   }
 
-  // Load and render all pages whenever the URL changes
+  // Load and render all pages whenever the URL changes (immediate so a URL set
+  // before mount — e.g. via pendingShow — is not missed).
   watch(url, async () => {
     const currentUrl = url.value;
     if (!currentUrl) {
@@ -53,13 +54,14 @@ export function usePdfPages(url: Ref<string | undefined>, options?: { onUpdate?:
     }
 
     await pdfRendererStore.load(currentUrl);
+
     if (currentUrl !== url.value) {
       return;
     }
 
     const numPages = pdfRendererStore.getNumPages(url.value) ?? 0;
     await Promise.all(Array(numPages).fill(null).map((_, i) => pdfRendererStore.render(currentUrl, i)));
-  });
+  }, { immediate: true });
 
   // Batch rapid status events (e.g. multiple pages rendering simultaneously) into
   // one state update per animation frame

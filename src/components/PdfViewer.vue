@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import p5 from "p5";
-import { onBeforeUnmount, onMounted, ref, shallowRef, toRef } from "vue";
+import { onBeforeUnmount, onMounted, ref, shallowRef, toRef, watch } from "vue";
 
 import { usePanZoom } from "@/composables/usePanZoom";
 import { usePdfPages } from "@/composables/usePdfPages";
@@ -12,13 +12,14 @@ const props = defineProps<{
   url: string | undefined;
 }>();
 
-const emit = defineEmits([
-  "setup",
-  "drawPageOverlay",
-  "mousePressed",
-  "mouseReleased",
-  "mouseMoved",
-]);
+const emit = defineEmits<{
+  setup: [payload: { s: p5 }];
+  drawPageOverlay: [payload: { s: p5; p: number; transform: PageTransform }];
+  mousePressed: [payload: { s: p5; transform: PageTransform }];
+  mouseReleased: [payload: { s: p5; transform: PageTransform }];
+  mouseMoved: [payload: { s: p5; transform: PageTransform; x: number; y: number }];
+  loadingChange: [loading: boolean];
+}>();
 
 const wrapper = ref<HTMLDivElement | undefined>();
 const container = ref<HTMLDivElement | undefined>();
@@ -32,13 +33,26 @@ const overlaySketch = shallowRef<P5Sketch | undefined>();
 const transform = shallowRef(new PageTransform({ x: 100, y: 100 }, 750));
 const visiblePages = shallowRef<{ x: number; y: number; width: number; height: number; pageNumber: number }[]>([]);
 
-const { pages } = usePdfPages(toRef(props, "url"), { onUpdate: redrawAll });
+const { pages, documentStatus } = usePdfPages(toRef(props, "url"), { onUpdate: redrawAll });
+
+watch([documentStatus, pages], ([status, currentPages]) => {
+  const firstPageReady = currentPages[0]?.status === "ready";
+  emit("loadingChange", status === "loading" || (status === "ready" && !firstPageReady));
+}, { immediate: true });
 
 const isGrabbing = ref(false);
+const viewUserModified = ref(false);
+
+watch(() => props.url, () => {
+  viewUserModified.value = false;
+});
 
 usePanZoom(wrapper, transform.value, {
   onRedraw: redrawAll,
   panZone: container,
+  onInteract: () => {
+    viewUserModified.value = true;
+  },
 });
 
 function setup(): void {
@@ -141,7 +155,9 @@ function handleResize(): void {
   sketch.value.resizeCanvas(w, h);
   overlaySketch.value.resizeCanvas(w, h);
 
-  if (pw > 100 && ph > 100 && w > 100 && h > 100) {
+  if (!viewUserModified.value && w > 0 && h > 0) {
+    fitZoom(0);
+  } else if (pw > 100 && ph > 100 && w > 100 && h > 100) {
     transform.value.pan.x += (w - pw) / 2;
     transform.value.pan.y += (h - ph) / 2;
   }
@@ -165,7 +181,7 @@ function onPointerDownForEmit(e: PointerEvent): void {
     return;
   }
 
-  emit("mousePressed", { s: overlaySketch.value, transform: transform.value });
+  emit("mousePressed", { s: overlaySketch.value!, transform: transform.value });
 }
 
 function onPointerUpForEmit(e: PointerEvent): void {
@@ -173,7 +189,7 @@ function onPointerUpForEmit(e: PointerEvent): void {
     return;
   }
 
-  emit("mouseReleased", { s: overlaySketch.value, transform: transform.value });
+  emit("mouseReleased", { s: overlaySketch.value!, transform: transform.value });
 }
 
 function onPointerMoveForEmit(e: PointerEvent): void {
@@ -182,7 +198,7 @@ function onPointerMoveForEmit(e: PointerEvent): void {
   }
 
   const pos = containerPos(e.clientX, e.clientY);
-  emit("mouseMoved", { s: overlaySketch.value, transform: transform.value, x: pos.x, y: pos.y });
+  emit("mouseMoved", { s: overlaySketch.value!, transform: transform.value, x: pos.x, y: pos.y });
 }
 
 onMounted(() => {
@@ -220,11 +236,13 @@ onBeforeUnmount(() => {
 });
 
 function isLocationVisible(pc: PageCoordinate): boolean {
-  if (!overlaySketch.value) {
+  const w = container.value?.clientWidth ?? 0;
+  const h = container.value?.clientHeight ?? 0;
+  if (w <= 0 || h <= 0) {
     return false;
   }
 
-  return transform.value.contains(pc, overlaySketch.value.width, overlaySketch.value.height);
+  return transform.value.contains(pc, w, h);
 }
 
 export type MoveToLocationOptions = Partial<{
@@ -234,8 +252,9 @@ export type MoveToLocationOptions = Partial<{
 }>;
 
 function moveToLocation(target: PageCoordinate, options: MoveToLocationOptions = {}): void {
-  const s = overlaySketch.value;
-  if (!s) {
+  const w = container.value?.clientWidth ?? 0;
+  const h = container.value?.clientHeight ?? 0;
+  if (w <= 0 || h <= 0) {
     return;
   }
 
@@ -246,28 +265,34 @@ function moveToLocation(target: PageCoordinate, options: MoveToLocationOptions =
   const vc = transform.value.pageToViewport(target);
 
   if (["both", "horizontal"].includes(axis)) {
-    transform.value.pan.x = -vc.x * transform.value.zoom + s.width * offsetX;
+    transform.value.pan.x = -vc.x * transform.value.zoom + w * offsetX;
   }
 
   if (["both", "vertical"].includes(axis)) {
-    transform.value.pan.y = -vc.y * transform.value.zoom + s.height * offsetY;
+    transform.value.pan.y = -vc.y * transform.value.zoom + h * offsetY;
   }
 }
 
-function zoomToPage(page: number): void {
-  const s = overlaySketch.value;
-  if (!s) {
+function fitZoom(page: number): void {
+  // Use container dimensions instead of s.width/s.height — p5's _renderer (which
+  // backs those getters) may not exist yet when fitZoom is called during setup.
+  const w = container.value?.clientWidth ?? 0;
+  const h = container.value?.clientHeight ?? 0;
+  if (w <= 0 || h <= 0) {
     return;
   }
 
-  // Zoom to fit the whole page
   const padding = 0.95;
-  const zoomByWidth = s.width / Math.SQRT1_2 * padding;
-  const zoomByHeight = s.height * padding;
+  const zoomByWidth = w / Math.SQRT1_2 * padding;
+  const zoomByHeight = h * padding;
   transform.value.zoom = Math.min(zoomByWidth, zoomByHeight);
 
-  // Move to the center of the page
   moveToLocation({ p: page, x: 0.5, y: 0.5 });
+  redrawAll();
+}
+
+function zoomToPage(page: number): void {
+  fitZoom(page);
 }
 
 defineExpose({
