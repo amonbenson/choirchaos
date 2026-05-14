@@ -236,11 +236,13 @@ onBeforeUnmount(() => {
 });
 
 function isLocationVisible(pc: PageCoordinate): boolean {
-  if (!overlaySketch.value) {
+  const w = container.value?.clientWidth ?? 0;
+  const h = container.value?.clientHeight ?? 0;
+  if (w <= 0 || h <= 0) {
     return false;
   }
 
-  return transform.value.contains(pc, overlaySketch.value.width, overlaySketch.value.height);
+  return transform.value.contains(pc, w, h);
 }
 
 export type MoveToLocationOptions = Partial<{
@@ -250,8 +252,9 @@ export type MoveToLocationOptions = Partial<{
 }>;
 
 function moveToLocation(target: PageCoordinate, options: MoveToLocationOptions = {}): void {
-  const s = overlaySketch.value;
-  if (!s) {
+  const w = container.value?.clientWidth ?? 0;
+  const h = container.value?.clientHeight ?? 0;
+  if (w <= 0 || h <= 0) {
     return;
   }
 
@@ -262,25 +265,26 @@ function moveToLocation(target: PageCoordinate, options: MoveToLocationOptions =
   const vc = transform.value.pageToViewport(target);
 
   if (["both", "horizontal"].includes(axis)) {
-    transform.value.pan.x = -vc.x * transform.value.zoom + s.width * offsetX;
+    transform.value.pan.x = -vc.x * transform.value.zoom + w * offsetX;
   }
 
   if (["both", "vertical"].includes(axis)) {
-    transform.value.pan.y = -vc.y * transform.value.zoom + s.height * offsetY;
+    transform.value.pan.y = -vc.y * transform.value.zoom + h * offsetY;
   }
 }
 
 function fitZoom(page: number): void {
-  const s = overlaySketch.value;
-  // s.canvas is set alongside _renderer; if it's absent, p5 hasn't finished
-  // initializing and accessing s.width would throw.
-  if (!s?.canvas || s.width <= 0 || s.height <= 0) {
+  // Use container dimensions instead of s.width/s.height — p5's _renderer (which
+  // backs those getters) may not exist yet when fitZoom is called during setup.
+  const w = container.value?.clientWidth ?? 0;
+  const h = container.value?.clientHeight ?? 0;
+  if (w <= 0 || h <= 0) {
     return;
   }
 
   const padding = 0.95;
-  const zoomByWidth = s.width / Math.SQRT1_2 * padding;
-  const zoomByHeight = s.height * padding;
+  const zoomByWidth = w / Math.SQRT1_2 * padding;
+  const zoomByHeight = h * padding;
   transform.value.zoom = Math.min(zoomByWidth, zoomByHeight);
 
   moveToLocation({ p: page, x: 0.5, y: 0.5 });
