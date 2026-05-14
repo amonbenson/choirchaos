@@ -171,7 +171,7 @@ function onPointerDownForEmit(e: PointerEvent): void {
     return;
   }
 
-  emit("mousePressed", { s: overlaySketch.value, transform: transform.value });
+  emit("mousePressed", { s: overlaySketch.value!, transform: transform.value });
 }
 
 function onPointerUpForEmit(e: PointerEvent): void {
@@ -179,7 +179,7 @@ function onPointerUpForEmit(e: PointerEvent): void {
     return;
   }
 
-  emit("mouseReleased", { s: overlaySketch.value, transform: transform.value });
+  emit("mouseReleased", { s: overlaySketch.value!, transform: transform.value });
 }
 
 function onPointerMoveForEmit(e: PointerEvent): void {
@@ -188,7 +188,7 @@ function onPointerMoveForEmit(e: PointerEvent): void {
   }
 
   const pos = containerPos(e.clientX, e.clientY);
-  emit("mouseMoved", { s: overlaySketch.value, transform: transform.value, x: pos.x, y: pos.y });
+  emit("mouseMoved", { s: overlaySketch.value!, transform: transform.value, x: pos.x, y: pos.y });
 }
 
 onMounted(() => {
