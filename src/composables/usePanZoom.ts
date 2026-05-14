@@ -11,6 +11,7 @@ export function usePanZoom(
   options: {
     onRedraw: () => void;
     panZone?: Ref<HTMLElement | undefined>;
+    onInteract?: () => void;
   },
 ): void {
   const { onRedraw } = options;
@@ -59,6 +60,7 @@ export function usePanZoom(
 
     if (!movedBeyondTap && Math.hypot(e.movementX, e.movementY) > TAP_MAX_MOVEMENT) {
       movedBeyondTap = true;
+      options.onInteract?.();
     }
 
     onRedraw();
@@ -97,6 +99,7 @@ export function usePanZoom(
       transform.pan.x -= e.deltaX;
       transform.pan.y -= e.deltaY;
     }
+    options.onInteract?.();
 
     onRedraw();
   }, { passive: false });
@@ -132,6 +135,7 @@ export function usePanZoom(
 
         if (Math.hypot(dx, dy) > TAP_MAX_MOVEMENT) {
           didGesture = true;
+          options.onInteract?.();
         }
       }
     } else if (e.touches.length === 2) {
@@ -149,6 +153,7 @@ export function usePanZoom(
           transform.setZoom(transform.zoom * (currDist / prevDist), prevCenter);
           transform.pan.x += currCenter.x - prevCenter.x;
           transform.pan.y += currCenter.y - prevCenter.y;
+          options.onInteract?.();
         }
       }
     }

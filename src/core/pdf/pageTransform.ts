@@ -18,11 +18,25 @@ export type PageCoordinate = {
 
 export default class PageTransform {
   public static PAGE_GAP = 0.02;
+  public static MIN_ZOOM = 10;
+  public static MAX_ZOOM = 100000;
+
+  private _zoom: number;
 
   constructor(
     public pan: ScreenCoordinate = { x: 0, y: 0 },
-    public zoom: number = 1,
-  ) {}
+    zoom: number = 1,
+  ) {
+    this._zoom = Math.max(PageTransform.MIN_ZOOM, Math.min(PageTransform.MAX_ZOOM, zoom));
+  }
+
+  get zoom(): number {
+    return this._zoom;
+  }
+
+  set zoom(value: number) {
+    this._zoom = Math.max(PageTransform.MIN_ZOOM, Math.min(PageTransform.MAX_ZOOM, value));
+  }
 
   public viewportToScreen(vc: ViewportCoordinate, scale: boolean = false): ScreenCoordinate {
     return {

@@ -41,10 +41,18 @@ watch([documentStatus, pages], ([status, currentPages]) => {
 }, { immediate: true });
 
 const isGrabbing = ref(false);
+const viewUserModified = ref(false);
+
+watch(() => props.url, () => {
+  viewUserModified.value = false;
+});
 
 usePanZoom(wrapper, transform.value, {
   onRedraw: redrawAll,
   panZone: container,
+  onInteract: () => {
+    viewUserModified.value = true;
+  },
 });
 
 function setup(): void {
@@ -147,7 +155,9 @@ function handleResize(): void {
   sketch.value.resizeCanvas(w, h);
   overlaySketch.value.resizeCanvas(w, h);
 
-  if (pw > 100 && ph > 100 && w > 100 && h > 100) {
+  if (!viewUserModified.value && w > 0 && h > 0) {
+    fitZoom(0);
+  } else if (pw > 100 && ph > 100 && w > 100 && h > 100) {
     transform.value.pan.x += (w - pw) / 2;
     transform.value.pan.y += (h - ph) / 2;
   }
@@ -260,20 +270,25 @@ function moveToLocation(target: PageCoordinate, options: MoveToLocationOptions =
   }
 }
 
-function zoomToPage(page: number): void {
+function fitZoom(page: number): void {
   const s = overlaySketch.value;
-  if (!s) {
+  // s.canvas is set alongside _renderer; if it's absent, p5 hasn't finished
+  // initializing and accessing s.width would throw.
+  if (!s?.canvas || s.width <= 0 || s.height <= 0) {
     return;
   }
 
-  // Zoom to fit the whole page
   const padding = 0.95;
   const zoomByWidth = s.width / Math.SQRT1_2 * padding;
   const zoomByHeight = s.height * padding;
   transform.value.zoom = Math.min(zoomByWidth, zoomByHeight);
 
-  // Move to the center of the page
   moveToLocation({ p: page, x: 0.5, y: 0.5 });
+  redrawAll();
+}
+
+function zoomToPage(page: number): void {
+  fitZoom(page);
 }
 
 defineExpose({
