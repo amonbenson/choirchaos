@@ -51,7 +51,7 @@ async function deleteMeasure(measure: Measure): Promise<void> {
 
 async function addMeasures(): Promise<void> {
   const input = prompt("Measure number or range (e.g. 1, 1a, 2-3, 4..9):");
-  if (!input) {
+  if (!input || !props.song) {
     return;
   }
 
@@ -59,15 +59,18 @@ async function addMeasures(): Promise<void> {
   if (rangeMatch) {
     const from = parseInt(rangeMatch[1]!);
     const to = parseInt(rangeMatch[2]!);
+    const measures: Measure[] = [];
     for (let n = Math.min(from, to); n <= Math.max(from, to); n++) {
-      await props.song?.addMeasure(new Measure(String(n), 4));
+      measures.push(new Measure(String(n), 4));
     }
+
+    await props.song.addMeasures(measures);
   } else {
     if (!isNumbering(input)) {
       return;
     }
 
-    await props.song?.addMeasure(new Measure(input, 4));
+    await props.song.addMeasure(new Measure(input, 4));
   }
 
   await reloadPlayer();

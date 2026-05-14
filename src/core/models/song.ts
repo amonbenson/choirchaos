@@ -180,6 +180,15 @@ export default class Song {
     await this._save({ tracks: this._serializeTracks() });
   }
 
+  public async addTracks(tracks: Track[]): Promise<void> {
+    for (const track of tracks) {
+      track.mixer.index = this._tracks.length;
+      this._tracks.push(track);
+    }
+
+    await this._save({ tracks: this._serializeTracks() });
+  }
+
   public async removeTrack(index: number): Promise<void> {
     this._tracks.splice(index, 1);
     this._tracks.forEach((t, i) => (t.mixer.index = i));
@@ -210,21 +219,41 @@ export default class Song {
     await this._save({ midiFile: null, tracks: [] });
   }
 
-  public async uploadAudioFile(file: File): Promise<string> {
+  public async uploadAudioFiles(files: File[]): Promise<string[]> {
+    if (files.length === 0) {
+      return [];
+    }
+
     const prevFilenames = new Set(
       this._audioFiles.map(f => (typeof f === "string" ? f : f.name)),
     );
+
     const formData = new FormData();
-    formData.append("audioFiles", file);
+
+    for (const file of files) {
+      formData.append("audioFiles", file);
+    }
+
     const record = await dbUpdateWithFiles("songs", this.id, formData);
-    const newFilename = (record.audioFiles as string[]).find(f => !prevFilenames.has(f));
-    if (!newFilename) {
+    const newFilenames = (record.audioFiles as string[]).filter(f => !prevFilenames.has(f));
+
+    for (const filename of newFilenames) {
+      this._audioFiles.push(filename);
+    }
+
+    this._syncPlayerMode();
+
+    return newFilenames;
+  }
+
+  public async uploadAudioFile(file: File): Promise<string> {
+    const [filename] = await this.uploadAudioFiles([file]);
+
+    if (!filename) {
       throw new Error("File upload failed: could not determine uploaded filename");
     }
 
-    this._audioFiles.push(newFilename);
-    this._syncPlayerMode();
-    return newFilename;
+    return filename;
   }
 
   public async removeAudioFile(filename: string): Promise<void> {
@@ -251,6 +280,14 @@ export default class Song {
 
   public async addMeasure(measure: Measure): Promise<void> {
     this.measures.insert(measure);
+    await this._save({ measures: this._serializeMeasures() });
+  }
+
+  public async addMeasures(measures: Measure[]): Promise<void> {
+    for (const measure of measures) {
+      this.measures.insert(measure);
+    }
+
     await this._save({ measures: this._serializeMeasures() });
   }
 

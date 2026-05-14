@@ -205,12 +205,12 @@ function inferTrackTitle(filename: string): string {
 function inferTrackClassification(filename: string): TrackClassification {
   const name = filename.toLowerCase();
 
-  if (/drum|perc(ussion)?|cymbal|snare|kick|timpani|bongo|conga|tambourine/.test(name)) {
-    return "Percussion";
+  if (/accomp|piano|inst/.test(name)) {
+    return "Accompaniment";
   }
 
-  if (/accompan|piano|instrumental|organ|guitar|bass|synth|keyboard|string|brass|wind|horn|trumpet|trombone|cello|violin|viola|harp|flute|clarinet|oboe|sax(ophone)?/.test(name)) {
-    return "Accompaniment";
+  if (/drum|perc/.test(name)) {
+    return "Percussion";
   }
 
   return "Vocal";
@@ -253,13 +253,14 @@ async function handleAudioUpload(event: Event): Promise<void> {
 
   uploading.value = true;
   try {
-    for (const file of files) {
-      const filename = await props.song.uploadAudioFile(file);
-      const title = inferTrackTitle(file.name);
-      const classification = inferTrackClassification(file.name);
-      await props.song.addTrack(new Track(title, classification, 0, filename));
-    }
-
+    const filenames = await props.song.uploadAudioFiles(files);
+    const newTracks = files.map((file, i) => new Track(
+      inferTrackTitle(file.name),
+      inferTrackClassification(file.name),
+      0,
+      filenames[i] ?? "",
+    ));
+    await props.song.addTracks(newTracks);
     await player.load(props.song);
   } finally {
     uploading.value = false;
