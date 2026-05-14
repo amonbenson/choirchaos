@@ -162,12 +162,12 @@ function onDrawMove(e: PointerEvent): void {
   drawRect.value = { ...drawRect.value, width: pos.x - drawRect.value.x, height: pos.y - drawRect.value.y };
 }
 
-function onDrawEnd(): void {
+async function onDrawEnd(): Promise<void> {
   const rect = drawRect.value;
   drawRect.value = undefined;
   // currentTool.value = "edit";
 
-  if (!rect) {
+  if (!rect || !props.song) {
     return;
   }
 
@@ -177,19 +177,21 @@ function onDrawEnd(): void {
   }
 
   for (let i = 0; i < numMeasures; i++) {
-    const measure = props.song?.measures.items().find(m => !m.layout);
+    const measure = props.song.measures.items().find(m => !m.layout);
     if (!measure) {
       return;
     }
 
-    measure.layout = {
+    props.song.applyMeasureLayout(measure, {
       page: rect.page,
       x: rect.x + (rect.width / numMeasures) * i,
       y: rect.y,
       width: rect.width / numMeasures,
       height: rect.height,
-    };
+    });
   }
+
+  await props.song.saveMeasures();
 }
 
 // ── Resize handles ────────────────────────────────────────────────────────────
@@ -218,6 +220,10 @@ function sameStaff(measure: Measure): Measure[] {
 }
 
 function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): void {
+  if (!props.song) {
+    return;
+  }
+
   const pageEl = pageDivRefs.get(measure.layout!.page);
   if (!pageEl) {
     return;
@@ -230,37 +236,39 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
   switch (handle) {
     case "top":
       staff.forEach((m) => {
-        m.layout!.y += dy;
-        m.layout!.height -= dy;
+        props.song!.applyMeasureLayout(m, { ...m.layout!, y: m.layout!.y + dy, height: m.layout!.height - dy });
       });
       break;
     case "bottom":
       staff.forEach((m) => {
-        m.layout!.height += dy;
+        props.song!.applyMeasureLayout(m, { ...m.layout!, height: m.layout!.height + dy });
       });
       break;
     case "left": {
       const left = staff[staff.indexOf(measure) - 1];
       if (left) {
-        left.layout!.width += dx;
+        props.song.applyMeasureLayout(left, { ...left.layout!, width: left.layout!.width + dx });
       }
 
-      measure.layout!.x += dx;
-      measure.layout!.width -= dx;
+      props.song.applyMeasureLayout(measure, { ...measure.layout!, x: measure.layout!.x + dx, width: measure.layout!.width - dx });
       break;
     }
 
     case "right": {
       const right = staff[staff.indexOf(measure) + 1];
-      measure.layout!.width += dx;
+      props.song.applyMeasureLayout(measure, { ...measure.layout!, width: measure.layout!.width + dx });
       if (right) {
-        right.layout!.x += dx;
-        right.layout!.width -= dx;
+        props.song.applyMeasureLayout(right, { ...right.layout!, x: right.layout!.x + dx, width: right.layout!.width - dx });
       }
 
       break;
     }
   }
+}
+
+function deleteMeasureLayout(measure: Measure): void {
+  props.song?.applyMeasureLayout(measure, undefined);
+  props.song?.saveMeasures();
 }
 </script>
 
@@ -326,12 +334,15 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
             severity="danger"
             size="small"
             rounded
-            @click.stop="measure.layout = undefined"
+            @click.stop="deleteMeasureLayout(measure)"
           />
 
           <!-- Resize handles (edit mode) -->
           <template v-if="editMode">
-            <Draggable @drag="onHandleDrag($event, measure, 'top')">
+            <Draggable
+              @drag="onHandleDrag($event, measure, 'top')"
+              @dragend="song?.saveMeasures()"
+            >
               <template #default="{ passRef }">
                 <Button
                   :ref="(c: any) => c && passRef(c.$el)"
@@ -345,7 +356,10 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
                 />
               </template>
             </Draggable>
-            <Draggable @drag="onHandleDrag($event, measure, 'right')">
+            <Draggable
+              @drag="onHandleDrag($event, measure, 'right')"
+              @dragend="song?.saveMeasures()"
+            >
               <template #default="{ passRef }">
                 <Button
                   :ref="(c: any) => c && passRef(c.$el)"
@@ -359,7 +373,10 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
                 />
               </template>
             </Draggable>
-            <Draggable @drag="onHandleDrag($event, measure, 'bottom')">
+            <Draggable
+              @drag="onHandleDrag($event, measure, 'bottom')"
+              @dragend="song?.saveMeasures()"
+            >
               <template #default="{ passRef }">
                 <Button
                   :ref="(c: any) => c && passRef(c.$el)"
@@ -373,7 +390,10 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
                 />
               </template>
             </Draggable>
-            <Draggable @drag="onHandleDrag($event, measure, 'left')">
+            <Draggable
+              @drag="onHandleDrag($event, measure, 'left')"
+              @dragend="song?.saveMeasures()"
+            >
               <template #default="{ passRef }">
                 <Button
                   :ref="(c: any) => c && passRef(c.$el)"
@@ -423,13 +443,6 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
           :severity="currentTool === 'add' ? 'primary' : 'secondary'"
           rounded
           @click="currentTool = currentTool === 'add' ? 'edit' : 'add'"
-        />
-        <Button
-          icon="pi pi-save"
-          label="Save"
-          severity="primary"
-          rounded
-          @click="song?.update()"
         />
       </div>
     </template>

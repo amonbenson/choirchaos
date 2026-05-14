@@ -1,5 +1,6 @@
 import { pb, type PbRecord } from "@/pocketbase";
 import { NoPermissions, type Permissions } from "@/pocketbase/auth";
+import { dbCreate, dbUpdate } from "@/pocketbase/db";
 
 import type { UrlOrFile } from "../utils/file";
 import { compareNumberings } from "../utils/numbering";
@@ -10,14 +11,14 @@ export default class Show {
     public readonly id: string,
     public title: string,
     public thumbnail?: UrlOrFile,
-    public songs: Song[] = [],
+    public readonly songs: Song[] = [],
 
     public permissions: Permissions = NoPermissions,
   ) {
     this.songs.sort((a, b) => compareNumberings(a.number, b.number));
   }
 
-  public toRecord(): PbRecord {
+  public serialize(): PbRecord {
     const { title, thumbnail, songs: _, permissions } = this;
 
     return {
@@ -27,7 +28,7 @@ export default class Show {
     };
   }
 
-  public static fromRecord({ id, title, thumbnail, expand, owner, editors, viewers, visibility }: PbRecord): Show {
+  public static deserialize({ id, title, thumbnail, expand, owner, editors, viewers, visibility }: PbRecord): Show {
     const permissions = {
       owner,
       editors,
@@ -39,28 +40,28 @@ export default class Show {
       id,
       title,
       thumbnail,
-      expand?.songs_via_show?.map((s: Song) => Song.fromRecord(s, permissions)) ?? [],
+      expand?.songs_via_show?.map((s: Song) => Song.deserialize(s, permissions)) ?? [],
       permissions,
     );
   }
 
   public async create(): Promise<PbRecord> {
-    return await pb.collection("shows").create(this.toRecord());
+    return await dbCreate("shows", this.serialize());
   }
 
   public async update(): Promise<PbRecord> {
-    return await pb.collection("shows").update(this.id, this.toRecord());
+    return await dbUpdate("shows", this.id, this.serialize());
   }
 
   public static async list(): Promise<Show[]> {
     const records = await pb.collection("shows").getFullList();
-    return records.map(record => Show.fromRecord(record));
+    return records.map(record => Show.deserialize(record));
   }
 
   public static async get(id: string): Promise<Show> {
     const record = await pb.collection("shows").getOne(id, {
       expand: "songs_via_show",
     });
-    return Show.fromRecord(record);
+    return Show.deserialize(record);
   }
 }

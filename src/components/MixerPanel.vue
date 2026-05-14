@@ -319,30 +319,27 @@ async function handleTrackMoveDown(index: number): Promise<void> {
 }
 
 async function handleTrackTitleChange(index: number, value: string): Promise<void> {
-  if (!props.song?.tracks[index]) {
+  if (!props.song) {
     return;
   }
 
-  props.song.tracks[index]!.title = value;
-  await props.song.update();
+  await props.song.updateTrackFields(index, { title: value });
 }
 
 async function handleTrackClassificationChange(index: number, value: TrackClassification): Promise<void> {
-  if (!props.song?.tracks[index]) {
+  if (!props.song) {
     return;
   }
 
-  props.song.tracks[index]!.classification = value;
-  await props.song.update();
+  await props.song.updateTrackFields(index, { classification: value });
 }
 
 async function handleTrackProgramChange(index: number, value: number | null): Promise<void> {
-  if (!props.song?.tracks[index] || value === null) {
+  if (!props.song || value === null) {
     return;
   }
 
-  props.song.tracks[index]!.program = value;
-  await props.song.update();
+  await props.song.updateTrackFields(index, { program: value });
 }
 </script>
 

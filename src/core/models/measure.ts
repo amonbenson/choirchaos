@@ -2,11 +2,11 @@ import { BinarySortedList } from "../utils/binarySearch";
 import { compareNumberings, type Numbering } from "../utils/numbering";
 
 export type MeasureLayout = {
-  page: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+  readonly page: number;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
 };
 
 export type MeasureNumber = Numbering;
@@ -16,10 +16,8 @@ export type MeasureReference = [MeasureNumber, BeatNumber];
 export function compareMeasureReferences(a: MeasureReference, b: MeasureReference): number {
   const nrDiff = compareNumberings(a[0], b[0]);
   if (nrDiff !== 0) {
-    // compare by measure numbers
     return nrDiff;
   } else {
-    // compare by beats
     return a[1] - b[1];
   }
 }
@@ -27,18 +25,26 @@ export function compareMeasureReferences(a: MeasureReference, b: MeasureReferenc
 export default class Measure {
   constructor(
     public value: MeasureNumber,
-    public beats: number,
-    public layout?: MeasureLayout,
+    public readonly beats: number,
+    public readonly layout?: MeasureLayout,
     public $beatTicks: number[] = [],
     public $tickLength?: number,
     public $activeTrackIndices: Set<number> = new Set(),
   ) {}
 
+  public _applyBeats(n: number): void {
+    (this as any).beats = Math.max(1, n);
+  }
+
+  public _applyLayout(layout: MeasureLayout | undefined): void {
+    (this as any).layout = layout;
+  }
+
   public reference(beat: BeatNumber): MeasureReference {
     return [this.value, beat];
   }
 
-  public json(): any {
+  public serialize(): any {
     return {
       value: this.value,
       beats: this.beats,
@@ -46,7 +52,7 @@ export default class Measure {
     };
   }
 
-  public static fromJson({ value, beats, layout }: any): Measure {
+  public static deserialize({ value, beats, layout }: any): Measure {
     return new Measure(value, beats, layout);
   }
 }

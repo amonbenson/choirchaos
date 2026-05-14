@@ -34,22 +34,22 @@ async function reloadPlayer(): Promise<void> {
   player.seek(savedPosition);
 }
 
-function incrementBeats(measure: Measure): void {
-  measure.beats++;
-  reloadPlayer();
+async function incrementBeats(measure: Measure): Promise<void> {
+  await props.song?.setMeasureBeats(measure, measure.beats + 1);
+  await reloadPlayer();
 }
 
-function decrementBeats(measure: Measure): void {
-  measure.beats = Math.max(1, measure.beats - 1);
-  reloadPlayer();
+async function decrementBeats(measure: Measure): Promise<void> {
+  await props.song?.setMeasureBeats(measure, measure.beats - 1);
+  await reloadPlayer();
 }
 
-function deleteMeasure(index: number): void {
-  props.song?.measures.removeAt(index);
-  reloadPlayer();
+async function deleteMeasure(measure: Measure): Promise<void> {
+  await props.song?.removeMeasure(measure);
+  await reloadPlayer();
 }
 
-function addMeasures(): void {
+async function addMeasures(): Promise<void> {
   const input = prompt("Measure number or range (e.g. 1, 1a, 2-3, 4..9):");
   if (!input) {
     return;
@@ -60,17 +60,17 @@ function addMeasures(): void {
     const from = parseInt(rangeMatch[1]!);
     const to = parseInt(rangeMatch[2]!);
     for (let n = Math.min(from, to); n <= Math.max(from, to); n++) {
-      props.song?.measures.insert(new Measure(String(n), 4));
+      await props.song?.addMeasure(new Measure(String(n), 4));
     }
   } else {
     if (!isNumbering(input)) {
       return;
     }
 
-    props.song?.measures.insert(new Measure(input, 4));
+    await props.song?.addMeasure(new Measure(input, 4));
   }
 
-  reloadPlayer();
+  await reloadPlayer();
 }
 </script>
 
@@ -134,7 +134,7 @@ function addMeasures(): void {
         class="flex flex-col gap-0.5"
       >
         <div
-          v-for="measure, i in measures"
+          v-for="measure in measures"
           :key="measure.value"
           class="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-surface-100 dark:hover:bg-surface-800"
         >
@@ -164,7 +164,7 @@ function addMeasures(): void {
             rounded
             severity="danger"
             aria-label="Delete measure"
-            @click="deleteMeasure(i)"
+            @click="deleteMeasure(measure)"
           />
         </div>
       </div>
