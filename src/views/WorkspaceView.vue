@@ -210,7 +210,8 @@ watch(() => props.songId, async (songId) => {
     // Select the song
     song.value = show.value.songs.find(s => s.id === songId);
     if (!song.value) {
-      console.error(`Internal error: ShowView was created with an invalid song id: ${songId}`);
+      console.error("Invalid song id:", songId);
+      router.replace({ name: "song", params: { showId: props.showId, songId: show.value.songs[0]!.id } });
       return;
     }
 
