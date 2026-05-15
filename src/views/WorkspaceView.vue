@@ -105,11 +105,7 @@ function nextMeasure(): void {
 }
 
 function rewind(): void {
-  if (!player.ready) {
-    return;
-  }
-
-  if (player.position > 0) {
+  if (player.ready && player.position > 0) {
     player.seek(0);
   } else {
     const prev = songs.value[songIndex.value - 1];
@@ -120,10 +116,6 @@ function rewind(): void {
 }
 
 function forward(): void {
-  if (!player.ready) {
-    return;
-  }
-
   const next = songs.value[songIndex.value + 1];
   if (next) {
     selectSong(next.id);

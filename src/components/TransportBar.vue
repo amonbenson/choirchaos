@@ -95,7 +95,7 @@ const playbackSpeedPercentage = computed({
 
       <template #center>
         <Button
-          :disabled="!player.ready || (songIndex === 0 && player.position <= 0)"
+          :disabled="songIndex === 0 && player.position <= 0"
           :icon="`pi ${player.position > 0 ? 'pi-backward' : 'pi-step-backward'}`"
           severity="secondary"
           aria-label="Rewind / Previous Song"
@@ -113,7 +113,7 @@ const playbackSpeedPercentage = computed({
         />
         <Button
           class="flex-none"
-          :disabled="!player.ready || songIndex >= (songs?.length ?? 1) - 1"
+          :disabled="songIndex >= (songs?.length ?? 1) - 1"
           icon="pi pi-step-forward"
           severity="secondary"
           aria-label="Next Song"
