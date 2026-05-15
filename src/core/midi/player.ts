@@ -98,6 +98,7 @@ export default class MidiPlayer extends EventEmitter {
   private _instruments: { [key: number]: any } = {};
 
   private _audioPlayer: AudioPlayer | undefined;
+  private _loadAbortController: AbortController | undefined;
 
   private _playbackSpeed: number = 1.0;
   private _playbackTransposition: number = 0;
@@ -731,29 +732,47 @@ export default class MidiPlayer extends EventEmitter {
   }
 
   async load(song: Song): Promise<void> {
+    // Abort any in-flight load; last caller always wins
+    this._loadAbortController?.abort();
+    const controller = new AbortController();
+    this._loadAbortController = controller;
+    const { signal } = controller;
+
     if (this._status !== "idle") {
       this.unload();
     }
 
+    // Songs with no measures or no playable media are treated as empty — leave player idle
+    if (song.measures.items().length === 0 || song.playerMode === "none") {
+      return;
+    }
+
     this._updateStatus("loading");
-
-    // select mode
     this._mode = song.playerMode;
-
-    // set the song, resume the audio context, and create the master chain
     this._currentSong = song;
     this.resumeAudioContext();
     this._setupMasterChain();
 
-    switch (this._mode) {
-      case "midi":
-        await this.loadMidi(song);
-        break;
-      case "audio":
-        await this.loadAudio(song);
-        break;
-      default:
-        break;
+    try {
+      switch (this._mode) {
+        case "midi":
+          await this.loadMidi(song, signal);
+          break;
+        case "audio":
+          await this.loadAudio(song, signal);
+          break;
+      }
+    } catch (err) {
+      if (signal.aborted) {
+        return;
+      }
+
+      this.unload();
+      throw err;
+    }
+
+    if (signal.aborted) {
+      return;
     }
 
     // handle song measure events
@@ -770,7 +789,6 @@ export default class MidiPlayer extends EventEmitter {
       vampEvent.$startTick = song.findMeasure(vampEvent.start[0])?.$beatTicks[0];
       vampEvent.$endTick = song.findMeasure(vampEvent.end[0])?.$beatTicks[0];
 
-      // store vamp definition
       if (vampEvent.$startTick !== undefined && vampEvent.$endTick !== undefined) {
         this._vamps.push({
           start: vampEvent.$startTick,
@@ -782,10 +800,9 @@ export default class MidiPlayer extends EventEmitter {
       }
     }
 
-    // store segue info
     this._updateCurrentSegue(song.events.segue ? { enabled: true } : undefined);
 
-    // update status and seek to position 0. This will also intialize the current measure and tick duration
+    // update status and seek to position 0. This will also initialize the current measure and tick duration
     this._updateStatus("ready");
     this.seek(0);
   }
@@ -801,7 +818,7 @@ export default class MidiPlayer extends EventEmitter {
     };
   }
 
-  async loadAudio(song: Song): Promise<void> {
+  async loadAudio(song: Song, signal: AbortSignal): Promise<void> {
     if (song.audioFiles.length === 0) {
       throw new Error(`No audio files in song '${song.title}'`);
     }
@@ -812,10 +829,13 @@ export default class MidiPlayer extends EventEmitter {
         const res = await axios.get(resolveUrl(file, "songs", song.id), {
           validateStatus: status => status === 200,
           responseType: "arraybuffer",
+          signal,
         });
         return this._audioContext.decodeAudioData(res.data);
       }),
     );
+
+    signal.throwIfAborted();
 
     // Order audio buffers by tracks
     this._audioBuffers = song.tracks.map((track) => {
@@ -844,6 +864,9 @@ export default class MidiPlayer extends EventEmitter {
         onAmplitudes: amplitudes => this.emit("trackAmplitudesChanged", amplitudes),
       },
     );
+
+    signal.throwIfAborted();
+
     this._audioPlayer.connect(this._masterInput!);
   }
 
@@ -889,7 +912,7 @@ export default class MidiPlayer extends EventEmitter {
     this._updateFinalMeasure(finalMeasure.reference(0));
   }
 
-  async loadMidi(song: Song): Promise<void> {
+  async loadMidi(song: Song, signal: AbortSignal): Promise<void> {
     // download the midi and metadata files
     if (!song.midiFile) {
       throw new Error(`Midi file missing from song '${song.title}'`);
@@ -903,12 +926,16 @@ export default class MidiPlayer extends EventEmitter {
       axios.get(resolveUrl(song.midiFile, "songs", song.id), {
         validateStatus: status => status === 200,
         responseType: "arraybuffer",
+        signal,
       }),
       axios.get(resolveUrl(song.jsonFile, "songs", song.id), {
         validateStatus: status => status === 200,
         responseType: "json",
+        signal,
       }),
     ]);
+
+    signal.throwIfAborted();
 
     this._resetMidiEvents();
 
@@ -971,6 +998,8 @@ export default class MidiPlayer extends EventEmitter {
 
     // parse the midi note events for each track
     const midiData = await parseMidiBuffer(midiRes.data);
+
+    signal.throwIfAborted();
 
     for (const [t, track] of song.tracks.entries()) {
       const noteOnIndices = new Int32Array(128).fill(-1);
@@ -1074,7 +1103,7 @@ export default class MidiPlayer extends EventEmitter {
   }
 
   unload(): void {
-    if (this._status !== "ready") {
+    if (this._status === "idle") {
       return;
     }
 
