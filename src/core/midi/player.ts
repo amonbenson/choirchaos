@@ -8,7 +8,7 @@ import type Song from "../models/song";
 import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
 import { type BinarySearchOptions } from "../utils/binarySearch";
 import { resolveUrl } from "../utils/file";
-import { SetIntervalUpdater, type Updater } from "../utils/updater";
+import { SetIntervalUpdater, type UpdateCallback, type Updater } from "../utils/updater";
 import AudioPlayer from "./audioPlayer";
 import { MeasureEvent, MidiEvent, MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "./events";
 import type { Tick, TimeSignature } from "./types";
@@ -90,7 +90,7 @@ export default class MidiPlayer extends EventEmitter {
 
   // 'playback' uses a larger hardware buffer (~100ms vs ~11ms for 'interactive'),
   // giving the OS enough headroom to absorb Bluetooth A2DP jitter without underruns.
-  private _audioContext = new AudioContext({ latencyHint: "playback" });
+  private _audioContext!: AudioContext;
   private _masterInput: AudioNode | undefined = undefined;
   private _chainOutput: GainNode | undefined;
 
@@ -111,17 +111,21 @@ export default class MidiPlayer extends EventEmitter {
   private _audioClockTickPosition: number = 0;
   private _audioBuffers: AudioBuffer[] = [];
 
-  private _updater: Updater = new SetIntervalUpdater(delta => this._handleStep(delta), {
-    interval: STEP_DURATION,
-    maximumLag: 5.0,
-    timeProvider: () => this._audioContext?.currentTime ?? 0,
-  });
+  private _updater!: Updater;
 
   private _timeSinceLastPositionUpdate = 0;
   private _barlineCrossedDuringLastStep = false;
 
-  constructor() {
+  constructor(audioContext?: AudioContext, updaterFactory?: (callback: UpdateCallback) => Updater) {
     super();
+    this._audioContext = audioContext ?? new AudioContext({ latencyHint: "playback" });
+    this._updater = updaterFactory
+      ? updaterFactory(delta => this._handleStep(delta))
+      : new SetIntervalUpdater(delta => this._handleStep(delta), {
+          interval: STEP_DURATION,
+          maximumLag: 5.0,
+          timeProvider: () => this._audioContext?.currentTime ?? 0,
+        });
     this._setupAudioContextMonitoring();
   }
 
@@ -395,6 +399,7 @@ export default class MidiPlayer extends EventEmitter {
 
     // stop when the end is reached
     if (this._position >= this._duration) {
+      this._updatePosition(this._duration);
       this.pause();
 
       // emit segue
