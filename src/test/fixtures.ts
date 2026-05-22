@@ -1,4 +1,4 @@
-import Measure, { MeasureList } from "../core/models/measure";
+import Measure, { type MeasureLayout, MeasureList } from "../core/models/measure";
 import { MeasureEventList, VampEvent } from "../core/models/measureEvent";
 import Song from "../core/models/song";
 import Track from "../core/models/track";
@@ -19,12 +19,12 @@ export const PPQN = 480;
 // Measure "5": terminal (no layout), beat 1 at tick 8160 → sets measure "4".$tickLength
 
 const MEASURE_TICKS: Record<string, number[]> = {
-  "0": [0],
-  "1": [480, 960, 1440, 1920],
-  "2": [2400, 2880, 3360, 3840],
-  "3": [4320, 4800, 5280, 5760],
-  "4": [6240, 6720, 7200, 7680],
-  "5": [8160],
+  0: [0],
+  1: [480, 960, 1440, 1920],
+  2: [2400, 2880, 3360, 3840],
+  3: [4320, 4800, 5280, 5760],
+  4: [6240, 6720, 7200, 7680],
+  5: [8160],
 };
 
 export const TICKS = {
@@ -45,7 +45,7 @@ export const MIDI_TRACKS: TestTrack[] = [
     name: TRACK_NAMES.instrument,
     channel: 0,
     notes: [
-      { tick: 480,  duration: 240, pitch: 60 }, // C4, measure 1 beat 1
+      { tick: 480, duration: 240, pitch: 60 }, // C4, measure 1 beat 1
       { tick: 2400, duration: 240, pitch: 64 }, // E4, measure 2 beat 1
     ],
   },
@@ -61,7 +61,7 @@ export const MIDI_TRACKS: TestTrack[] = [
 
 // ── Song factories ────────────────────────────────────────────────────────────
 
-function makeLayout(x: number) {
+function makeLayout(x: number): MeasureLayout {
   return { page: 0, x, y: 0, width: 0.18, height: 0.1 };
 }
 
@@ -116,7 +116,7 @@ export function makeAudioSong(): Song {
     "test-audio-song",
     "1",
     "Audio Test Song",
-    undefined,   // no midiFile → audio mode
+    undefined, // no midiFile → audio mode
     undefined,
     undefined,
     [audioFile],
@@ -129,33 +129,33 @@ export function makeAudioSong(): Song {
 
 export function makeMtiJson(): MTIMidiJson {
   const events: MTIMidiJson["score"]["events"] = [
-    { tickcount: 0,    type: "TEMPO",   value: { bpm: 120, ticksPerQuarter: 500000 } },
-    { tickcount: 0,    type: "TIMESIG", value: { numerator: 1, denominator: 2, metroCount: 24, _32nds: 8 } },
-    { tickcount: 0,    type: "BEAT",    value: { meas: "0", beat: 1, tick: 0 } },
-    { tickcount: 480,  type: "TIMESIG", value: { numerator: 4, denominator: 2, metroCount: 24, _32nds: 8 } },
+    { tickcount: 0, type: "TEMPO", value: { bpm: 120, ticksPerQuarter: 500000 } },
+    { tickcount: 0, type: "TIMESIG", value: { numerator: 1, denominator: 2, metroCount: 24, _32nds: 8 } },
+    { tickcount: 0, type: "BEAT", value: { meas: "0", beat: 1, tick: 0 } },
+    { tickcount: 480, type: "TIMESIG", value: { numerator: 4, denominator: 2, metroCount: 24, _32nds: 8 } },
     // measure 1
-    { tickcount: 480,  type: "BEAT",    value: { meas: "1", beat: 1, tick: 0 } },
-    { tickcount: 960,  type: "BEAT",    value: { meas: "1", beat: 2, tick: 0 } },
-    { tickcount: 1440, type: "BEAT",    value: { meas: "1", beat: 3, tick: 0 } },
-    { tickcount: 1920, type: "BEAT",    value: { meas: "1", beat: 4, tick: 0 } },
+    { tickcount: 480, type: "BEAT", value: { meas: "1", beat: 1, tick: 0 } },
+    { tickcount: 960, type: "BEAT", value: { meas: "1", beat: 2, tick: 0 } },
+    { tickcount: 1440, type: "BEAT", value: { meas: "1", beat: 3, tick: 0 } },
+    { tickcount: 1920, type: "BEAT", value: { meas: "1", beat: 4, tick: 0 } },
     // measure 2
-    { tickcount: 2400, type: "BEAT",    value: { meas: "2", beat: 1, tick: 0 } },
-    { tickcount: 2880, type: "BEAT",    value: { meas: "2", beat: 2, tick: 0 } },
-    { tickcount: 3360, type: "BEAT",    value: { meas: "2", beat: 3, tick: 0 } },
-    { tickcount: 3840, type: "BEAT",    value: { meas: "2", beat: 4, tick: 0 } },
+    { tickcount: 2400, type: "BEAT", value: { meas: "2", beat: 1, tick: 0 } },
+    { tickcount: 2880, type: "BEAT", value: { meas: "2", beat: 2, tick: 0 } },
+    { tickcount: 3360, type: "BEAT", value: { meas: "2", beat: 3, tick: 0 } },
+    { tickcount: 3840, type: "BEAT", value: { meas: "2", beat: 4, tick: 0 } },
     // measure 3: tempo change 120 → 140 BPM
-    { tickcount: 4320, type: "TEMPO",   value: { bpm: 140, ticksPerQuarter: 428571 } },
-    { tickcount: 4320, type: "BEAT",    value: { meas: "3", beat: 1, tick: 0 } },
-    { tickcount: 4800, type: "BEAT",    value: { meas: "3", beat: 2, tick: 0 } },
-    { tickcount: 5280, type: "BEAT",    value: { meas: "3", beat: 3, tick: 0 } },
-    { tickcount: 5760, type: "BEAT",    value: { meas: "3", beat: 4, tick: 0 } },
+    { tickcount: 4320, type: "TEMPO", value: { bpm: 140, ticksPerQuarter: 428571 } },
+    { tickcount: 4320, type: "BEAT", value: { meas: "3", beat: 1, tick: 0 } },
+    { tickcount: 4800, type: "BEAT", value: { meas: "3", beat: 2, tick: 0 } },
+    { tickcount: 5280, type: "BEAT", value: { meas: "3", beat: 3, tick: 0 } },
+    { tickcount: 5760, type: "BEAT", value: { meas: "3", beat: 4, tick: 0 } },
     // measure 4
-    { tickcount: 6240, type: "BEAT",    value: { meas: "4", beat: 1, tick: 0 } },
-    { tickcount: 6720, type: "BEAT",    value: { meas: "4", beat: 2, tick: 0 } },
-    { tickcount: 7200, type: "BEAT",    value: { meas: "4", beat: 3, tick: 0 } },
-    { tickcount: 7680, type: "BEAT",    value: { meas: "4", beat: 4, tick: 0 } },
+    { tickcount: 6240, type: "BEAT", value: { meas: "4", beat: 1, tick: 0 } },
+    { tickcount: 6720, type: "BEAT", value: { meas: "4", beat: 2, tick: 0 } },
+    { tickcount: 7200, type: "BEAT", value: { meas: "4", beat: 3, tick: 0 } },
+    { tickcount: 7680, type: "BEAT", value: { meas: "4", beat: 4, tick: 0 } },
     // terminal measure 5 beat 1 – triggers measure "4".$tickLength = 8160 − 6240 = 1920
-    { tickcount: 8160, type: "BEAT",    value: { meas: "5", beat: 1, tick: 0 } },
+    { tickcount: 8160, type: "BEAT", value: { meas: "5", beat: 1, tick: 0 } },
   ];
 
   return {
@@ -183,7 +183,10 @@ export function makeMidiBuffer(): ArrayBuffer {
 
 export function computeRms(samples: Float32Array): number {
   let sum = 0;
-  for (let i = 0; i < samples.length; i++) sum += samples[i]! ** 2;
+  for (let i = 0; i < samples.length; i++) {
+    sum += samples[i]! ** 2;
+  }
+
   return Math.sqrt(sum / samples.length);
 }
 
@@ -196,6 +199,7 @@ export function makeSineBuffer(ctx: OfflineAudioContext, freq: number, durationS
       data[i] = 0.5 * Math.sin((2 * Math.PI * freq * i) / sr);
     }
   }
+
   return buf;
 }
 

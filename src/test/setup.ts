@@ -8,10 +8,18 @@ if (typeof globalThis.localStorage === "undefined" || typeof globalThis.localSto
   Object.defineProperty(globalThis, "localStorage", {
     value: {
       getItem: (k: string) => _store[k] ?? null,
-      setItem: (k: string, v: string) => { _store[k] = v; },
-      removeItem: (k: string) => { delete _store[k]; },
-      clear: () => { Object.keys(_store).forEach(k => delete _store[k]); },
-      get length() { return Object.keys(_store).length; },
+      setItem: (k: string, v: string) => {
+        _store[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete _store[k];
+      },
+      clear: () => {
+        Object.keys(_store).forEach(k => delete _store[k]);
+      },
+      get length() {
+        return Object.keys(_store).length;
+      },
       key: (i: number) => Object.keys(_store)[i] ?? null,
     },
     writable: true,

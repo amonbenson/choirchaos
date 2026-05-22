@@ -43,7 +43,7 @@ function makeMockAP(): MockAudioPlayer {
 function makePlayer(): { player: MidiPlayer; updater: ManualUpdater; ctx: AudioContext } {
   const ctx = new AudioContext();
   let updater!: ManualUpdater;
-  const player = new MidiPlayer(ctx, cb => {
+  const player = new MidiPlayer(ctx, (cb) => {
     updater = new ManualUpdater(cb);
     return updater;
   });
@@ -62,7 +62,10 @@ async function loadAudioSong(
   vi.mocked(AudioPlayer.create).mockResolvedValue(mockAP as unknown as AudioPlayer);
 
   const song = makeAudioSong();
-  if (segue) song.events.segue = true;
+  if (segue) {
+    song.events.segue = true;
+  }
+
   await player.load(song);
 }
 

@@ -1,4 +1,4 @@
-import { Updater, type UpdateCallback } from "../core/utils/updater";
+import { type UpdateCallback, Updater } from "../core/utils/updater";
 
 const STEP_DURATION = 1 / 50;
 
@@ -18,7 +18,10 @@ export class ManualUpdater extends Updater {
   protected _updateCompleteImpl(): void {}
 
   step(delta: number): void {
-    if (!this.running) return;
+    if (!this.running) {
+      return;
+    }
+
     this._mockTime += delta;
     this._update();
   }

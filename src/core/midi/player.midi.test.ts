@@ -1,7 +1,7 @@
 import axios from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { TICKS, TRACK_NAMES, makeMidiBuffer, makeMidiSong, makeMidiSongWithVamp, makeMtiJson } from "@/test/fixtures";
+import { makeMidiBuffer, makeMidiSong, makeMidiSongWithVamp, makeMtiJson, TICKS, TRACK_NAMES } from "@/test/fixtures";
 import { ManualUpdater } from "@/test/updater";
 
 import type { NoteEvent } from "./events";
@@ -29,19 +29,19 @@ vi.mock("midi-json-parser", () => ({
       [],
       // track 1: Instrument  – notes from MIDI_TRACKS[0]
       [
-        { delta: 0,    trackName: TRACK_NAMES.instrument },
-        { delta: 480,  noteOn:  { noteNumber: 60, velocity: 80 } }, // C4 @ tick 480
-        { delta: 240,  noteOff: { noteNumber: 60, velocity: 0  } }, // end @ tick 720
-        { delta: 1680, noteOn:  { noteNumber: 64, velocity: 80 } }, // E4 @ tick 2400
-        { delta: 240,  noteOff: { noteNumber: 64, velocity: 0  } }, // end @ tick 2640
+        { delta: 0, trackName: TRACK_NAMES.instrument },
+        { delta: 480, noteOn: { noteNumber: 60, velocity: 80 } }, // C4 @ tick 480
+        { delta: 240, noteOff: { noteNumber: 60, velocity: 0 } }, // end @ tick 720
+        { delta: 1680, noteOn: { noteNumber: 64, velocity: 80 } }, // E4 @ tick 2400
+        { delta: 240, noteOff: { noteNumber: 64, velocity: 0 } }, // end @ tick 2640
       ],
       // track 2: Vocals  – notes from MIDI_TRACKS[1]
       [
-        { delta: 0,    trackName: TRACK_NAMES.vocals },
-        { delta: 4320, noteOn:  { noteNumber: 67, velocity: 80 } }, // G4 @ tick 4320
-        { delta: 480,  noteOff: { noteNumber: 67, velocity: 0  } }, // end @ tick 4800
-        { delta: 480,  noteOn:  { noteNumber: 69, velocity: 80 } }, // A4 @ tick 5280
-        { delta: 480,  noteOff: { noteNumber: 69, velocity: 0  } }, // end @ tick 5760
+        { delta: 0, trackName: TRACK_NAMES.vocals },
+        { delta: 4320, noteOn: { noteNumber: 67, velocity: 80 } }, // G4 @ tick 4320
+        { delta: 480, noteOff: { noteNumber: 67, velocity: 0 } }, // end @ tick 4800
+        { delta: 480, noteOn: { noteNumber: 69, velocity: 80 } }, // A4 @ tick 5280
+        { delta: 480, noteOff: { noteNumber: 69, velocity: 0 } }, // end @ tick 5760
       ],
     ],
   }),
@@ -52,7 +52,7 @@ vi.mock("midi-json-parser", () => ({
 function makePlayer(): { player: MidiPlayer; updater: ManualUpdater; ctx: AudioContext } {
   const ctx = new AudioContext();
   let updater!: ManualUpdater;
-  const player = new MidiPlayer(ctx, cb => {
+  const player = new MidiPlayer(ctx, (cb) => {
     updater = new ManualUpdater(cb);
     return updater;
   });
@@ -70,11 +70,20 @@ function mockAxios(): void {
 // segue) fires — the player checks position >= duration at the START of each step.
 function stepPast(updater: ManualUpdater, player: MidiPlayer, targetTick: number): void {
   for (let i = 0; i < 10_000; i++) {
-    if (player.position > targetTick) break;
-    if (!updater.running) break;
+    if (player.position > targetTick) {
+      break;
+    }
+
+    if (!updater.running) {
+      break;
+    }
+
     updater.step(0.02);
   }
-  if (updater.running) updater.step(0.02);
+
+  if (updater.running) {
+    updater.step(0.02);
+  }
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -257,6 +266,7 @@ describe("MidiPlayer – MIDI mode", () => {
     for (let i = 0; i < 10_000 && vp.currentVamp === undefined; i++) {
       vu.step(0.02);
     }
+
     // Phase 2: keep going until the vamp exits after max iterations.
     for (let i = 0; i < 10_000 && vp.currentVamp !== undefined; i++) {
       vu.step(0.02);

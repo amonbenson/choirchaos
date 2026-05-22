@@ -2,9 +2,18 @@ export type TestNote = { tick: number; duration: number; pitch: number; velocity
 export type TestTrack = { name: string; channel: number; notes: TestNote[] };
 
 function varLen(n: number): number[] {
-  if (n < 0x80) return [n];
-  if (n < 0x4000) return [(n >> 7) | 0x80, n & 0x7f];
-  if (n < 0x200000) return [(n >> 14) | 0x80, ((n >> 7) & 0x7f) | 0x80, n & 0x7f];
+  if (n < 0x80) {
+    return [n];
+  }
+
+  if (n < 0x4000) {
+    return [(n >> 7) | 0x80, n & 0x7f];
+  }
+
+  if (n < 0x200000) {
+    return [(n >> 14) | 0x80, ((n >> 7) & 0x7f) | 0x80, n & 0x7f];
+  }
+
   return [(n >> 21) | 0x80, ((n >> 14) & 0x7f) | 0x80, ((n >> 7) & 0x7f) | 0x80, n & 0x7f];
 }
 
@@ -38,7 +47,7 @@ function chunk(id: string, data: number[]): number[] {
  */
 export function buildMidiBuffer(ppqn: number, tracks: TestTrack[]): ArrayBuffer {
   const header = chunk("MThd", [
-    ...be16(1),             // format 1
+    ...be16(1), // format 1
     ...be16(tracks.length + 1), // ntracks (named tracks + tempo track)
     ...be16(ppqn),
   ]);
@@ -54,6 +63,7 @@ export function buildMidiBuffer(ppqn: number, tracks: TestTrack[]): ArrayBuffer 
       evs.push({ tick: n.tick, bytes: [0x90 | channel, n.pitch, vel] });
       evs.push({ tick: n.tick + n.duration, bytes: [0x80 | channel, n.pitch, 0] });
     }
+
     evs.sort((a, b) => a.tick - b.tick);
 
     const data: number[] = trackNameEvent(name);
@@ -62,6 +72,7 @@ export function buildMidiBuffer(ppqn: number, tracks: TestTrack[]): ArrayBuffer 
       data.push(...varLen(ev.tick - cur), ...ev.bytes);
       cur = ev.tick;
     }
+
     data.push(...endOfTrack());
 
     return chunk("MTrk", data);
