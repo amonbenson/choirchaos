@@ -586,6 +586,16 @@ export default class PlayerEngine extends EventEmitter {
 
     const p0 = this._position;
 
+    // Detect vamp entry before pre-computing the action so that the limit and
+    // jump are applied in the same step where the position first lands inside
+    // the vamp region (rather than one step later).
+    if (!this._currentVamp && this._vamps.length > 0) {
+      const v = this._getVampAt(p0);
+      if (v) {
+        this._updateCurrentVamp(v);
+      }
+    }
+
     // ── Pre-compute the vamp action ───────────────────────────────────────────
     // All three actions are determined before step() is called so the backend
     // never schedules notes past the split point.
@@ -630,14 +640,6 @@ export default class PlayerEngine extends EventEmitter {
       }
 
       return;
-    }
-
-    // Vamp entry detection (only when not already in a vamp, using position before step)
-    if (!this._currentVamp && this._vamps.length > 0) {
-      const v = this._getVampAt(p0);
-      if (v) {
-        this._updateCurrentVamp(v);
-      }
     }
 
     // ── Execute vamp action ───────────────────────────────────────────────────
