@@ -1,4 +1,4 @@
-import type { MidiTrackEvents } from "../midi/player";
+import type { TrackEvents as MidiTrackEvents } from "../player/types";
 
 export type TrackClassification = "Accompaniment" | "Percussion" | "Vocal";
 

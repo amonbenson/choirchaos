@@ -2,9 +2,9 @@ import { pb, type PbRecord } from "@/pocketbase";
 import { NoPermissions, type Permissions } from "@/pocketbase/auth";
 import { dbCreate, dbUpdate, dbUpdateWithFiles } from "@/pocketbase/db";
 
-import type { MidiSystemEvents, PlayerMode } from "../midi/player";
 import type { Tick } from "../midi/types";
 import type { WarpMarker } from "../midi/warp";
+import type { PlayerMode, SystemEvents as MidiSystemEvents } from "../player/types";
 import { binarySearch } from "../utils/binarySearch";
 import type { UrlOrFile } from "../utils/file";
 import type { Numbering } from "../utils/numbering";

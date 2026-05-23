@@ -4,13 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeMidiBuffer, makeMidiSong, makeMidiSongWithVamp, makeMtiJson, TICKS, TRACK_NAMES } from "@/test/fixtures";
 import { ManualUpdater } from "@/test/updater";
 
-import type { NoteEvent } from "./events";
-import MidiPlayer from "./player";
+import type { NoteEvent } from "../midi/events";
+import PlayerEngine from "./engine";
 
 vi.mock("axios");
 
 // rubberband-web imports tone (broken ESM, extensionless imports) which fails in Node.
-// Replace with a plain GainNode passthrough — same mock used in audioPlayer.test.ts.
 vi.mock("rubberband-web", () => ({
   createRubberBandNode: vi.fn().mockImplementation(async (ctx: AudioContext) => {
     const node = ctx.createGain();
@@ -21,27 +20,24 @@ vi.mock("rubberband-web", () => ({
 }));
 
 // Replace midi-json-parser (uses Web Workers, unavailable in jsdom/node) with a
-// synchronous mock that returns the event structure our fixture MIDI_TRACKS produces.
+// synchronous mock returning the event structure our fixture MIDI_TRACKS produces.
 vi.mock("midi-json-parser", () => ({
   parseArrayBuffer: vi.fn().mockResolvedValue({
     tracks: [
-      // track 0: empty tempo track
       [],
-      // track 1: Instrument  – notes from MIDI_TRACKS[0]
       [
         { delta: 0, trackName: TRACK_NAMES.instrument },
-        { delta: 480, noteOn: { noteNumber: 60, velocity: 80 } }, // C4 @ tick 480
-        { delta: 240, noteOff: { noteNumber: 60, velocity: 0 } }, // end @ tick 720
-        { delta: 1680, noteOn: { noteNumber: 64, velocity: 80 } }, // E4 @ tick 2400
-        { delta: 240, noteOff: { noteNumber: 64, velocity: 0 } }, // end @ tick 2640
+        { delta: 480, noteOn: { noteNumber: 60, velocity: 80 } },
+        { delta: 240, noteOff: { noteNumber: 60, velocity: 0 } },
+        { delta: 1680, noteOn: { noteNumber: 64, velocity: 80 } },
+        { delta: 240, noteOff: { noteNumber: 64, velocity: 0 } },
       ],
-      // track 2: Vocals  – notes from MIDI_TRACKS[1]
       [
         { delta: 0, trackName: TRACK_NAMES.vocals },
-        { delta: 4320, noteOn: { noteNumber: 67, velocity: 80 } }, // G4 @ tick 4320
-        { delta: 480, noteOff: { noteNumber: 67, velocity: 0 } }, // end @ tick 4800
-        { delta: 480, noteOn: { noteNumber: 69, velocity: 80 } }, // A4 @ tick 5280
-        { delta: 480, noteOff: { noteNumber: 69, velocity: 0 } }, // end @ tick 5760
+        { delta: 4320, noteOn: { noteNumber: 67, velocity: 80 } },
+        { delta: 480, noteOff: { noteNumber: 67, velocity: 0 } },
+        { delta: 480, noteOn: { noteNumber: 69, velocity: 80 } },
+        { delta: 480, noteOff: { noteNumber: 69, velocity: 0 } },
       ],
     ],
   }),
@@ -49,10 +45,10 @@ vi.mock("midi-json-parser", () => ({
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function makePlayer(): { player: MidiPlayer; updater: ManualUpdater; ctx: AudioContext } {
+function makePlayer(): { player: PlayerEngine; updater: ManualUpdater; ctx: AudioContext } {
   const ctx = new AudioContext();
   let updater!: ManualUpdater;
-  const player = new MidiPlayer(ctx, (cb) => {
+  const player = new PlayerEngine(ctx, (cb) => {
     updater = new ManualUpdater(cb);
     return updater;
   });
@@ -65,10 +61,7 @@ function mockAxios(): void {
     .mockResolvedValueOnce({ data: makeMtiJson() });
 }
 
-// Advance in 20 ms steps until player.position exceeds targetTick or player stops.
-// Takes one extra flush step after overshooting so that end-of-segment logic (pause,
-// segue) fires — the player checks position >= duration at the START of each step.
-function stepPast(updater: ManualUpdater, player: MidiPlayer, targetTick: number): void {
+function stepPast(updater: ManualUpdater, player: PlayerEngine, targetTick: number): void {
   for (let i = 0; i < 10_000; i++) {
     if (player.position > targetTick) {
       break;
@@ -88,8 +81,8 @@ function stepPast(updater: ManualUpdater, player: MidiPlayer, targetTick: number
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
-describe("MidiPlayer – MIDI mode", () => {
-  let player: MidiPlayer;
+describe("PlayerEngine – MIDI mode", () => {
+  let player: PlayerEngine;
   let updater: ManualUpdater;
   let ctx: AudioContext;
 
@@ -211,7 +204,7 @@ describe("MidiPlayer – MIDI mode", () => {
     stepPast(updater, player, TICKS.measure1);
     player.pause();
     const posAfterPause = player.position;
-    updater.step(0.1); // updater is stopped; step is a no-op
+    updater.step(0.1);
     expect(player.position).toBe(posAfterPause);
   });
 
@@ -243,7 +236,6 @@ describe("MidiPlayer – MIDI mode", () => {
     await vp.load(makeMidiSongWithVamp());
 
     vp.play();
-    // Step until the vamp's iteration counter increments (one full loop completed)
     for (let i = 0; i < 10_000 && (vp.currentVamp?.currentIteration ?? 0) === 0; i++) {
       vu.step(0.02);
     }
@@ -262,12 +254,10 @@ describe("MidiPlayer – MIDI mode", () => {
     await vp.load(makeMidiSongWithVamp()); // 2 iterations
 
     vp.play();
-    // Phase 1: advance until the vamp is entered (currentVamp starts as undefined).
     for (let i = 0; i < 10_000 && vp.currentVamp === undefined; i++) {
       vu.step(0.02);
     }
 
-    // Phase 2: keep going until the vamp exits after max iterations.
     for (let i = 0; i < 10_000 && vp.currentVamp !== undefined; i++) {
       vu.step(0.02);
     }

@@ -16,12 +16,12 @@ export type TrackOptions = {
   compressor?: boolean;
 };
 
-export type AudioPlayerOptions = {
+export type AudioDriverOptions = {
   tracks: TrackOptions[];
   onAmplitudes: (amplitudes: number[]) => void;
 };
 
-export default class AudioPlayer {
+export default class AudioDriver {
   private _sources: AudioBufferSourceNode[] = [];
   private _rubberBandNode: RubberBandNode;
   private _trackInputs: AudioNode[];
@@ -43,20 +43,20 @@ export default class AudioPlayer {
   static async create(
     context: AudioContext,
     buffers: AudioBuffer[],
-    options: AudioPlayerOptions,
-  ): Promise<AudioPlayer> {
+    options: AudioDriverOptions,
+  ): Promise<AudioDriver> {
     const rubberBandNode = await createRubberBandNode(context, processorUrl, {
       numberOfInputs: 1,
       numberOfOutputs: 1,
       outputChannelCount: [2],
     });
-    return new AudioPlayer(context, buffers, options, rubberBandNode);
+    return new AudioDriver(context, buffers, options, rubberBandNode);
   }
 
   private constructor(
     private _context: AudioContext,
     private _buffers: AudioBuffer[],
-    options: AudioPlayerOptions,
+    options: AudioDriverOptions,
     rubberBandNode: RubberBandNode,
   ) {
     this._rubberBandNode = rubberBandNode;

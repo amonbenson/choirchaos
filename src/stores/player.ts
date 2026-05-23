@@ -3,11 +3,11 @@ import { markRaw, onScopeDispose } from "vue";
 
 import { useEvent } from "@/composables/event";
 import type { NoteEvent } from "@/core/midi/events";
-import MidiPlayer, { type MidiPlayerSegueState, type MidiPlayerVampState } from "@/core/midi/player";
 import type Song from "@/core/models/song";
+import PlayerEngine, { type MidiPlayerSegueState, type MidiPlayerVampState } from "@/core/player/engine";
 import { isNumbering } from "@/core/utils/numbering";
 
-const globalPlayer = new MidiPlayer();
+const globalPlayer = new PlayerEngine();
 
 export const usePlayerStore = defineStore("player", () => {
   const status = useEvent(globalPlayer, "statusChanged", { initial: globalPlayer.status });
@@ -35,11 +35,11 @@ export const usePlayerStore = defineStore("player", () => {
     initial: globalPlayer.currentTimeSignature,
   });
 
-  const currentVamp = useEvent<MidiPlayer, MidiPlayerVampState | undefined>(globalPlayer, "currentVampChanged", {
+  const currentVamp = useEvent<PlayerEngine, MidiPlayerVampState | undefined>(globalPlayer, "currentVampChanged", {
     initial: globalPlayer.currentVamp,
   });
 
-  const currentSegue = useEvent<MidiPlayer, MidiPlayerSegueState | undefined>(globalPlayer, "currentSegueChanged", {
+  const currentSegue = useEvent<PlayerEngine, MidiPlayerSegueState | undefined>(globalPlayer, "currentSegueChanged", {
     initial: globalPlayer.currentSegue,
   });
 
@@ -78,7 +78,7 @@ export const usePlayerStore = defineStore("player", () => {
     setter: (player, value) => player.playbackTransposition = value,
   });
 
-  const trackAmplitudes = useEvent<MidiPlayer, number[]>(globalPlayer, "trackAmplitudesChanged", {
+  const trackAmplitudes = useEvent<PlayerEngine, number[]>(globalPlayer, "trackAmplitudesChanged", {
     initial: [],
   });
 
