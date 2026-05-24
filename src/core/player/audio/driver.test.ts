@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { computeRms, makeSineBuffer } from "@/test/fixtures";
 
-import AudioPlayer from "./audioPlayer";
+import AudioDriver from "./driver";
 
 // Mock rubberband-web: replace createRubberBandNode with a plain GainNode passthrough.
 // The RubberBandNode interface is satisfied by adding stub methods for setPitch and close.
@@ -21,7 +21,7 @@ function makeSilentBuffer(ctx: BaseAudioContext, seconds = 1): AudioBuffer {
   return ctx.createBuffer(2, Math.floor(SAMPLE_RATE * seconds), SAMPLE_RATE);
 }
 
-describe("AudioPlayer", () => {
+describe("AudioDriver", () => {
   let ctx: AudioContext;
 
   beforeEach(() => {
@@ -35,132 +35,132 @@ describe("AudioPlayer", () => {
 
   // ── factory ───────────────────────────────────────────────────────────────
 
-  it("create() resolves to an AudioPlayer instance", async () => {
+  it("create() resolves to an AudioDriver instance", async () => {
     const buf = makeSilentBuffer(ctx);
-    const player = await AudioPlayer.create(ctx, [buf], {
+    const driver = await AudioDriver.create(ctx, [buf], {
       tracks: [{}],
       onAmplitudes: () => {},
     });
-    expect(player).toBeDefined();
-    player.dispose();
+    expect(driver).toBeDefined();
+    driver.dispose();
   });
 
   // ── position tracking ─────────────────────────────────────────────────────
 
   it("position starts at 0 before play", async () => {
-    const player = await AudioPlayer.create(ctx, [makeSilentBuffer(ctx)], {
+    const driver = await AudioDriver.create(ctx, [makeSilentBuffer(ctx)], {
       tracks: [{}],
       onAmplitudes: () => {},
     });
-    expect(player.position).toBe(0);
-    player.dispose();
+    expect(driver.getPosition()).toBe(0);
+    driver.dispose();
   });
 
   it("seek updates position when not playing", async () => {
-    const player = await AudioPlayer.create(ctx, [makeSilentBuffer(ctx)], {
+    const driver = await AudioDriver.create(ctx, [makeSilentBuffer(ctx)], {
       tracks: [{}],
       onAmplitudes: () => {},
     });
-    player.seek(0.5);
-    expect(player.position).toBe(0.5);
-    player.dispose();
+    driver.seek(0.5);
+    expect(driver.getPosition()).toBe(0.5);
+    driver.dispose();
   });
 
   it("seek and play resume from the seeked position", async () => {
-    const player = await AudioPlayer.create(ctx, [makeSilentBuffer(ctx)], {
+    const driver = await AudioDriver.create(ctx, [makeSilentBuffer(ctx)], {
       tracks: [{}],
       onAmplitudes: () => {},
     });
-    player.seek(0.3);
-    player.play();
+    driver.seek(0.3);
+    driver.play();
     // position should advance from 0.3, not from 0
-    expect(player.position).toBeGreaterThanOrEqual(0.3);
-    player.pause();
-    player.dispose();
+    expect(driver.getPosition()).toBeGreaterThanOrEqual(0.3);
+    driver.pause();
+    driver.dispose();
   });
 
   // ── gain ──────────────────────────────────────────────────────────────────
 
   it("setGain does not throw and accepts values in [0, 1]", async () => {
-    const player = await AudioPlayer.create(ctx, [makeSilentBuffer(ctx)], {
+    const driver = await AudioDriver.create(ctx, [makeSilentBuffer(ctx)], {
       tracks: [{}],
       onAmplitudes: () => {},
     });
-    expect(() => player.setGain(0, 0)).not.toThrow();
-    expect(() => player.setGain(0, 0.5)).not.toThrow();
-    expect(() => player.setGain(0, 1.0)).not.toThrow();
-    player.dispose();
+    expect(() => driver.setGain(0, 0)).not.toThrow();
+    expect(() => driver.setGain(0, 0.5)).not.toThrow();
+    expect(() => driver.setGain(0, 1.0)).not.toThrow();
+    driver.dispose();
   });
 
   // ── tempo / pitch ─────────────────────────────────────────────────────────
 
   it("setTempo does not throw", async () => {
-    const player = await AudioPlayer.create(ctx, [makeSilentBuffer(ctx)], {
+    const driver = await AudioDriver.create(ctx, [makeSilentBuffer(ctx)], {
       tracks: [{}],
       onAmplitudes: () => {},
     });
-    expect(() => player.setTempo(1.2)).not.toThrow();
-    player.dispose();
+    expect(() => driver.setTempo(1.2)).not.toThrow();
+    driver.dispose();
   });
 
   it("setPitch does not throw", async () => {
-    const player = await AudioPlayer.create(ctx, [makeSilentBuffer(ctx)], {
+    const driver = await AudioDriver.create(ctx, [makeSilentBuffer(ctx)], {
       tracks: [{}],
       onAmplitudes: () => {},
     });
-    expect(() => player.setPitch(2)).not.toThrow();
-    player.dispose();
+    expect(() => driver.setPitch(2)).not.toThrow();
+    driver.dispose();
   });
 
   // ── audio output analysis via OfflineAudioContext ─────────────────────────
 
   it("passes audio signal through to the output (non-zero RMS)", async () => {
-    // Render 1 second of a 440 Hz sine wave through the full AudioPlayer chain.
+    // Render 1 second of a 440 Hz sine wave through the full AudioDriver chain.
     // The rubberband node is mocked as a plain GainNode, so audio passes through.
     const offlineCtx = new OfflineAudioContext(2, SAMPLE_RATE, SAMPLE_RATE);
     const sineBuf = makeSineBuffer(offlineCtx, 440, 1.0);
 
-    const player = await AudioPlayer.create(offlineCtx as unknown as AudioContext, [sineBuf], {
+    const driver = await AudioDriver.create(offlineCtx as unknown as AudioContext, [sineBuf], {
       tracks: [{ highPassFilter: false, compressor: false }],
       onAmplitudes: () => {},
     });
-    player.connect(offlineCtx.destination);
-    player.play();
+    driver.connect(offlineCtx.destination);
+    driver.play();
 
     const rendered = await offlineCtx.startRendering();
     const rms = computeRms(rendered.getChannelData(0));
 
     expect(rms).toBeGreaterThan(0.1);
-    player.dispose();
+    driver.dispose();
   });
 
   it("muted track (gain=0) produces near-silent output", async () => {
     const offlineCtx = new OfflineAudioContext(2, SAMPLE_RATE, SAMPLE_RATE);
     const sineBuf = makeSineBuffer(offlineCtx, 440, 1.0);
 
-    const player = await AudioPlayer.create(offlineCtx as unknown as AudioContext, [sineBuf], {
+    const driver = await AudioDriver.create(offlineCtx as unknown as AudioContext, [sineBuf], {
       tracks: [{ highPassFilter: false, compressor: false }],
       onAmplitudes: () => {},
     });
-    player.setGain(0, 0);
-    player.connect(offlineCtx.destination);
-    player.play();
+    driver.setGain(0, 0);
+    driver.connect(offlineCtx.destination);
+    driver.play();
 
     const rendered = await offlineCtx.startRendering();
     const rms = computeRms(rendered.getChannelData(0));
 
     // setTargetAtTime with gain=0 approaches but may not reach exact zero; use a loose bound
     expect(rms).toBeLessThan(0.05);
-    player.dispose();
+    driver.dispose();
   });
 
   // ── dispose ───────────────────────────────────────────────────────────────
 
   it("dispose clears the amplitude interval without throwing", async () => {
-    const player = await AudioPlayer.create(ctx, [makeSilentBuffer(ctx)], {
+    const driver = await AudioDriver.create(ctx, [makeSilentBuffer(ctx)], {
       tracks: [{}],
       onAmplitudes: () => {},
     });
-    expect(() => player.dispose()).not.toThrow();
+    expect(() => driver.dispose()).not.toThrow();
   });
 });

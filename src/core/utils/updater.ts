@@ -11,164 +11,101 @@ export type UpdaterOptions = {
 };
 
 export abstract class Updater {
-  protected readonly _options: UpdaterOptions;
-  private _updateCallback: UpdateCallback;
-  private _lastUpdate: number = 0;
-  private _running: boolean = false;
+  protected readonly options: UpdaterOptions;
+  private updateCallback: UpdateCallback;
+  private lastUpdate: number = 0;
+  private running: boolean = false;
 
   constructor(updateCallback: UpdateCallback, options: Partial<UpdaterOptions> = {}) {
-    this._options = {
+    this.options = {
       interval: 1 / 50,
       maximumLag: 1.5,
       timeProvider: () => new Date().getTime() / 1000,
     };
-    Object.assign(this._options, options);
-    this._updateCallback = updateCallback;
+    Object.assign(this.options, options);
+    this.updateCallback = updateCallback;
   }
 
-  public get lastUpdate(): number {
-    return this._lastUpdate;
+  getLastUpdate(): number {
+    return this.lastUpdate;
   }
 
-  public get running(): boolean {
-    return this._running;
+  isRunning(): boolean {
+    return this.running;
   }
 
-  public now(): number {
-    return this._options.timeProvider();
+  now(): number {
+    return this.options.timeProvider();
   }
 
-  protected _update(): void {
-    // calculate delta time
+  protected update(): void {
     const now = this.now();
-    let delta = now - this._lastUpdate;
-    this._lastUpdate = now;
+    let delta = now - this.lastUpdate;
+    this.lastUpdate = now;
 
-    // validate delta
     if (delta < 0) {
       console.error("Negative delta time! Make sure your timeProvider returns monotonic increasing values!");
       delta = 0;
-    } else if (delta / this._options.interval > this._options.maximumLag) {
-      console.warn(`Experiencing significant lag! (Update took ${delta / this._options.interval} times longer than usual)`);
+    } else if (delta / this.options.interval > this.options.maximumLag) {
+      console.warn(`Experiencing significant lag! (Update took ${delta / this.options.interval} times longer than usual)`);
     }
 
-    // run update callback
-    this._updateCallback(delta);
-
-    // call update complete handler
-    this._updateCompleteImpl();
+    this.updateCallback(delta);
+    this.updateCompleteImpl();
   }
 
   start(): void {
-    if (this._running) {
+    if (this.running) {
       return;
     }
 
-    // reset time
-    this._lastUpdate = this._options.timeProvider();
-
-    this._running = true;
-    this._startImpl();
+    this.lastUpdate = this.options.timeProvider();
+    this.running = true;
+    this.startImpl();
   }
 
   stop(): void {
-    if (!this._running) {
+    if (!this.running) {
       return;
     }
 
-    this._running = false;
-    this._stopImpl();
+    this.running = false;
+    this.stopImpl();
   }
 
-  protected abstract _startImpl(): void;
-  protected abstract _stopImpl(): void;
-  protected abstract _updateCompleteImpl(): void;
+  protected abstract startImpl(): void;
+  protected abstract stopImpl(): void;
+  protected abstract updateCompleteImpl(): void;
 }
 
 export class SetIntervalUpdater extends Updater {
-  private _intervalHandle?: ReturnType<typeof setInterval>;
+  private intervalHandle?: ReturnType<typeof setInterval>;
 
-  protected _startImpl(): void {
-    // setup a regular interval update handler
-    this._intervalHandle = setInterval(() => this._update(), this._options.interval * 1000);
+  protected startImpl(): void {
+    this.intervalHandle = setInterval(() => this.update(), this.options.interval * 1000);
   }
 
-  protected _stopImpl(): void {
-    // stop the interval
-    clearInterval(this._intervalHandle);
+  protected stopImpl(): void {
+    clearInterval(this.intervalHandle);
   }
 
-  protected _updateCompleteImpl(): void {}
+  protected updateCompleteImpl(): void {}
 }
 
 export class AnimationFrameUpdater extends Updater {
-  private _animationFrameHandle?: number;
+  private animationFrameHandle?: number;
 
-  protected _startImpl(): void {
-    // request an animation frame to handle the update
-    this._animationFrameHandle = requestAnimationFrame(() => this._update());
+  protected startImpl(): void {
+    this.animationFrameHandle = requestAnimationFrame(() => this.update());
   }
 
-  protected _stopImpl(): void {
-    // stop any ongoing animation frame
-    cancelAnimationFrame(this._animationFrameHandle!);
+  protected stopImpl(): void {
+    cancelAnimationFrame(this.animationFrameHandle!);
   }
 
-  protected _updateCompleteImpl(): void {
-    // request the next frame while we are still running
-    if (this.running) {
-      this._animationFrameHandle = requestAnimationFrame(() => this._update());
+  protected updateCompleteImpl(): void {
+    if (this.isRunning()) {
+      this.animationFrameHandle = requestAnimationFrame(() => this.update());
     }
   }
 }
-
-// export class AutoUpdater {
-//   readonly _options: UpdaterOptions = {
-//     interval: 1 / 50,
-//     provider: "auto",
-//     maximumLag: 1.5,
-//   };
-//   _updateCallback: UpdateCallback;
-//   _currentProvider: UpdateProvider;
-//   _running: boolean = false;
-
-//   constructor(updateCallback: UpdateCallback, options: Partial<UpdaterOptions> = {}) {
-//     Object.assign(this._options, options);
-//     this._updateCallback = updateCallback;
-
-//     if (this._options.provider === "auto") {
-//       this._currentProvider = "requestAnimationFrame";
-//     } else {
-//       this._currentProvider = this._options.provider;
-//     }
-//   }
-
-//   private _update() {
-
-//   }
-
-//   setUpdateProvider(provider: UpdateProvider) {
-//     if (this._currentProvider === provider) {
-//       return;
-//     }
-
-//     // stop during provider change
-//     const wasRunning = this._running;
-//     if (wasRunning) {
-//       this.stop();
-//     }
-
-//     // restart if we were running before
-//     if (wasRunning) {
-//       this.start();
-//     }
-//   }
-
-//   start() {
-
-//   }
-
-//   stop() {
-
-//   }
-// }

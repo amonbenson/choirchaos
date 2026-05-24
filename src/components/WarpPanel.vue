@@ -45,7 +45,7 @@ const NUM_PEAKS = 10000;
 const peaks = ref<{ min: number; max: number }[]>([]);
 
 async function computePeaks(): Promise<void> {
-  const buffers = player.player.audioBuffers;
+  const buffers = player.player.getAudioBuffers();
   if (buffers.length === 0) {
     peaks.value = [];
     return;
@@ -225,8 +225,10 @@ function reloadWarp(): void {
     return;
   }
 
+  // TODO validate that the player song is the same as props.song OR drop props.song alltogether and use the player's loaded song as the single source of truth for this panel
+
   const pos = player.position;
-  player.syncWarp(props.song);
+  player.syncWarp();
   player.seek(pos);
 }
 

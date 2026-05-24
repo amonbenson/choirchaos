@@ -142,6 +142,7 @@ const playbackSpeedPercentage = computed({
             <PopoverButton
               button-class="w-12 whitespace-nowrap"
               :label="player.ready ? player.currentMeasure[0] : '-'"
+              :disabled="!player.ready"
             >
               <template #default="{ setFocusTarget }">
                 <InputText
@@ -157,7 +158,7 @@ const playbackSpeedPercentage = computed({
             <PopoverButton
               button-class="w-8 whitespace-nowrap"
               :label="player.ready && player.mode === 'midi' ? String(player.currentMeasure[1] + 1) : '-'"
-              :disabled="player.mode !== 'midi'"
+              :disabled="!player.ready || player.mode !== 'midi'"
             >
               <template #default="{ setFocusTarget }">
                 <InputNumber
