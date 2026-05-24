@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { computed, type ComputedRef, markRaw, onScopeDispose, ref, shallowRef } from "vue";
+import { computed, type ComputedRef, markRaw, onScopeDispose, shallowRef, watch, type WritableComputedRef } from "vue";
 
 import type { NoteEvent } from "@/core/midi/events";
 import type Song from "@/core/models/song";
@@ -15,23 +15,36 @@ function useEngineEvent<T>(event: Event<T>, initial: T): ComputedRef<T> {
     value.value = v;
   });
   onScopeDispose(() => d.dispose());
-
   return computed(() => value.value);
 }
 
-export const usePlayerStore = defineStore("player", () => {
-  const statusRef = ref(globalPlayer.getStatus());
-  const statusD = globalPlayer.onStatusChange((s) => {
-    statusRef.value = s;
+function useWritableEngineEvent<T>(event: Event<T>, initial: T, setter: (v: T) => void): WritableComputedRef<T> {
+  const value = shallowRef<T>(initial);
+  const d = event((v) => {
+    value.value = v;
   });
-  onScopeDispose(() => statusD.dispose());
+  onScopeDispose(() => d.dispose());
+  return computed({ get: () => value.value, set: setter });
+}
 
-  const status = computed(() => statusRef.value);
-  const loading = computed(() => statusRef.value === "loading");
-  const ready = computed(() => statusRef.value === "ready");
-  const mode = computed(() => globalPlayer.getMode());
-  const ppqn = computed(() => globalPlayer.getPpqn());
-  const events = computed(() => markRaw(globalPlayer.getMidiEvents()));
+export const usePlayerStore = defineStore("player", () => {
+  const status = useEngineEvent(globalPlayer.onStatusChange, globalPlayer.getStatus());
+  const loading = computed(() => status.value === "loading");
+  const ready = computed(() => status.value === "ready");
+  const mode = useEngineEvent(globalPlayer.onModeChange, globalPlayer.getMode());
+
+  const ppqnRef = shallowRef(globalPlayer.getPpqn());
+  const eventsRef = shallowRef(markRaw(globalPlayer.getMidiEvents()));
+  watch(status, (s) => {
+    if (s !== "ready") {
+      return;
+    }
+    ppqnRef.value = globalPlayer.getPpqn();
+    eventsRef.value = markRaw(globalPlayer.getMidiEvents());
+  });
+
+  const ppqn = computed(() => ppqnRef.value);
+  const events = computed(() => eventsRef.value);
 
   const playing = useEngineEvent(globalPlayer.onPlayingChange, globalPlayer.isPlaying());
   const position = useEngineEvent(globalPlayer.onPositionChange, globalPlayer.getPosition());
@@ -50,25 +63,16 @@ export const usePlayerStore = defineStore("player", () => {
     globalPlayer.getCurrentSegue(),
   );
 
-  const playbackSpeedRef = ref(globalPlayer.getPlaybackSpeed());
-  const playbackSpeedD = globalPlayer.onPlaybackSpeedChange((v) => {
-    playbackSpeedRef.value = v;
-  });
-  onScopeDispose(() => playbackSpeedD.dispose());
-  const playbackSpeed = computed({
-    get: () => playbackSpeedRef.value,
-    set: v => globalPlayer.setPlaybackSpeed(v),
-  });
-
-  const playbackTranspositionRef = ref(globalPlayer.getPlaybackTransposition());
-  const playbackTranspositionD = globalPlayer.onPlaybackTranspositionChange((v) => {
-    playbackTranspositionRef.value = v;
-  });
-  onScopeDispose(() => playbackTranspositionD.dispose());
-  const playbackTransposition = computed({
-    get: () => playbackTranspositionRef.value,
-    set: v => globalPlayer.setPlaybackTransposition(v),
-  });
+  const playbackSpeed = useWritableEngineEvent(
+    globalPlayer.onPlaybackSpeedChange,
+    globalPlayer.getPlaybackSpeed(),
+    v => globalPlayer.setPlaybackSpeed(v),
+  );
+  const playbackTransposition = useWritableEngineEvent(
+    globalPlayer.onPlaybackTranspositionChange,
+    globalPlayer.getPlaybackTransposition(),
+    v => globalPlayer.setPlaybackTransposition(v),
+  );
 
   const trackAmplitudes = useEngineEvent<number[]>(globalPlayer.onTrackAmplitudesChange, []);
 

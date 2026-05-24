@@ -103,7 +103,7 @@ export default class AudioBackend extends PlayerBackend {
     this.audioDriver?.seek(position / 1000);
   }
 
-  step(currentPosition: Tick, delta: number, _limit?: Tick): StepResult {
+  step(currentPosition: Tick, deltaTime: number, _limit?: Tick): StepResult {
     const p1 = (this.audioDriver?.getPosition() ?? 0) * 1000;
 
     const tracks = this.currentSong?.tracks ?? [];
@@ -130,7 +130,7 @@ export default class AudioBackend extends PlayerBackend {
       }
     }
 
-    return { p0: currentPosition, p1, deltaConsumed: delta };
+    return { p0: currentPosition, p1, deltaTimeConsumed: deltaTime };
   }
 
   onPositionJump(_offset: Tick, newPosition: Tick): void {

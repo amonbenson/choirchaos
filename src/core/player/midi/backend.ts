@@ -55,6 +55,7 @@ export default class MidiBackend extends PlayerBackend {
   }
 
   private resetAudioClockReference(): void {
+    // Anchor the audio clock to the last known position so that the next step calculates time from there.
     this.audioClockReference = {
       seconds: this.context.currentTime,
       ticks: this.lastKnownPosition,
@@ -62,6 +63,7 @@ export default class MidiBackend extends PlayerBackend {
   }
 
   private updateTickDuration(): void {
+    // Recalculate tick duration based on current tempo and playback speed.
     const ticksPerSecond = this.currentBpm / 60 * this.ppqn * this.playbackSpeed;
     this.tickDuration = 1 / ticksPerSecond;
     this.resetAudioClockReference();
@@ -76,6 +78,7 @@ export default class MidiBackend extends PlayerBackend {
       throw new Error(`Json file missing from song '${song.title}'`);
     }
 
+    // Load midi and json in parallel
     const [midiRes, jsonRes] = await Promise.all([
       axios.get(resolveUrl(song.midiFile, "songs", song.id), {
         validateStatus: status => status === 200,
@@ -96,6 +99,7 @@ export default class MidiBackend extends PlayerBackend {
     this.systemEvents.timeSignature = new MidiEventList();
     this.noteEvents = [];
 
+    // Fill in all system events from the json data
     let prevMeasure: Measure | undefined = undefined;
     const midiJson: MTIMidiJson = jsonRes.data;
 
@@ -144,8 +148,10 @@ export default class MidiBackend extends PlayerBackend {
       }
     }
 
+    // Use assign to preserve reactivity
     Object.assign(song.$midiSystemEvents, this.systemEvents);
 
+    // Parse the midi buffer and fill in note events for each track
     const midiData = await parseMidiBuffer(midiRes.data);
     signal.throwIfAborted();
 
@@ -186,6 +192,7 @@ export default class MidiBackend extends PlayerBackend {
             ));
             noteOnIndices[midiEvent.noteOff.noteNumber] = -1;
 
+            // Mark the measure as active for this track so the UI can highlight it.
             const measure = song.findMeasureByTick(noteOnEvent.$tick);
             if (measure) {
               measure.$activeTrackIndices.add(t);
@@ -196,12 +203,14 @@ export default class MidiBackend extends PlayerBackend {
         }
       }
 
+      // Use assign to preserve reactivity
       Object.assign(track.$midiTrackEvents, this.noteEvents[t]);
     }
 
     this.ppqn = midiJson.score.ppqn;
     this.currentSong = song;
 
+    // Find the last measure with a valid layout and use it to calculate the final measure and duration, since MIDI files might omit measures after the end of the song.
     let lastWrittenMeasure: Measure | undefined = undefined;
     let l = song.measures.items().length;
     while (l--) {
@@ -215,6 +224,7 @@ export default class MidiBackend extends PlayerBackend {
     let duration: Tick;
     let finalMeasure: MeasureReference;
 
+    // If there is a valid last measure with beat ticks, calculate duration and final measure from it. Otherwise, fall back to using the last measure event in the MIDI data, or default to 1 tick and measure 1 if there are no events.
     if (lastWrittenMeasure && lastWrittenMeasure.$beatTicks.length > 0 && lastWrittenMeasure.$tickLength !== undefined) {
       duration = lastWrittenMeasure.$beatTicks[0]! + lastWrittenMeasure.$tickLength;
       finalMeasure = lastWrittenMeasure.reference(lastWrittenMeasure.$beatTicks.length - 1);
@@ -224,6 +234,7 @@ export default class MidiBackend extends PlayerBackend {
       finalMeasure = lastMeasureEvent?.measure ?? ["1", 0];
     }
 
+    // Initialize the WebAudioFont player and load the instruments for each track.
     this.player = new window.WebAudioFontPlayer();
     for (const track of song.tracks) {
       const nn = this.player.loader.findInstrument(track.program === 9 ? 116 : 0);
@@ -238,6 +249,7 @@ export default class MidiBackend extends PlayerBackend {
   }
 
   play(currentPosition: Tick): void {
+    // Note: The actual playback happens in step()
     this.lastKnownPosition = currentPosition;
     this.resetAudioClockReference();
   }
@@ -252,24 +264,27 @@ export default class MidiBackend extends PlayerBackend {
     this.resetAudioClockReference();
   }
 
-  step(currentPosition: Tick, delta: number, limit?: Tick): StepResult {
+  step(currentPosition: Tick, deltaTime: number, limit?: Tick): StepResult {
     const p0 = currentPosition;
-    let p1 = p0 + delta / this.tickDuration;
+    let p1 = p0 + deltaTime / this.tickDuration;
 
+    // Prevent overshooting the limit tick if given
     if (limit !== undefined && p1 > limit) {
       p1 = limit;
     }
 
-    const deltaConsumed = (p1 - p0) * this.tickDuration;
+    const deltaTimeConsumed = (p1 - p0) * this.tickDuration;
 
     // Set before event processing so that any resetAudioClockReference call
     // triggered by a TempoEvent or TimeSignatureEvent uses the correct tick.
     this.lastKnownPosition = p1;
 
+    // Calculate the tick position based on the audio clock, to ensure that timing remains accurate even if step() is called with irregular intervals.
     const timeSinceReference = this.context.currentTime - this.audioClockReference.seconds;
     const ticksSinceReference = timeSinceReference / this.tickDuration;
     this.audioClockTickPosition = this.audioClockReference.ticks + ticksSinceReference;
 
+    // Handle all events between p0 and p1, in chronological order
     const k0 = { tick: p0 };
     const k1 = { tick: p1 };
 
@@ -289,14 +304,16 @@ export default class MidiBackend extends PlayerBackend {
         .forEach(e => this.handleNoteEvent(e));
     });
 
-    return { p0, p1, deltaConsumed };
+    return { p0, p1, deltaTimeConsumed };
   }
 
   private handleMeasureEvent(event: MeasureEvent): void {
+    // Notify the engine
     this.callbacks.onMeasureChanged(event.measure);
   }
 
   private handleTempoEvent(event: TempoEvent): void {
+    // Update the tick duration and notify the engine
     if (this.currentBpm !== event.bpm) {
       this.currentBpm = event.bpm;
       this.updateTickDuration();
@@ -305,11 +322,13 @@ export default class MidiBackend extends PlayerBackend {
   }
 
   private handleTimeSignatureEvent(event: TimeSignatureEvent): void {
+    // Resync and notify the engine
     this.resetAudioClockReference();
     this.callbacks.onTimeSignatureChanged(event.signature);
   }
 
   private handleNoteEvent(event: NoteEvent): void {
+    // Notify the engine
     this.callbacks.onNote(event);
 
     if (!this.player || !this.currentSong) {
@@ -322,6 +341,7 @@ export default class MidiBackend extends PlayerBackend {
       return;
     }
 
+    // Schedule a note if the track is audible
     if (track.mixer.effectiveGain > 0) {
       const start = (event.tick - this.audioClockTickPosition) * this.tickDuration + AUDIO_CLOCK_OFFSET;
       const duration = Math.min(event.duration * this.tickDuration, 5);
@@ -347,18 +367,20 @@ export default class MidiBackend extends PlayerBackend {
   }
 
   onPositionJump(offset: Tick, _newPosition: Tick): void {
-    // Adjust tick reference only — keeps already-scheduled notes valid and
+    // Adjust tick reference only. Keeps already-scheduled notes valid and
     // avoids the audio click that a full reference reset would cause.
     this.audioClockReference.ticks += offset;
   }
 
   onTempoRestored(bpm: number): void {
+    // When the engine changes tempo without calling step() (e.g. during a seek), we still need to resync the audio clock
     this.currentBpm = bpm;
     this.updateTickDuration();
   }
 
   override onPlaybackSpeedChanged(speed: number): void {
-    this.playbackSpeed = speed;
+    // Also resync if the playback speed changes
+    super.onPlaybackSpeedChanged(speed);
     this.updateTickDuration();
   }
 

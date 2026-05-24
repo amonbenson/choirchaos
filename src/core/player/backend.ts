@@ -7,7 +7,7 @@ import type { SystemEvents } from "./types";
 export type StepResult = {
   p0: Tick;
   p1: Tick;
-  deltaConsumed: number;
+  deltaTimeConsumed: number;
 };
 
 export type BackendCallbacks = {
@@ -47,11 +47,11 @@ export abstract class PlayerBackend {
   abstract seek(position: Tick): void;
 
   /**
-   * Advance playback by `delta` seconds from `currentPosition`.
+   * Advance playback by `deltaTime` seconds from `currentPosition`.
    * Must not cross `limit` (if given); returns the actual tick range consumed and wall-clock time spent.
    * Fire callbacks for any events (notes, measure/tempo/time-signature changes) encountered in the range.
    */
-  abstract step(currentPosition: Tick, delta: number, limit?: Tick): StepResult;
+  abstract step(currentPosition: Tick, deltaTime: number, limit?: Tick): StepResult;
 
   /** Called when the engine jumps the position by `offset` ticks (e.g. a vamp loop). */
   abstract onPositionJump(offset: Tick, newPosition: Tick): void;

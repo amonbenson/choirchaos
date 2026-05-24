@@ -30,6 +30,8 @@ type VampAction = "repeat" | "exit-at-end" | "exit-at-barline";
 
 export default class PlayerEngine {
   private readonly status = new Property<PlayerStatus>("idle");
+  private readonly mode = new Property<PlayerMode>("none");
+
   private readonly playing = new Property(false);
   private readonly duration = new Property<Tick>(0);
   private readonly finalMeasure = new Property<MeasureReference>(DEFAULT_MEASURE);
@@ -44,6 +46,8 @@ export default class PlayerEngine {
   private readonly currentSegue = new Property<PlayerSegueState | undefined>(undefined);
 
   readonly onStatusChange = this.status.onChange;
+  readonly onModeChange = this.mode.onChange;
+
   readonly onPlayingChange = this.playing.onChange;
   readonly onDurationChange = this.duration.onChange;
   readonly onFinalMeasureChange = this.finalMeasure.onChange;
@@ -69,7 +73,6 @@ export default class PlayerEngine {
   readonly onSegue = this.emitters.segue.event;
   readonly onAudioContextZombie = this.emitters.audioContextZombie.event;
 
-  private mode: PlayerMode = "none";
   private currentSong?: Song;
   private vamps: PlayerVamp[] = [];
 
@@ -100,6 +103,10 @@ export default class PlayerEngine {
 
   getStatus(): PlayerStatus {
     return this.status.get();
+  }
+
+  getMode(): PlayerMode {
+    return this.mode.get();
   }
 
   isPlaying(): boolean {
@@ -136,10 +143,6 @@ export default class PlayerEngine {
 
   getCurrentSegue(): PlayerSegueState | undefined {
     return this.currentSegue.get();
-  }
-
-  getMode(): PlayerMode {
-    return this.mode;
   }
 
   getPpqn(): number {
@@ -357,7 +360,7 @@ export default class PlayerEngine {
 
     // Enter loading state and initialize the master chain
     this.status.set("loading");
-    this.mode = song.playerMode;
+    this.mode.set(song.playerMode);
     this.currentSong = song;
     this.resumeAudioContext();
     this.setupMasterChain();
@@ -377,7 +380,7 @@ export default class PlayerEngine {
     };
 
     // Setup the backend (either midi or audio mode)
-    this.backend = this.mode === "midi"
+    this.backend = this.mode.get() === "midi"
       ? new MidiBackend(this.audioContext, this.masterInput!, this.systemEvents, callbacks)
       : new AudioBackend(this.audioContext, this.masterInput!, this.systemEvents, callbacks);
 
@@ -426,7 +429,7 @@ export default class PlayerEngine {
     this.backend?.dispose();
     this.backend = undefined;
 
-    this.mode = "none";
+    this.mode.set("none");
     this.currentSong = undefined;
     this.vamps = [];
     this.duration.set(0);
@@ -443,7 +446,7 @@ export default class PlayerEngine {
   }
 
   syncWarp(song: Song): void {
-    if (this.status.get() !== "ready" || this.mode !== "audio") {
+    if (this.status.get() !== "ready" || this.mode.get() !== "audio") {
       return;
     }
 
@@ -483,7 +486,7 @@ export default class PlayerEngine {
       : { action: "exit-at-end", limit: vamp.end };
   }
 
-  private handleStep(delta: number): void {
+  private handleStep(deltaTime: number): void {
     if (!this.backend) {
       return;
     }
@@ -503,7 +506,7 @@ export default class PlayerEngine {
     // For this reason, we pass a "limit" location to the backend's step function, that should not be exceeded
     // The actual number of ticks played by the backend is returned in deltaConsumed and the actual target position in p1
     const { action, limit } = this.vampAction(pos);
-    const { p1, deltaConsumed } = this.backend.step(pos, delta, limit);
+    const { p1, deltaTimeConsumed } = this.backend.step(pos, deltaTime, limit);
     pos = p1;
 
     // Note: At this point, pos <- min(pos + delta, limit)
@@ -524,7 +527,7 @@ export default class PlayerEngine {
     // Check if there is an active vamp action and the associated limit position was reached within this step
     if (action && this.currentVamp.get() && limit !== undefined && p1 >= limit) {
       const vamp = this.currentVamp.get()!;
-      const remaining = delta - deltaConsumed;
+      const remainingTime = deltaTime - deltaTimeConsumed;
       let jumpOffset = 0;
       let nextLimit: Tick | undefined;
 
@@ -549,8 +552,8 @@ export default class PlayerEngine {
       }
 
       // As the jump (most likely) happened during the current step, there is still some remaining time that needs to be played after the jump
-      if (remaining > 0) {
-        const { p1: p1b } = this.backend.step(pos, remaining, nextLimit);
+      if (remainingTime > 0) {
+        const { p1: p1b } = this.backend.step(pos, remainingTime, nextLimit);
         pos = p1b;
       }
     }
