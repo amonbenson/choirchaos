@@ -177,13 +177,17 @@ export default class AudioBackend extends PlayerBackend {
 
   private buildWarpEvents(): void {
     // Build the warp map and generate measure change events based on it
-    this.warpMap.setMarkers([...this.currentSong!.warpMarkers]);
+    const measures = this.currentSong!.measures.items();
+    this.warpMap.setMarkers(
+      this.currentSong!.warpMarkers
+        .map(m => ({ measure: measures.findIndex(m2 => m2.value === m.measure), time: m.time }))
+        .filter(m => m.measure !== -1),
+    );
 
     this.systemEvents.measure = new MidiEventList();
     this.systemEvents.tempo = new MidiEventList();
     this.systemEvents.timeSignature = new MidiEventList();
 
-    const measures = this.currentSong!.measures.items();
     for (let i = 0; i < measures.length; i++) {
       const measure = measures[i]!;
       const startMs = this.warpMap.measureToTime(i) * 1000;
