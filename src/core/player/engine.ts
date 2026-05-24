@@ -19,6 +19,9 @@ import {
 } from "./types";
 
 const STEP_DURATION = 1 / 50;
+const DEFAULT_MEASURE: MeasureReference = ["1", 0];
+const DEFAULT_TEMPO = 120;
+const DEFAULT_TIME_SIGNATURE: TimeSignature = [4, 2];
 
 export type { PlayerMode, PlayerSegueState, PlayerStatus, PlayerVampState };
 export type PlayerEvents = { system: SystemEvents; track: TrackEvents[] };
@@ -28,29 +31,31 @@ type VampAction = "repeat" | "exit-at-end" | "exit-at-barline";
 export default class PlayerEngine {
   private readonly status = new Property<PlayerStatus>("idle");
   private readonly playing = new Property(false);
-  private readonly position = new Property<Tick>(0);
   private readonly duration = new Property<Tick>(0);
-  private readonly currentMeasure = new Property<MeasureReference>(["1", 0]);
-  private readonly currentTempo = new Property(120);
-  private readonly currentTimeSignature = new Property<TimeSignature>([4, 2]);
-  private readonly finalMeasure = new Property<MeasureReference>(["1", 0]);
+  private readonly finalMeasure = new Property<MeasureReference>(DEFAULT_MEASURE);
+  private readonly playbackSpeed = new Property(1.0);
+  private readonly playbackTransposition = new Property(0);
+
+  private readonly position = new Property<Tick>(0);
+  private readonly currentMeasure = new Property<MeasureReference>(DEFAULT_MEASURE);
+  private readonly currentTempo = new Property(DEFAULT_TEMPO);
+  private readonly currentTimeSignature = new Property<TimeSignature>(DEFAULT_TIME_SIGNATURE);
   private readonly currentVamp = new Property<PlayerVampState | undefined>(undefined);
   private readonly currentSegue = new Property<PlayerSegueState | undefined>(undefined);
-  private readonly playbackSpeedProp = new Property(1.0);
-  private readonly playbackTranspositionProp = new Property(0);
 
   readonly onStatusChange = this.status.onChange;
   readonly onPlayingChange = this.playing.onChange;
-  readonly onPositionChange = this.position.onChange;
   readonly onDurationChange = this.duration.onChange;
+  readonly onFinalMeasureChange = this.finalMeasure.onChange;
+  readonly onPlaybackSpeedChange = this.playbackSpeed.onChange;
+  readonly onPlaybackTranspositionChange = this.playbackTransposition.onChange;
+
+  readonly onPositionChange = this.position.onChange;
   readonly onCurrentMeasureChange = this.currentMeasure.onChange;
   readonly onCurrentTempoChange = this.currentTempo.onChange;
   readonly onCurrentTimeSignatureChange = this.currentTimeSignature.onChange;
-  readonly onFinalMeasureChange = this.finalMeasure.onChange;
   readonly onCurrentVampChange = this.currentVamp.onChange;
   readonly onCurrentSegueChange = this.currentSegue.onChange;
-  readonly onPlaybackSpeedChange = this.playbackSpeedProp.onChange;
-  readonly onPlaybackTranspositionChange = this.playbackTranspositionProp.onChange;
 
   private readonly emitters = {
     note: new Emitter<NoteEvent>(),
@@ -68,12 +73,12 @@ export default class PlayerEngine {
   private currentSong?: Song;
   private vamps: PlayerVamp[] = [];
 
+  private updater: Updater;
   private audioContext: AudioContext;
   private masterInput?: AudioNode;
   private chainOutput?: GainNode;
-  private subplayer?: PlayerBackend;
+  private backend?: PlayerBackend;
   private loadAbortController?: AbortController;
-  private updater: Updater;
 
   private systemEvents: SystemEvents = {
     measure: new MidiEventList<MeasureEvent>(),
@@ -138,7 +143,7 @@ export default class PlayerEngine {
   }
 
   getPpqn(): number {
-    return this.subplayer?.getPpqn() ?? 480;
+    return this.backend?.getPpqn() ?? 480;
   }
 
   getCurrentSong(): Song | undefined {
@@ -146,19 +151,19 @@ export default class PlayerEngine {
   }
 
   getAudioBuffers(): AudioBuffer[] {
-    return this.subplayer?.getAudioBuffers() ?? [];
+    return this.backend?.getAudioBuffers() ?? [];
   }
 
   getPlaybackSpeed(): number {
-    return this.playbackSpeedProp.get();
+    return this.playbackSpeed.get();
   }
 
   getPlaybackTransposition(): number {
-    return this.playbackTranspositionProp.get();
+    return this.playbackTransposition.get();
   }
 
   getMidiEvents(): PlayerEvents {
-    const track = this.subplayer instanceof MidiBackend ? this.subplayer.getNoteEvents() : [];
+    const track = this.backend instanceof MidiBackend ? this.backend.getNoteEvents() : [];
     return { system: this.systemEvents, track };
   }
 
@@ -169,19 +174,20 @@ export default class PlayerEngine {
   }
 
   setPlaybackSpeed(value: number): void {
-    this.playbackSpeedProp.set(Math.max(0.1, Math.min(3.0, value)));
-    this.subplayer?.onPlaybackSpeedChanged(this.playbackSpeedProp.get());
+    this.playbackSpeed.set(Math.max(0.1, Math.min(3.0, value)));
+    this.backend?.onPlaybackSpeedChanged(this.playbackSpeed.get());
   }
 
   setPlaybackTransposition(value: number): void {
-    this.playbackTranspositionProp.set(Math.floor(Math.max(-12, Math.min(12, value))));
-    this.subplayer?.onPlaybackTranspositionChanged(this.playbackTranspositionProp.get());
+    this.playbackTransposition.set(Math.floor(Math.max(-12, Math.min(12, value))));
+    this.backend?.onPlaybackTranspositionChanged(this.playbackTransposition.get());
   }
 
   private setupMasterChain(): void {
     const ctx = this.audioContext;
     this.chainOutput?.disconnect();
 
+    // Setup master chain with a compressor and 3-band EQ
     const input = ctx.createGain();
 
     const compressor = ctx.createDynamicsCompressor();
@@ -221,12 +227,16 @@ export default class PlayerEngine {
   }
 
   private setupAudioContextMonitoring(): void {
+    // Try to resume the AudioContext if it gets suspended while playing (e.g. due to browser autoplay policies or system sleep)
+    // Important: the returned Promise needs to be handled, otherwise resume might not do anything in some browsers.
     this.audioContext.addEventListener("statechange", () => {
       if (this.playing.get() && this.audioContext.state !== "running") {
         this.audioContext.resume().catch(() => {});
       }
     });
 
+    // On Safari and some mobile browsers, the AudioContext can get into a "zombie" state where it is still reported as running but time doesn't advance and no sound is produced.
+    // Detect this by checking if currentTime is advancing, and if not, emit an event so the UI can respond.
     let [lastCt, lastWall] = [0, 0];
     setInterval(() => {
       const [ct, wall] = [this.audioContext.currentTime, performance.now()];
@@ -246,7 +256,7 @@ export default class PlayerEngine {
 
     this.resumeAudioContext();
     this.playing.set(true);
-    this.subplayer?.play(this.position.get());
+    this.backend?.play(this.position.get());
     this.updater.start();
   }
 
@@ -255,7 +265,7 @@ export default class PlayerEngine {
       return;
     }
 
-    this.subplayer?.pause(this.position.get());
+    this.backend?.pause(this.position.get());
     this.updater.stop();
     this.playing.set(false);
   }
@@ -263,6 +273,8 @@ export default class PlayerEngine {
   stop(): void {
     this.pause();
     this.seek(0);
+
+    // If the song starts with a vamp, ensure that it is reset to the first iteration
     const vamp = this.currentVamp.get();
     if (vamp) {
       this.currentVamp.set({ ...vamp, currentIteration: 0 });
@@ -274,10 +286,15 @@ export default class PlayerEngine {
       return;
     }
 
+    // Pause the player while seeking, then resume if it was playing before
     const wasPlaying = this.playing.get();
     this.pause();
+
+    // Update the position first, so that syncStateAt and vampAt operate based on the new position
     this.position.set(Math.max(0, Math.min(this.duration.get(), position)));
+
     this.syncStateAt(this.position.get());
+
     const newVamp = this.vampAt(this.position.get());
     if (newVamp?.start !== this.currentVamp.get()?.start) {
       this.currentVamp.set(newVamp);
@@ -322,19 +339,23 @@ export default class PlayerEngine {
   }
 
   async load(song: Song): Promise<void> {
+    // Abort any in-progress load operation before starting a new one
     this.loadAbortController?.abort();
     const controller = new AbortController();
     this.loadAbortController = controller;
     const { signal } = controller;
 
+    // Unload any previously loaded song to clean up the state
     if (this.status.get() !== "idle") {
       this.unload();
     }
 
+    // If the song has no measures or no player mode, stop here
     if (song.measures.items().length === 0 || song.playerMode === "none") {
       return;
     }
 
+    // Enter loading state and initialize the master chain
     this.status.set("loading");
     this.mode = song.playerMode;
     this.currentSong = song;
@@ -355,16 +376,19 @@ export default class PlayerEngine {
       onAmplitudes: (a: number[]) => this.emitters.trackAmplitudesChange.fire(a),
     };
 
-    this.subplayer = this.mode === "midi"
+    // Setup the backend (either midi or audio mode)
+    this.backend = this.mode === "midi"
       ? new MidiBackend(this.audioContext, this.masterInput!, this.systemEvents, callbacks)
       : new AudioBackend(this.audioContext, this.masterInput!, this.systemEvents, callbacks);
 
-    this.subplayer.onPlaybackSpeedChanged(this.playbackSpeedProp.get());
-    this.subplayer.onPlaybackTranspositionChanged(this.playbackTranspositionProp.get());
+    // Set the current playback speed and transposition immediately
+    this.backend.onPlaybackSpeedChanged(this.playbackSpeed.get());
+    this.backend.onPlaybackTranspositionChanged(this.playbackTransposition.get());
 
+    // Try to load the song. If it fails, cleanup the state by unloading and re-throw the error
     let loadResult: { duration: Tick; finalMeasure: MeasureReference };
     try {
-      loadResult = await this.subplayer.load(song, signal);
+      loadResult = await this.backend.load(song, signal);
     } catch (err) {
       if (signal.aborted) {
         return;
@@ -374,14 +398,21 @@ export default class PlayerEngine {
       throw err;
     }
 
+    // Stop here if loading was aborted by another load operation that was started in the meantime
     if (signal.aborted) {
       return;
     }
 
+    // Initialize the rest of the state based on the loaded song and enter ready state
     this.duration.set(loadResult.duration);
     this.finalMeasure.set(loadResult.finalMeasure);
     this.resolveEventTicks(song);
     this.status.set("ready");
+
+    // Setup segue only once at the start of the song
+    this.currentSegue.set(song.events.segue ? { enabled: true } : undefined);
+
+    // This will set the position and perform an initial sync for the current vamp, measure, tempo, etc.
     this.seek(0);
   }
 
@@ -390,13 +421,24 @@ export default class PlayerEngine {
       return;
     }
 
+    // Stop playback, dispose the backend, and reset all state
     this.pause();
-    this.subplayer?.dispose();
-    this.subplayer = undefined;
+    this.backend?.dispose();
+    this.backend = undefined;
+
     this.mode = "none";
     this.currentSong = undefined;
-    this.position.set(0);
+    this.vamps = [];
     this.duration.set(0);
+    this.finalMeasure.set(DEFAULT_MEASURE);
+
+    this.position.set(0);
+    this.currentMeasure.set(DEFAULT_MEASURE);
+    this.currentTempo.set(DEFAULT_TEMPO);
+    this.currentTimeSignature.set(DEFAULT_TIME_SIGNATURE);
+    this.currentVamp.set(undefined);
+    this.currentSegue.set(undefined);
+
     this.status.set("idle");
   }
 
@@ -405,31 +447,36 @@ export default class PlayerEngine {
       return;
     }
 
-    this.subplayer?.syncWarp(song);
+    // Recompute the timing of all measures for audio mode
+    this.backend?.syncWarp(song);
   }
 
   private vampAt(tick: Tick): PlayerVampState | undefined {
+    // Find a vamp at a given tick. As a typical song has comparatively few vamps, a simple linear search is sufficient here.
     const v = this.vamps.find(v => tick >= v.start && tick < v.end);
     return v ? { ...v, currentIteration: 0, manualExit: false } : undefined;
   }
 
   private barlineBetween(after: Tick, before: Tick): Tick | undefined {
+    // Find the location of the next barline between two ticks (barline = start tick of a measure)
     return this.systemEvents.measure.items()
       .find(e => e.tick > after && e.tick < before && e.measure[1] === 0)?.tick;
   }
 
-  private vampAction(p0: Tick): { action: VampAction | null; limit?: Tick } {
+  private vampAction(p0: Tick): { action: VampAction | undefined; limit?: Tick } {
     const vamp = this.currentVamp.get();
     if (!vamp) {
-      return { action: null };
+      return { action: undefined };
     }
 
+    // If no manual exit was requested and we are still below the vamp's iteration limit, return "repeat"
     const shouldExit = vamp.manualExit
       || (vamp.iterations > 0 && vamp.currentIteration >= vamp.iterations);
     if (!shouldExit) {
       return { action: "repeat", limit: vamp.end };
     }
 
+    // Return exit either at the next barline within the vamp (if any) or at the vamp's end if there is no barline
     const barline = this.barlineBetween(p0, vamp.end);
     return barline !== undefined
       ? { action: "exit-at-barline", limit: barline }
@@ -437,12 +484,13 @@ export default class PlayerEngine {
   }
 
   private handleStep(delta: number): void {
-    if (!this.subplayer) {
+    if (!this.backend) {
       return;
     }
 
     let pos = this.position.get();
 
+    // If we're not currently in a vamp but there is one at the current position, enter it
     if (!this.currentVamp.get() && this.vamps.length > 0) {
       const v = this.vampAt(pos);
       if (v) {
@@ -450,13 +498,22 @@ export default class PlayerEngine {
       }
     }
 
+    // Perform the actual playback logic by invoking the backend's step function and advancing the position accordingly.
+    // When the current step region contains a vamp exit point, we have to make sure that the backend plays only the first portion up until the exit point.
+    // For this reason, we pass a "limit" location to the backend's step function, that should not be exceeded
+    // The actual number of ticks played by the backend is returned in deltaConsumed and the actual target position in p1
     const { action, limit } = this.vampAction(pos);
-    const { p1, deltaConsumed } = this.subplayer.step(pos, delta, limit);
+    const { p1, deltaConsumed } = this.backend.step(pos, delta, limit);
     pos = p1;
 
+    // Note: At this point, pos <- min(pos + delta, limit)
+    // If the limit position was reached, pos will only be advanced up until that limit, and not for the full delta duration
+
+    // If the new position is beyond the end of the song, pause and invoke segue if enabled
     if (pos >= this.duration.get()) {
       this.position.set(this.duration.get());
       this.pause();
+
       if (this.currentSegue.get()?.enabled) {
         this.emitters.segue.fire(undefined);
       }
@@ -464,6 +521,7 @@ export default class PlayerEngine {
       return;
     }
 
+    // Check if there is an active vamp action and the associated limit position was reached within this step
     if (action && this.currentVamp.get() && limit !== undefined && p1 >= limit) {
       const vamp = this.currentVamp.get()!;
       const remaining = delta - deltaConsumed;
@@ -471,35 +529,43 @@ export default class PlayerEngine {
       let nextLimit: Tick | undefined;
 
       if (action === "exit-at-barline") {
+        // Exit the vamp by jumping from the current position to the end point
         jumpOffset = vamp.end - p1;
         this.currentVamp.set(undefined);
       } else if (action === "exit-at-end") {
+        // Exit the vamp. As we are already at the vamp's end point, no jump is required
         this.currentVamp.set(undefined);
       } else {
+        // Jump back to the vamp's start point and increment the current iteration count
         jumpOffset = -(vamp.end - vamp.start);
         this.currentVamp.set({ ...vamp, currentIteration: vamp.currentIteration + 1 });
         nextLimit = vamp.end;
       }
 
+      // Perform the jump
       if (jumpOffset !== 0) {
         pos += jumpOffset;
-        this.subplayer.onPositionJump(jumpOffset, pos);
+        this.backend.onPositionJump(jumpOffset, pos);
       }
 
+      // As the jump (most likely) happened during the current step, there is still some remaining time that needs to be played after the jump
       if (remaining > 0) {
-        const { p1: p1b } = this.subplayer.step(pos, remaining, nextLimit);
+        const { p1: p1b } = this.backend.step(pos, remaining, nextLimit);
         pos = p1b;
       }
     }
 
+    // Update the position property
     this.position.set(Math.max(0, Math.min(this.duration.get(), pos)));
   }
 
   private syncStateAt(pos: Tick): void {
+    // Get the most recent events at or before the new position, and update the current state accordingly
     const opts = { direction: "backward" as const, inclusive: true, extend: true };
     const measureEvent = this.systemEvents.measure.search({ tick: pos } as MeasureEvent, opts);
     const tempoEvent = this.systemEvents.tempo.search({ tick: pos } as TempoEvent, opts);
     const timeSigEvent = this.systemEvents.timeSignature.search({ tick: pos } as TimeSignatureEvent, opts);
+
     if (measureEvent) {
       this.currentMeasure.set(measureEvent.measure);
     }
@@ -513,9 +579,9 @@ export default class PlayerEngine {
     }
 
     // seek must precede onTempoRestored so lastKnownPosition is anchored first
-    this.subplayer?.seek(pos);
+    this.backend?.seek(pos);
     if (tempoEvent) {
-      this.subplayer?.onTempoRestored(tempoEvent.bpm);
+      this.backend?.onTempoRestored(tempoEvent.bpm);
     }
   }
 
@@ -524,6 +590,7 @@ export default class PlayerEngine {
     this.currentVamp.set(undefined);
     this.currentSegue.set(undefined);
 
+    // Resolve the tick positions of all measure-based events by looking up the associated measure's beat ticks.
     for (const e of song.events.markers.items()) {
       e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
       e.$endTick = song.findMeasure(e.end[0])?.$beatTicks[0];
@@ -538,7 +605,5 @@ export default class PlayerEngine {
         console.error("Could not resolve location of Vamp:", e);
       }
     }
-
-    this.currentSegue.set(song.events.segue ? { enabled: true } : undefined);
   }
 }
