@@ -6,6 +6,7 @@ import Panel from "primevue/panel";
 import { computed, ref, watch } from "vue";
 
 import type Song from "@/core/models/song";
+import type { Numbering } from "@/core/utils/numbering";
 import { usePlayerStore } from "@/stores/player";
 
 const props = defineProps<{ song: Song | undefined }>();
@@ -181,13 +182,21 @@ async function addMarkerAtPlayhead(): Promise<void> {
     newIdx = gap.leftMeasure + 1 + found;
   }
 
-  await props.song.addWarpMarker({ measure: newIdx, time });
+  const measure = props.song.measures.items()[newIdx];
+  await props.song.addWarpMarker({ measure: measure.value, time });
   reloadWarp();
 }
 
 // ── Markers & gaps ───────────────────────────────────────────────────────────
 
-const markers = computed(() => props.song?.warpMarkers ?? []);
+const markers = computed(() => {
+  const ms = measures.value;
+  return (props.song?.warpMarkers ?? []).map(m => ({
+    measure: m.measure,
+    time: m.time,
+    index: ms.findIndex(m2 => m2.value === m.measure),
+  }));
+});
 const measures = computed(() => props.song?.measures.items() ?? []);
 
 type Gap = {
@@ -203,7 +212,7 @@ const gaps = computed((): Gap[] => {
   const mc = measures.value.length;
   const edges = [
     { measure: -1, time: 0 },
-    ...ms,
+    ...ms.map(m => ({ measure: m.index, time: m.time })),
     { measure: mc, time: totalDuration.value },
   ];
   return edges.slice(0, -1).map((left, i) => {
@@ -232,7 +241,7 @@ function reloadWarp(): void {
   player.seek(pos);
 }
 
-async function deleteMarker(measure: number): Promise<void> {
+async function deleteMarker(measure: Numbering): Promise<void> {
   await props.song!.removeWarpMarker(measure);
   reloadWarp();
 }
@@ -240,14 +249,14 @@ async function deleteMarker(measure: number): Promise<void> {
 // ── Drag ─────────────────────────────────────────────────────────────────────
 
 // Separate reactive time for the marker being dragged so it updates visually.
-const draggingMeasure = ref<number | null>(null);
+const draggingMeasure = ref<Numbering | null>(null);
 const dragTime = ref(0);
 let dragStartClientX = 0;
 let dragStartTime = 0;
 let dragLeftBound = 0;
 let dragRightBound = 0;
 
-function startDrag(marker: { measure: number; time: number }, e: PointerEvent, gap: Gap, nextGap: Gap): void {
+function startDrag(marker: { measure: Numbering; time: number }, e: PointerEvent, gap: Gap, nextGap: Gap): void {
   e.preventDefault();
   draggingMeasure.value = marker.measure;
   dragTime.value = marker.time;
@@ -286,7 +295,7 @@ useEventListener(window, "pointerup", async () => {
   }
 });
 
-function markerX(marker: { measure: number; time: number }): number {
+function markerX(marker: { measure: Numbering; time: number }): number {
   return timeToX(draggingMeasure.value === marker.measure ? dragTime.value : marker.time);
 }
 
@@ -390,7 +399,7 @@ function onWheel(e: WheelEvent): void {
           class="absolute top-0 flex h-6 -translate-x-1/2 cursor-ew-resize items-center gap-1 rounded bg-white px-1.5 text-[10px] font-semibold text-black select-none"
           @pointerdown="startDrag(marker, $event, gaps[i]!, gaps[i + 1]!)"
         >
-          {{ measures[marker.measure]?.value ?? marker.measure }}
+          {{ marker.measure }}
           <span
             class="cursor-pointer leading-none opacity-0 transition-opacity group-hover:opacity-60 hover:opacity-100!"
             title="Delete marker"

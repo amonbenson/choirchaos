@@ -20,12 +20,17 @@ export type SongEvents = {
   segue: boolean;
 };
 
+export type SongWarpMarker = {
+  measure: Numbering; // measure number (e.g. "1", "2a")
+  time: number;
+};
+
 export default class Song {
   public playerMode: PlayerMode = "none";
 
   private readonly _tracks: Track[];
   private readonly _audioFiles: UrlOrFile[];
-  private readonly _warpMarkers: WarpMarker[];
+  private readonly _warpMarkers: SongWarpMarker[];
 
   get tracks(): readonly Track[] {
     return this._tracks;
@@ -35,7 +40,7 @@ export default class Song {
     return this._audioFiles;
   }
 
-  get warpMarkers(): readonly WarpMarker[] {
+  get warpMarkers(): readonly SongWarpMarker[] {
     return this._warpMarkers;
   }
 
@@ -54,7 +59,7 @@ export default class Song {
       vamps: new MeasureEventList<VampEvent>(),
       segue: false,
     },
-    warpMarkers: WarpMarker[] = [],
+    warpMarkers: SongWarpMarker[] = [],
     public readonly permissions: Permissions = NoPermissions,
     public $midiSystemEvents: SystemEvents | object = {},
   ) {
@@ -311,14 +316,14 @@ export default class Song {
 
   // ── Warp marker mutations ─────────────────────────────────────────────────────
 
-  public async addWarpMarker(marker: WarpMarker): Promise<void> {
+  public async addWarpMarker(marker: SongWarpMarker): Promise<void> {
     this._warpMarkers.push(marker);
-    this._warpMarkers.sort((a, b) => a.measure - b.measure);
+    this._warpMarkers.sort((a, b) => a.time - b.time);
     await this._save({ warpMarkers: this._warpMarkers });
   }
 
-  public async removeWarpMarker(measureIndex: number): Promise<void> {
-    const idx = this._warpMarkers.findIndex(m => m.measure === measureIndex);
+  public async removeWarpMarker(measure: Numbering): Promise<void> {
+    const idx = this._warpMarkers.findIndex(m => m.measure === measure);
     if (idx !== -1) {
       this._warpMarkers.splice(idx, 1);
     }
@@ -326,8 +331,8 @@ export default class Song {
     await this._save({ warpMarkers: this._warpMarkers });
   }
 
-  public async setWarpMarker(measureIndex: number, time: number): Promise<void> {
-    const marker = this._warpMarkers.find(m => m.measure === measureIndex);
+  public async setWarpMarker(measure: Numbering, time: number): Promise<void> {
+    const marker = this._warpMarkers.find(m => m.measure === measure);
     if (marker) {
       marker.time = time;
     }
@@ -357,6 +362,14 @@ export default class Song {
   }
 
   public static deserialize({ id, number, title, midiFile, jsonFile, pdfFile, audioFiles, tracks, measures, events, warpMarkers }: PbRecord, showPermissions?: Permissions): Song {
+    const measureList = new MeasureList(measures.map((m: PbRecord) => Measure.deserialize(m)));
+
+    // Convert all warp markers from using indices to using measure numbers
+    const songWarpMarkers = ((warpMarkers ?? []) as (WarpMarker | SongWarpMarker)[]).map(m => ({
+      measure: typeof m.measure === "number" ? (measureList.items()[m.measure]?.value ?? String(m.measure)) : m.measure,
+      time: m.time,
+    }));
+
     return new Song(
       id,
       number,
@@ -366,13 +379,13 @@ export default class Song {
       pdfFile,
       audioFiles,
       tracks.map((t: PbRecord) => Track.deserialize(t)),
-      new MeasureList(measures.map((m: PbRecord) => Measure.deserialize(m))),
+      measureList,
       {
         markers: new MeasureEventList<MarkerEvent>(events.markers.map((m: PbRecord) => MarkerEvent.deserialize(m))),
         vamps: new MeasureEventList<VampEvent>(events.vamps.map((v: PbRecord) => VampEvent.deserialize(v))),
         segue: events.segue,
       },
-      warpMarkers,
+      songWarpMarkers,
       showPermissions ?? NoPermissions,
     );
   }
