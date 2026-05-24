@@ -11,11 +11,11 @@ import type { SystemEvents } from "../types";
 import AudioDriver from "./driver";
 
 export default class AudioBackend extends PlayerBackend {
-  private _audioDriver: AudioDriver | undefined = undefined;
-  private _audioBuffers: AudioBuffer[] = [];
-  private _warpMap = new WarpMap();
-  private _currentSong: Song | undefined = undefined;
-  private _lastMeasure: MeasureReference | undefined = undefined;
+  private audioDriver: AudioDriver | undefined = undefined;
+  private buffers: AudioBuffer[] = [];
+  private warpMap = new WarpMap();
+  private currentSong: Song | undefined = undefined;
+  private lastMeasure: MeasureReference | undefined = undefined;
 
   constructor(
     context: AudioContext,
@@ -26,15 +26,13 @@ export default class AudioBackend extends PlayerBackend {
     super(context, masterInput, systemEvents, callbacks);
   }
 
-  get ppqn(): number {
+  getPpqn(): number {
     return 480;
   }
 
-  get audioBuffers(): AudioBuffer[] {
-    return this._audioBuffers;
+  getAudioBuffers(): AudioBuffer[] {
+    return this.buffers;
   }
-
-  // ── PlayerBackend interface ───────────────────────────────────────────────
 
   async load(song: Song, signal: AbortSignal): Promise<LoadResult> {
     if (song.audioFiles.length === 0) {
@@ -48,13 +46,13 @@ export default class AudioBackend extends PlayerBackend {
           responseType: "arraybuffer",
           signal,
         });
-        return this._context.decodeAudioData(res.data);
+        return this.context.decodeAudioData(res.data);
       }),
     );
 
     signal.throwIfAborted();
 
-    this._audioBuffers = song.tracks.map((track) => {
+    this.buffers = song.tracks.map((track) => {
       const bufferIndex = song.audioFiles.findIndex(file => file === track.audioFile);
       const buffer = rawBuffers[bufferIndex];
       if (!buffer) {
@@ -64,26 +62,26 @@ export default class AudioBackend extends PlayerBackend {
       return buffer;
     });
 
-    this._currentSong = song;
-    this._buildWarpEvents(song);
+    this.currentSong = song;
+    this.buildWarpEvents(song);
 
-    this._audioDriver?.dispose();
-    this._audioDriver = await AudioDriver.create(
-      this._context,
-      this._audioBuffers,
+    this.audioDriver?.dispose();
+    this.audioDriver = await AudioDriver.create(
+      this.context,
+      this.buffers,
       {
         tracks: song.tracks.map(t => ({
           highPassFilter: t.classification === "Vocal",
           compressor: t.classification === "Vocal",
         })),
-        onAmplitudes: amplitudes => this._callbacks.onAmplitudes(amplitudes),
+        onAmplitudes: amplitudes => this.callbacks.onAmplitudes(amplitudes),
       },
     );
 
     signal.throwIfAborted();
-    this._audioDriver.connect(this._masterInput);
+    this.audioDriver.connect(this.masterInput);
 
-    const audioDuration = Math.min(...this._audioBuffers.map(b => b.duration)) * 1000;
+    const audioDuration = Math.min(...this.buffers.map(b => b.duration)) * 1000;
     const measures = song.measures.items();
     const finalMeasure = [...measures].reverse().find(m => (m.$beatTicks[0] ?? Infinity) <= audioDuration) ?? measures[0]!;
 
@@ -94,111 +92,100 @@ export default class AudioBackend extends PlayerBackend {
   }
 
   play(_currentPosition: Tick): void {
-    this._audioDriver?.play();
+    this.audioDriver?.play();
   }
 
   pause(_currentPosition: Tick): void {
-    this._audioDriver?.pause();
+    this.audioDriver?.pause();
   }
 
   seek(position: Tick): void {
-    this._audioDriver?.seek(position / 1000);
+    this.audioDriver?.seek(position / 1000);
   }
 
   step(currentPosition: Tick, delta: number, _limit?: Tick): StepResult {
-    const p1 = (this._audioDriver?.position ?? 0) * 1000;
+    const p1 = (this.audioDriver?.getPosition() ?? 0) * 1000;
 
-    // Sync per-track gain, tempo and pitch on every step
-    const tracks = this._currentSong?.tracks ?? [];
+    const tracks = this.currentSong?.tracks ?? [];
     for (let i = 0; i < tracks.length; i++) {
-      this._audioDriver?.setGain(i, tracks[i]!.mixer.effectiveGain);
+      this.audioDriver?.setGain(i, tracks[i]!.mixer.effectiveGain);
     }
 
-    this._audioDriver?.setTempo(this._playbackSpeed);
-    this._audioDriver?.setPitch(this._playbackTransposition);
+    this.audioDriver?.setTempo(this.playbackSpeed);
+    this.audioDriver?.setPitch(this.playbackTransposition);
 
-    // Backward-search for current measure and fire the callback if it changed
-    if (this._systemEvents.measure.items().length > 0) {
+    if (this.systemEvents.measure.items().length > 0) {
       const k = { tick: p1 } as MeasureEvent;
-      const measureEvent = this._systemEvents.measure.search(k, {
+      const measureEvent = this.systemEvents.measure.search(k, {
         direction: "backward",
         inclusive: true,
         extend: true,
       });
       if (measureEvent && (
-        measureEvent.measure[0] !== this._lastMeasure?.[0]
-        || measureEvent.measure[1] !== this._lastMeasure?.[1]
+        measureEvent.measure[0] !== this.lastMeasure?.[0]
+        || measureEvent.measure[1] !== this.lastMeasure?.[1]
       )) {
-        this._lastMeasure = measureEvent.measure;
-        this._callbacks.onMeasureChanged(measureEvent.measure);
+        this.lastMeasure = measureEvent.measure;
+        this.callbacks.onMeasureChanged(measureEvent.measure);
       }
     }
 
     return { p0: currentPosition, p1, barlineCrossed: false, deltaConsumed: delta };
   }
 
-  // Called when a vamp causes a position jump. Seek the audio driver to the
-  // new absolute position so it stays in sync. This is the hook that enables
-  // future audio-mode vamp support.
   onPositionJump(_offset: Tick, newPosition: Tick): void {
-    this._audioDriver?.seek(newPosition / 1000);
+    this.audioDriver?.seek(newPosition / 1000);
   }
 
-  onTempoRestored(_bpm: number): void {
-    // Audio mode does not use MIDI tempo for clock purposes.
-  }
+  onTempoRestored(_bpm: number): void {}
 
   override onPlaybackSpeedChanged(speed: number): void {
-    this._playbackSpeed = speed;
-    this._audioDriver?.setTempo(speed);
+    this.playbackSpeed = speed;
+    this.audioDriver?.setTempo(speed);
   }
 
   override onPlaybackTranspositionChanged(semitones: number): void {
-    this._playbackTransposition = semitones;
-    this._audioDriver?.setPitch(semitones);
+    this.playbackTransposition = semitones;
+    this.audioDriver?.setPitch(semitones);
   }
 
-  // Rebuild warp-derived timing without re-fetching audio. Safe to call while ready.
   override syncWarp(song: Song): void {
-    this._currentSong = song;
-    this._buildWarpEvents(song);
+    this.currentSong = song;
+    this.buildWarpEvents(song);
   }
 
   dispose(): void {
-    this._audioDriver?.dispose();
-    this._audioDriver = undefined;
-    this._audioBuffers = [];
-    this._currentSong = undefined;
-    this._lastMeasure = undefined;
+    this.audioDriver?.dispose();
+    this.audioDriver = undefined;
+    this.buffers = [];
+    this.currentSong = undefined;
+    this.lastMeasure = undefined;
   }
 
-  // ── Private helpers ───────────────────────────────────────────────────────
+  private buildWarpEvents(song: Song): void {
+    this.warpMap.setMarkers([...song.warpMarkers]);
 
-  private _buildWarpEvents(song: Song): void {
-    this._warpMap.setMarkers([...song.warpMarkers]);
-
-    // Reset and repopulate the shared system event lists
-    this._systemEvents.measure = new MidiEventList();
-    this._systemEvents.tempo = new MidiEventList();
-    this._systemEvents.timeSignature = new MidiEventList();
+    this.systemEvents.measure = new MidiEventList();
+    this.systemEvents.tempo = new MidiEventList();
+    this.systemEvents.timeSignature = new MidiEventList();
 
     const measures = song.measures.items();
     for (let i = 0; i < measures.length; i++) {
       const measure = measures[i]!;
-      const startMs = this._warpMap.measureToTime(i) * 1000;
-      const endMs = this._warpMap.measureToTime(i + 1) * 1000;
+      const startMs = this.warpMap.measureToTime(i) * 1000;
+      const endMs = this.warpMap.measureToTime(i + 1) * 1000;
       const beatDurationMs = (endMs - startMs) / measure.beats;
 
       measure.$beatTicks = Array.from({ length: measure.beats }, (_, b) => startMs + b * beatDurationMs);
       measure.$tickLength = endMs - startMs;
 
-      this._systemEvents.measure.insert(new MeasureEvent(startMs, measure.reference(0)));
+      this.systemEvents.measure.insert(new MeasureEvent(startMs, measure.reference(0)));
     }
 
     // Single default tempo event: 125 BPM → 1 tick/ms
-    this._systemEvents.tempo.insert(new TempoEvent(0, 125));
-    this._systemEvents.timeSignature.insert(new TimeSignatureEvent(0, [4, 2]));
+    this.systemEvents.tempo.insert(new TempoEvent(0, 125));
+    this.systemEvents.timeSignature.insert(new TimeSignatureEvent(0, [4, 2]));
 
-    this._lastMeasure = undefined;
+    this.lastMeasure = undefined;
   }
 }

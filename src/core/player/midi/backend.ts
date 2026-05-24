@@ -18,21 +18,21 @@ declare global {
 }
 
 export default class MidiBackend extends PlayerBackend {
-  private _ppqn = 480;
-  private _tickDuration = 0;
-  private _currentBpm = 120;
+  private ppqn = 480;
+  private tickDuration = 0;
+  private currentBpm = 120;
 
-  private _audioClockReference: { seconds: number; ticks: number } = { seconds: 0, ticks: 0 };
-  private _audioClockTickPosition = 0;
-  // Tracks the most recently committed position so _resetAudioClockReference
+  private audioClockReference: { seconds: number; ticks: number } = { seconds: 0, ticks: 0 };
+  private audioClockTickPosition = 0;
+  // Tracks the most recently committed position so resetAudioClockReference
   // always anchors to the correct tick value, even when called mid-step.
-  private _lastKnownPosition: Tick = 0;
-  private _barlineCrossedDuringLastStep = false;
+  private lastKnownPosition: Tick = 0;
+  private barlineCrossedDuringLastStep = false;
 
-  private _player: any = undefined;
-  private _instruments: { [key: number]: any } = {};
-  private _noteEvents: TrackEvents[] = [];
-  private _currentSong: Song | undefined = undefined;
+  private player: any = undefined;
+  private instruments: { [key: number]: any } = {};
+  private noteEvents: TrackEvents[] = [];
+  private currentSong: Song | undefined = undefined;
 
   constructor(
     context: AudioContext,
@@ -43,34 +43,30 @@ export default class MidiBackend extends PlayerBackend {
     super(context, masterInput, systemEvents, callbacks);
   }
 
-  get ppqn(): number {
-    return this._ppqn;
+  getPpqn(): number {
+    return this.ppqn;
   }
 
-  get audioBuffers(): AudioBuffer[] {
+  getAudioBuffers(): AudioBuffer[] {
     return [];
   }
 
-  get noteEvents(): TrackEvents[] {
-    return this._noteEvents;
+  getNoteEvents(): TrackEvents[] {
+    return this.noteEvents;
   }
 
-  // ── Internal helpers ──────────────────────────────────────────────────────
-
-  private _resetAudioClockReference(): void {
-    this._audioClockReference = {
-      seconds: this._context.currentTime,
-      ticks: this._lastKnownPosition,
+  private resetAudioClockReference(): void {
+    this.audioClockReference = {
+      seconds: this.context.currentTime,
+      ticks: this.lastKnownPosition,
     };
   }
 
-  private _updateTickDuration(): void {
-    const ticksPerSecond = this._currentBpm / 60 * this._ppqn * this._playbackSpeed;
-    this._tickDuration = 1 / ticksPerSecond;
-    this._resetAudioClockReference();
+  private updateTickDuration(): void {
+    const ticksPerSecond = this.currentBpm / 60 * this.ppqn * this.playbackSpeed;
+    this.tickDuration = 1 / ticksPerSecond;
+    this.resetAudioClockReference();
   }
-
-  // ── PlayerBackend interface ───────────────────────────────────────────────
 
   async load(song: Song, signal: AbortSignal): Promise<LoadResult> {
     if (!song.midiFile) {
@@ -96,11 +92,10 @@ export default class MidiBackend extends PlayerBackend {
 
     signal.throwIfAborted();
 
-    // Reset and repopulate the shared system event lists
-    this._systemEvents.measure = new MidiEventList();
-    this._systemEvents.tempo = new MidiEventList();
-    this._systemEvents.timeSignature = new MidiEventList();
-    this._noteEvents = [];
+    this.systemEvents.measure = new MidiEventList();
+    this.systemEvents.tempo = new MidiEventList();
+    this.systemEvents.timeSignature = new MidiEventList();
+    this.noteEvents = [];
 
     let prevMeasure: Measure | undefined = undefined;
     const midiJson: MTIMidiJson = jsonRes.data;
@@ -110,7 +105,7 @@ export default class MidiBackend extends PlayerBackend {
 
       switch (type) {
         case "BEAT": {
-          this._systemEvents.measure.insert(new MeasureEvent(tickcount, [value.meas, value.beat - 1]));
+          this.systemEvents.measure.insert(new MeasureEvent(tickcount, [value.meas, value.beat - 1]));
 
           const songMeasure = song.measures.search({ value: value.meas } as Measure);
           if (songMeasure?.value === value.meas) {
@@ -137,11 +132,11 @@ export default class MidiBackend extends PlayerBackend {
         }
 
         case "TEMPO":
-          this._systemEvents.tempo.insert(new TempoEvent(tickcount, value.bpm));
+          this.systemEvents.tempo.insert(new TempoEvent(tickcount, value.bpm));
           break;
 
         case "TIMESIG":
-          this._systemEvents.timeSignature.insert(new TimeSignatureEvent(tickcount, [value.numerator, value.denominator]));
+          this.systemEvents.timeSignature.insert(new TimeSignatureEvent(tickcount, [value.numerator, value.denominator]));
           break;
 
         default:
@@ -150,8 +145,7 @@ export default class MidiBackend extends PlayerBackend {
       }
     }
 
-    // Mirror system events onto the song model for external readers (router markRaw etc.)
-    Object.assign(song.$midiSystemEvents, this._systemEvents);
+    Object.assign(song.$midiSystemEvents, this.systemEvents);
 
     const midiData = await parseMidiBuffer(midiRes.data);
     signal.throwIfAborted();
@@ -159,7 +153,7 @@ export default class MidiBackend extends PlayerBackend {
     for (const [t, track] of song.tracks.entries()) {
       const noteOnIndices = new Int32Array(128).fill(-1);
       let tick = 0;
-      this._noteEvents.push({ note: new MidiEventList<NoteEvent>() });
+      this.noteEvents.push({ note: new MidiEventList<NoteEvent>() });
 
       const trackName = track.title.replace(/^-/, "");
       const midiEvents = midiData.tracks.find(events =>
@@ -184,7 +178,7 @@ export default class MidiBackend extends PlayerBackend {
             console.warn("Midi data contains note off without a note on.");
           } else {
             const noteOnEvent = midiEvents[noteOnIndex] as any;
-            this._noteEvents[t]!.note.insert(new NoteEvent(
+            this.noteEvents[t]!.note.insert(new NoteEvent(
               noteOnEvent.$tick,
               tick - noteOnEvent.$tick,
               noteOnEvent.noteOn.noteNumber,
@@ -203,13 +197,12 @@ export default class MidiBackend extends PlayerBackend {
         }
       }
 
-      Object.assign(track.$midiTrackEvents, this._noteEvents[t]);
+      Object.assign(track.$midiTrackEvents, this.noteEvents[t]);
     }
 
-    this._ppqn = midiJson.score.ppqn;
-    this._currentSong = song;
+    this.ppqn = midiJson.score.ppqn;
+    this.currentSong = song;
 
-    // Compute duration from the last visible (laid-out) measure
     let lastWrittenMeasure: Measure | undefined = undefined;
     let l = song.measures.items().length;
     while (l--) {
@@ -227,135 +220,130 @@ export default class MidiBackend extends PlayerBackend {
       duration = lastWrittenMeasure.$beatTicks[0]! + lastWrittenMeasure.$tickLength;
       finalMeasure = lastWrittenMeasure.reference(lastWrittenMeasure.$beatTicks.length - 1);
     } else {
-      const lastMeasureEvent = this._systemEvents.measure.last();
+      const lastMeasureEvent = this.systemEvents.measure.last();
       duration = lastMeasureEvent?.tick ?? 1;
       finalMeasure = lastMeasureEvent?.measure ?? ["1", 0];
     }
 
-    this._player = new window.WebAudioFontPlayer();
+    this.player = new window.WebAudioFontPlayer();
     for (const track of song.tracks) {
-      const nn = this._player.loader.findInstrument(track.program === 9 ? 116 : 0);
-      const info = this._player.loader.instrumentInfo(nn);
-      this._instruments[track.program === 9 ? 116 : 0] = info.variable;
-      this._player.loader.startLoad(this._context, info.url, info.variable);
+      const nn = this.player.loader.findInstrument(track.program === 9 ? 116 : 0);
+      const info = this.player.loader.instrumentInfo(nn);
+      this.instruments[track.program === 9 ? 116 : 0] = info.variable;
+      this.player.loader.startLoad(this.context, info.url, info.variable);
     }
 
-    await new Promise(resolve => this._player.loader.waitLoad(resolve));
+    await new Promise(resolve => this.player.loader.waitLoad(resolve));
 
     return { duration, finalMeasure };
   }
 
   play(currentPosition: Tick): void {
-    this._lastKnownPosition = currentPosition;
-    this._resetAudioClockReference();
+    this.lastKnownPosition = currentPosition;
+    this.resetAudioClockReference();
   }
 
   pause(currentPosition: Tick): void {
-    this._lastKnownPosition = currentPosition;
-    this._resetAudioClockReference();
+    this.lastKnownPosition = currentPosition;
+    this.resetAudioClockReference();
   }
 
   seek(position: Tick): void {
-    this._lastKnownPosition = position;
-    this._resetAudioClockReference();
+    this.lastKnownPosition = position;
+    this.resetAudioClockReference();
   }
 
   step(currentPosition: Tick, delta: number, limit?: Tick): StepResult {
     const p0 = currentPosition;
-    let p1 = p0 + delta / this._tickDuration;
+    let p1 = p0 + delta / this.tickDuration;
 
-    // Honour the limit: stop early so notes past the jump point are not scheduled.
     if (limit !== undefined && p1 > limit) {
       p1 = limit;
     }
 
-    const deltaConsumed = (p1 - p0) * this._tickDuration;
+    const deltaConsumed = (p1 - p0) * this.tickDuration;
 
-    // Set before event processing so that any _resetAudioClockReference call
+    // Set before event processing so that any resetAudioClockReference call
     // triggered by a TempoEvent or TimeSignatureEvent uses the correct tick.
-    this._lastKnownPosition = p1;
+    this.lastKnownPosition = p1;
 
-    // Re-compute the audio-clock tick position from the reference for accurate
-    // note scheduling with sub-step precision.
-    const timeSinceReference = this._context.currentTime - this._audioClockReference.seconds;
-    const ticksSinceReference = timeSinceReference / this._tickDuration;
-    this._audioClockTickPosition = this._audioClockReference.ticks + ticksSinceReference;
+    const timeSinceReference = this.context.currentTime - this.audioClockReference.seconds;
+    const ticksSinceReference = timeSinceReference / this.tickDuration;
+    this.audioClockTickPosition = this.audioClockReference.ticks + ticksSinceReference;
 
-    this._barlineCrossedDuringLastStep = false;
+    this.barlineCrossedDuringLastStep = false;
 
     const k0 = { tick: p0 };
     const k1 = { tick: p1 };
 
-    this._systemEvents.measure
+    this.systemEvents.measure
       .searchRange(k0 as MeasureEvent, k1 as MeasureEvent)
-      .forEach(e => this._handleMeasureEvent(e));
-    this._systemEvents.tempo
+      .forEach(e => this.handleMeasureEvent(e));
+    this.systemEvents.tempo
       .searchRange(k0 as TempoEvent, k1 as TempoEvent)
-      .forEach(e => this._handleTempoEvent(e));
-    this._systemEvents.timeSignature
+      .forEach(e => this.handleTempoEvent(e));
+    this.systemEvents.timeSignature
       .searchRange(k0 as TimeSignatureEvent, k1 as TimeSignatureEvent)
-      .forEach(e => this._handleTimeSignatureEvent(e));
+      .forEach(e => this.handleTimeSignatureEvent(e));
 
-    this._noteEvents.forEach((trackEvents) => {
+    this.noteEvents.forEach((trackEvents) => {
       trackEvents.note
         .searchRange(k0 as NoteEvent, k1 as NoteEvent)
-        .forEach(e => this._handleNoteEvent(e));
+        .forEach(e => this.handleNoteEvent(e));
     });
 
-    return { p0, p1, barlineCrossed: this._barlineCrossedDuringLastStep, deltaConsumed };
+    return { p0, p1, barlineCrossed: this.barlineCrossedDuringLastStep, deltaConsumed };
   }
 
-  private _handleMeasureEvent(event: MeasureEvent): void {
-    this._callbacks.onMeasureChanged(event.measure);
+  private handleMeasureEvent(event: MeasureEvent): void {
+    this.callbacks.onMeasureChanged(event.measure);
     if (event.measure[1] === 0) {
-      this._barlineCrossedDuringLastStep = true;
+      this.barlineCrossedDuringLastStep = true;
     }
   }
 
-  private _handleTempoEvent(event: TempoEvent): void {
-    if (this._currentBpm !== event.bpm) {
-      this._currentBpm = event.bpm;
-      this._updateTickDuration();
-      this._callbacks.onTempoChanged(event.bpm);
+  private handleTempoEvent(event: TempoEvent): void {
+    if (this.currentBpm !== event.bpm) {
+      this.currentBpm = event.bpm;
+      this.updateTickDuration();
+      this.callbacks.onTempoChanged(event.bpm);
     }
   }
 
-  private _handleTimeSignatureEvent(event: TimeSignatureEvent): void {
-    // Time signature does not affect tick duration but the audio clock should
-    // be re-anchored at structural transitions to minimise drift.
-    this._resetAudioClockReference();
-    this._callbacks.onTimeSignatureChanged(event.signature);
+  private handleTimeSignatureEvent(event: TimeSignatureEvent): void {
+    this.resetAudioClockReference();
+    this.callbacks.onTimeSignatureChanged(event.signature);
   }
 
-  private _handleNoteEvent(event: NoteEvent): void {
-    this._callbacks.onNote(event);
+  private handleNoteEvent(event: NoteEvent): void {
+    this.callbacks.onNote(event);
 
-    if (!this._player || !this._currentSong) {
+    if (!this.player || !this.currentSong) {
       return;
     }
 
-    const track = this._currentSong.tracks[event.trackIndex];
+    const track = this.currentSong.tracks[event.trackIndex];
     if (!track) {
       console.warn(`NoteEvent references track index ${event.trackIndex} which does not exist.`);
       return;
     }
 
     if (track.mixer.effectiveGain > 0) {
-      const start = (event.tick - this._audioClockTickPosition) * this._tickDuration + AUDIO_CLOCK_OFFSET;
-      const duration = Math.min(event.duration * this._tickDuration, 5);
-      const instrument = this._instruments[track.program === 9 ? 116 : 0];
-      const pitch = event.pitch + (track.program === 9 ? 0 : this._playbackTransposition);
+      const start = (event.tick - this.audioClockTickPosition) * this.tickDuration + AUDIO_CLOCK_OFFSET;
+      const duration = Math.min(event.duration * this.tickDuration, 5);
+      const instrument = this.instruments[track.program === 9 ? 116 : 0];
+      const pitch = event.pitch + (track.program === 9 ? 0 : this.playbackTransposition);
       const volume = event.velocity / 127.0 * track.mixer.effectiveGain;
 
       if (start < 0) {
         console.warn(`Clock offset too small! Event scheduled ${-start}s in the past.`);
       }
 
-      this._player.queueWaveTable(
-        this._context,
-        this._masterInput,
+      this.player.queueWaveTable(
+        this.context,
+        this.masterInput,
         window[instrument],
-        this._context.currentTime + start,
+        this.context.currentTime + start,
         pitch,
         duration,
         volume,
@@ -367,22 +355,22 @@ export default class MidiBackend extends PlayerBackend {
   onPositionJump(offset: Tick, _newPosition: Tick): void {
     // Adjust tick reference only — keeps already-scheduled notes valid and
     // avoids the audio click that a full reference reset would cause.
-    this._audioClockReference.ticks += offset;
+    this.audioClockReference.ticks += offset;
   }
 
   onTempoRestored(bpm: number): void {
-    this._currentBpm = bpm;
-    this._updateTickDuration();
+    this.currentBpm = bpm;
+    this.updateTickDuration();
   }
 
   override onPlaybackSpeedChanged(speed: number): void {
-    this._playbackSpeed = speed;
-    this._updateTickDuration();
+    this.playbackSpeed = speed;
+    this.updateTickDuration();
   }
 
   dispose(): void {
-    this._player = undefined;
-    this._noteEvents = [];
-    this._currentSong = undefined;
+    this.player = undefined;
+    this.noteEvents = [];
+    this.currentSong = undefined;
   }
 }

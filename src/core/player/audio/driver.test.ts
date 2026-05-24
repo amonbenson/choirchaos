@@ -52,7 +52,7 @@ describe("AudioDriver", () => {
       tracks: [{}],
       onAmplitudes: () => {},
     });
-    expect(driver.position).toBe(0);
+    expect(driver.getPosition()).toBe(0);
     driver.dispose();
   });
 
@@ -62,7 +62,7 @@ describe("AudioDriver", () => {
       onAmplitudes: () => {},
     });
     driver.seek(0.5);
-    expect(driver.position).toBe(0.5);
+    expect(driver.getPosition()).toBe(0.5);
     driver.dispose();
   });
 
@@ -74,7 +74,7 @@ describe("AudioDriver", () => {
     driver.seek(0.3);
     driver.play();
     // position should advance from 0.3, not from 0
-    expect(driver.position).toBeGreaterThanOrEqual(0.3);
+    expect(driver.getPosition()).toBeGreaterThanOrEqual(0.3);
     driver.pause();
     driver.dispose();
   });

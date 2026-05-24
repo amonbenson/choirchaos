@@ -1,9 +1,9 @@
-import { EventEmitter } from "events";
-
+import type { NoteEvent } from "../midi/events";
 import { MeasureEvent, MidiEventList, TempoEvent, TimeSignatureEvent } from "../midi/events";
 import type { Tick, TimeSignature } from "../midi/types";
 import type { MeasureReference } from "../models/measure";
 import type Song from "../models/song";
+import { Emitter, type Emitters, Property } from "../utils/events";
 import { SetIntervalUpdater, type UpdateCallback, type Updater } from "../utils/updater";
 import AudioBackend from "./audio/backend";
 import { PlayerBackend } from "./backend";
@@ -19,7 +19,6 @@ import {
 } from "./types";
 
 const STEP_DURATION = 1 / 50;
-const POSITION_UPDATE_DURATION = 1 / 50;
 
 export type { PlayerMode, PlayerSegueState, PlayerStatus, PlayerVampState };
 export type MidiPlayerStatus = PlayerStatus;
@@ -31,191 +30,162 @@ export type MidiPlayerEvents = { system: SystemEvents; track: TrackEvents[] };
 
 type VampAction = "repeat" | "exit-at-end" | "exit-at-barline";
 
-export default class PlayerEngine extends EventEmitter {
-  private _status: PlayerStatus = "idle";
-  private _mode: PlayerMode = "none";
-  private _playing = false;
-  private _position: Tick = 0;
-  private _duration: Tick = 0;
-  private _currentMeasure: MeasureReference = ["1", 0];
-  private _currentTempo = 120;
-  private _currentTimeSignature: TimeSignature = [4, 2];
-  private _finalMeasure: MeasureReference = ["1", 0];
-  private _currentVamp?: PlayerVampState;
-  private _currentSegue?: PlayerSegueState;
+export default class PlayerEngine {
+  private readonly status = new Property<PlayerStatus>("idle");
+  private readonly playing = new Property(false);
+  private readonly position = new Property<Tick>(0);
+  private readonly duration = new Property<Tick>(0);
+  private readonly currentMeasure = new Property<MeasureReference>(["1", 0]);
+  private readonly currentTempo = new Property(120);
+  private readonly currentTimeSignature = new Property<TimeSignature>([4, 2]);
+  private readonly finalMeasure = new Property<MeasureReference>(["1", 0]);
+  private readonly currentVamp = new Property<PlayerVampState | undefined>(undefined);
+  private readonly currentSegue = new Property<PlayerSegueState | undefined>(undefined);
+  private readonly playbackSpeedProp = new Property(1.0);
+  private readonly playbackTranspositionProp = new Property(0);
 
-  private _currentSong?: Song;
-  private _vamps: PlayerVamp[] = [];
-  private _playbackSpeed = 1.0;
-  private _playbackTransposition = 0;
+  readonly onStatusChange = this.status.onChange;
+  readonly onPlayingChange = this.playing.onChange;
+  readonly onPositionChange = this.position.onChange;
+  readonly onDurationChange = this.duration.onChange;
+  readonly onCurrentMeasureChange = this.currentMeasure.onChange;
+  readonly onCurrentTempoChange = this.currentTempo.onChange;
+  readonly onCurrentTimeSignatureChange = this.currentTimeSignature.onChange;
+  readonly onFinalMeasureChange = this.finalMeasure.onChange;
+  readonly onCurrentVampChange = this.currentVamp.onChange;
+  readonly onCurrentSegueChange = this.currentSegue.onChange;
+  readonly onPlaybackSpeedChange = this.playbackSpeedProp.onChange;
+  readonly onPlaybackTranspositionChange = this.playbackTranspositionProp.onChange;
 
-  private _audioContext: AudioContext;
-  private _masterInput?: AudioNode;
-  private _chainOutput?: GainNode;
-  private _subplayer?: PlayerBackend;
-  private _loadAbortController?: AbortController;
-  private _updater: Updater;
-  private _timeSinceLastPositionUpdate = 0;
+  private readonly emitters = {
+    note: new Emitter<NoteEvent>(),
+    trackAmplitudesChange: new Emitter<number[]>(),
+    segue: new Emitter<void>(),
+    audioContextZombie: new Emitter<void>(),
+  } satisfies Emitters;
 
-  private _systemEvents: SystemEvents = {
+  readonly onNote = this.emitters.note.event;
+  readonly onTrackAmplitudesChange = this.emitters.trackAmplitudesChange.event;
+  readonly onSegue = this.emitters.segue.event;
+  readonly onAudioContextZombie = this.emitters.audioContextZombie.event;
+
+  private mode: PlayerMode = "none";
+  private currentSong?: Song;
+  private vamps: PlayerVamp[] = [];
+
+  private audioContext: AudioContext;
+  private masterInput?: AudioNode;
+  private chainOutput?: GainNode;
+  private subplayer?: PlayerBackend;
+  private loadAbortController?: AbortController;
+  private updater: Updater;
+
+  private systemEvents: SystemEvents = {
     measure: new MidiEventList<MeasureEvent>(),
     tempo: new MidiEventList<TempoEvent>(),
     timeSignature: new MidiEventList<TimeSignatureEvent>(),
   };
 
   constructor(audioContext?: AudioContext, updaterFactory?: (callback: UpdateCallback) => Updater) {
-    super();
-    this._audioContext = audioContext ?? new AudioContext({ latencyHint: "playback" });
-    this._updater = updaterFactory
-      ? updaterFactory(delta => this._handleStep(delta))
-      : new SetIntervalUpdater(delta => this._handleStep(delta), {
+    this.audioContext = audioContext ?? new AudioContext({ latencyHint: "playback" });
+    this.updater = updaterFactory
+      ? updaterFactory(delta => this.handleStep(delta))
+      : new SetIntervalUpdater(delta => this.handleStep(delta), {
           interval: STEP_DURATION,
           maximumLag: 5.0,
-          timeProvider: () => this._audioContext?.currentTime ?? 0,
+          timeProvider: () => this.audioContext?.currentTime ?? 0,
         });
-    this._setupAudioContextMonitoring();
+    this.setupAudioContextMonitoring();
   }
 
-  get status(): PlayerStatus {
-    return this._status;
+  getStatus(): PlayerStatus {
+    return this.status.get();
   }
 
-  private set status(v: PlayerStatus) {
-    this._status = v;
-    this.emit("statusChanged", v);
+  isPlaying(): boolean {
+    return this.playing.get();
   }
 
-  get playing(): boolean {
-    return this._playing;
+  getPosition(): Tick {
+    return this.position.get();
   }
 
-  private set playing(v: boolean) {
-    this._playing = v;
-    this.emit("playingChanged", v);
+  getDuration(): Tick {
+    return this.duration.get();
   }
 
-  get position(): Tick {
-    return this._position;
+  getCurrentMeasure(): MeasureReference {
+    return this.currentMeasure.get();
   }
 
-  private set position(v: Tick) {
-    this._position = Math.max(0, Math.min(this._duration, v));
-    this.emit("positionChanged", this._position);
+  getCurrentTempo(): number {
+    return this.currentTempo.get();
   }
 
-  get duration(): Tick {
-    return this._duration;
+  getCurrentTimeSignature(): TimeSignature {
+    return this.currentTimeSignature.get();
   }
 
-  private set duration(v: Tick) {
-    this._duration = v;
-    this.emit("durationChanged", v);
+  getFinalMeasure(): MeasureReference {
+    return this.finalMeasure.get();
   }
 
-  get currentMeasure(): MeasureReference {
-    return this._currentMeasure;
+  getCurrentVamp(): PlayerVampState | undefined {
+    return this.currentVamp.get();
   }
 
-  private set currentMeasure(v: MeasureReference) {
-    this._currentMeasure = v;
-    this.emit("currentMeasureChanged", v);
+  getCurrentSegue(): PlayerSegueState | undefined {
+    return this.currentSegue.get();
   }
 
-  get currentTempo(): number {
-    return this._currentTempo;
+  getMode(): PlayerMode {
+    return this.mode;
   }
 
-  private set currentTempo(v: number) {
-    this._currentTempo = v;
-    this.emit("currentTempoChanged", v);
+  getPpqn(): number {
+    return this.subplayer?.getPpqn() ?? 480;
   }
 
-  get currentTimeSignature(): TimeSignature {
-    return this._currentTimeSignature;
+  getCurrentSong(): Song | undefined {
+    return this.currentSong;
   }
 
-  private set currentTimeSignature(v: TimeSignature) {
-    this._currentTimeSignature = v;
-    this.emit("currentTimeSignatureChanged", v);
+  getAudioBuffers(): AudioBuffer[] {
+    return this.subplayer?.getAudioBuffers() ?? [];
   }
 
-  get finalMeasure(): MeasureReference {
-    return this._finalMeasure;
+  getPlaybackSpeed(): number {
+    return this.playbackSpeedProp.get();
   }
 
-  private set finalMeasure(v: MeasureReference) {
-    this._finalMeasure = v;
-    this.emit("finalMeasureChanged", v);
+  getPlaybackTransposition(): number {
+    return this.playbackTranspositionProp.get();
   }
 
-  get currentVamp(): PlayerVampState | undefined {
-    return this._currentVamp;
-  }
-
-  private set currentVamp(v: PlayerVampState | undefined) {
-    this._currentVamp = v;
-    this.emit("currentVampChanged", v);
-  }
-
-  get currentSegue(): PlayerSegueState | undefined {
-    return this._currentSegue;
-  }
-
-  private set currentSegue(v: PlayerSegueState | undefined) {
-    this._currentSegue = v;
-    this.emit("currentSegueChanged", v);
-  }
-
-  get mode(): PlayerMode {
-    return this._mode;
-  }
-
-  get ppqn(): number {
-    return this._subplayer?.ppqn ?? 480;
-  }
-
-  get currentSong(): Song | undefined {
-    return this._currentSong;
-  }
-
-  get audioBuffers(): AudioBuffer[] {
-    return this._subplayer?.audioBuffers ?? [];
-  }
-
-  get playbackSpeed(): number {
-    return this._playbackSpeed;
-  }
-
-  set playbackSpeed(value: number) {
-    this._playbackSpeed = Math.max(0.1, Math.min(3.0, value));
-    this._subplayer?.onPlaybackSpeedChanged(this._playbackSpeed);
-    this.emit("playbackSpeedChanged", this._playbackSpeed);
-  }
-
-  get playbackTransposition(): number {
-    return this._playbackTransposition;
-  }
-
-  set playbackTransposition(value: number) {
-    this._playbackTransposition = Math.floor(Math.max(-12, Math.min(12, value)));
-    this._subplayer?.onPlaybackTranspositionChanged(this._playbackTransposition);
-    this.emit("playbackTranspositionChanged", this._playbackTransposition);
-  }
-
-  get midi_events(): MidiPlayerEvents {
-    const track = this._subplayer instanceof MidiBackend ? this._subplayer.noteEvents : [];
-    return { system: this._systemEvents, track };
+  getMidiEvents(): MidiPlayerEvents {
+    const track = this.subplayer instanceof MidiBackend ? this.subplayer.getNoteEvents() : [];
+    return { system: this.systemEvents, track };
   }
 
   resumeAudioContext(): void {
-    if (this._audioContext.state !== "running") {
-      this._audioContext.resume().catch(() => {});
+    if (this.audioContext.state !== "running") {
+      this.audioContext.resume().catch(() => {});
     }
   }
 
-  private _setupMasterChain(): void {
-    const ctx = this._audioContext;
-    this._chainOutput?.disconnect();
+  setPlaybackSpeed(value: number): void {
+    this.playbackSpeedProp.set(Math.max(0.1, Math.min(3.0, value)));
+    this.subplayer?.onPlaybackSpeedChanged(this.playbackSpeedProp.get());
+  }
+
+  setPlaybackTransposition(value: number): void {
+    this.playbackTranspositionProp.set(Math.floor(Math.max(-12, Math.min(12, value))));
+    this.subplayer?.onPlaybackTranspositionChanged(this.playbackTranspositionProp.get());
+  }
+
+  private setupMasterChain(): void {
+    const ctx = this.audioContext;
+    this.chainOutput?.disconnect();
 
     const input = ctx.createGain();
 
@@ -251,23 +221,23 @@ export default class PlayerEngine extends EventEmitter {
     high.connect(output);
     output.connect(ctx.destination);
 
-    this._masterInput = input;
-    this._chainOutput = output;
+    this.masterInput = input;
+    this.chainOutput = output;
   }
 
-  private _setupAudioContextMonitoring(): void {
-    this._audioContext.addEventListener("statechange", () => {
-      if (this._playing && this._audioContext.state !== "running") {
-        this._audioContext.resume().catch(() => {});
+  private setupAudioContextMonitoring(): void {
+    this.audioContext.addEventListener("statechange", () => {
+      if (this.playing.get() && this.audioContext.state !== "running") {
+        this.audioContext.resume().catch(() => {});
       }
     });
 
     let [lastCt, lastWall] = [0, 0];
     setInterval(() => {
-      const [ct, wall] = [this._audioContext.currentTime, performance.now()];
+      const [ct, wall] = [this.audioContext.currentTime, performance.now()];
       const elapsed = (wall - lastWall) / 1000;
-      if (this._playing && this._audioContext.state === "running" && elapsed > 0.5 && ct - lastCt < elapsed * 0.5) {
-        this.emit("audioContextZombie");
+      if (this.playing.get() && this.audioContext.state === "running" && elapsed > 0.5 && ct - lastCt < elapsed * 0.5) {
+        this.emitters.audioContextZombie.fire(undefined);
       }
 
       [lastCt, lastWall] = [ct, wall];
@@ -275,48 +245,47 @@ export default class PlayerEngine extends EventEmitter {
   }
 
   play(): void {
-    if (this.status !== "ready" || this.playing) {
+    if (this.status.get() !== "ready" || this.playing.get()) {
       return;
     }
 
     this.resumeAudioContext();
-    this.emit("positionChanged", this._position);
-    this.playing = true;
-    this._subplayer?.play(this._position);
-    this._updater.start();
+    this.playing.set(true);
+    this.subplayer?.play(this.position.get());
+    this.updater.start();
   }
 
   pause(): void {
-    if (this.status !== "ready" || !this.playing) {
+    if (this.status.get() !== "ready" || !this.playing.get()) {
       return;
     }
 
-    this._subplayer?.pause(this._position);
-    this._updater.stop();
-    this.emit("positionChanged", this._position);
-    this.playing = false;
+    this.subplayer?.pause(this.position.get());
+    this.updater.stop();
+    this.playing.set(false);
   }
 
   stop(): void {
     this.pause();
     this.seek(0);
-    if (this.currentVamp) {
-      this.currentVamp = { ...this.currentVamp, currentIteration: 0 };
+    const vamp = this.currentVamp.get();
+    if (vamp) {
+      this.currentVamp.set({ ...vamp, currentIteration: 0 });
     }
   }
 
   seek(position: Tick): void {
-    if (this.status !== "ready") {
+    if (this.status.get() !== "ready") {
       return;
     }
 
-    const wasPlaying = this.playing;
+    const wasPlaying = this.playing.get();
     this.pause();
-    this.position = position;
-    this._syncStateAt(this._position);
-    const newVamp = this._vampAt(this._position);
-    if (newVamp?.start !== this.currentVamp?.start) {
-      this.currentVamp = newVamp;
+    this.position.set(Math.max(0, Math.min(this.duration.get(), position)));
+    this.syncStateAt(this.position.get());
+    const newVamp = this.vampAt(this.position.get());
+    if (newVamp?.start !== this.currentVamp.get()?.start) {
+      this.currentVamp.set(newVamp);
     }
 
     if (wasPlaying) {
@@ -325,19 +294,21 @@ export default class PlayerEngine extends EventEmitter {
   }
 
   exitVamp(): void {
-    if (this.currentVamp) {
-      this.currentVamp = { ...this.currentVamp, manualExit: true };
+    const vamp = this.currentVamp.get();
+    if (vamp) {
+      this.currentVamp.set({ ...vamp, manualExit: true });
     }
   }
 
   resetVamp(): void {
-    if (this.currentVamp) {
-      this.currentVamp = { ...this.currentVamp, manualExit: false, currentIteration: 0 };
+    const vamp = this.currentVamp.get();
+    if (vamp) {
+      this.currentVamp.set({ ...vamp, manualExit: false, currentIteration: 0 });
     }
   }
 
   toggleVamp(): void {
-    if (this.currentVamp?.manualExit) {
+    if (this.currentVamp.get()?.manualExit) {
       this.resetVamp();
     } else {
       this.exitVamp();
@@ -345,22 +316,23 @@ export default class PlayerEngine extends EventEmitter {
   }
 
   setSegueEnabled(enabled: boolean): void {
-    if (this.currentSegue) {
-      this.currentSegue = { ...this.currentSegue, enabled };
+    const segue = this.currentSegue.get();
+    if (segue) {
+      this.currentSegue.set({ ...segue, enabled });
     }
   }
 
   toggleSegue(): void {
-    this.setSegueEnabled(!this.currentSegue?.enabled);
+    this.setSegueEnabled(!this.currentSegue.get()?.enabled);
   }
 
   async load(song: Song): Promise<void> {
-    this._loadAbortController?.abort();
+    this.loadAbortController?.abort();
     const controller = new AbortController();
-    this._loadAbortController = controller;
+    this.loadAbortController = controller;
     const { signal } = controller;
 
-    if (this.status !== "idle") {
+    if (this.status.get() !== "idle") {
       this.unload();
     }
 
@@ -368,42 +340,36 @@ export default class PlayerEngine extends EventEmitter {
       return;
     }
 
-    this.status = "loading";
-    this._mode = song.playerMode;
-    this._currentSong = song;
+    this.status.set("loading");
+    this.mode = song.playerMode;
+    this.currentSong = song;
     this.resumeAudioContext();
-    this._setupMasterChain();
+    this.setupMasterChain();
 
-    this._systemEvents = {
+    this.systemEvents = {
       measure: new MidiEventList<MeasureEvent>(),
       tempo: new MidiEventList<TempoEvent>(),
       timeSignature: new MidiEventList<TimeSignatureEvent>(),
     };
 
     const callbacks = {
-      onMeasureChanged: (m: MeasureReference) => {
-        this.currentMeasure = m;
-      },
-      onTempoChanged: (bpm: number) => {
-        this.currentTempo = bpm;
-      },
-      onTimeSignatureChanged: (sig: TimeSignature) => {
-        this.currentTimeSignature = sig;
-      },
-      onNote: (e: import("../midi/events").NoteEvent) => this.emit("note", e),
-      onAmplitudes: (a: number[]) => this.emit("trackAmplitudesChanged", a),
+      onMeasureChanged: (m: MeasureReference) => this.currentMeasure.set(m),
+      onTempoChanged: (bpm: number) => this.currentTempo.set(bpm),
+      onTimeSignatureChanged: (sig: TimeSignature) => this.currentTimeSignature.set(sig),
+      onNote: (e: NoteEvent) => this.emitters.note.fire(e),
+      onAmplitudes: (a: number[]) => this.emitters.trackAmplitudesChange.fire(a),
     };
 
-    this._subplayer = this._mode === "midi"
-      ? new MidiBackend(this._audioContext, this._masterInput!, this._systemEvents, callbacks)
-      : new AudioBackend(this._audioContext, this._masterInput!, this._systemEvents, callbacks);
+    this.subplayer = this.mode === "midi"
+      ? new MidiBackend(this.audioContext, this.masterInput!, this.systemEvents, callbacks)
+      : new AudioBackend(this.audioContext, this.masterInput!, this.systemEvents, callbacks);
 
-    this._subplayer.onPlaybackSpeedChanged(this._playbackSpeed);
-    this._subplayer.onPlaybackTranspositionChanged(this._playbackTransposition);
+    this.subplayer.onPlaybackSpeedChanged(this.playbackSpeedProp.get());
+    this.subplayer.onPlaybackTranspositionChanged(this.playbackTranspositionProp.get());
 
     let loadResult: { duration: Tick; finalMeasure: MeasureReference };
     try {
-      loadResult = await this._subplayer.load(song, signal);
+      loadResult = await this.subplayer.load(song, signal);
     } catch (err) {
       if (signal.aborted) {
         return;
@@ -417,155 +383,151 @@ export default class PlayerEngine extends EventEmitter {
       return;
     }
 
-    this.duration = loadResult.duration;
-    this.finalMeasure = loadResult.finalMeasure;
-    this._resolveEventTicks(song);
-    this.status = "ready";
+    this.duration.set(loadResult.duration);
+    this.finalMeasure.set(loadResult.finalMeasure);
+    this.resolveEventTicks(song);
+    this.status.set("ready");
     this.seek(0);
   }
 
   unload(): void {
-    if (this.status === "idle") {
+    if (this.status.get() === "idle") {
       return;
     }
 
     this.pause();
-    this._subplayer?.dispose();
-    this._subplayer = undefined;
-    this._mode = "none";
-    this._currentSong = undefined;
-    this.position = 0;
-    this.duration = 0;
-    this.status = "idle";
+    this.subplayer?.dispose();
+    this.subplayer = undefined;
+    this.mode = "none";
+    this.currentSong = undefined;
+    this.position.set(0);
+    this.duration.set(0);
+    this.status.set("idle");
   }
 
   syncWarp(song: Song): void {
-    if (this.status !== "ready" || this._mode !== "audio") {
+    if (this.status.get() !== "ready" || this.mode !== "audio") {
       return;
     }
 
-    this._subplayer?.syncWarp(song);
+    this.subplayer?.syncWarp(song);
   }
 
-  private _vampAt(tick: Tick): PlayerVampState | undefined {
-    const v = this._vamps.find(v => tick >= v.start && tick < v.end);
+  private vampAt(tick: Tick): PlayerVampState | undefined {
+    const v = this.vamps.find(v => tick >= v.start && tick < v.end);
     return v ? { ...v, currentIteration: 0, manualExit: false } : undefined;
   }
 
-  private _barlineBetween(after: Tick, before: Tick): Tick | undefined {
-    return this._systemEvents.measure.items()
+  private barlineBetween(after: Tick, before: Tick): Tick | undefined {
+    return this.systemEvents.measure.items()
       .find(e => e.tick > after && e.tick < before && e.measure[1] === 0)?.tick;
   }
 
-  private _vampAction(p0: Tick): { action: VampAction | null; limit?: Tick } {
-    if (!this.currentVamp) {
+  private vampAction(p0: Tick): { action: VampAction | null; limit?: Tick } {
+    const vamp = this.currentVamp.get();
+    if (!vamp) {
       return { action: null };
     }
 
-    const shouldExit = this.currentVamp.manualExit
-      || (this.currentVamp.iterations > 0 && this.currentVamp.currentIteration >= this.currentVamp.iterations);
+    const shouldExit = vamp.manualExit
+      || (vamp.iterations > 0 && vamp.currentIteration >= vamp.iterations);
     if (!shouldExit) {
-      return { action: "repeat", limit: this.currentVamp.end };
+      return { action: "repeat", limit: vamp.end };
     }
 
-    const barline = this._barlineBetween(p0, this.currentVamp.end);
+    const barline = this.barlineBetween(p0, vamp.end);
     return barline !== undefined
       ? { action: "exit-at-barline", limit: barline }
-      : { action: "exit-at-end", limit: this.currentVamp.end };
+      : { action: "exit-at-end", limit: vamp.end };
   }
 
-  private _handleStep(delta: number): void {
-    if (!this._subplayer) {
+  private handleStep(delta: number): void {
+    if (!this.subplayer) {
       return;
     }
 
-    const p0 = this._position;
+    let pos = this.position.get();
 
-    // Must precede action computation so the limit is applied on the entry step.
-    if (!this.currentVamp && this._vamps.length > 0) {
-      const v = this._vampAt(p0);
+    if (!this.currentVamp.get() && this.vamps.length > 0) {
+      const v = this.vampAt(pos);
       if (v) {
-        this.currentVamp = v;
+        this.currentVamp.set(v);
       }
     }
 
-    const { action, limit } = this._vampAction(p0);
-    const { p1, deltaConsumed } = this._subplayer.step(p0, delta, limit);
-    this._position = p1;
+    const { action, limit } = this.vampAction(pos);
+    const { p1, deltaConsumed } = this.subplayer.step(pos, delta, limit);
+    pos = p1;
 
-    if (this._position >= this._duration) {
-      this.position = this._duration;
+    if (pos >= this.duration.get()) {
+      this.position.set(this.duration.get());
       this.pause();
-      if (this.currentSegue?.enabled) {
-        this.emit("segue");
+      if (this.currentSegue.get()?.enabled) {
+        this.emitters.segue.fire(undefined);
       }
 
       return;
     }
 
-    if (action && this.currentVamp && limit !== undefined && p1 >= limit) {
-      const vamp = this.currentVamp;
+    if (action && this.currentVamp.get() && limit !== undefined && p1 >= limit) {
+      const vamp = this.currentVamp.get()!;
       const remaining = delta - deltaConsumed;
       let jumpOffset = 0;
       let nextLimit: Tick | undefined;
 
       if (action === "exit-at-barline") {
         jumpOffset = vamp.end - p1;
-        this.currentVamp = undefined;
+        this.currentVamp.set(undefined);
       } else if (action === "exit-at-end") {
-        this.currentVamp = undefined;
+        this.currentVamp.set(undefined);
       } else {
         jumpOffset = -(vamp.end - vamp.start);
-        this.currentVamp = { ...vamp, currentIteration: vamp.currentIteration + 1 };
+        this.currentVamp.set({ ...vamp, currentIteration: vamp.currentIteration + 1 });
         nextLimit = vamp.end;
       }
 
       if (jumpOffset !== 0) {
-        this._position += jumpOffset;
-        this._subplayer.onPositionJump(jumpOffset, this._position);
+        pos += jumpOffset;
+        this.subplayer.onPositionJump(jumpOffset, pos);
       }
 
       if (remaining > 0) {
-        const { p1: p1b } = this._subplayer.step(this._position, remaining, nextLimit);
-        this._position = p1b;
+        const { p1: p1b } = this.subplayer.step(pos, remaining, nextLimit);
+        pos = p1b;
       }
     }
 
-    this._timeSinceLastPositionUpdate += delta;
-    if (this._timeSinceLastPositionUpdate >= POSITION_UPDATE_DURATION) {
-      this._timeSinceLastPositionUpdate = 0;
-      this.emit("positionChanged", this._position);
-    }
+    this.position.set(Math.max(0, Math.min(this.duration.get(), pos)));
   }
 
-  private _syncStateAt(pos: Tick): void {
+  private syncStateAt(pos: Tick): void {
     const opts = { direction: "backward" as const, inclusive: true, extend: true };
-    const measureEvent = this._systemEvents.measure.search({ tick: pos } as MeasureEvent, opts);
-    const tempoEvent = this._systemEvents.tempo.search({ tick: pos } as TempoEvent, opts);
-    const timeSigEvent = this._systemEvents.timeSignature.search({ tick: pos } as TimeSignatureEvent, opts);
+    const measureEvent = this.systemEvents.measure.search({ tick: pos } as MeasureEvent, opts);
+    const tempoEvent = this.systemEvents.tempo.search({ tick: pos } as TempoEvent, opts);
+    const timeSigEvent = this.systemEvents.timeSignature.search({ tick: pos } as TimeSignatureEvent, opts);
     if (measureEvent) {
-      this.currentMeasure = measureEvent.measure;
+      this.currentMeasure.set(measureEvent.measure);
     }
 
     if (tempoEvent) {
-      this.currentTempo = tempoEvent.bpm;
+      this.currentTempo.set(tempoEvent.bpm);
     }
 
     if (timeSigEvent) {
-      this.currentTimeSignature = timeSigEvent.signature;
+      this.currentTimeSignature.set(timeSigEvent.signature);
     }
 
-    // seek must precede onTempoRestored so _lastKnownPosition is anchored first
-    this._subplayer?.seek(pos);
+    // seek must precede onTempoRestored so lastKnownPosition is anchored first
+    this.subplayer?.seek(pos);
     if (tempoEvent) {
-      this._subplayer?.onTempoRestored(tempoEvent.bpm);
+      this.subplayer?.onTempoRestored(tempoEvent.bpm);
     }
   }
 
-  private _resolveEventTicks(song: Song): void {
-    this._vamps = [];
-    this.currentVamp = undefined;
-    this.currentSegue = undefined;
+  private resolveEventTicks(song: Song): void {
+    this.vamps = [];
+    this.currentVamp.set(undefined);
+    this.currentSegue.set(undefined);
 
     for (const e of song.events.markers.items()) {
       e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
@@ -576,12 +538,12 @@ export default class PlayerEngine extends EventEmitter {
       e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
       e.$endTick = song.findMeasure(e.end[0])?.$beatTicks[0];
       if (e.$startTick !== undefined && e.$endTick !== undefined) {
-        this._vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations });
+        this.vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations });
       } else {
         console.error("Could not resolve location of Vamp:", e);
       }
     }
 
-    this.currentSegue = song.events.segue ? { enabled: true } : undefined;
+    this.currentSegue.set(song.events.segue ? { enabled: true } : undefined);
   }
 }

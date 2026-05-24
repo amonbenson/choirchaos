@@ -63,18 +63,18 @@ function mockAxios(): void {
 
 function stepPast(updater: ManualUpdater, player: PlayerEngine, targetTick: number): void {
   for (let i = 0; i < 10_000; i++) {
-    if (player.position > targetTick) {
+    if (player.getPosition() > targetTick) {
       break;
     }
 
-    if (!updater.running) {
+    if (!updater.isRunning()) {
       break;
     }
 
     updater.step(0.02);
   }
 
-  if (updater.running) {
+  if (updater.isRunning()) {
     updater.step(0.02);
   }
 }
@@ -101,18 +101,18 @@ describe("PlayerEngine – MIDI mode", () => {
   // ── status lifecycle ──────────────────────────────────────────────────────
 
   it("reaches ready status after load", () => {
-    expect(player.status).toBe("ready");
+    expect(player.getStatus()).toBe("ready");
   });
 
   it("returns to idle after unload", () => {
     player.unload();
-    expect(player.status).toBe("idle");
+    expect(player.getStatus()).toBe("idle");
   });
 
   it("emits statusChanged events during load", async () => {
     const { player: p2, ctx: ctx2 } = makePlayer();
     const statuses: string[] = [];
-    p2.on("statusChanged", s => statuses.push(s as string));
+    p2.onStatusChange(s => statuses.push(s as string));
 
     mockAxios();
     await p2.load(makeMidiSong());
@@ -127,31 +127,31 @@ describe("PlayerEngine – MIDI mode", () => {
 
   it("seek to measure 2 sets currentMeasure to ['2', 0]", () => {
     player.seek(TICKS.measure2);
-    expect(player.currentMeasure).toEqual(["2", 0]);
+    expect(player.getCurrentMeasure()).toEqual(["2", 0]);
   });
 
   it("seek past the tempo change sets currentTempo to 140", () => {
     player.seek(TICKS.measure3 + 1);
-    expect(player.currentTempo).toBe(140);
+    expect(player.getCurrentTempo()).toBe(140);
   });
 
   it("stop resets position to 0", () => {
     player.seek(TICKS.measure2);
     player.stop();
-    expect(player.position).toBe(0);
+    expect(player.getPosition()).toBe(0);
   });
 
   // ── duration ─────────────────────────────────────────────────────────────
 
   it("duration equals last-measure start + tickLength (8160)", () => {
-    expect(player.duration).toBe(TICKS.duration);
+    expect(player.getDuration()).toBe(TICKS.duration);
   });
 
   // ── note events ───────────────────────────────────────────────────────────
 
   it("emits note events for instrument track when stepping past tick 480", () => {
     const notes: NoteEvent[] = [];
-    player.on("note", e => notes.push(e as NoteEvent));
+    player.onNote(e => notes.push(e));
 
     player.play();
     stepPast(updater, player, TICKS.measure1 + 10);
@@ -163,7 +163,7 @@ describe("PlayerEngine – MIDI mode", () => {
 
   it("emits note events for vocals track when stepping past tick 4320", () => {
     const notes: NoteEvent[] = [];
-    player.on("note", e => notes.push(e as NoteEvent));
+    player.onNote(e => notes.push(e));
 
     player.play();
     stepPast(updater, player, TICKS.measure3 + 10);
@@ -175,7 +175,7 @@ describe("PlayerEngine – MIDI mode", () => {
 
   it("does not emit note events during seek (only during play)", () => {
     const notes: NoteEvent[] = [];
-    player.on("note", e => notes.push(e as NoteEvent));
+    player.onNote(e => notes.push(e));
     player.seek(TICKS.measure2);
     expect(notes).toHaveLength(0);
   });
@@ -183,17 +183,17 @@ describe("PlayerEngine – MIDI mode", () => {
   // ── tempo change ──────────────────────────────────────────────────────────
 
   it("updates currentTempo when a TEMPO event is stepped through", () => {
-    expect(player.currentTempo).toBe(120);
+    expect(player.getCurrentTempo()).toBe(120);
     player.play();
     stepPast(updater, player, TICKS.measure3 + 10);
-    expect(player.currentTempo).toBe(140);
+    expect(player.getCurrentTempo()).toBe(140);
   });
 
   // ── playback controls ─────────────────────────────────────────────────────
 
   it("emits playingChanged true on play and false on pause", () => {
     const events: boolean[] = [];
-    player.on("playingChanged", v => events.push(v as boolean));
+    player.onPlayingChange(v => events.push(v));
     player.play();
     player.pause();
     expect(events).toEqual([true, false]);
@@ -203,16 +203,16 @@ describe("PlayerEngine – MIDI mode", () => {
     player.play();
     stepPast(updater, player, TICKS.measure1);
     player.pause();
-    const posAfterPause = player.position;
+    const posAfterPause = player.getPosition();
     updater.step(0.1);
-    expect(player.position).toBe(posAfterPause);
+    expect(player.getPosition()).toBe(posAfterPause);
   });
 
   it("auto-pauses and clamps position at duration when end is reached", () => {
     player.play();
     stepPast(updater, player, TICKS.duration);
-    expect(player.playing).toBe(false);
-    expect(player.position).toBe(TICKS.duration);
+    expect(player.isPlaying()).toBe(false);
+    expect(player.getPosition()).toBe(TICKS.duration);
   });
 
   // ── vamp ─────────────────────────────────────────────────────────────────
@@ -225,7 +225,7 @@ describe("PlayerEngine – MIDI mode", () => {
     vp.play();
     stepPast(vu, vp, TICKS.measure2 + 10);
 
-    expect(vp.currentVamp).toBeDefined();
+    expect(vp.getCurrentVamp()).toBeDefined();
     vp.unload();
     await vc.close();
   });
@@ -236,13 +236,13 @@ describe("PlayerEngine – MIDI mode", () => {
     await vp.load(makeMidiSongWithVamp());
 
     vp.play();
-    for (let i = 0; i < 10_000 && (vp.currentVamp?.currentIteration ?? 0) === 0; i++) {
+    for (let i = 0; i < 10_000 && (vp.getCurrentVamp()?.currentIteration ?? 0) === 0; i++) {
       vu.step(0.02);
     }
 
-    expect(vp.currentVamp).toBeDefined();
-    expect(vp.currentVamp!.currentIteration).toBeGreaterThan(0);
-    expect(vp.position).toBeLessThan(TICKS.measure3);
+    expect(vp.getCurrentVamp()).toBeDefined();
+    expect(vp.getCurrentVamp()!.currentIteration).toBeGreaterThan(0);
+    expect(vp.getPosition()).toBeLessThan(TICKS.measure3);
 
     vp.unload();
     await vc.close();
@@ -254,16 +254,16 @@ describe("PlayerEngine – MIDI mode", () => {
     await vp.load(makeMidiSongWithVamp()); // 2 iterations
 
     vp.play();
-    for (let i = 0; i < 10_000 && vp.currentVamp === undefined; i++) {
+    for (let i = 0; i < 10_000 && vp.getCurrentVamp() === undefined; i++) {
       vu.step(0.02);
     }
 
-    for (let i = 0; i < 10_000 && vp.currentVamp !== undefined; i++) {
+    for (let i = 0; i < 10_000 && vp.getCurrentVamp() !== undefined; i++) {
       vu.step(0.02);
     }
 
-    expect(vp.currentVamp).toBeUndefined();
-    expect(vp.position).toBeGreaterThanOrEqual(TICKS.measure3);
+    expect(vp.getCurrentVamp()).toBeUndefined();
+    expect(vp.getPosition()).toBeGreaterThanOrEqual(TICKS.measure3);
 
     vp.unload();
     await vc.close();
@@ -274,7 +274,7 @@ describe("PlayerEngine – MIDI mode", () => {
   it("emits segue when reaching the end with segue enabled", async () => {
     const { player: sp, updater: su, ctx: sc } = makePlayer();
     const segueEmitted = vi.fn();
-    sp.on("segue", segueEmitted);
+    sp.onSegue(segueEmitted);
 
     const song = makeMidiSong();
     song.events.segue = true;

@@ -1,113 +1,99 @@
 import { defineStore } from "pinia";
-import { markRaw, onScopeDispose } from "vue";
+import { computed, type ComputedRef, markRaw, onScopeDispose, ref } from "vue";
 
-import { useEvent } from "@/composables/event";
 import type { NoteEvent } from "@/core/midi/events";
 import type Song from "@/core/models/song";
 import PlayerEngine, { type MidiPlayerSegueState, type MidiPlayerVampState } from "@/core/player/engine";
+import type { Event } from "@/core/utils/events";
 import { isNumbering } from "@/core/utils/numbering";
 
 const globalPlayer = new PlayerEngine();
 
+function useEngineEvent<T>(event: Event<T>, initial: T): ComputedRef<T> {
+  const value = ref<T>(initial) as ReturnType<typeof ref<T>>;
+  const d = event((v) => {
+    value.value = v;
+  });
+  onScopeDispose(() => d.dispose());
+  return computed(() => value.value);
+}
+
 export const usePlayerStore = defineStore("player", () => {
-  const status = useEvent(globalPlayer, "statusChanged", { initial: globalPlayer.status });
-  const playing = useEvent(globalPlayer, "playingChanged", { initial: globalPlayer.playing });
+  const statusRef = ref(globalPlayer.getStatus());
+  const statusD = globalPlayer.onStatusChange((s) => {
+    statusRef.value = s;
+  });
+  onScopeDispose(() => statusD.dispose());
 
-  const loading = useEvent(globalPlayer, "statusChanged", {
-    initial: globalPlayer.status === "loading",
-    getter: player => player.status === "loading",
+  const status = computed(() => statusRef.value);
+  const loading = computed(() => statusRef.value === "loading");
+  const ready = computed(() => statusRef.value === "ready");
+  const mode = computed(() => globalPlayer.getMode());
+  const ppqn = computed(() => globalPlayer.getPpqn());
+  const events = computed(() => markRaw(globalPlayer.getMidiEvents()));
+
+  const playing = useEngineEvent(globalPlayer.onPlayingChange, globalPlayer.isPlaying());
+  const position = useEngineEvent(globalPlayer.onPositionChange, globalPlayer.getPosition());
+  const duration = useEngineEvent(globalPlayer.onDurationChange, globalPlayer.getDuration());
+  const currentTempo = useEngineEvent(globalPlayer.onCurrentTempoChange, globalPlayer.getCurrentTempo());
+  const currentTimeSignature = useEngineEvent(globalPlayer.onCurrentTimeSignatureChange, globalPlayer.getCurrentTimeSignature());
+  const currentMeasure = useEngineEvent(globalPlayer.onCurrentMeasureChange, globalPlayer.getCurrentMeasure());
+  const finalMeasure = useEngineEvent(globalPlayer.onFinalMeasureChange, globalPlayer.getFinalMeasure());
+
+  const currentVamp = useEngineEvent<MidiPlayerVampState | undefined>(
+    globalPlayer.onCurrentVampChange,
+    globalPlayer.getCurrentVamp(),
+  );
+  const currentSegue = useEngineEvent<MidiPlayerSegueState | undefined>(
+    globalPlayer.onCurrentSegueChange,
+    globalPlayer.getCurrentSegue(),
+  );
+
+  const playbackSpeedRef = ref(globalPlayer.getPlaybackSpeed());
+  const playbackSpeedD = globalPlayer.onPlaybackSpeedChange((v) => {
+    playbackSpeedRef.value = v;
+  });
+  onScopeDispose(() => playbackSpeedD.dispose());
+  const playbackSpeed = computed({
+    get: () => playbackSpeedRef.value,
+    set: v => globalPlayer.setPlaybackSpeed(v),
   });
 
-  const ready = useEvent(globalPlayer, "statusChanged", {
-    initial: globalPlayer.status === "ready",
-    getter: player => player.status === "ready",
+  const playbackTranspositionRef = ref(globalPlayer.getPlaybackTransposition());
+  const playbackTranspositionD = globalPlayer.onPlaybackTranspositionChange((v) => {
+    playbackTranspositionRef.value = v;
+  });
+  onScopeDispose(() => playbackTranspositionD.dispose());
+  const playbackTransposition = computed({
+    get: () => playbackTranspositionRef.value,
+    set: v => globalPlayer.setPlaybackTransposition(v),
   });
 
-  const position = useEvent(globalPlayer, "positionChanged", { initial: globalPlayer.position });
-
-  const duration = useEvent(globalPlayer, "durationChanged", { initial: globalPlayer.duration });
-
-  const currentTempo = useEvent(globalPlayer, "currentTempoChanged", {
-    initial: globalPlayer.currentTempo,
-  });
-
-  const currentTimeSignature = useEvent(globalPlayer, "currentTimeSignatureChanged", {
-    initial: globalPlayer.currentTimeSignature,
-  });
-
-  const currentVamp = useEvent<PlayerEngine, MidiPlayerVampState | undefined>(globalPlayer, "currentVampChanged", {
-    initial: globalPlayer.currentVamp,
-  });
-
-  const currentSegue = useEvent<PlayerEngine, MidiPlayerSegueState | undefined>(globalPlayer, "currentSegueChanged", {
-    initial: globalPlayer.currentSegue,
-  });
-
-  const currentMeasure = useEvent(globalPlayer, "currentMeasureChanged", {
-    initial: globalPlayer.currentMeasure,
-  });
-
-  const finalMeasure = useEvent(globalPlayer, "finalMeasureChanged", {
-    initial: globalPlayer.finalMeasure,
-  });
-
-  const events = useEvent(globalPlayer, "statusChanged", {
-    initial: markRaw(globalPlayer.midi_events),
-    getter: player => markRaw(player.midi_events),
-  });
-
-  const mode = useEvent(globalPlayer, "statusChanged", {
-    initial: globalPlayer.mode,
-    getter: player => player.mode,
-  });
-
-  const ppqn = useEvent(globalPlayer, "statusChanged", {
-    initial: globalPlayer.ppqn,
-    getter: player => player.ppqn,
-  });
-
-  const playbackSpeed = useEvent(globalPlayer, "playbackSpeedChanged", {
-    initial: globalPlayer.playbackSpeed,
-    getter: player => player.playbackSpeed,
-    setter: (player, value) => player.playbackSpeed = value,
-  });
-
-  const playbackTransposition = useEvent(globalPlayer, "playbackTranspositionChanged", {
-    initial: globalPlayer.playbackTransposition,
-    getter: player => player.playbackTransposition,
-    setter: (player, value) => player.playbackTransposition = value,
-  });
-
-  const trackAmplitudes = useEvent<PlayerEngine, number[]>(globalPlayer, "trackAmplitudesChanged", {
-    initial: [],
-  });
+  const trackAmplitudes = useEngineEvent<number[]>(globalPlayer.onTrackAmplitudesChange, []);
 
   function seek(position: number): void {
     globalPlayer.seek(position);
   }
 
   function setMeasure(value: string): void {
-    if (!globalPlayer.currentSong) {
+    if (!globalPlayer.getCurrentSong()) {
       return;
     }
 
-    // validate input
     if (!isNumbering(value)) {
       value = "1";
     }
 
-    // find the measure and seek to its starting beat position
-    const measure = globalPlayer.currentSong.findMeasure(value);
+    const measure = globalPlayer.getCurrentSong()!.findMeasure(value);
     globalPlayer.seek(measure?.$beatTicks[0] ?? 0);
   }
 
   function setBeat(value: number): void {
-    if (!globalPlayer.currentSong) {
+    if (!globalPlayer.getCurrentSong()) {
       return;
     }
 
-    // find the current measure, validate input range, and seek
-    const measure = globalPlayer.currentSong.findMeasure(globalPlayer.currentMeasure[0]);
+    const measure = globalPlayer.getCurrentSong()!.findMeasure(globalPlayer.getCurrentMeasure()[0]);
     const beats = measure?.beats ?? 1;
     if (value < 0) {
       value = 0;
@@ -119,13 +105,13 @@ export const usePlayerStore = defineStore("player", () => {
   }
 
   function onSegue(callback: () => void): void {
-    globalPlayer.on("segue", callback);
-    onScopeDispose(() => globalPlayer.off("segue", callback));
+    const d = globalPlayer.onSegue(callback);
+    onScopeDispose(() => d.dispose());
   }
 
   function onNote(callback: (event: NoteEvent) => void): void {
-    globalPlayer.on("note", callback);
-    onScopeDispose(() => globalPlayer.off("note", callback));
+    const d = globalPlayer.onNote(callback);
+    onScopeDispose(() => d.dispose());
   }
 
   return {

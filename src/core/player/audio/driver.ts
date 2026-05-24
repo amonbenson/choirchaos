@@ -7,9 +7,9 @@ const processorUrl = `${import.meta.env.BASE_URL}rubberband-processor.js`;
 
 const ANALYSER_FFT_SIZE = 256;
 const ANALYSER_INTERVAL_MS = 1000 / 30;
-const ANALYSER_GAIN = Math.pow(10, 10 / 20); // analyzer output boost
-const ANALYSER_ATTACK = 0.9; // rise factor per tick at 50 Hz → fast but not instant
-const ANALYSER_RELEASE = 0.97; // decay factor per tick at 50 Hz → ~1 s half-life
+const ANALYSER_GAIN = Math.pow(10, 10 / 20);
+const ANALYSER_ATTACK = 0.9;
+const ANALYSER_RELEASE = 0.97;
 
 export type TrackOptions = {
   highPassFilter?: boolean;
@@ -22,23 +22,23 @@ export type AudioDriverOptions = {
 };
 
 export default class AudioDriver {
-  private _sources: AudioBufferSourceNode[] = [];
-  private _rubberBandNode: RubberBandNode;
-  private _trackInputs: AudioNode[];
-  private _gainNodes: GainNode[];
-  private _analysers: AnalyserNode[];
-  private _analyserBuffers: Float32Array<ArrayBuffer>[];
-  private _keepAlive: ConstantSourceNode;
+  private sources: AudioBufferSourceNode[] = [];
+  private rubberBandNode: RubberBandNode;
+  private trackInputs: AudioNode[];
+  private gainNodes: GainNode[];
+  private analysers: AnalyserNode[];
+  private analyserBuffers: Float32Array<ArrayBuffer>[];
+  private keepAlive: ConstantSourceNode;
 
-  private _gainValues: number[];
-  private _smoothedAmplitudes: number[];
-  private _amplitudeInterval: ReturnType<typeof setInterval> | null = null;
-  private _tempoValue = 1;
-  private _pitchValue = 0;
+  private gainValues: number[];
+  private smoothedAmplitudes: number[];
+  private amplitudeInterval: ReturnType<typeof setInterval> | null = null;
+  private tempoValue = 1;
+  private pitchValue = 0;
 
-  private _refContextTime = 0;
-  private _refPosition = 0;
-  private _playing = false;
+  private refContextTime = 0;
+  private refPosition = 0;
+  private playing = false;
 
   static async create(
     context: AudioContext,
@@ -54,62 +54,61 @@ export default class AudioDriver {
   }
 
   private constructor(
-    private _context: AudioContext,
-    private _buffers: AudioBuffer[],
+    private context: AudioContext,
+    private buffers: AudioBuffer[],
     options: AudioDriverOptions,
     rubberBandNode: RubberBandNode,
   ) {
-    this._rubberBandNode = rubberBandNode;
-    this._gainNodes = _buffers.map(() => _context.createGain());
-    this._gainValues = _buffers.map(() => 0.7);
-    this._smoothedAmplitudes = _buffers.map(() => 0);
+    this.rubberBandNode = rubberBandNode;
+    this.gainNodes = buffers.map(() => context.createGain());
+    this.gainValues = buffers.map(() => 0.7);
+    this.smoothedAmplitudes = buffers.map(() => 0);
 
-    this._analysers = _buffers.map(() => {
-      const a = _context.createAnalyser();
+    this.analysers = buffers.map(() => {
+      const a = context.createAnalyser();
       a.fftSize = ANALYSER_FFT_SIZE;
       a.smoothingTimeConstant = 0.8;
       return a;
     });
-    this._analyserBuffers = this._analysers.map(a => new Float32Array(a.fftSize) as Float32Array<ArrayBuffer>);
+    this.analyserBuffers = this.analysers.map(a => new Float32Array(a.fftSize) as Float32Array<ArrayBuffer>);
 
     // Per-track chain: [HighPassFilter →] GainNode → [Compressor →] AnalyserNode → RubberBandNode (shared)
-    this._trackInputs = _buffers.map((_, i) => {
+    this.trackInputs = buffers.map((_, i) => {
       const trackOpts = options.tracks[i];
 
       if (trackOpts?.highPassFilter) {
-        const hpf = _context.createBiquadFilter();
+        const hpf = context.createBiquadFilter();
         hpf.type = "highpass";
         hpf.frequency.value = 100;
-        hpf.connect(this._gainNodes[i]!);
+        hpf.connect(this.gainNodes[i]!);
         return hpf;
       }
 
-      return this._gainNodes[i]!;
+      return this.gainNodes[i]!;
     });
 
-    // Stereo bus before rubberband with an explicit 2-channel config.
-    // A ConstantSourceNode (offset=0, silent) keeps the bus permanently active so
-    // rubberband's AudioWorklet always receives a properly-formatted 2-channel
-    // input. Without this, Edge passes inputs[0]=[] once all sources stop, causing
-    // rubberband to crash with "Invalid channel index 1".
-    const stereoBus = _context.createGain();
+    // A ConstantSourceNode (offset=0, silent) keeps the stereo bus permanently active
+    // so rubberband's AudioWorklet always receives a properly-formatted 2-channel input.
+    // Without this, Edge passes inputs[0]=[] once all sources stop, causing rubberband
+    // to crash with "Invalid channel index 1".
+    const stereoBus = context.createGain();
     stereoBus.channelCount = 2;
     stereoBus.channelCountMode = "explicit";
     stereoBus.channelInterpretation = "speakers";
 
-    this._keepAlive = _context.createConstantSource();
-    this._keepAlive.offset.value = 0;
-    this._keepAlive.start();
-    this._keepAlive.connect(stereoBus);
+    this.keepAlive = context.createConstantSource();
+    this.keepAlive.offset.value = 0;
+    this.keepAlive.start();
+    this.keepAlive.connect(stereoBus);
 
-    stereoBus.connect(this._rubberBandNode);
+    stereoBus.connect(this.rubberBandNode);
 
-    _buffers.forEach((_, i) => {
+    buffers.forEach((_, i) => {
       const trackOpts = options.tracks[i];
-      let node: AudioNode = this._gainNodes[i]!;
+      let node: AudioNode = this.gainNodes[i]!;
 
       if (trackOpts?.compressor) {
-        const c = _context.createDynamicsCompressor();
+        const c = context.createDynamicsCompressor();
         c.threshold.value = -12;
         c.knee.value = 1.7;
         c.ratio.value = 2.0;
@@ -119,139 +118,137 @@ export default class AudioDriver {
         node = c;
       }
 
-      node.connect(this._analysers[i]!);
-      this._analysers[i]!.connect(stereoBus);
+      node.connect(this.analysers[i]!);
+      this.analysers[i]!.connect(stereoBus);
     });
 
-    this._amplitudeInterval = setInterval(() => {
-      options.onAmplitudes(this._computeAmplitudes());
+    this.amplitudeInterval = setInterval(() => {
+      options.onAmplitudes(this.computeAmplitudes());
     }, ANALYSER_INTERVAL_MS);
   }
 
   dispose(): void {
-    if (this._amplitudeInterval !== null) {
-      clearInterval(this._amplitudeInterval);
-      this._amplitudeInterval = null;
+    if (this.amplitudeInterval !== null) {
+      clearInterval(this.amplitudeInterval);
+      this.amplitudeInterval = null;
     }
 
-    this._keepAlive.stop();
-    this._rubberBandNode.close();
+    this.keepAlive.stop();
+    this.rubberBandNode.close();
   }
 
-  private _computeAmplitudes(): number[] {
-    return this._analysers.map((analyser, i) => {
-      analyser.getFloatTimeDomainData(this._analyserBuffers[i]!);
-      const buf = this._analyserBuffers[i]!;
+  private computeAmplitudes(): number[] {
+    return this.analysers.map((analyser, i) => {
+      analyser.getFloatTimeDomainData(this.analyserBuffers[i]!);
+      const buf = this.analyserBuffers[i]!;
       let sum = 0;
       for (let s = 0; s < buf.length; s++) {
         sum += buf[s]! * buf[s]!;
       }
 
       const rms = Math.sqrt(sum / buf.length) * ANALYSER_GAIN;
-      const prev = this._smoothedAmplitudes[i]!;
+      const prev = this.smoothedAmplitudes[i]!;
       const smoothed = rms > prev
-        ? prev + (rms - prev) * ANALYSER_ATTACK // lerp toward peak
-        : prev * ANALYSER_RELEASE; // multiplicative decay
-      this._smoothedAmplitudes[i] = smoothed;
+        ? prev + (rms - prev) * ANALYSER_ATTACK
+        : prev * ANALYSER_RELEASE;
+      this.smoothedAmplitudes[i] = smoothed;
       return Math.min(1, smoothed);
     });
   }
 
-  get position(): number {
-    if (this._playing) {
-      // source advances at _tempoValue × wall-clock rate
-      return this._refPosition + (this._context.currentTime - this._refContextTime) * this._tempoValue;
+  getPosition(): number {
+    if (this.playing) {
+      return this.refPosition + (this.context.currentTime - this.refContextTime) * this.tempoValue;
     }
 
-    return this._refPosition;
+    return this.refPosition;
   }
 
   setGain(trackIndex: number, gain: number): void {
-    if (this._gainValues[trackIndex] === gain) {
+    if (this.gainValues[trackIndex] === gain) {
       return;
     }
 
-    this._gainValues[trackIndex] = gain;
-    this._gainNodes[trackIndex]?.gain.setTargetAtTime(gain, this._context.currentTime, 0.02);
+    this.gainValues[trackIndex] = gain;
+    this.gainNodes[trackIndex]?.gain.setTargetAtTime(gain, this.context.currentTime, 0.02);
   }
 
   setTempo(tempo: number): void {
-    if (this._tempoValue === tempo) {
+    if (this.tempoValue === tempo) {
       return;
     }
 
-    if (this._playing) {
-      // snapshot position before the rate changes
-      this._refPosition = this.position;
-      this._refContextTime = this._context.currentTime;
+    if (this.playing) {
+      this.refPosition = this.getPosition();
+      this.refContextTime = this.context.currentTime;
     }
 
-    this._tempoValue = tempo;
+    this.tempoValue = tempo;
 
-    for (const src of this._sources) {
+    for (const src of this.sources) {
       src.playbackRate.value = tempo;
     }
 
-    this._applyPitch();
+    this.applyPitch();
   }
 
   setPitch(semitones: number): void {
-    if (this._pitchValue === semitones) {
+    if (this.pitchValue === semitones) {
       return;
     }
 
-    this._pitchValue = semitones;
-    this._applyPitch();
+    this.pitchValue = semitones;
+    this.applyPitch();
   }
 
-  // Combine user semitone shift with compensation for BufferSource.playbackRate pitch change.
-  private _applyPitch(): void {
-    const semitones = this._pitchValue - 12 * Math.log2(this._tempoValue);
-    this._rubberBandNode.setPitch(Math.pow(2, semitones / 12));
+  // Combines user semitone shift with compensation for BufferSource.playbackRate pitch change.
+  private applyPitch(): void {
+    const semitones = this.pitchValue - 12 * Math.log2(this.tempoValue);
+    this.rubberBandNode.setPitch(Math.pow(2, semitones / 12));
   }
 
   play(): void {
-    if (this._playing) {
+    if (this.playing) {
       return;
     }
 
-    this._refContextTime = this._context.currentTime;
-    this._sources = this._buffers.map((buffer, i) => {
-      const src = this._context.createBufferSource();
+    this.refContextTime = this.context.currentTime;
+    this.sources = this.buffers.map((buffer, i) => {
+      const src = this.context.createBufferSource();
       src.buffer = buffer;
-      src.playbackRate.value = this._tempoValue;
-      src.connect(this._trackInputs[i]!);
-      src.start(0, this._refPosition);
+      src.playbackRate.value = this.tempoValue;
+      src.connect(this.trackInputs[i]!);
+      src.start(0, this.refPosition);
       return src;
     });
-    this._playing = true;
+    this.playing = true;
   }
 
   pause(): void {
-    if (!this._playing) {
+    if (!this.playing) {
       return;
     }
 
-    this._refPosition = this.position;
-    this._sources.forEach(s => s.stop());
-    this._sources = [];
-    this._playing = false;
-    this._smoothedAmplitudes.fill(0);
+    this.refPosition = this.getPosition();
+    this.sources.forEach(s => s.stop());
+    this.sources = [];
+    this.playing = false;
+    this.smoothedAmplitudes.fill(0);
   }
 
   seek(seconds: number): void {
-    const wasPlaying = this._playing;
+    const wasPlaying = this.playing;
     if (wasPlaying) {
       this.pause();
     }
 
-    this._refPosition = seconds;
+    this.refPosition = seconds;
     if (wasPlaying) {
       this.play();
     }
   }
 
   connect(destination: AudioNode): void {
-    this._rubberBandNode.connect(destination);
+    this.rubberBandNode.connect(destination);
   }
 }

@@ -14,7 +14,7 @@ vi.mock("midi-json-parser", () => ({ parseArrayBuffer: vi.fn() }));
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 type MockAudioDriver = {
-  position: number;
+  getPosition: ReturnType<typeof vi.fn>;
   play: ReturnType<typeof vi.fn>;
   pause: ReturnType<typeof vi.fn>;
   seek: ReturnType<typeof vi.fn>;
@@ -27,7 +27,7 @@ type MockAudioDriver = {
 
 function makeMockAP(): MockAudioDriver {
   return {
-    position: 0,
+    getPosition: vi.fn().mockReturnValue(0),
     play: vi.fn(),
     pause: vi.fn(),
     seek: vi.fn(),
@@ -91,30 +91,30 @@ describe("PlayerEngine – audio mode", () => {
   // ── status lifecycle ──────────────────────────────────────────────────────
 
   it("reaches ready status after load in audio mode", () => {
-    expect(player.status).toBe("ready");
-    expect(player.mode).toBe("audio");
+    expect(player.getStatus()).toBe("ready");
+    expect(player.getMode()).toBe("audio");
   });
 
   // ── position tracking ─────────────────────────────────────────────────────
 
   it("syncs position from audioPlayer.position (seconds → ticks/ms)", () => {
-    mockAP.position = 0.5;
+    mockAP.getPosition.mockReturnValue(0.5);
     player.play();
     updater.step(0.02);
 
-    expect(player.position).toBeCloseTo(500, 0);
+    expect(player.getPosition()).toBeCloseTo(500, 0);
   });
 
   it("advances position as audioPlayer reports later positions", () => {
     player.play();
 
-    mockAP.position = 0.1;
+    mockAP.getPosition.mockReturnValue(0.1);
     updater.step(0.02);
-    const p1 = player.position;
+    const p1 = player.getPosition();
 
-    mockAP.position = 0.3;
+    mockAP.getPosition.mockReturnValue(0.3);
     updater.step(0.02);
-    const p2 = player.position;
+    const p2 = player.getPosition();
 
     expect(p2).toBeGreaterThan(p1);
   });
@@ -133,7 +133,7 @@ describe("PlayerEngine – audio mode", () => {
     player.play();
     song.setTrackGain(0, 0.5);
 
-    mockAP.position = 0;
+    mockAP.getPosition.mockReturnValue(0);
     updater.step(0.02);
 
     expect(mockAP.setGain).toHaveBeenCalled();
@@ -143,10 +143,10 @@ describe("PlayerEngine – audio mode", () => {
 
   it("pauses when audioPlayer position reaches or exceeds duration", () => {
     player.play();
-    mockAP.position = 1.1; // 1100 ms > 1000 ms duration
+    mockAP.getPosition.mockReturnValue(1.1); // 1100 ms > 1000 ms duration
     updater.step(0.02);
 
-    expect(player.playing).toBe(false);
+    expect(player.isPlaying()).toBe(false);
   });
 
   // ── playback controls ─────────────────────────────────────────────────────
@@ -165,10 +165,10 @@ describe("PlayerEngine – audio mode", () => {
     await loadAudioSong(sp, sc, ap, true);
 
     const segueEmitted = vi.fn();
-    sp.on("segue", segueEmitted);
+    sp.onSegue(segueEmitted);
 
     sp.play();
-    ap.position = 1.1;
+    ap.getPosition.mockReturnValue(1.1);
     su.step(0.02);
 
     expect(segueEmitted).toHaveBeenCalledOnce();
