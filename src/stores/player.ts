@@ -94,7 +94,7 @@ export const usePlayerStore = defineStore("player", () => {
 
   return {
     load: (song: Song) => globalPlayer.load(song),
-    syncWarp: (song: Song) => globalPlayer.syncWarp(song),
+    syncWarp: () => globalPlayer.syncWarp(),
     unload: () => globalPlayer.unload(),
     play: () => globalPlayer.play(),
     pause: () => globalPlayer.pause(),

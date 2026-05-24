@@ -441,13 +441,11 @@ export default class PlayerEngine {
     this.status.set("idle");
   }
 
-  syncWarp(song: Song): void {
-    if (this.status.get() !== "ready" || this.mode.get() !== "audio") {
-      return;
-    }
-
+  syncWarp(): void {
     // Recompute the timing of all measures for audio mode
-    this.backend?.syncWarp(song);
+    if (this.backend instanceof AudioBackend) {
+      this.backend.syncWarp();
+    }
   }
 
   private vampAt(tick: Tick): PlayerVampState | undefined {

@@ -71,7 +71,4 @@ export abstract class PlayerBackend {
   onPlaybackTranspositionChanged(semitones: number): void {
     this.playbackTransposition = semitones;
   }
-
-  /** Called after warp markers are edited; override to rebuild the timing map (audio mode only). */
-  syncWarp(_song: Song): void {}
 }

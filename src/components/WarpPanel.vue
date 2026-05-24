@@ -225,8 +225,10 @@ function reloadWarp(): void {
     return;
   }
 
+  // TODO validate that the player song is the same as props.song OR drop props.song alltogether and use the player's loaded song as the single source of truth for this panel
+
   const pos = player.position;
-  player.syncWarp(props.song);
+  player.syncWarp();
   player.seek(pos);
 }
 
