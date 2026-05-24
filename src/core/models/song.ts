@@ -4,7 +4,7 @@ import { dbCreate, dbUpdate, dbUpdateWithFiles } from "@/pocketbase/db";
 
 import type { Tick } from "../midi/types";
 import type { WarpMarker } from "../midi/warp";
-import type { PlayerMode, SystemEvents as MidiSystemEvents } from "../player/types";
+import type { PlayerMode, SystemEvents } from "../player/types";
 import { binarySearch } from "../utils/binarySearch";
 import type { UrlOrFile } from "../utils/file";
 import type { Numbering } from "../utils/numbering";
@@ -56,7 +56,7 @@ export default class Song {
     },
     warpMarkers: WarpMarker[] = [],
     public readonly permissions: Permissions = NoPermissions,
-    public $midiSystemEvents: MidiSystemEvents | object = {},
+    public $midiSystemEvents: SystemEvents | object = {},
   ) {
     this._tracks = tracks;
     this._audioFiles = audioFiles;

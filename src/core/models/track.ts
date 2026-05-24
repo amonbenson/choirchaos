@@ -1,4 +1,4 @@
-import type { TrackEvents as MidiTrackEvents } from "../player/types";
+import type { TrackEvents } from "../player/types";
 
 export type TrackClassification = "Accompaniment" | "Percussion" | "Vocal";
 
@@ -32,7 +32,7 @@ export default class Track {
       effectiveMute: false,
       effectiveGain: 1.0,
     },
-    public $midiTrackEvents: MidiTrackEvents | object = {},
+    public $midiTrackEvents: TrackEvents | object = {},
   ) {}
 
   public _applyPatch(patch: TrackPatch): void {

@@ -1,20 +1,21 @@
 import { defineStore } from "pinia";
-import { computed, type ComputedRef, markRaw, onScopeDispose, ref } from "vue";
+import { computed, type ComputedRef, markRaw, onScopeDispose, ref, shallowRef } from "vue";
 
 import type { NoteEvent } from "@/core/midi/events";
 import type Song from "@/core/models/song";
-import PlayerEngine, { type MidiPlayerSegueState, type MidiPlayerVampState } from "@/core/player/engine";
+import PlayerEngine, { type PlayerSegueState, type PlayerVampState } from "@/core/player/engine";
 import type { Event } from "@/core/utils/events";
 import { isNumbering } from "@/core/utils/numbering";
 
 const globalPlayer = new PlayerEngine();
 
 function useEngineEvent<T>(event: Event<T>, initial: T): ComputedRef<T> {
-  const value = ref<T>(initial) as ReturnType<typeof ref<T>>;
+  const value = shallowRef<T>(initial);
   const d = event((v) => {
     value.value = v;
   });
   onScopeDispose(() => d.dispose());
+
   return computed(() => value.value);
 }
 
@@ -40,11 +41,11 @@ export const usePlayerStore = defineStore("player", () => {
   const currentMeasure = useEngineEvent(globalPlayer.onCurrentMeasureChange, globalPlayer.getCurrentMeasure());
   const finalMeasure = useEngineEvent(globalPlayer.onFinalMeasureChange, globalPlayer.getFinalMeasure());
 
-  const currentVamp = useEngineEvent<MidiPlayerVampState | undefined>(
+  const currentVamp = useEngineEvent<PlayerVampState | undefined>(
     globalPlayer.onCurrentVampChange,
     globalPlayer.getCurrentVamp(),
   );
-  const currentSegue = useEngineEvent<MidiPlayerSegueState | undefined>(
+  const currentSegue = useEngineEvent<PlayerSegueState | undefined>(
     globalPlayer.onCurrentSegueChange,
     globalPlayer.getCurrentSegue(),
   );

@@ -45,7 +45,7 @@ const NUM_PEAKS = 10000;
 const peaks = ref<{ min: number; max: number }[]>([]);
 
 async function computePeaks(): Promise<void> {
-  const buffers = player.player.audioBuffers;
+  const buffers = player.player.getAudioBuffers();
   if (buffers.length === 0) {
     peaks.value = [];
     return;

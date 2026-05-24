@@ -21,12 +21,7 @@ import {
 const STEP_DURATION = 1 / 50;
 
 export type { PlayerMode, PlayerSegueState, PlayerStatus, PlayerVampState };
-export type MidiPlayerStatus = PlayerStatus;
-export type MidiPlayerVampState = PlayerVampState;
-export type MidiPlayerSegueState = PlayerSegueState;
-export type MidiSystemEvents = SystemEvents;
-export type MidiTrackEvents = TrackEvents;
-export type MidiPlayerEvents = { system: SystemEvents; track: TrackEvents[] };
+export type PlayerEvents = { system: SystemEvents; track: TrackEvents[] };
 
 type VampAction = "repeat" | "exit-at-end" | "exit-at-barline";
 
@@ -162,7 +157,7 @@ export default class PlayerEngine {
     return this.playbackTranspositionProp.get();
   }
 
-  getMidiEvents(): MidiPlayerEvents {
+  getMidiEvents(): PlayerEvents {
     const track = this.subplayer instanceof MidiBackend ? this.subplayer.getNoteEvents() : [];
     return { system: this.systemEvents, track };
   }
