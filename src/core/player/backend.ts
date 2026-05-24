@@ -7,7 +7,6 @@ import type { SystemEvents } from "./types";
 export type StepResult = {
   p0: Tick;
   p1: Tick;
-  barlineCrossed: boolean;
   deltaConsumed: number;
 };
 

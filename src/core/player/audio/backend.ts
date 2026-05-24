@@ -130,7 +130,7 @@ export default class AudioBackend extends PlayerBackend {
       }
     }
 
-    return { p0: currentPosition, p1, barlineCrossed: false, deltaConsumed: delta };
+    return { p0: currentPosition, p1, deltaConsumed: delta };
   }
 
   onPositionJump(_offset: Tick, newPosition: Tick): void {

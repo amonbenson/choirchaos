@@ -27,7 +27,6 @@ export default class MidiBackend extends PlayerBackend {
   // Tracks the most recently committed position so resetAudioClockReference
   // always anchors to the correct tick value, even when called mid-step.
   private lastKnownPosition: Tick = 0;
-  private barlineCrossedDuringLastStep = false;
 
   private player: any = undefined;
   private instruments: { [key: number]: any } = {};
@@ -271,8 +270,6 @@ export default class MidiBackend extends PlayerBackend {
     const ticksSinceReference = timeSinceReference / this.tickDuration;
     this.audioClockTickPosition = this.audioClockReference.ticks + ticksSinceReference;
 
-    this.barlineCrossedDuringLastStep = false;
-
     const k0 = { tick: p0 };
     const k1 = { tick: p1 };
 
@@ -292,14 +289,11 @@ export default class MidiBackend extends PlayerBackend {
         .forEach(e => this.handleNoteEvent(e));
     });
 
-    return { p0, p1, barlineCrossed: this.barlineCrossedDuringLastStep, deltaConsumed };
+    return { p0, p1, deltaConsumed };
   }
 
   private handleMeasureEvent(event: MeasureEvent): void {
     this.callbacks.onMeasureChanged(event.measure);
-    if (event.measure[1] === 0) {
-      this.barlineCrossedDuringLastStep = true;
-    }
   }
 
   private handleTempoEvent(event: TempoEvent): void {
