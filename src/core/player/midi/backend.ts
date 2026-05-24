@@ -46,10 +46,6 @@ export default class MidiBackend extends PlayerBackend {
     return this.ppqn;
   }
 
-  getAudioBuffers(): AudioBuffer[] {
-    return [];
-  }
-
   getNoteEvents(): TrackEvents[] {
     return this.noteEvents;
   }

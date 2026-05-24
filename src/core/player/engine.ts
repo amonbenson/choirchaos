@@ -145,16 +145,12 @@ export default class PlayerEngine {
     return this.currentSegue.get();
   }
 
-  getPpqn(): number {
-    return this.backend?.getPpqn() ?? 480;
-  }
-
   getCurrentSong(): Song | undefined {
     return this.currentSong;
   }
 
   getAudioBuffers(): AudioBuffer[] {
-    return this.backend?.getAudioBuffers() ?? [];
+    return this.backend instanceof AudioBackend ? this.backend.getAudioBuffers() : [];
   }
 
   getPlaybackSpeed(): number {

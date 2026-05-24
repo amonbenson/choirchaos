@@ -59,12 +59,6 @@ export abstract class PlayerBackend {
   /** Called after a seek so the backend can re-anchor its tempo clock to `bpm`. */
   abstract onTempoRestored(bpm: number): void;
 
-  /** Ticks per quarter note for the loaded song. */
-  abstract getPpqn(): number;
-
-  /** Raw decoded audio buffers, one per track (empty in MIDI mode). */
-  abstract getAudioBuffers(): AudioBuffer[];
-
   /** Stop all output and release all resources. */
   abstract dispose(): void;
 

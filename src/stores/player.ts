@@ -15,9 +15,6 @@ export const usePlayerStore = defineStore("player", () => {
   const ready = computed(() => status.value === "ready");
   const mode = useEvent(globalPlayer.onModeChange, globalPlayer.getMode());
 
-  const ppqn = useEvent(globalPlayer.onStatusChange, globalPlayer.getPpqn(), {
-    getter: () => globalPlayer.getPpqn(),
-  });
   const events = useEvent(globalPlayer.onStatusChange, markRaw(globalPlayer.getMidiEvents()), {
     getter: () => markRaw(globalPlayer.getMidiEvents()),
   });
@@ -126,7 +123,6 @@ export const usePlayerStore = defineStore("player", () => {
     finalMeasure,
     events,
     mode,
-    ppqn,
     playbackSpeed,
     playbackTransposition,
     trackAmplitudes,

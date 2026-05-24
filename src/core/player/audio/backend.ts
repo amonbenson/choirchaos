@@ -26,10 +26,6 @@ export default class AudioBackend extends PlayerBackend {
     super(context, masterInput, systemEvents, callbacks);
   }
 
-  getPpqn(): number {
-    return 480;
-  }
-
   getAudioBuffers(): AudioBuffer[] {
     return this.buffers;
   }
