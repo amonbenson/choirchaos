@@ -1,80 +1,56 @@
 import { defineStore } from "pinia";
-import { computed, type ComputedRef, markRaw, onScopeDispose, shallowRef, watch, type WritableComputedRef } from "vue";
+import { computed, markRaw, onScopeDispose } from "vue";
 
+import { useEvent } from "@/composables/event";
 import type { NoteEvent } from "@/core/midi/events";
 import type Song from "@/core/models/song";
 import PlayerEngine, { type PlayerSegueState, type PlayerVampState } from "@/core/player/engine";
-import type { Event } from "@/core/utils/events";
 import { isNumbering } from "@/core/utils/numbering";
 
 const globalPlayer = new PlayerEngine();
 
-function useEngineEvent<T>(event: Event<T>, initial: T): ComputedRef<T> {
-  const value = shallowRef<T>(initial);
-  const d = event((v) => {
-    value.value = v;
-  });
-  onScopeDispose(() => d.dispose());
-  return computed(() => value.value);
-}
-
-function useWritableEngineEvent<T>(event: Event<T>, initial: T, setter: (v: T) => void): WritableComputedRef<T> {
-  const value = shallowRef<T>(initial);
-  const d = event((v) => {
-    value.value = v;
-  });
-  onScopeDispose(() => d.dispose());
-  return computed({ get: () => value.value, set: setter });
-}
-
 export const usePlayerStore = defineStore("player", () => {
-  const status = useEngineEvent(globalPlayer.onStatusChange, globalPlayer.getStatus());
+  const status = useEvent(globalPlayer.onStatusChange, globalPlayer.getStatus());
   const loading = computed(() => status.value === "loading");
   const ready = computed(() => status.value === "ready");
-  const mode = useEngineEvent(globalPlayer.onModeChange, globalPlayer.getMode());
+  const mode = useEvent(globalPlayer.onModeChange, globalPlayer.getMode());
 
-  const ppqnRef = shallowRef(globalPlayer.getPpqn());
-  const eventsRef = shallowRef(markRaw(globalPlayer.getMidiEvents()));
-  watch(status, (s) => {
-    if (s !== "ready") {
-      return;
-    }
-    ppqnRef.value = globalPlayer.getPpqn();
-    eventsRef.value = markRaw(globalPlayer.getMidiEvents());
+  const ppqn = useEvent(globalPlayer.onStatusChange, globalPlayer.getPpqn(), {
+    getter: () => globalPlayer.getPpqn(),
+  });
+  const events = useEvent(globalPlayer.onStatusChange, markRaw(globalPlayer.getMidiEvents()), {
+    getter: () => markRaw(globalPlayer.getMidiEvents()),
   });
 
-  const ppqn = computed(() => ppqnRef.value);
-  const events = computed(() => eventsRef.value);
+  const playing = useEvent(globalPlayer.onPlayingChange, globalPlayer.isPlaying());
+  const position = useEvent(globalPlayer.onPositionChange, globalPlayer.getPosition());
+  const duration = useEvent(globalPlayer.onDurationChange, globalPlayer.getDuration());
+  const currentTempo = useEvent(globalPlayer.onCurrentTempoChange, globalPlayer.getCurrentTempo());
+  const currentTimeSignature = useEvent(globalPlayer.onCurrentTimeSignatureChange, globalPlayer.getCurrentTimeSignature());
+  const currentMeasure = useEvent(globalPlayer.onCurrentMeasureChange, globalPlayer.getCurrentMeasure());
+  const finalMeasure = useEvent(globalPlayer.onFinalMeasureChange, globalPlayer.getFinalMeasure());
 
-  const playing = useEngineEvent(globalPlayer.onPlayingChange, globalPlayer.isPlaying());
-  const position = useEngineEvent(globalPlayer.onPositionChange, globalPlayer.getPosition());
-  const duration = useEngineEvent(globalPlayer.onDurationChange, globalPlayer.getDuration());
-  const currentTempo = useEngineEvent(globalPlayer.onCurrentTempoChange, globalPlayer.getCurrentTempo());
-  const currentTimeSignature = useEngineEvent(globalPlayer.onCurrentTimeSignatureChange, globalPlayer.getCurrentTimeSignature());
-  const currentMeasure = useEngineEvent(globalPlayer.onCurrentMeasureChange, globalPlayer.getCurrentMeasure());
-  const finalMeasure = useEngineEvent(globalPlayer.onFinalMeasureChange, globalPlayer.getFinalMeasure());
-
-  const currentVamp = useEngineEvent<PlayerVampState | undefined>(
+  const currentVamp = useEvent<PlayerVampState | undefined>(
     globalPlayer.onCurrentVampChange,
     globalPlayer.getCurrentVamp(),
   );
-  const currentSegue = useEngineEvent<PlayerSegueState | undefined>(
+  const currentSegue = useEvent<PlayerSegueState | undefined>(
     globalPlayer.onCurrentSegueChange,
     globalPlayer.getCurrentSegue(),
   );
 
-  const playbackSpeed = useWritableEngineEvent(
+  const playbackSpeed = useEvent(
     globalPlayer.onPlaybackSpeedChange,
     globalPlayer.getPlaybackSpeed(),
-    v => globalPlayer.setPlaybackSpeed(v),
+    { setter: v => globalPlayer.setPlaybackSpeed(v) },
   );
-  const playbackTransposition = useWritableEngineEvent(
+  const playbackTransposition = useEvent(
     globalPlayer.onPlaybackTranspositionChange,
     globalPlayer.getPlaybackTransposition(),
-    v => globalPlayer.setPlaybackTransposition(v),
+    { setter: v => globalPlayer.setPlaybackTransposition(v) },
   );
 
-  const trackAmplitudes = useEngineEvent<number[]>(globalPlayer.onTrackAmplitudesChange, []);
+  const trackAmplitudes = useEvent<number[]>(globalPlayer.onTrackAmplitudesChange, []);
 
   function seek(position: number): void {
     globalPlayer.seek(position);
