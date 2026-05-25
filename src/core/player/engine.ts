@@ -460,7 +460,7 @@ export default class PlayerEngine {
       e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
       e.$endTick = song.findMeasure(e.end[0])?.$beatTicks[0];
       if (e.$startTick !== undefined && e.$endTick !== undefined) {
-        this.vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations, out: e.out ?? "onEnd", vocals: e.vocals ?? "every" });
+        this.vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations, out: e.out ?? "onEnd", vocals: e.vocals ?? "all" });
       } else {
         console.error("Could not resolve location of Vamp:", e);
       }
@@ -515,12 +515,12 @@ export default class PlayerEngine {
       return { action: "repeat", limit: vamp.end };
     }
 
-    if (vamp.out === "everyBeat") {
+    if (vamp.out === "anyBeat") {
       const beatline = this.beatlineBetween(p0, vamp.end);
       if (beatline !== undefined) {
         return { action: "exitEarly", limit: beatline };
       }
-    } else if (vamp.out === "everyBar") {
+    } else if (vamp.out === "anyBar") {
       const barline = this.barlineBetween(p0, vamp.end);
       if (barline !== undefined) {
         return { action: "exitEarly", limit: barline };
@@ -541,9 +541,9 @@ export default class PlayerEngine {
       return false;
     }
 
-    const vocals: VampVocals = this.currentVamp.get()?.vocals ?? "every";
+    const vocals: VampVocals = this.currentVamp.get()?.vocals ?? "all";
     switch (vocals) {
-      case "every": return false;
+      case "all": return false;
       case "first": return phase !== "entering";
       case "last": return phase !== "exiting";
       case "split": return phase === "repeating";
@@ -665,7 +665,7 @@ export default class PlayerEngine {
       e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
       e.$endTick = song.findMeasure(e.end[0])?.$beatTicks[0];
       if (e.$startTick !== undefined && e.$endTick !== undefined) {
-        this.vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations, out: e.out ?? "onEnd", vocals: e.vocals ?? "every" });
+        this.vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations, out: e.out ?? "onEnd", vocals: e.vocals ?? "all" });
       } else {
         console.error("Could not resolve location of Vamp:", e);
       }

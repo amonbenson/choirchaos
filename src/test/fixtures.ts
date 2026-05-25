@@ -175,7 +175,7 @@ export function makeAudioSongWithVamp(): Song {
   );
 }
 
-export function makeAudioSongWithVampOut(out: "onEnd" | "everyBar" | "everyBeat"): Song {
+export function makeAudioSongWithVampOut(out: "onEnd" | "anyBar" | "anyBeat"): Song {
   const audioFile = "mix.mp3";
   const measures = new MeasureList([
     new Measure("1", 4, makeLayout(0.00)),

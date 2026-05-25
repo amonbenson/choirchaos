@@ -30,8 +30,8 @@ export class MarkerEvent extends MeasureEvent {
   }
 }
 
-export type VampOut = "onEnd" | "everyBar" | "everyBeat";
-export type VampVocals = "every" | "first" | "last" | "split";
+export type VampOut = "onEnd" | "anyBar" | "anyBeat";
+export type VampVocals = "all" | "first" | "last" | "split";
 
 export class VampEvent extends MeasureEvent {
   constructor(
