@@ -304,8 +304,7 @@ export default class AudioDriver {
     });
 
     this.refPosition = positionSeconds;
-    // currentTime (not `when`) so visual position leads audio by AUDIO_LOOKAHEAD, matching MIDI.
-    this.scheduledStartTime = this.context.currentTime;
+    this.scheduledStartTime = when;
   }
 
   connect(destination: AudioNode): void {

@@ -1,5 +1,5 @@
 import Measure, { type MeasureLayout, MeasureList } from "../core/models/measure";
-import { MarkerEvent, MeasureEventList, VampEvent } from "../core/models/measureEvent";
+import { MarkerEvent, MeasureEventList, VampEvent, type VampVocals } from "../core/models/measureEvent";
 import Song from "../core/models/song";
 import Track from "../core/models/track";
 import type { MTIMidiJson } from "../core/scripts/jsonTypes/mti";
@@ -125,7 +125,7 @@ export function makeAudioSong(): Song {
   );
 }
 
-export function makeAudioSongWithVocalVamp(): Song {
+export function makeAudioSongWithVocalVamp(vocals: VampVocals = "split"): Song {
   const accompFile = "accomp.mp3";
   const vocalFile = "vocal.mp3";
   const measures = new MeasureList([
@@ -141,7 +141,7 @@ export function makeAudioSongWithVocalVamp(): Song {
   const vamps = new MeasureEventList<VampEvent>();
   // Vamp from measure "2" (250 ms) to measure "3" (500 ms), 2 iterations.
   // Midpoint = 375 ms. Last pass = currentIteration >= 2.
-  vamps.insert(new VampEvent(["2", 0], ["3", 0], 2));
+  vamps.insert(new VampEvent(["2", 0], ["3", 0], 2, undefined, vocals));
 
   return new Song(
     "test-audio-song-vocal-vamp", "1", "Audio Test Song with Vocal Vamp",

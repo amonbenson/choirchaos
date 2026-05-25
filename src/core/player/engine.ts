@@ -621,7 +621,9 @@ export default class PlayerEngine {
       pos = this.applyVampAction(pos, action, deltaTime - deltaTimeConsumed);
     }
 
-    this.position.set(Math.max(0, Math.min(this.duration.get(), pos)));
+    const finalPos = Math.max(0, Math.min(this.duration.get(), pos));
+
+    this.position.set(finalPos);
   }
 
   private syncDisplayAt(pos: Tick): TempoEvent | undefined {

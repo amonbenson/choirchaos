@@ -129,7 +129,6 @@ export default class AudioBackend extends PlayerBackend {
     this.audioDriver?.setTempo(this.playbackSpeed);
     this.audioDriver?.setPitch(this.playbackTransposition);
 
-    // rawP1 (unclamped) so the measure callback fires at the true audio position, not the vamp limit.
     if (this.systemEvents.measure.items().length > 0) {
       const k = { tick: rawP1 } as MeasureEvent;
       const measureEvent = this.systemEvents.measure.search(k, {
