@@ -13,6 +13,9 @@ const ANALYSER_RELEASE = 0.97;
 
 // Matches MIDI's AUDIO_CLOCK_OFFSET: old sources drain for this long before new ones start.
 const AUDIO_LOOKAHEAD = 0.1;
+// Crossfade duration for scheduled seeks: old sources fade out, new ones fade in over this window.
+// Keeps the transition gap-free across render-quantum boundaries.
+const SEEK_XFADE = 0.020;
 
 export type TrackOptions = {
   highPassFilter?: boolean;
@@ -26,6 +29,7 @@ export type AudioDriverOptions = {
 
 export default class AudioDriver {
   private sources: AudioBufferSourceNode[] = [];
+  private sourceFadeGains: GainNode[] = [];
   private rubberBandNode: RubberBandNode;
   private trackInputs: AudioNode[];
   private gainNodes: GainNode[];
@@ -39,8 +43,6 @@ export default class AudioDriver {
   private tempoValue = 1;
   private pitchValue = 0;
 
-  // When the current sources start (or started) playing in AudioContext time.
-  // For immediate starts this equals the play() call time; for scheduled seeks it is in the future.
   private scheduledStartTime = 0;
   private refPosition = 0;
   private playing = false;
@@ -163,7 +165,6 @@ export default class AudioDriver {
 
   getPosition(): number {
     if (this.playing) {
-      // Clamp to zero during a lookahead window (scheduledStartTime is in the future).
       const elapsed = Math.max(0, this.context.currentTime - this.scheduledStartTime);
       return this.refPosition + elapsed * this.tempoValue;
     }
@@ -186,13 +187,8 @@ export default class AudioDriver {
     }
 
     if (this.playing) {
-      // Only reanchor when past the lookahead window. If a scheduled seek is pending
-      // (scheduledStartTime is in the future), refPosition and scheduledStartTime already
-      // define the correct upcoming start — just update the rate.
-      if (this.context.currentTime >= this.scheduledStartTime) {
-        this.refPosition = this.getPosition();
-        this.scheduledStartTime = this.context.currentTime;
-      }
+      this.refPosition = this.getPosition();
+      this.scheduledStartTime = this.context.currentTime;
     }
 
     this.tempoValue = tempo;
@@ -225,11 +221,17 @@ export default class AudioDriver {
     }
 
     this.scheduledStartTime = this.context.currentTime;
+    this.sourceFadeGains = this.buffers.map((_, i) => {
+      const g = this.context.createGain();
+      g.gain.value = 1;
+      g.connect(this.trackInputs[i]!);
+      return g;
+    });
     this.sources = this.buffers.map((buffer, i) => {
       const src = this.context.createBufferSource();
       src.buffer = buffer;
       src.playbackRate.value = this.tempoValue;
-      src.connect(this.trackInputs[i]!);
+      src.connect(this.sourceFadeGains[i]!);
       src.start(0, this.refPosition);
       return src;
     });
@@ -250,6 +252,8 @@ export default class AudioDriver {
       } catch {}
     });
     this.sources = [];
+    this.sourceFadeGains.forEach(g => g.disconnect());
+    this.sourceFadeGains = [];
     this.playing = false;
     this.smoothedAmplitudes.fill(0);
   }
@@ -266,11 +270,6 @@ export default class AudioDriver {
     }
   }
 
-  /**
-   * Schedule a seamless seek to `positionSeconds` at `AUDIO_LOOKAHEAD` seconds in the future.
-   * Current sources drain until the scheduled time; new sources start from the new position
-   * at the same audio frame — no gap, no overlap.
-   */
   scheduleSeek(positionSeconds: number): void {
     if (!this.playing) {
       this.refPosition = positionSeconds;
@@ -278,23 +277,41 @@ export default class AudioDriver {
     }
 
     const when = this.context.currentTime + AUDIO_LOOKAHEAD;
+    const xfadeEnd = when + SEEK_XFADE;
 
-    // Schedule current sources to stop at the jump time; release our reference so they GC
-    // once they stop. Any tail audio (up to AUDIO_LOOKAHEAD seconds) is intentional —
-    // it mirrors the behaviour of MIDI's AUDIO_CLOCK_OFFSET lookahead.
-    this.sources.forEach(s => s.stop(when));
+    // Fade out old sources over the crossfade window then stop them.
+    // onended disconnects the fade gain node so it can be GC'd.
+    const oldFadeGains = this.sourceFadeGains;
+    oldFadeGains.forEach((g) => {
+      g.gain.setValueAtTime(1, when);
+      g.gain.linearRampToValueAtTime(0, xfadeEnd);
+    });
+    this.sources.forEach((s, i) => {
+      s.stop(xfadeEnd);
+      s.onended = () => oldFadeGains[i]?.disconnect();
+    });
 
-    // New sources start from the new position at the same audio time.
-    this.refPosition = positionSeconds;
-    this.scheduledStartTime = when;
+    // New sources fade in over the same window, starting at the new position.
+    this.sourceFadeGains = this.buffers.map((_, i) => {
+      const g = this.context.createGain();
+      g.gain.setValueAtTime(0, when);
+      g.gain.linearRampToValueAtTime(1, xfadeEnd);
+      g.connect(this.trackInputs[i]!);
+      return g;
+    });
     this.sources = this.buffers.map((buffer, i) => {
       const src = this.context.createBufferSource();
       src.buffer = buffer;
       src.playbackRate.value = this.tempoValue;
-      src.connect(this.trackInputs[i]!);
+      src.connect(this.sourceFadeGains[i]!);
       src.start(when, positionSeconds);
       return src;
     });
+
+    this.refPosition = positionSeconds;
+    // Use current time (not `when`) so getPosition() advances immediately,
+    // matching MIDI's behaviour where the visual position leads audio by AUDIO_LOOKAHEAD.
+    this.scheduledStartTime = this.context.currentTime;
   }
 
   connect(destination: AudioNode): void {
