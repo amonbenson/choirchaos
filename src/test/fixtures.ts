@@ -125,6 +125,33 @@ export function makeAudioSong(): Song {
   );
 }
 
+export function makeAudioSongWithVocalVamp(): Song {
+  const accompFile = "accomp.mp3";
+  const vocalFile = "vocal.mp3";
+  const measures = new MeasureList([
+    new Measure("1", 4, makeLayout(0.00)),
+    new Measure("2", 4, makeLayout(0.25)),
+    new Measure("3", 4, makeLayout(0.50)),
+    new Measure("4", 4, makeLayout(0.75)),
+  ]);
+  const tracks = [
+    new Track("Accompaniment", "Accompaniment", 0, accompFile),
+    new Track("Vocals", "Vocal", 0, vocalFile),
+  ];
+  const vamps = new MeasureEventList<VampEvent>();
+  // Vamp from measure "2" (250 ms) to measure "3" (500 ms), 2 iterations.
+  // Midpoint = 375 ms. Last pass = currentIteration >= 2.
+  vamps.insert(new VampEvent(["2", 0], ["3", 0], 2));
+
+  return new Song(
+    "test-audio-song-vocal-vamp", "1", "Audio Test Song with Vocal Vamp",
+    undefined, undefined, undefined,
+    [accompFile, vocalFile], tracks, measures,
+    { markers: new MeasureEventList<MarkerEvent>(), vamps, segue: false },
+    [{ measure: "1", time: 0.0 }, { measure: "3", time: 0.5 }],
+  );
+}
+
 export function makeAudioSongWithVamp(): Song {
   const audioFile = "mix.mp3";
   const measures = new MeasureList([

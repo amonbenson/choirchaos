@@ -2,6 +2,8 @@ import type { MeasureEvent, MidiEventList, NoteEvent, TempoEvent, TimeSignatureE
 
 export type PlayerStatus = "idle" | "loading" | "ready";
 
+export type VampPhase = "entering" | "repeating" | "exiting";
+
 export type PlayerMode = "none" | "midi" | "audio";
 
 export type PlayerVamp = {

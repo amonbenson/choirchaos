@@ -16,6 +16,7 @@ import {
   type PlayerVampState,
   type SystemEvents,
   type TrackEvents,
+  type VampPhase,
 } from "./types";
 
 const STEP_DURATION = 1 / 50;
@@ -23,7 +24,7 @@ const DEFAULT_MEASURE: MeasureReference = ["1", 0];
 const DEFAULT_TEMPO = 120;
 const DEFAULT_TIME_SIGNATURE: TimeSignature = [4, 2];
 
-export type { PlayerMode, PlayerSegueState, PlayerStatus, PlayerVampState };
+export type { PlayerMode, PlayerSegueState, PlayerStatus, PlayerVampState, VampPhase };
 export type PlayerEvents = { system: SystemEvents; track: TrackEvents[] };
 
 type VampAction = "repeat" | "exit-at-end" | "exit-at-barline";
@@ -496,6 +497,20 @@ export default class PlayerEngine {
     }
   }
 
+  private vampPhaseAt(vamp: PlayerVampState, pos: Tick): VampPhase {
+    const midpoint = vamp.start + (vamp.end - vamp.start) / 2;
+    const isLastIteration = vamp.iterations > 0 && vamp.currentIteration >= vamp.iterations;
+    if (vamp.manualExit || (isLastIteration && pos >= midpoint)) {
+      return "exiting";
+    }
+
+    if (vamp.currentIteration === 0 && pos < midpoint) {
+      return "entering";
+    }
+
+    return "repeating";
+  }
+
   private vampAt(tick: Tick): PlayerVampState | undefined {
     // Find a vamp at a given tick. As a typical song has comparatively few vamps, a simple linear search is sufficient here.
     const v = this.vamps.find(v => tick >= v.start && tick < v.end);
@@ -548,7 +563,9 @@ export default class PlayerEngine {
     // For this reason, we pass a "limit" location to the backend's step function, that should not be exceeded
     // The actual number of ticks played by the backend is returned in deltaConsumed and the actual target position in p1
     const { action, limit } = this.vampAction(pos);
-    const { p1, deltaTimeConsumed } = this.backend.step(pos, deltaTime, limit);
+    const vamp = this.currentVamp.get();
+    const phase = vamp ? this.vampPhaseAt(vamp, pos) : undefined;
+    const { p1, deltaTimeConsumed } = this.backend.step(pos, deltaTime, limit, phase);
     pos = p1;
 
     // Note: At this point, pos <- min(pos + delta, limit)
@@ -595,7 +612,9 @@ export default class PlayerEngine {
 
       // As the jump (most likely) happened during the current step, there is still some remaining time that needs to be played after the jump
       if (remainingTime > 0) {
-        const { p1: p1b } = this.backend.step(pos, remainingTime, nextLimit);
+        const updatedVamp = this.currentVamp.get();
+        const remainingPhase = updatedVamp ? this.vampPhaseAt(updatedVamp, pos) : undefined;
+        const { p1: p1b } = this.backend.step(pos, remainingTime, nextLimit, remainingPhase);
         pos = p1b;
       }
     }

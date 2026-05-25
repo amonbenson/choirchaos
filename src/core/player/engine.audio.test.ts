@@ -1,7 +1,7 @@
 import axios from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { makeAudioSong, makeAudioSongWithVamp } from "@/test/fixtures";
+import { makeAudioSong, makeAudioSongWithVamp, makeAudioSongWithVocalVamp } from "@/test/fixtures";
 import { ManualUpdater } from "@/test/updater";
 
 import AudioDriver from "./audio/driver";
@@ -68,6 +68,18 @@ async function loadAudioSong(
   }
 
   await player.load(song);
+}
+
+async function loadVocalSong(
+  player: PlayerEngine,
+  ctx: AudioContext,
+  mockAP: MockAudioDriver,
+): Promise<void> {
+  const buf = ctx.createBuffer(2, 44100, 44100);
+  vi.spyOn(ctx, "decodeAudioData").mockResolvedValue(buf);
+  vi.mocked(axios.get).mockResolvedValue({ data: new ArrayBuffer(8) });
+  vi.mocked(AudioDriver.create).mockResolvedValue(mockAP as unknown as AudioDriver);
+  await player.load(makeAudioSongWithVocalVamp());
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -219,6 +231,117 @@ describe("PlayerEngine – audio mode", () => {
     expect(ap.seek).not.toHaveBeenCalled();
     // Engine position should be back near the vamp start.
     expect(vp.getPosition()).toBeLessThan(500);
+
+    vp.unload();
+    await vc.close();
+  });
+
+  // ── vamp phases ───────────────────────────────────────────────────────────
+
+  // Fixture: 2 tracks (Accompaniment index 0, Vocal index 1), vamp at 250–500 ms,
+  // 2 iterations → last pass is currentIteration >= 2, midpoint = 375 ms.
+  // Phase boundaries tested below via setGain spy.
+
+  it("does not mute vocals during entering phase (iteration 0, first half)", async () => {
+    const { player: vp, updater: vu, ctx: vc } = makePlayer();
+    const ap = makeMockAP();
+    await loadVocalSong(vp, vc, ap);
+    ap.seek.mockClear();
+
+    vp.play();
+    // Step 1: pos advances into vamp region (250–500 ms); vamp entry detected next step.
+    ap.getPosition.mockReturnValue(0.3);
+    vu.step(0.02);
+
+    // Step 2: vamp entered at pos=300 ms (< midpoint 375 ms) → entering phase.
+    ap.getPosition.mockReturnValue(0.3);
+    ap.setGain.mockClear();
+    vu.step(0.02);
+
+    expect(ap.setGain).not.toHaveBeenCalledWith(1, 0); // vocal not muted
+    expect(ap.setGain).toHaveBeenCalledWith(0, 1); // accompaniment plays
+
+    vp.unload();
+    await vc.close();
+  });
+
+  it("mutes vocals during repeating phase (iteration 0, second half)", async () => {
+    const { player: vp, updater: vu, ctx: vc } = makePlayer();
+    const ap = makeMockAP();
+    await loadVocalSong(vp, vc, ap);
+    ap.seek.mockClear();
+
+    vp.play();
+    // Step 1: pos advances past midpoint (400 ms > 375 ms) without entering the vamp yet.
+    ap.getPosition.mockReturnValue(0.4);
+    vu.step(0.02);
+    // Step 2: vamp entered at pos=400 ms (>= midpoint 375 ms, iteration 0) → repeating phase.
+    ap.getPosition.mockReturnValue(0.4);
+    ap.setGain.mockClear();
+    vu.step(0.02);
+
+    expect(ap.setGain).toHaveBeenCalledWith(1, 0); // vocal muted
+    expect(ap.setGain).toHaveBeenCalledWith(0, 1); // accompaniment plays
+
+    vp.unload();
+    await vc.close();
+  });
+
+  it("does not mute vocals during exiting phase triggered by manualExit", async () => {
+    const { player: vp, updater: vu, ctx: vc } = makePlayer();
+    const ap = makeMockAP();
+    await loadVocalSong(vp, vc, ap);
+    ap.seek.mockClear();
+
+    vp.play();
+    // Enter vamp.
+    ap.getPosition.mockReturnValue(0.3);
+    vu.step(0.02);
+    ap.getPosition.mockReturnValue(0.4);
+    vu.step(0.02);
+
+    vp.exitVamp();
+
+    ap.getPosition.mockReturnValue(0.4);
+    ap.setGain.mockClear();
+    vu.step(0.02);
+
+    expect(ap.setGain).not.toHaveBeenCalledWith(1, 0); // vocal not muted
+    expect(ap.setGain).toHaveBeenCalledWith(0, 1); // accompaniment plays
+
+    vp.unload();
+    await vc.close();
+  });
+
+  it("does not mute vocals during exiting phase (last iteration, second half)", async () => {
+    const { player: vp, updater: vu, ctx: vc } = makePlayer();
+    const ap = makeMockAP();
+    ap.scheduleSeek.mockImplementation((pos: number) => {
+      ap.getPosition.mockReturnValue(pos);
+    });
+    await loadVocalSong(vp, vc, ap);
+    ap.seek.mockClear();
+    ap.scheduleSeek.mockClear();
+
+    vp.play();
+    // Step 1: advance into vamp region.
+    ap.getPosition.mockReturnValue(0.3);
+    vu.step(0.02);
+    // Steps 2–3: trigger two vamp loops to reach the last pass (currentIteration = 2).
+    ap.getPosition.mockReturnValue(0.5);
+    vu.step(0.02); // loop → iter 1
+    ap.getPosition.mockReturnValue(0.5);
+    vu.step(0.02); // loop → iter 2
+    // Step 4: last pass; driver at 400 ms advances pos past the midpoint (375 ms).
+    ap.getPosition.mockReturnValue(0.4);
+    vu.step(0.02);
+    // Step 5: pos=400 ms, last pass, second half (>= midpoint) → exiting phase.
+    ap.getPosition.mockReturnValue(0.4);
+    ap.setGain.mockClear();
+    vu.step(0.02);
+
+    expect(ap.setGain).not.toHaveBeenCalledWith(1, 0); // vocal not muted
+    expect(ap.setGain).toHaveBeenCalledWith(0, 1); // accompaniment plays
 
     vp.unload();
     await vc.close();

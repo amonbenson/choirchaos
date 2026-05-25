@@ -2,7 +2,7 @@ import type { NoteEvent } from "../midi/events";
 import type { Tick, TimeSignature } from "../midi/types";
 import type { MeasureReference } from "../models/measure";
 import type Song from "../models/song";
-import type { SystemEvents } from "./types";
+import type { SystemEvents, VampPhase } from "./types";
 
 export type StepResult = {
   p0: Tick;
@@ -51,7 +51,7 @@ export abstract class PlayerBackend {
    * Must not cross `limit` (if given); returns the actual tick range consumed and wall-clock time spent.
    * Fire callbacks for any events (notes, measure/tempo/time-signature changes) encountered in the range.
    */
-  abstract step(currentPosition: Tick, deltaTime: number, limit?: Tick): StepResult;
+  abstract step(currentPosition: Tick, deltaTime: number, limit?: Tick, vampPhase?: VampPhase): StepResult;
 
   /** Called when the engine jumps the position by `offset` ticks (e.g. a vamp loop). */
   abstract onPositionJump(offset: Tick, newPosition: Tick): void;

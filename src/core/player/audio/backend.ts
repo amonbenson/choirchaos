@@ -7,7 +7,7 @@ import type { MeasureReference } from "../../models/measure";
 import type Song from "../../models/song";
 import { resolveUrl } from "../../utils/file";
 import { type BackendCallbacks, type LoadResult, PlayerBackend, type StepResult } from "../backend";
-import type { SystemEvents } from "../types";
+import type { SystemEvents, VampPhase } from "../types";
 import AudioDriver from "./driver";
 
 export default class AudioBackend extends PlayerBackend {
@@ -111,7 +111,7 @@ export default class AudioBackend extends PlayerBackend {
     this.audioDriver?.seek(position / 1000);
   }
 
-  step(currentPosition: Tick, deltaTime: number, limit?: Tick): StepResult {
+  step(currentPosition: Tick, deltaTime: number, limit?: Tick, vampPhase?: VampPhase): StepResult {
     // Get the audio driver position. Clamp to limit so the engine computes precise jump
     // targets — without clamping, a step that fires a few ms past the vamp boundary would
     // make scheduleSeek start slightly past the vamp start instead of exactly at it.
@@ -121,7 +121,11 @@ export default class AudioBackend extends PlayerBackend {
     // Continuously update track gains and tempo/pitch (unchanged values will be ignored by the driver)
     const tracks = this.currentSong?.tracks ?? [];
     for (let i = 0; i < tracks.length; i++) {
-      this.audioDriver?.setGain(i, tracks[i]!.mixer.effectiveGain);
+      const track = tracks[i]!;
+      const gain = vampPhase === "repeating" && track.classification === "Vocal"
+        ? 0
+        : track.mixer.effectiveGain;
+      this.audioDriver?.setGain(i, gain);
     }
 
     this.audioDriver?.setTempo(this.playbackSpeed);
