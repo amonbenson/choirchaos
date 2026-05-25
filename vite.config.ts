@@ -1,4 +1,4 @@
-import { copyFileSync } from "node:fs";
+import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 
 // import vueDevTools from "vite-plugin-vue-devtools";
@@ -20,6 +20,17 @@ export default defineConfig({
         copyFileSync(
           "node_modules/rubberband-web/public/rubberband-processor.js",
           "public/rubberband-processor.js",
+        );
+        // Fix: channelData views are cached Float32Array subarrays into the WASM heap.
+        // When a pitch change causes RubberBand to reallocate internally, WASM memory grows,
+        // detaching the old ArrayBuffer and invalidating those views. Recompute dynamically instead.
+        const dest = "public/rubberband-processor.js";
+        writeFileSync(
+          dest,
+          readFileSync(dest, "utf8").replace(
+            "return this.channelData[A]",
+            "return this.module.HEAPF32.subarray((this.dataPtr>>2)+A*this.length,(this.dataPtr>>2)+(A+1)*this.length)",
+          ),
         );
       },
     },
