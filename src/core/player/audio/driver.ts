@@ -11,11 +11,10 @@ const ANALYSER_GAIN = Math.pow(10, 10 / 20);
 const ANALYSER_ATTACK = 0.9;
 const ANALYSER_RELEASE = 0.97;
 
-// Matches MIDI's AUDIO_CLOCK_OFFSET: old sources drain for this long before new ones start.
+// Must match MIDI's AUDIO_CLOCK_OFFSET — visual position leads audio by the same margin.
 const AUDIO_LOOKAHEAD = 0.1;
-// Crossfade duration for scheduled seeks: old sources fade out, new ones fade in over this window.
-// Keeps the transition gap-free across render-quantum boundaries.
-const SEEK_XFADE = 0.020;
+// Bridges render-quantum gaps: old sources fade out, new ones fade in over this window.
+const SEEK_CROSSFADE = 0.020;
 
 export type TrackOptions = {
   highPassFilter?: boolean;
@@ -244,8 +243,7 @@ export default class AudioDriver {
     }
 
     this.refPosition = this.getPosition();
-    // Sources scheduled for a future start (lookahead window) may throw on stop() in some
-    // environments. Use try-catch; in real browsers this is always safe.
+    // Sources scheduled in the lookahead window may throw on stop() outside the browser.
     this.sources.forEach((s) => {
       try {
         s.stop();
@@ -277,10 +275,8 @@ export default class AudioDriver {
     }
 
     const when = this.context.currentTime + AUDIO_LOOKAHEAD;
-    const xfadeEnd = when + SEEK_XFADE;
+    const xfadeEnd = when + SEEK_CROSSFADE;
 
-    // Fade out old sources over the crossfade window then stop them.
-    // onended disconnects the fade gain node so it can be GC'd.
     const oldFadeGains = this.sourceFadeGains;
     oldFadeGains.forEach((g) => {
       g.gain.setValueAtTime(1, when);
@@ -288,10 +284,9 @@ export default class AudioDriver {
     });
     this.sources.forEach((s, i) => {
       s.stop(xfadeEnd);
-      s.onended = () => oldFadeGains[i]?.disconnect();
+      s.onended = () => oldFadeGains[i]?.disconnect(); // disconnect so the node can be GC'd
     });
 
-    // New sources fade in over the same window, starting at the new position.
     this.sourceFadeGains = this.buffers.map((_, i) => {
       const g = this.context.createGain();
       g.gain.setValueAtTime(0, when);
@@ -309,8 +304,7 @@ export default class AudioDriver {
     });
 
     this.refPosition = positionSeconds;
-    // Use current time (not `when`) so getPosition() advances immediately,
-    // matching MIDI's behaviour where the visual position leads audio by AUDIO_LOOKAHEAD.
+    // currentTime (not `when`) so visual position leads audio by AUDIO_LOOKAHEAD, matching MIDI.
     this.scheduledStartTime = this.context.currentTime;
   }
 

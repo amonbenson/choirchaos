@@ -447,18 +447,16 @@ export default class PlayerEngine {
       return;
     }
 
-    // Rebuild systemEvents.measure (and tempo/timeSignature) with updated warp-map timings.
     this.backend.syncWarp();
 
     const song = this.currentSong;
 
-    // Re-resolve every measure-based event tick so the engine loops between the updated
-    // positions. Do NOT touch currentSegue — it is independent of the warp map.
     for (const e of song.events.markers.items()) {
       e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
       e.$endTick = song.findMeasure(e.end[0])?.$beatTicks[0];
     }
 
+    // currentSegue is intentionally left untouched — it is independent of the warp map.
     this.vamps = [];
     this.currentVamp.set(undefined);
     for (const e of song.events.vamps.items()) {
@@ -471,30 +469,12 @@ export default class PlayerEngine {
       }
     }
 
-    // Update finalMeasure in case warp-map changes moved a measure into/out of the audio range.
     const measures = song.measures.items();
     const audioDuration = this.duration.get();
     const finalMeasure = [...measures].reverse().find(m => (m.$beatTicks[0] ?? Infinity) <= audioDuration) ?? measures[0]!;
     this.finalMeasure.set(finalMeasure.reference(0));
 
-    // Re-sync current display properties (measure, tempo, time signature) against the
-    // new system-event positions without seeking the audio driver.
-    const pos = this.position.get();
-    const opts = { direction: "backward" as const, inclusive: true, extend: true };
-    const measureEvent = this.systemEvents.measure.search({ tick: pos } as MeasureEvent, opts);
-    const tempoEvent = this.systemEvents.tempo.search({ tick: pos } as TempoEvent, opts);
-    const timeSigEvent = this.systemEvents.timeSignature.search({ tick: pos } as TimeSignatureEvent, opts);
-    if (measureEvent) {
-      this.currentMeasure.set(measureEvent.measure);
-    }
-
-    if (tempoEvent) {
-      this.currentTempo.set(tempoEvent.bpm);
-    }
-
-    if (timeSigEvent) {
-      this.currentTimeSignature.set(timeSigEvent.signature);
-    }
+    this.syncDisplayAt(this.position.get());
   }
 
   private vampPhaseAt(vamp: PlayerVampState, pos: Tick): VampPhase {
@@ -623,13 +603,11 @@ export default class PlayerEngine {
     this.position.set(Math.max(0, Math.min(this.duration.get(), pos)));
   }
 
-  private syncStateAt(pos: Tick): void {
-    // Get the most recent events at or before the new position, and update the current state accordingly
+  private syncDisplayAt(pos: Tick): TempoEvent | undefined {
     const opts = { direction: "backward" as const, inclusive: true, extend: true };
     const measureEvent = this.systemEvents.measure.search({ tick: pos } as MeasureEvent, opts);
     const tempoEvent = this.systemEvents.tempo.search({ tick: pos } as TempoEvent, opts);
     const timeSigEvent = this.systemEvents.timeSignature.search({ tick: pos } as TimeSignatureEvent, opts);
-
     if (measureEvent) {
       this.currentMeasure.set(measureEvent.measure);
     }
@@ -642,6 +620,11 @@ export default class PlayerEngine {
       this.currentTimeSignature.set(timeSigEvent.signature);
     }
 
+    return tempoEvent;
+  }
+
+  private syncStateAt(pos: Tick): void {
+    const tempoEvent = this.syncDisplayAt(pos);
     // seek must precede onTempoRestored so lastKnownPosition is anchored first
     this.backend?.seek(pos);
     if (tempoEvent) {

@@ -162,22 +162,15 @@ export function makeAudioSongWithVamp(): Song {
   ]);
   const tracks = [new Track("Mix", "Accompaniment", 0, audioFile)];
   const vamps = new MeasureEventList<VampEvent>();
-  // Vamp from start of measure "2" to start of measure "3", 2 iterations
   vamps.insert(new VampEvent(["2", 0], ["3", 0], 2));
 
+  // Two warp markers give 0.25 s/measure → measure "2" at 250 ms, "3" at 500 ms,
+  // both within the 1-second test buffer in engine.audio.test.ts.
   return new Song(
-    "test-audio-song-vamp",
-    "1",
-    "Audio Test Song with Vamp",
-    undefined,
-    undefined,
-    undefined,
-    [audioFile],
-    tracks,
-    measures,
+    "test-audio-song-vamp", "1", "Audio Test Song with Vamp",
+    undefined, undefined, undefined,
+    [audioFile], tracks, measures,
     { markers: new MeasureEventList<MarkerEvent>(), vamps, segue: false },
-    // Two warp markers give 0.25 s/measure → measure "2" at 250 ms, "3" at 500 ms.
-    // Both fall within the 1-second test buffer used in engine.audio.test.ts.
     [{ measure: "1", time: 0.0 }, { measure: "3", time: 0.5 }],
   );
 }
