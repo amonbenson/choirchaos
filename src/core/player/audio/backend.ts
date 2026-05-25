@@ -199,7 +199,9 @@ export default class AudioBackend extends PlayerBackend {
       measure.$beatTicks = Array.from({ length: measure.beats }, (_, b) => startMs + b * beatDurationMs);
       measure.$tickLength = endMs - startMs;
 
-      this.systemEvents.measure.insert(new MeasureEvent(startMs, measure.reference(0)));
+      for (let b = 0; b < measure.beats; b++) {
+        this.systemEvents.measure.insert(new MeasureEvent(measure.$beatTicks[b]!, measure.reference(b)));
+      }
     }
 
     // Single default tempo event: 125 BPM -> 1 tick/ms

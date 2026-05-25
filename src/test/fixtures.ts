@@ -175,6 +175,29 @@ export function makeAudioSongWithVamp(): Song {
   );
 }
 
+export function makeAudioSongWithVampOut(out: "onEnd" | "everyBar" | "everyBeat"): Song {
+  const audioFile = "mix.mp3";
+  const measures = new MeasureList([
+    new Measure("1", 4, makeLayout(0.00)),
+    new Measure("2", 4, makeLayout(0.25)),
+    new Measure("3", 4, makeLayout(0.50)),
+    new Measure("4", 4, makeLayout(0.75)),
+  ]);
+  const tracks = [new Track("Mix", "Accompaniment", 0, audioFile)];
+  const vamps = new MeasureEventList<VampEvent>();
+  // Infinite vamp (iterations=0) from measure "2" (250 ms) to measure "4" (750 ms), spanning 2 measures.
+  // Internal barline: measure "3" at 500 ms. Beat ticks (4/measure): 250, 312.5, 375, 437.5, 500, … ms.
+  vamps.insert(new VampEvent(["2", 0], ["4", 0], 0, out));
+
+  return new Song(
+    `test-audio-song-vamp-${out}`, "1", `Audio Test Song (out=${out})`,
+    undefined, undefined, undefined,
+    [audioFile], tracks, measures,
+    { markers: new MeasureEventList<MarkerEvent>(), vamps, segue: false },
+    [{ measure: "1", time: 0.0 }, { measure: "3", time: 0.5 }],
+  );
+}
+
 // ── MTIMidiJson factory ────────────────────────────────────────────────────────
 
 export function makeMtiJson(): MTIMidiJson {

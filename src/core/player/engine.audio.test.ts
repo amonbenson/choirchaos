@@ -1,7 +1,7 @@
 import axios from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { makeAudioSong, makeAudioSongWithVamp, makeAudioSongWithVocalVamp } from "@/test/fixtures";
+import { makeAudioSong, makeAudioSongWithVamp, makeAudioSongWithVampOut, makeAudioSongWithVocalVamp } from "@/test/fixtures";
 import { ManualUpdater } from "@/test/updater";
 
 import AudioDriver from "./audio/driver";
@@ -68,6 +68,19 @@ async function loadAudioSong(
   }
 
   await player.load(song);
+}
+
+async function loadOutSong(
+  player: PlayerEngine,
+  ctx: AudioContext,
+  mockAP: MockAudioDriver,
+  out: "onEnd" | "everyBar" | "everyBeat",
+): Promise<void> {
+  const buf = ctx.createBuffer(2, 44100, 44100);
+  vi.spyOn(ctx, "decodeAudioData").mockResolvedValue(buf);
+  vi.mocked(axios.get).mockResolvedValue({ data: new ArrayBuffer(8) });
+  vi.mocked(AudioDriver.create).mockResolvedValue(mockAP as unknown as AudioDriver);
+  await player.load(makeAudioSongWithVampOut(out));
 }
 
 async function loadVocalSong(
@@ -406,6 +419,96 @@ describe("PlayerEngine – audio mode", () => {
     vu.step(0.02);
 
     expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25);
+
+    vp.unload();
+    await vc.close();
+  });
+
+  // ── vamp out ──────────────────────────────────────────────────────────────
+  // Fixture: 4 measures at 0.25 s each, infinite vamp from measure "2" (250 ms) to "4" (750 ms).
+  // Barline inside vamp: measure "3" at 500 ms.  Beat ticks (4/measure): 250, 312.5, 375, 437.5, 500, … ms.
+  // All tests enter the vamp at 300 ms, call exitVamp(), then assert on when/where the exit fires.
+
+  it("onEnd: manual exit plays through the barline and exits only at the vamp end", async () => {
+    const { player: vp, updater: vu, ctx: vc } = makePlayer();
+    const ap = makeMockAP();
+    await loadOutSong(vp, vc, ap, "onEnd");
+    vp.play();
+
+    // Enter vamp region, then enter vamp.
+    ap.getPosition.mockReturnValue(0.3);
+    vu.step(0.02);
+    ap.getPosition.mockReturnValue(0.3);
+    vu.step(0.02);
+
+    vp.exitVamp();
+    ap.scheduleSeek.mockClear();
+
+    // Position at barline (500 ms) — onEnd must NOT exit here.
+    ap.getPosition.mockReturnValue(0.5);
+    vu.step(0.02);
+    expect(ap.scheduleSeek).not.toHaveBeenCalled();
+    expect(vp.getCurrentVamp()).not.toBeUndefined();
+
+    // Position at vamp end (750 ms) — exits without a jump.
+    ap.getPosition.mockReturnValue(0.75);
+    vu.step(0.02);
+    expect(ap.scheduleSeek).not.toHaveBeenCalled();
+    expect(vp.getCurrentVamp()).toBeUndefined();
+
+    vp.unload();
+    await vc.close();
+  });
+
+  it("everyBar: manual exit jumps to vamp end at the next barline", async () => {
+    const { player: vp, updater: vu, ctx: vc } = makePlayer();
+    const ap = makeMockAP();
+    ap.scheduleSeek.mockImplementation((pos: number) => {
+      ap.getPosition.mockReturnValue(pos);
+    });
+    await loadOutSong(vp, vc, ap, "everyBar");
+    vp.play();
+
+    ap.getPosition.mockReturnValue(0.3);
+    vu.step(0.02);
+    ap.getPosition.mockReturnValue(0.3);
+    vu.step(0.02);
+
+    vp.exitVamp();
+    ap.scheduleSeek.mockClear();
+
+    // Overshoot the barline at 500 ms — everyBar exits there and jumps to vamp end (750 ms).
+    ap.getPosition.mockReturnValue(0.52);
+    vu.step(0.02);
+    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.75);
+    expect(vp.getCurrentVamp()).toBeUndefined();
+
+    vp.unload();
+    await vc.close();
+  });
+
+  it("everyBeat: manual exit jumps to vamp end at the next beat", async () => {
+    const { player: vp, updater: vu, ctx: vc } = makePlayer();
+    const ap = makeMockAP();
+    ap.scheduleSeek.mockImplementation((pos: number) => {
+      ap.getPosition.mockReturnValue(pos);
+    });
+    await loadOutSong(vp, vc, ap, "everyBeat");
+    vp.play();
+
+    ap.getPosition.mockReturnValue(0.3);
+    vu.step(0.02);
+    ap.getPosition.mockReturnValue(0.3);
+    vu.step(0.02);
+
+    vp.exitVamp();
+    ap.scheduleSeek.mockClear();
+
+    // Overshoot the next beat at 312.5 ms — everyBeat exits there and jumps to vamp end (750 ms).
+    ap.getPosition.mockReturnValue(0.32);
+    vu.step(0.02);
+    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.75);
+    expect(vp.getCurrentVamp()).toBeUndefined();
 
     vp.unload();
     await vc.close();
