@@ -1,7 +1,7 @@
 import axios from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { makeAudioSong } from "@/test/fixtures";
+import { makeAudioSong, makeAudioSongWithVamp } from "@/test/fixtures";
 import { ManualUpdater } from "@/test/updater";
 
 import AudioDriver from "./audio/driver";
@@ -18,6 +18,7 @@ type MockAudioDriver = {
   play: ReturnType<typeof vi.fn>;
   pause: ReturnType<typeof vi.fn>;
   seek: ReturnType<typeof vi.fn>;
+  scheduleSeek: ReturnType<typeof vi.fn>;
   setGain: ReturnType<typeof vi.fn>;
   setTempo: ReturnType<typeof vi.fn>;
   setPitch: ReturnType<typeof vi.fn>;
@@ -31,6 +32,7 @@ function makeMockAP(): MockAudioDriver {
     play: vi.fn(),
     pause: vi.fn(),
     seek: vi.fn(),
+    scheduleSeek: vi.fn(),
     setGain: vi.fn(),
     setTempo: vi.fn(),
     setPitch: vi.fn(),
@@ -175,5 +177,114 @@ describe("PlayerEngine – audio mode", () => {
 
     sp.unload();
     await sc.close();
+  });
+
+  // ── vamp ─────────────────────────────────────────────────────────────────
+
+  it("calls scheduleSeek (not seek) when crossing a vamp boundary", async () => {
+    const { player: vp, updater: vu, ctx: vc } = makePlayer();
+    const ap = makeMockAP();
+
+    // Wire scheduleSeek so the mock driver reports the new position after the jump.
+    ap.scheduleSeek.mockImplementation((pos: number) => {
+      ap.getPosition.mockReturnValue(pos);
+    });
+
+    const buf = vc.createBuffer(2, 44100, 44100);
+    vi.spyOn(vc, "decodeAudioData").mockResolvedValue(buf);
+    vi.mocked(axios.get).mockResolvedValue({ data: new ArrayBuffer(8) });
+    vi.mocked(AudioDriver.create).mockResolvedValue(ap as unknown as AudioDriver);
+
+    await vp.load(makeAudioSongWithVamp());
+    // Clear calls from load() (initial seek to 0) so assertions below are unambiguous.
+    ap.seek.mockClear();
+    ap.scheduleSeek.mockClear();
+
+    vp.play();
+
+    // First step: driver reports 300 ms — inside the vamp region [250 ms, 500 ms).
+    // The engine stores this as the new position; vamp entry is detected at the
+    // START of the next step (not the end of this one).
+    ap.getPosition.mockReturnValue(0.3);
+    vu.step(0.02);
+
+    // Second step: driver reports 500 ms — at the vamp end. The engine detects vamp
+    // entry (pos=300 is in range), applies the limit, then triggers the jump.
+    ap.getPosition.mockReturnValue(0.5);
+    vu.step(0.02);
+
+    // scheduleSeek must have been called with the vamp-start position (250 ms = 0.25 s).
+    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25);
+    // Hard seek must NOT have been called for the vamp jump.
+    expect(ap.seek).not.toHaveBeenCalled();
+    // Engine position should be back near the vamp start.
+    expect(vp.getPosition()).toBeLessThan(500);
+
+    vp.unload();
+    await vc.close();
+  });
+
+  it("scheduleSeek uses exact vamp start even when getPosition overshoots the boundary", async () => {
+    const { player: vp, updater: vu, ctx: vc } = makePlayer();
+    const ap = makeMockAP();
+    ap.scheduleSeek.mockImplementation((pos: number) => {
+      ap.getPosition.mockReturnValue(pos);
+    });
+
+    const buf = vc.createBuffer(2, 44100, 44100);
+    vi.spyOn(vc, "decodeAudioData").mockResolvedValue(buf);
+    vi.mocked(axios.get).mockResolvedValue({ data: new ArrayBuffer(8) });
+    vi.mocked(AudioDriver.create).mockResolvedValue(ap as unknown as AudioDriver);
+    await vp.load(makeAudioSongWithVamp());
+    ap.seek.mockClear();
+    ap.scheduleSeek.mockClear();
+
+    vp.play();
+
+    // Enter vamp region.
+    ap.getPosition.mockReturnValue(0.3);
+    vu.step(0.02);
+
+    // Overshoot vamp end by 10 ms (0.51 instead of 0.50). The limit-clamping in step()
+    // ensures the jump target is still exactly 0.25 (= vamp start), not 0.26.
+    ap.getPosition.mockReturnValue(0.51);
+    vu.step(0.02);
+
+    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25);
+
+    vp.unload();
+    await vc.close();
+  });
+
+  it("syncWarp re-resolves vamp boundaries so the engine keeps looping at the new positions", async () => {
+    const { player: vp, updater: vu, ctx: vc } = makePlayer();
+    const ap = makeMockAP();
+    ap.scheduleSeek.mockImplementation((pos: number) => {
+      ap.getPosition.mockReturnValue(pos);
+    });
+
+    const buf = vc.createBuffer(2, 44100, 44100);
+    vi.spyOn(vc, "decodeAudioData").mockResolvedValue(buf);
+    vi.mocked(axios.get).mockResolvedValue({ data: new ArrayBuffer(8) });
+    vi.mocked(AudioDriver.create).mockResolvedValue(ap as unknown as AudioDriver);
+    await vp.load(makeAudioSongWithVamp());
+    ap.seek.mockClear();
+    ap.scheduleSeek.mockClear();
+
+    // syncWarp must complete without error (re-resolves ticks, updates display state).
+    expect(() => vp.syncWarp()).not.toThrow();
+    expect(vp.getStatus()).toBe("ready");
+
+    // After syncWarp the vamp is still functional — trigger it to confirm.
+    vp.play();
+    ap.getPosition.mockReturnValue(0.3);
+    vu.step(0.02);
+    ap.getPosition.mockReturnValue(0.5);
+    vu.step(0.02);
+
+    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25);
+
+    vp.unload();
+    await vc.close();
   });
 });

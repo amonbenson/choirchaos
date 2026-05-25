@@ -11,6 +11,9 @@ const ANALYSER_GAIN = Math.pow(10, 10 / 20);
 const ANALYSER_ATTACK = 0.9;
 const ANALYSER_RELEASE = 0.97;
 
+// Matches MIDI's AUDIO_CLOCK_OFFSET: old sources drain for this long before new ones start.
+const AUDIO_LOOKAHEAD = 0.1;
+
 export type TrackOptions = {
   highPassFilter?: boolean;
   compressor?: boolean;
@@ -36,7 +39,9 @@ export default class AudioDriver {
   private tempoValue = 1;
   private pitchValue = 0;
 
-  private refContextTime = 0;
+  // When the current sources start (or started) playing in AudioContext time.
+  // For immediate starts this equals the play() call time; for scheduled seeks it is in the future.
+  private scheduledStartTime = 0;
   private refPosition = 0;
   private playing = false;
 
@@ -158,7 +163,9 @@ export default class AudioDriver {
 
   getPosition(): number {
     if (this.playing) {
-      return this.refPosition + (this.context.currentTime - this.refContextTime) * this.tempoValue;
+      // Clamp to zero during a lookahead window (scheduledStartTime is in the future).
+      const elapsed = Math.max(0, this.context.currentTime - this.scheduledStartTime);
+      return this.refPosition + elapsed * this.tempoValue;
     }
 
     return this.refPosition;
@@ -179,8 +186,13 @@ export default class AudioDriver {
     }
 
     if (this.playing) {
-      this.refPosition = this.getPosition();
-      this.refContextTime = this.context.currentTime;
+      // Only reanchor when past the lookahead window. If a scheduled seek is pending
+      // (scheduledStartTime is in the future), refPosition and scheduledStartTime already
+      // define the correct upcoming start — just update the rate.
+      if (this.context.currentTime >= this.scheduledStartTime) {
+        this.refPosition = this.getPosition();
+        this.scheduledStartTime = this.context.currentTime;
+      }
     }
 
     this.tempoValue = tempo;
@@ -212,7 +224,7 @@ export default class AudioDriver {
       return;
     }
 
-    this.refContextTime = this.context.currentTime;
+    this.scheduledStartTime = this.context.currentTime;
     this.sources = this.buffers.map((buffer, i) => {
       const src = this.context.createBufferSource();
       src.buffer = buffer;
@@ -230,7 +242,13 @@ export default class AudioDriver {
     }
 
     this.refPosition = this.getPosition();
-    this.sources.forEach(s => s.stop());
+    // Sources scheduled for a future start (lookahead window) may throw on stop() in some
+    // environments. Use try-catch; in real browsers this is always safe.
+    this.sources.forEach((s) => {
+      try {
+        s.stop();
+      } catch {}
+    });
     this.sources = [];
     this.playing = false;
     this.smoothedAmplitudes.fill(0);
@@ -246,6 +264,37 @@ export default class AudioDriver {
     if (wasPlaying) {
       this.play();
     }
+  }
+
+  /**
+   * Schedule a seamless seek to `positionSeconds` at `AUDIO_LOOKAHEAD` seconds in the future.
+   * Current sources drain until the scheduled time; new sources start from the new position
+   * at the same audio frame — no gap, no overlap.
+   */
+  scheduleSeek(positionSeconds: number): void {
+    if (!this.playing) {
+      this.refPosition = positionSeconds;
+      return;
+    }
+
+    const when = this.context.currentTime + AUDIO_LOOKAHEAD;
+
+    // Schedule current sources to stop at the jump time; release our reference so they GC
+    // once they stop. Any tail audio (up to AUDIO_LOOKAHEAD seconds) is intentional —
+    // it mirrors the behaviour of MIDI's AUDIO_CLOCK_OFFSET lookahead.
+    this.sources.forEach(s => s.stop(when));
+
+    // New sources start from the new position at the same audio time.
+    this.refPosition = positionSeconds;
+    this.scheduledStartTime = when;
+    this.sources = this.buffers.map((buffer, i) => {
+      const src = this.context.createBufferSource();
+      src.buffer = buffer;
+      src.playbackRate.value = this.tempoValue;
+      src.connect(this.trackInputs[i]!);
+      src.start(when, positionSeconds);
+      return src;
+    });
   }
 
   connect(destination: AudioNode): void {

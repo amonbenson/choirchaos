@@ -111,11 +111,12 @@ export default class AudioBackend extends PlayerBackend {
     this.audioDriver?.seek(position / 1000);
   }
 
-  step(currentPosition: Tick, deltaTime: number, _limit?: Tick): StepResult {
-    // Get the audio driver position
-    const p1 = (this.audioDriver?.getPosition() ?? 0) * 1000;
-
-    // TODO: Make sure the audio driver (p1) and engine (currentPosition) stay in sync, especially when vamps are implemented
+  step(currentPosition: Tick, deltaTime: number, limit?: Tick): StepResult {
+    // Get the audio driver position. Clamp to limit so the engine computes precise jump
+    // targets — without clamping, a step that fires a few ms past the vamp boundary would
+    // make scheduleSeek start slightly past the vamp start instead of exactly at it.
+    const rawP1 = (this.audioDriver?.getPosition() ?? 0) * 1000;
+    const p1 = limit !== undefined ? Math.min(rawP1, limit) : rawP1;
 
     // Continuously update track gains and tempo/pitch (unchanged values will be ignored by the driver)
     const tracks = this.currentSong?.tracks ?? [];
@@ -126,9 +127,10 @@ export default class AudioBackend extends PlayerBackend {
     this.audioDriver?.setTempo(this.playbackSpeed);
     this.audioDriver?.setPitch(this.playbackTransposition);
 
-    // Fire measure change callback if we've crossed into a new measure
+    // Fire measure change callback if we've crossed into a new measure.
+    // Use rawP1 (actual audio position) so the callback fires at the right audio moment.
     if (this.systemEvents.measure.items().length > 0) {
-      const k = { tick: p1 } as MeasureEvent;
+      const k = { tick: rawP1 } as MeasureEvent;
       const measureEvent = this.systemEvents.measure.search(k, {
         direction: "backward",
         inclusive: true,
@@ -147,9 +149,9 @@ export default class AudioBackend extends PlayerBackend {
   }
 
   onPositionJump(_offset: Tick, newPosition: Tick): void {
-    // Seek the driver to the new position (one tick = one millisecond in audio mode)
-    // TODO: In the future, when vamps are implemented, we might want to "blend" between positions or do some more complex handling instead of a hard seek
-    this.audioDriver?.seek(newPosition / 1000);
+    // Schedule a seamless seek: current sources drain for AUDIO_LOOKAHEAD seconds, then new
+    // sources start from the new position at the same audio frame — no audible break.
+    this.audioDriver?.scheduleSeek(newPosition / 1000);
   }
 
   onTempoRestored(_bpm: number): void {}

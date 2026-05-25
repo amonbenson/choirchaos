@@ -1,5 +1,5 @@
 import Measure, { type MeasureLayout, MeasureList } from "../core/models/measure";
-import { MeasureEventList, VampEvent } from "../core/models/measureEvent";
+import { MarkerEvent, MeasureEventList, VampEvent } from "../core/models/measureEvent";
 import Song from "../core/models/song";
 import Track from "../core/models/track";
 import type { MTIMidiJson } from "../core/scripts/jsonTypes/mti";
@@ -122,6 +122,36 @@ export function makeAudioSong(): Song {
     [audioFile],
     tracks,
     measures,
+  );
+}
+
+export function makeAudioSongWithVamp(): Song {
+  const audioFile = "mix.mp3";
+  const measures = new MeasureList([
+    new Measure("1", 4, makeLayout(0.00)),
+    new Measure("2", 4, makeLayout(0.25)),
+    new Measure("3", 4, makeLayout(0.50)),
+    new Measure("4", 4, makeLayout(0.75)),
+  ]);
+  const tracks = [new Track("Mix", "Accompaniment", 0, audioFile)];
+  const vamps = new MeasureEventList<VampEvent>();
+  // Vamp from start of measure "2" to start of measure "3", 2 iterations
+  vamps.insert(new VampEvent(["2", 0], ["3", 0], 2));
+
+  return new Song(
+    "test-audio-song-vamp",
+    "1",
+    "Audio Test Song with Vamp",
+    undefined,
+    undefined,
+    undefined,
+    [audioFile],
+    tracks,
+    measures,
+    { markers: new MeasureEventList<MarkerEvent>(), vamps, segue: false },
+    // Two warp markers give 0.25 s/measure → measure "2" at 250 ms, "3" at 500 ms.
+    // Both fall within the 1-second test buffer used in engine.audio.test.ts.
+    [{ measure: "1", time: 0.0 }, { measure: "3", time: 0.5 }],
   );
 }
 
