@@ -240,8 +240,9 @@ describe("PlayerEngine – audio mode", () => {
     ap.getPosition.mockReturnValue(0.5);
     vu.step(0.02);
 
-    // scheduleSeek must have been called with the vamp-start position (250 ms = 0.25 s).
-    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25);
+    // scheduleSeek must have been called with the vamp-start position (250 ms = 0.25 s)
+    // and lookahead=0 so the audio switches immediately (no 100ms overshoot past the boundary).
+    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25, 0);
     // Hard seek must NOT have been called for the vamp jump.
     expect(ap.seek).not.toHaveBeenCalled();
     // Engine position should be back near the vamp start.
@@ -388,7 +389,7 @@ describe("PlayerEngine – audio mode", () => {
     ap.getPosition.mockReturnValue(0.51);
     vu.step(0.02);
 
-    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25);
+    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25, 0);
 
     vp.unload();
     await vc.close();
@@ -420,7 +421,7 @@ describe("PlayerEngine – audio mode", () => {
     ap.getPosition.mockReturnValue(0.5);
     vu.step(0.02);
 
-    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25);
+    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25, 0);
 
     vp.unload();
     await vc.close();
@@ -482,7 +483,7 @@ describe("PlayerEngine – audio mode", () => {
     // Overshoot the barline at 500 ms — everyBar exits there and jumps to vamp end (750 ms).
     ap.getPosition.mockReturnValue(0.52);
     vu.step(0.02);
-    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.75);
+    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.75, 0);
     expect(vp.getCurrentVamp()).toBeUndefined();
 
     vp.unload();
@@ -575,7 +576,7 @@ describe("PlayerEngine – audio mode", () => {
     // Overshoot the next beat at 312.5 ms — everyBeat exits there and jumps to vamp end (750 ms).
     ap.getPosition.mockReturnValue(0.32);
     vu.step(0.02);
-    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.75);
+    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.75, 0);
     expect(vp.getCurrentVamp()).toBeUndefined();
 
     vp.unload();

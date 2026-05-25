@@ -269,6 +269,134 @@ describe("PlayerEngine – MIDI mode", () => {
     await vc.close();
   });
 
+  it("does not emit notes at or beyond vamp end tick during repeat iterations", async () => {
+    const { player: vp, updater: vu, ctx: vc } = makePlayer();
+    mockAxios();
+    await vp.load(makeMidiSongWithVamp()); // vamp: [2400, 4320), 2 iterations
+
+    const allNotes: NoteEvent[] = [];
+    vp.onNote(e => allNotes.push(e));
+
+    vp.play();
+
+    // Step until the first iteration completes (currentIteration becomes 1)
+    for (let i = 0; i < 10_000 && (vp.getCurrentVamp()?.currentIteration ?? 0) < 1; i++) {
+      vu.step(0.02);
+    }
+
+    expect(vp.getCurrentVamp()?.currentIteration).toBe(1);
+    expect(vp.getPosition()).toBeLessThan(TICKS.measure3);
+
+    // Notes at ticks >= vamp.end (measure 3) must not have fired during a repeat
+    const notesAtOrBeyondVampEnd = allNotes.filter(n => n.tick >= TICKS.measure3);
+    expect(notesAtOrBeyondVampEnd).toHaveLength(0);
+
+    vp.unload();
+    await vc.close();
+  });
+
+  it("does not schedule audio for notes in the danger zone near vamp end during iterations", async () => {
+    // Danger zone: notes within AUDIO_CLOCK_OFFSET (100ms = 96 ticks at 120 BPM) before
+    // vamp.end are scheduled 100ms in the future by queueWaveTable. Without the fix, these
+    // play during the next iteration after the vamp jump fires. The visual onNote callback
+    // must still fire (so the UI stays correct), but queueWaveTable must be suppressed.
+    const { player: vp, updater: vu, ctx: vc } = makePlayer();
+
+    // Inject a note at tick 4280 — inside danger zone [4224, 4320) with vamp.end=4320
+    const { parseArrayBuffer } = await import("midi-json-parser");
+    vi.mocked(parseArrayBuffer).mockResolvedValueOnce({
+      tracks: [
+        [],
+        [
+          { delta: 0, trackName: TRACK_NAMES.instrument },
+          { delta: 480, noteOn: { noteNumber: 60, velocity: 80 } },
+          { delta: 240, noteOff: { noteNumber: 60, velocity: 0 } },
+        ],
+        [
+          { delta: 0, trackName: TRACK_NAMES.vocals },
+          { delta: 4280, noteOn: { noteNumber: 65, velocity: 80 } }, // F4 at tick 4280, in danger zone
+          { delta: 480, noteOff: { noteNumber: 65, velocity: 0 } },
+        ],
+      ],
+    });
+    mockAxios();
+    await vp.load(makeMidiSongWithVamp());
+
+    const wafPlayer = new (window as any).WebAudioFontPlayer();
+    (wafPlayer.queueWaveTable as ReturnType<typeof vi.fn>).mockClear();
+
+    const allNotes: NoteEvent[] = [];
+    vp.onNote(e => allNotes.push(e));
+
+    vp.play();
+
+    // Step until first iteration completes (currentIteration becomes 1)
+    for (let i = 0; i < 10_000 && (vp.getCurrentVamp()?.currentIteration ?? 0) < 1; i++) {
+      vu.step(0.02);
+    }
+
+    expect(vp.getCurrentVamp()?.currentIteration).toBe(1);
+
+    // Visual callback must fire for the danger-zone note (UI needs it)
+    const dangerZoneNotes = allNotes.filter(n => n.pitch === 65);
+    expect(dangerZoneNotes.length).toBeGreaterThan(0);
+
+    // But queueWaveTable must NOT have been called with pitch 65 during the iteration
+    const scheduledPitches = (wafPlayer.queueWaveTable as ReturnType<typeof vi.fn>).mock.calls
+      .map((args: unknown[]) => args[4]);
+    expect(scheduledPitches).not.toContain(65);
+
+    vp.unload();
+    await vc.close();
+  });
+
+  it("emits notes at vamp end after the vamp fully exits", async () => {
+    const { player: vp, updater: vu, ctx: vc } = makePlayer();
+    mockAxios();
+    await vp.load(makeMidiSongWithVamp());
+
+    const allNotes: NoteEvent[] = [];
+    vp.onNote(e => allNotes.push(e));
+
+    vp.play();
+
+    // Wait for the vamp to exit entirely, then step past the vocal note at tick 4320
+    for (let i = 0; i < 10_000 && vp.getCurrentVamp() !== undefined; i++) {
+      vu.step(0.02);
+    }
+
+    stepPast(vu, vp, TICKS.measure3 + 10);
+
+    expect(vp.getCurrentVamp()).toBeUndefined();
+    const vocalG4 = allNotes.filter(n => n.pitch === 67 && n.trackIndex === 1);
+    expect(vocalG4.length).toBeGreaterThan(0);
+
+    vp.unload();
+    await vc.close();
+  });
+
+  it("does not show a measure beyond the vamp end during repeat iterations", async () => {
+    const { player: vp, updater: vu, ctx: vc } = makePlayer();
+    mockAxios();
+    await vp.load(makeMidiSongWithVamp());
+
+    const measuresShown: string[] = [];
+    vp.onCurrentMeasureChange(m => measuresShown.push(m[0]));
+
+    vp.play();
+
+    for (let i = 0; i < 10_000 && (vp.getCurrentVamp()?.currentIteration ?? 0) < 1; i++) {
+      vu.step(0.02);
+    }
+
+    expect(vp.getCurrentVamp()?.currentIteration).toBe(1);
+    // Measure "3" must never appear while still repeating
+    expect(measuresShown.filter(m => m === "3")).toHaveLength(0);
+
+    vp.unload();
+    await vc.close();
+  });
+
   // ── segue ─────────────────────────────────────────────────────────────────
 
   it("emits segue when reaching the end with segue enabled", async () => {

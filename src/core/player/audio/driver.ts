@@ -268,13 +268,13 @@ export default class AudioDriver {
     }
   }
 
-  scheduleSeek(positionSeconds: number): void {
+  scheduleSeek(positionSeconds: number, lookahead = AUDIO_LOOKAHEAD): void {
     if (!this.playing) {
       this.refPosition = positionSeconds;
       return;
     }
 
-    const when = this.context.currentTime + AUDIO_LOOKAHEAD;
+    const when = this.context.currentTime + lookahead;
     const xfadeEnd = when + SEEK_CROSSFADE;
 
     const oldFadeGains = this.sourceFadeGains;

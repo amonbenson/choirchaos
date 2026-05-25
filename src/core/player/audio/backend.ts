@@ -129,7 +129,7 @@ export default class AudioBackend extends PlayerBackend {
     this.audioDriver?.setTempo(this.playbackSpeed);
     this.audioDriver?.setPitch(this.playbackTransposition);
 
-    if (this.systemEvents.measure.items().length > 0) {
+    if (this.systemEvents.measure.items().length > 0 && !(limit !== undefined && rawP1 >= limit)) {
       const k = { tick: rawP1 } as MeasureEvent;
       const measureEvent = this.systemEvents.measure.search(k, {
         direction: "backward",
@@ -149,8 +149,9 @@ export default class AudioBackend extends PlayerBackend {
   }
 
   onPositionJump(_offset: Tick, newPosition: Tick): void {
-    // scheduleSeek crossfades to the new position to avoid an audible break.
-    this.audioDriver?.scheduleSeek(newPosition / 1000);
+    // Use lookahead=0 so vamp jumps switch audio immediately (within SEEK_CROSSFADE only),
+    // preventing old sources from playing past the vamp boundary.
+    this.audioDriver?.scheduleSeek(newPosition / 1000, 0);
   }
 
   onTempoRestored(_bpm: number): void {}

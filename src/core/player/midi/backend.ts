@@ -297,7 +297,7 @@ export default class MidiBackend extends PlayerBackend {
     this.noteEvents.forEach((trackEvents) => {
       trackEvents.note
         .searchRange(k0 as NoteEvent, k1 as NoteEvent)
-        .forEach(e => this.handleNoteEvent(e));
+        .forEach(e => this.handleNoteEvent(e, limit));
     });
 
     return { p0, p1, deltaTimeConsumed };
@@ -323,8 +323,8 @@ export default class MidiBackend extends PlayerBackend {
     this.callbacks.onTimeSignatureChanged(event.signature);
   }
 
-  private handleNoteEvent(event: NoteEvent): void {
-    // Notify the engine
+  private handleNoteEvent(event: NoteEvent, limit?: Tick): void {
+    // Notify the engine (always, for visual feedback)
     this.callbacks.onNote(event);
 
     if (!this.player || !this.currentSong) {
@@ -347,6 +347,14 @@ export default class MidiBackend extends PlayerBackend {
 
       if (start < 0) {
         console.warn(`Clock offset too small! Event scheduled ${-start}s in the past.`);
+      }
+
+      // Skip scheduling if this note would play after the vamp boundary. Notes
+      // within AUDIO_CLOCK_OFFSET of the limit are scheduled 100ms in the future
+      // but the vamp jump fires within one step, so they would bleed into the
+      // next iteration.
+      if (limit !== undefined && event.tick > limit - AUDIO_CLOCK_OFFSET / this.tickDuration) {
+        return;
       }
 
       this.player.queueWaveTable(
