@@ -522,16 +522,16 @@ export default class PlayerEngine {
     if (vamp.out === "everyBeat") {
       const beatline = this.beatlineBetween(p0, vamp.end);
       if (beatline !== undefined) {
-        return { action: "exit-early", limit: beatline };
+        return { action: "exitEarly", limit: beatline };
       }
     } else if (vamp.out === "everyBar") {
       const barline = this.barlineBetween(p0, vamp.end);
       if (barline !== undefined) {
-        return { action: "exit-early", limit: barline };
+        return { action: "exitEarly", limit: barline };
       }
     }
 
-    return { action: "exit-at-end", limit: vamp.end };
+    return { action: "exitAtEnd", limit: vamp.end };
   }
 
   private tryEnterVamp(pos: Tick): void {
@@ -556,7 +556,7 @@ export default class PlayerEngine {
     if (action === "exitEarly") {
       jumpOffset = vamp.end - p1;
       this.currentVamp.set(undefined);
-    } else if (action === "exit-at-end") {
+    } else if (action === "exitAtEnd") {
       this.currentVamp.set(undefined);
     } else {
       jumpOffset = -(vamp.end - vamp.start);
