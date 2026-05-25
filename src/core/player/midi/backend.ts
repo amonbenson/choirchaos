@@ -9,7 +9,7 @@ import type Song from "../../models/song";
 import type { MTIMidiJson } from "../../scripts/jsonTypes/mti";
 import { resolveUrl } from "../../utils/file";
 import { type BackendCallbacks, type LoadResult, PlayerBackend, type StepResult } from "../backend";
-import type { SystemEvents, TrackEvents, VampPhase } from "../types";
+import type { SystemEvents, TrackEvents } from "../types";
 
 const AUDIO_CLOCK_OFFSET = 0.1;
 
@@ -260,7 +260,7 @@ export default class MidiBackend extends PlayerBackend {
     this.resetAudioClockReference();
   }
 
-  step(currentPosition: Tick, deltaTime: number, limit?: Tick, _vampPhase?: VampPhase): StepResult {
+  step(currentPosition: Tick, deltaTime: number, limit?: Tick, _muteVocals?: boolean): StepResult {
     const p0 = currentPosition;
     let p1 = p0 + deltaTime / this.tickDuration;
 

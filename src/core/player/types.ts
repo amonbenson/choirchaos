@@ -1,7 +1,7 @@
 import type { MeasureEvent, MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "../midi/events";
-import type { VampOut } from "../models/measureEvent";
+import type { VampOut, VampVocals } from "../models/measureEvent";
 
-export type { VampOut };
+export type { VampOut, VampVocals };
 
 export type PlayerStatus = "idle" | "loading" | "ready";
 
@@ -14,6 +14,7 @@ export type PlayerVamp = {
   end: number;
   iterations: number;
   out: VampOut;
+  vocals: VampVocals;
 };
 
 export type PlayerVampState = PlayerVamp & {

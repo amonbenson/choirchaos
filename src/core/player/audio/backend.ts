@@ -7,7 +7,7 @@ import type { MeasureReference } from "../../models/measure";
 import type Song from "../../models/song";
 import { resolveUrl } from "../../utils/file";
 import { type BackendCallbacks, type LoadResult, PlayerBackend, type StepResult } from "../backend";
-import type { SystemEvents, VampPhase } from "../types";
+import type { SystemEvents } from "../types";
 import AudioDriver from "./driver";
 
 export default class AudioBackend extends PlayerBackend {
@@ -111,7 +111,7 @@ export default class AudioBackend extends PlayerBackend {
     this.audioDriver?.seek(position / 1000);
   }
 
-  step(currentPosition: Tick, deltaTime: number, limit?: Tick, vampPhase?: VampPhase): StepResult {
+  step(currentPosition: Tick, deltaTime: number, limit?: Tick, muteVocals?: boolean): StepResult {
     const rawP1 = (this.audioDriver?.getPosition() ?? 0) * 1000;
     // Clamp to limit so overshoot doesn't shift the vamp jump target.
     const p1 = limit !== undefined ? Math.min(rawP1, limit) : rawP1;
@@ -120,7 +120,7 @@ export default class AudioBackend extends PlayerBackend {
     const tracks = this.currentSong?.tracks ?? [];
     for (let i = 0; i < tracks.length; i++) {
       const track = tracks[i]!;
-      const gain = vampPhase === "repeating" && track.classification === "Vocal"
+      const gain = muteVocals && track.classification === "Vocal"
         ? 0
         : track.mixer.effectiveGain;
       this.audioDriver?.setGain(i, gain);

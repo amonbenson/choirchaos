@@ -31,6 +31,7 @@ export class MarkerEvent extends MeasureEvent {
 }
 
 export type VampOut = "onEnd" | "everyBar" | "everyBeat";
+export type VampVocals = "every" | "first" | "last" | "split";
 
 export class VampEvent extends MeasureEvent {
   constructor(
@@ -38,6 +39,7 @@ export class VampEvent extends MeasureEvent {
     public end: MeasureReference,
     public iterations: number,
     public out?: VampOut,
+    public vocals?: VampVocals,
   ) {
     super(start, end);
   }
@@ -49,11 +51,12 @@ export class VampEvent extends MeasureEvent {
       end: this.end,
       iterations: this.iterations,
       ...(this.out !== undefined ? { out: this.out } : {}),
+      ...(this.vocals !== undefined ? { vocals: this.vocals } : {}),
     };
   }
 
-  public static deserialize({ start, end, iterations, out }: any): VampEvent {
-    return new VampEvent(start, end, iterations, out);
+  public static deserialize({ start, end, iterations, out, vocals }: any): VampEvent {
+    return new VampEvent(start, end, iterations, out, vocals);
   }
 }
 

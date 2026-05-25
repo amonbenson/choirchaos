@@ -18,6 +18,7 @@ import {
   type TrackEvents,
   type VampOut,
   type VampPhase,
+  type VampVocals,
 } from "./types";
 
 const STEP_DURATION = 1 / 50;
@@ -25,7 +26,7 @@ const DEFAULT_MEASURE: MeasureReference = ["1", 0];
 const DEFAULT_TEMPO = 120;
 const DEFAULT_TIME_SIGNATURE: TimeSignature = [4, 2];
 
-export type { PlayerMode, PlayerSegueState, PlayerStatus, PlayerVampState, VampOut, VampPhase };
+export type { PlayerMode, PlayerSegueState, PlayerStatus, PlayerVampState, VampOut, VampPhase, VampVocals };
 export type PlayerEvents = { system: SystemEvents; track: TrackEvents[] };
 
 type VampAction = "repeat" | "exitAtEnd" | "exitEarly";
@@ -464,7 +465,7 @@ export default class PlayerEngine {
       e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
       e.$endTick = song.findMeasure(e.end[0])?.$beatTicks[0];
       if (e.$startTick !== undefined && e.$endTick !== undefined) {
-        this.vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations, out: e.out ?? "onEnd" });
+        this.vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations, out: e.out ?? "onEnd", vocals: e.vocals ?? "every" });
       } else {
         console.error("Could not resolve location of Vamp:", e);
       }
@@ -548,6 +549,21 @@ export default class PlayerEngine {
     return vamp ? this.vampPhaseAt(vamp, pos) : undefined;
   }
 
+  private vocalsAreMuted(pos: Tick): boolean {
+    const phase = this.currentVampPhase(pos);
+    if (!phase) {
+      return false;
+    }
+
+    const vocals: VampVocals = this.currentVamp.get()?.vocals ?? "every";
+    switch (vocals) {
+      case "every": return false;
+      case "first": return phase !== "entering";
+      case "last": return phase !== "exiting";
+      case "split": return phase === "repeating";
+    }
+  }
+
   private applyVampAction(p1: Tick, action: VampAction, remainingTime: number): Tick {
     const vamp = this.currentVamp.get()!;
     let jumpOffset = 0;
@@ -571,7 +587,7 @@ export default class PlayerEngine {
     }
 
     if (remainingTime > 0) {
-      const { p1: p1b } = this.backend!.step(pos, remainingTime, nextLimit, this.currentVampPhase(pos));
+      const { p1: p1b } = this.backend!.step(pos, remainingTime, nextLimit, this.vocalsAreMuted(pos));
       pos = p1b;
     }
 
@@ -588,7 +604,7 @@ export default class PlayerEngine {
 
     // Advance position via the backend, capped at the vamp boundary (if any) so jump targets are exact.
     const { action, limit } = this.vampAction(pos);
-    const { p1, deltaTimeConsumed } = this.backend.step(pos, deltaTime, limit, this.currentVampPhase(pos));
+    const { p1, deltaTimeConsumed } = this.backend.step(pos, deltaTime, limit, this.vocalsAreMuted(pos));
     pos = p1;
 
     if (pos >= this.duration.get()) {
@@ -652,7 +668,7 @@ export default class PlayerEngine {
       e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
       e.$endTick = song.findMeasure(e.end[0])?.$beatTicks[0];
       if (e.$startTick !== undefined && e.$endTick !== undefined) {
-        this.vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations, out: e.out ?? "onEnd" });
+        this.vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations, out: e.out ?? "onEnd", vocals: e.vocals ?? "every" });
       } else {
         console.error("Could not resolve location of Vamp:", e);
       }
