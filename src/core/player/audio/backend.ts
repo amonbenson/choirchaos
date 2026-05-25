@@ -97,45 +97,39 @@ export default class AudioBackend extends PlayerBackend {
   }
 
   play(_currentPosition: Tick): void {
-    // Notify the driver
     this.audioDriver?.play();
   }
 
   pause(_currentPosition: Tick): void {
-    // Notify the driver
     this.audioDriver?.pause();
   }
 
   seek(position: Tick): void {
-    // Notify the driver (one tick = one millisecond in audio mode)
-    this.audioDriver?.seek(position / 1000);
+    this.audioDriver?.seek(position / 1000); // one tick = one millisecond in audio mode
   }
 
   step(currentPosition: Tick, deltaTime: number, limit?: Tick, muteVocals?: boolean): StepResult {
-    const rawP1 = (this.audioDriver?.getPosition() ?? 0) * 1000;
+    const driverPosition = (this.audioDriver?.getPosition() ?? 0) * 1000;
     // Clamp to limit so overshoot doesn't shift the vamp jump target.
-    const p1 = limit !== undefined ? Math.min(rawP1, limit) : rawP1;
+    const p1 = limit !== undefined ? Math.min(driverPosition, limit) : driverPosition;
 
-    // Continuously update track gains and tempo/pitch (unchanged values will be ignored by the driver)
+    // Continuously update track gains and tempo/pitch (unchanged values are ignored by the driver).
     const tracks = this.currentSong?.tracks ?? [];
     for (let i = 0; i < tracks.length; i++) {
       const track = tracks[i]!;
-      const gain = muteVocals && track.classification === "Vocal"
-        ? 0
-        : track.mixer.effectiveGain;
+      const gain = muteVocals && track.classification === "Vocal" ? 0 : track.mixer.effectiveGain;
       this.audioDriver?.setGain(i, gain);
     }
 
     this.audioDriver?.setTempo(this.playbackSpeed);
     this.audioDriver?.setPitch(this.playbackTransposition);
 
-    if (this.systemEvents.measure.items().length > 0 && !(limit !== undefined && rawP1 >= limit)) {
-      const k = { tick: rawP1 } as MeasureEvent;
-      const measureEvent = this.systemEvents.measure.search(k, {
-        direction: "backward",
-        inclusive: true,
-        extend: true,
-      });
+    // Detect and emit measure changes based on the current driver position, skipping when at the vamp boundary
+    if (this.systemEvents.measure.items().length > 0 && (limit === undefined || driverPosition < limit)) {
+      const measureEvent = this.systemEvents.measure.search(
+        { tick: driverPosition } as MeasureEvent,
+        { direction: "backward", inclusive: true, extend: true },
+      );
       if (measureEvent && (
         measureEvent.measure[0] !== this.lastMeasure?.[0]
         || measureEvent.measure[1] !== this.lastMeasure?.[1]
@@ -157,19 +151,16 @@ export default class AudioBackend extends PlayerBackend {
   onTempoRestored(_bpm: number): void {}
 
   override onPlaybackSpeedChanged(speed: number): void {
-    // Notify the driver
     super.onPlaybackSpeedChanged(speed);
     this.audioDriver?.setTempo(speed);
   }
 
   override onPlaybackTranspositionChanged(semitones: number): void {
-    // Notify the driver
     super.onPlaybackTranspositionChanged(semitones);
     this.audioDriver?.setPitch(semitones);
   }
 
   dispose(): void {
-    // Dispose the driver and release resources
     this.audioDriver?.dispose();
     this.audioDriver = undefined;
     this.buffers = [];
@@ -178,14 +169,16 @@ export default class AudioBackend extends PlayerBackend {
   }
 
   private buildWarpEvents(): void {
-    // Build the warp map and generate measure change events based on it
     const measures = this.currentSong!.measures.items();
+
+    // Rebuild the warp map from the song's warp markers
     this.warpMap.setMarkers(
       this.currentSong!.warpMarkers
         .map(m => ({ measure: measures.findIndex(m2 => m2.value === m.measure), time: m.time }))
         .filter(m => m.measure !== -1),
     );
 
+    // Regenerate beat-level measure events for all measures based on the updated warp map
     this.systemEvents.measure = new MidiEventList();
     this.systemEvents.tempo = new MidiEventList();
     this.systemEvents.timeSignature = new MidiEventList();

@@ -208,7 +208,6 @@ export default class AudioDriver {
     this.applyPitch();
   }
 
-  // Combines user semitone shift with compensation for BufferSource.playbackRate pitch change.
   private applyPitch(): void {
     const semitones = this.pitchValue - 12 * Math.log2(this.tempoValue);
     this.rubberBandNode.setPitch(Math.pow(2, semitones / 12));

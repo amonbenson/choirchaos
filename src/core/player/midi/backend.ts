@@ -51,17 +51,12 @@ export default class MidiBackend extends PlayerBackend {
   }
 
   private resetAudioClockReference(): void {
-    // Anchor the audio clock to the last known position so that the next step calculates time from there.
-    this.audioClockReference = {
-      seconds: this.context.currentTime,
-      ticks: this.lastKnownPosition,
-    };
+    // Anchor the audio clock to the last known position so that the next step calculates time from there
+    this.audioClockReference = { seconds: this.context.currentTime, ticks: this.lastKnownPosition };
   }
 
   private updateTickDuration(): void {
-    // Recalculate tick duration based on current tempo and playback speed.
-    const ticksPerSecond = this.currentBpm / 60 * this.ppqn * this.playbackSpeed;
-    this.tickDuration = 1 / ticksPerSecond;
+    this.tickDuration = 1 / (this.currentBpm / 60 * this.ppqn * this.playbackSpeed);
     this.resetAudioClockReference();
   }
 
@@ -275,12 +270,12 @@ export default class MidiBackend extends PlayerBackend {
     // triggered by a TempoEvent or TimeSignatureEvent uses the correct tick.
     this.lastKnownPosition = p1;
 
-    // Calculate the tick position based on the audio clock, to ensure that timing remains accurate even if step() is called with irregular intervals.
+    // Derive the audio-clock tick position from real elapsed time so scheduling
+    // stays accurate even when step() is called at irregular intervals.
     const timeSinceReference = this.context.currentTime - this.audioClockReference.seconds;
-    const ticksSinceReference = timeSinceReference / this.tickDuration;
-    this.audioClockTickPosition = this.audioClockReference.ticks + ticksSinceReference;
+    this.audioClockTickPosition = this.audioClockReference.ticks + timeSinceReference / this.tickDuration;
 
-    // Handle all events between p0 and p1, in chronological order
+    // Dispatch all events within the consumed tick range in chronological order
     const k0 = { tick: p0 };
     const k1 = { tick: p1 };
 
@@ -304,12 +299,10 @@ export default class MidiBackend extends PlayerBackend {
   }
 
   private handleMeasureEvent(event: MeasureEvent): void {
-    // Notify the engine
     this.callbacks.onMeasureChanged(event.measure);
   }
 
   private handleTempoEvent(event: TempoEvent): void {
-    // Update the tick duration and notify the engine
     if (this.currentBpm !== event.bpm) {
       this.currentBpm = event.bpm;
       this.updateTickDuration();
@@ -318,7 +311,6 @@ export default class MidiBackend extends PlayerBackend {
   }
 
   private handleTimeSignatureEvent(event: TimeSignatureEvent): void {
-    // Resync and notify the engine
     this.resetAudioClockReference();
     this.callbacks.onTimeSignatureChanged(event.signature);
   }
@@ -383,7 +375,6 @@ export default class MidiBackend extends PlayerBackend {
   }
 
   override onPlaybackSpeedChanged(speed: number): void {
-    // Also resync if the playback speed changes
     super.onPlaybackSpeedChanged(speed);
     this.updateTickDuration();
   }

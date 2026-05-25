@@ -217,12 +217,7 @@ export default class PlayerEngine {
 
     const output = ctx.createGain();
 
-    input.connect(compressor);
-    compressor.connect(low);
-    low.connect(mid);
-    mid.connect(high);
-    high.connect(output);
-    output.connect(ctx.destination);
+    input.connect(compressor).connect(low).connect(mid).connect(high).connect(output).connect(ctx.destination);
 
     this.masterInput = input;
     this.chainOutput = output;
@@ -276,7 +271,7 @@ export default class PlayerEngine {
     this.pause();
     this.seek(0);
 
-    // If the song starts with a vamp, ensure that it is reset to the first iteration
+    // Reset iteration count so a vamp at position 0 restarts from the beginning.
     const vamp = this.currentVamp.get();
     if (vamp) {
       this.currentVamp.set({ ...vamp, currentIteration: 0 });
@@ -535,15 +530,6 @@ export default class PlayerEngine {
     return { action: "exitAtEnd", limit: vamp.end };
   }
 
-  private tryEnterVamp(pos: Tick): void {
-    if (!this.currentVamp.get() && this.vamps.length > 0) {
-      const v = this.vampAt(pos);
-      if (v) {
-        this.currentVamp.set(v);
-      }
-    }
-  }
-
   private currentVampPhase(pos: Tick): VampPhase | undefined {
     const vamp = this.currentVamp.get();
     return vamp ? this.vampPhaseAt(vamp, pos) : undefined;
@@ -600,13 +586,21 @@ export default class PlayerEngine {
     }
 
     let pos = this.position.get();
-    this.tryEnterVamp(pos);
 
-    // Advance position via the backend, capped at the vamp boundary (if any) so jump targets are exact.
+    // Enter a vamp if the current position crosses into one for the first time
+    if (!this.currentVamp.get()) {
+      const v = this.vampAt(pos);
+      if (v) {
+        this.currentVamp.set(v);
+      }
+    }
+
+    // Advance position via the backend, capped at the vamp boundary (if any) so jump targets are exact
     const { action, limit } = this.vampAction(pos);
     const { p1, deltaTimeConsumed } = this.backend.step(pos, deltaTime, limit, this.vocalsAreMuted(pos));
     pos = p1;
 
+    // Clamp to the song duration and stop when the end is reached
     if (pos >= this.duration.get()) {
       this.position.set(this.duration.get());
       this.pause();
@@ -617,6 +611,7 @@ export default class PlayerEngine {
       return;
     }
 
+    // Apply the vamp action (repeat jump or early exit) if the boundary was reached
     if (action && this.currentVamp.get() && limit !== undefined && p1 >= limit) {
       pos = this.applyVampAction(pos, action, deltaTime - deltaTimeConsumed);
     }
