@@ -75,7 +75,7 @@ async function loadOutSong(
   player: PlayerEngine,
   ctx: AudioContext,
   mockAP: MockAudioDriver,
-  out: "onEnd" | "everyBar" | "everyBeat",
+  out: "onEnd" | "anyBar" | "anyBeat",
 ): Promise<void> {
   const buf = ctx.createBuffer(2, 44100, 44100);
   vi.spyOn(ctx, "decodeAudioData").mockResolvedValue(buf);
@@ -463,13 +463,13 @@ describe("PlayerEngine – audio mode", () => {
     await vc.close();
   });
 
-  it("everyBar: manual exit jumps to vamp end at the next barline", async () => {
+  it("anyBar: manual exit jumps to vamp end at the next barline", async () => {
     const { player: vp, updater: vu, ctx: vc } = makePlayer();
     const ap = makeMockAP();
     ap.scheduleSeek.mockImplementation((pos: number) => {
       ap.getPosition.mockReturnValue(pos);
     });
-    await loadOutSong(vp, vc, ap, "everyBar");
+    await loadOutSong(vp, vc, ap, "anyBar");
     vp.play();
 
     ap.getPosition.mockReturnValue(0.3);
@@ -480,7 +480,7 @@ describe("PlayerEngine – audio mode", () => {
     vp.exitVamp();
     ap.scheduleSeek.mockClear();
 
-    // Overshoot the barline at 500 ms — everyBar exits there and jumps to vamp end (750 ms).
+    // Overshoot the barline at 500 ms — anyBar exits there and jumps to vamp end (750 ms).
     ap.getPosition.mockReturnValue(0.52);
     vu.step(0.02);
     expect(ap.scheduleSeek).toHaveBeenCalledWith(0.75, 0);
@@ -494,10 +494,10 @@ describe("PlayerEngine – audio mode", () => {
   // Fixture: 2 tracks (Accompaniment 0, Vocal 1), vamp at 250–500 ms, 2 iterations,
   // midpoint = 375 ms. Steps enter the vamp in the relevant phase before asserting setGain.
 
-  it("vocals=\"every\": never mutes vocals during repeating phase", async () => {
+  it("vocals=\"all\": never mutes vocals during repeating phase", async () => {
     const { player: vp, updater: vu, ctx: vc } = makePlayer();
     const ap = makeMockAP();
-    await loadVocalSong(vp, vc, ap, "every");
+    await loadVocalSong(vp, vc, ap, "all");
     vp.play();
 
     // Enter vamp region; vamp detected at next step.
@@ -556,13 +556,13 @@ describe("PlayerEngine – audio mode", () => {
     await vc.close();
   });
 
-  it("everyBeat: manual exit jumps to vamp end at the next beat", async () => {
+  it("anyBeat: manual exit jumps to vamp end at the next beat", async () => {
     const { player: vp, updater: vu, ctx: vc } = makePlayer();
     const ap = makeMockAP();
     ap.scheduleSeek.mockImplementation((pos: number) => {
       ap.getPosition.mockReturnValue(pos);
     });
-    await loadOutSong(vp, vc, ap, "everyBeat");
+    await loadOutSong(vp, vc, ap, "anyBeat");
     vp.play();
 
     ap.getPosition.mockReturnValue(0.3);
@@ -573,7 +573,7 @@ describe("PlayerEngine – audio mode", () => {
     vp.exitVamp();
     ap.scheduleSeek.mockClear();
 
-    // Overshoot the next beat at 312.5 ms — everyBeat exits there and jumps to vamp end (750 ms).
+    // Overshoot the next beat at 312.5 ms — anyBeat exits there and jumps to vamp end (750 ms).
     ap.getPosition.mockReturnValue(0.32);
     vu.step(0.02);
     expect(ap.scheduleSeek).toHaveBeenCalledWith(0.75, 0);
