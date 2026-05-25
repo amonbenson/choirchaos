@@ -51,7 +51,7 @@ export abstract class PlayerBackend {
    * Must not cross `limit` (if given); returns the actual tick range consumed and wall-clock time spent.
    * Fire callbacks for any events (notes, measure/tempo/time-signature changes) encountered in the range.
    */
-  abstract step(currentPosition: Tick, deltaTime: number, limit?: Tick): StepResult;
+  abstract step(currentPosition: Tick, deltaTime: number, limit?: Tick, muteVocals?: boolean): StepResult;
 
   /** Called when the engine jumps the position by `offset` ticks (e.g. a vamp loop). */
   abstract onPositionJump(offset: Tick, newPosition: Tick): void;

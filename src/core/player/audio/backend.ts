@@ -97,43 +97,39 @@ export default class AudioBackend extends PlayerBackend {
   }
 
   play(_currentPosition: Tick): void {
-    // Notify the driver
     this.audioDriver?.play();
   }
 
   pause(_currentPosition: Tick): void {
-    // Notify the driver
     this.audioDriver?.pause();
   }
 
   seek(position: Tick): void {
-    // Notify the driver (one tick = one millisecond in audio mode)
-    this.audioDriver?.seek(position / 1000);
+    this.audioDriver?.seek(position / 1000); // one tick = one millisecond in audio mode
   }
 
-  step(currentPosition: Tick, deltaTime: number, _limit?: Tick): StepResult {
-    // Get the audio driver position
-    const p1 = (this.audioDriver?.getPosition() ?? 0) * 1000;
+  step(currentPosition: Tick, deltaTime: number, limit?: Tick, muteVocals?: boolean): StepResult {
+    const driverPosition = (this.audioDriver?.getPosition() ?? 0) * 1000;
+    // Clamp to limit so overshoot doesn't shift the vamp jump target.
+    const p1 = limit !== undefined ? Math.min(driverPosition, limit) : driverPosition;
 
-    // TODO: Make sure the audio driver (p1) and engine (currentPosition) stay in sync, especially when vamps are implemented
-
-    // Continuously update track gains and tempo/pitch (unchanged values will be ignored by the driver)
+    // Continuously update track gains and tempo/pitch (unchanged values are ignored by the driver).
     const tracks = this.currentSong?.tracks ?? [];
     for (let i = 0; i < tracks.length; i++) {
-      this.audioDriver?.setGain(i, tracks[i]!.mixer.effectiveGain);
+      const track = tracks[i]!;
+      const gain = muteVocals && track.classification === "Vocal" ? 0 : track.mixer.effectiveGain;
+      this.audioDriver?.setGain(i, gain);
     }
 
     this.audioDriver?.setTempo(this.playbackSpeed);
     this.audioDriver?.setPitch(this.playbackTransposition);
 
-    // Fire measure change callback if we've crossed into a new measure
-    if (this.systemEvents.measure.items().length > 0) {
-      const k = { tick: p1 } as MeasureEvent;
-      const measureEvent = this.systemEvents.measure.search(k, {
-        direction: "backward",
-        inclusive: true,
-        extend: true,
-      });
+    // Detect and emit measure changes based on the current driver position, skipping when at the vamp boundary
+    if (this.systemEvents.measure.items().length > 0 && (limit === undefined || driverPosition < limit)) {
+      const measureEvent = this.systemEvents.measure.search(
+        { tick: driverPosition } as MeasureEvent,
+        { direction: "backward", inclusive: true, extend: true },
+      );
       if (measureEvent && (
         measureEvent.measure[0] !== this.lastMeasure?.[0]
         || measureEvent.measure[1] !== this.lastMeasure?.[1]
@@ -147,27 +143,24 @@ export default class AudioBackend extends PlayerBackend {
   }
 
   onPositionJump(_offset: Tick, newPosition: Tick): void {
-    // Seek the driver to the new position (one tick = one millisecond in audio mode)
-    // TODO: In the future, when vamps are implemented, we might want to "blend" between positions or do some more complex handling instead of a hard seek
-    this.audioDriver?.seek(newPosition / 1000);
+    // Use lookahead=0 so vamp jumps switch audio immediately (within SEEK_CROSSFADE only),
+    // preventing old sources from playing past the vamp boundary.
+    this.audioDriver?.scheduleSeek(newPosition / 1000, 0);
   }
 
   onTempoRestored(_bpm: number): void {}
 
   override onPlaybackSpeedChanged(speed: number): void {
-    // Notify the driver
     super.onPlaybackSpeedChanged(speed);
     this.audioDriver?.setTempo(speed);
   }
 
   override onPlaybackTranspositionChanged(semitones: number): void {
-    // Notify the driver
     super.onPlaybackTranspositionChanged(semitones);
     this.audioDriver?.setPitch(semitones);
   }
 
   dispose(): void {
-    // Dispose the driver and release resources
     this.audioDriver?.dispose();
     this.audioDriver = undefined;
     this.buffers = [];
@@ -176,14 +169,16 @@ export default class AudioBackend extends PlayerBackend {
   }
 
   private buildWarpEvents(): void {
-    // Build the warp map and generate measure change events based on it
     const measures = this.currentSong!.measures.items();
+
+    // Rebuild the warp map from the song's warp markers
     this.warpMap.setMarkers(
       this.currentSong!.warpMarkers
         .map(m => ({ measure: measures.findIndex(m2 => m2.value === m.measure), time: m.time }))
         .filter(m => m.measure !== -1),
     );
 
+    // Regenerate beat-level measure events for all measures based on the updated warp map
     this.systemEvents.measure = new MidiEventList();
     this.systemEvents.tempo = new MidiEventList();
     this.systemEvents.timeSignature = new MidiEventList();
@@ -197,7 +192,9 @@ export default class AudioBackend extends PlayerBackend {
       measure.$beatTicks = Array.from({ length: measure.beats }, (_, b) => startMs + b * beatDurationMs);
       measure.$tickLength = endMs - startMs;
 
-      this.systemEvents.measure.insert(new MeasureEvent(startMs, measure.reference(0)));
+      for (let b = 0; b < measure.beats; b++) {
+        this.systemEvents.measure.insert(new MeasureEvent(measure.$beatTicks[b]!, measure.reference(b)));
+      }
     }
 
     // Single default tempo event: 125 BPM -> 1 tick/ms

@@ -16,6 +16,9 @@ import {
   type PlayerVampState,
   type SystemEvents,
   type TrackEvents,
+  type VampOut,
+  type VampPhase,
+  type VampVocals,
 } from "./types";
 
 const STEP_DURATION = 1 / 50;
@@ -23,10 +26,10 @@ const DEFAULT_MEASURE: MeasureReference = ["1", 0];
 const DEFAULT_TEMPO = 120;
 const DEFAULT_TIME_SIGNATURE: TimeSignature = [4, 2];
 
-export type { PlayerMode, PlayerSegueState, PlayerStatus, PlayerVampState };
+export type { PlayerMode, PlayerSegueState, PlayerStatus, PlayerVampState, VampOut, VampPhase, VampVocals };
 export type PlayerEvents = { system: SystemEvents; track: TrackEvents[] };
 
-type VampAction = "repeat" | "exit-at-end" | "exit-at-barline";
+type VampAction = "repeat" | "exitAtEnd" | "exitEarly";
 
 export default class PlayerEngine {
   private readonly status = new Property<PlayerStatus>("idle");
@@ -214,12 +217,7 @@ export default class PlayerEngine {
 
     const output = ctx.createGain();
 
-    input.connect(compressor);
-    compressor.connect(low);
-    low.connect(mid);
-    mid.connect(high);
-    high.connect(output);
-    output.connect(ctx.destination);
+    input.connect(compressor).connect(low).connect(mid).connect(high).connect(output).connect(ctx.destination);
 
     this.masterInput = input;
     this.chainOutput = output;
@@ -273,7 +271,7 @@ export default class PlayerEngine {
     this.pause();
     this.seek(0);
 
-    // If the song starts with a vamp, ensure that it is reset to the first iteration
+    // Reset iteration count so a vamp at position 0 restarts from the beginning.
     const vamp = this.currentVamp.get();
     if (vamp) {
       this.currentVamp.set({ ...vamp, currentIteration: 0 });
@@ -442,10 +440,52 @@ export default class PlayerEngine {
   }
 
   syncWarp(): void {
-    // Recompute the timing of all measures for audio mode
-    if (this.backend instanceof AudioBackend) {
-      this.backend.syncWarp();
+    if (!(this.backend instanceof AudioBackend) || !this.currentSong) {
+      return;
     }
+
+    this.backend.syncWarp();
+
+    const song = this.currentSong;
+
+    for (const e of song.events.markers.items()) {
+      e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
+      e.$endTick = song.findMeasure(e.end[0])?.$beatTicks[0];
+    }
+
+    // currentSegue is intentionally left untouched — it is independent of the warp map.
+    this.vamps = [];
+    this.currentVamp.set(undefined);
+    for (const e of song.events.vamps.items()) {
+      e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
+      e.$endTick = song.findMeasure(e.end[0])?.$beatTicks[0];
+      if (e.$startTick !== undefined && e.$endTick !== undefined) {
+        this.vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations, out: e.out ?? "onEnd", vocals: e.vocals ?? "every" });
+      } else {
+        console.error("Could not resolve location of Vamp:", e);
+      }
+    }
+
+    const measures = song.measures.items();
+    const audioDuration = this.duration.get();
+    const finalMeasure = [...measures].reverse().find(m => (m.$beatTicks[0] ?? Infinity) <= audioDuration) ?? measures[0]!;
+    this.finalMeasure.set(finalMeasure.reference(0));
+
+    this.syncDisplayAt(this.position.get());
+  }
+
+  private vampPhaseAt(vamp: PlayerVampState, pos: Tick): VampPhase {
+    const midpoint = vamp.start + (vamp.end - vamp.start) / 2;
+    const isLastIteration = vamp.iterations > 0 && vamp.currentIteration >= vamp.iterations;
+    if (vamp.manualExit || (isLastIteration && pos >= midpoint)) {
+      return "exiting";
+    }
+
+    if (vamp.currentIteration === 0 && pos < midpoint) {
+      return "entering";
+    }
+
+    return "repeating";
   }
 
   private vampAt(tick: Tick): PlayerVampState | undefined {
@@ -455,9 +495,13 @@ export default class PlayerEngine {
   }
 
   private barlineBetween(after: Tick, before: Tick): Tick | undefined {
-    // Find the location of the next barline between two ticks (barline = start tick of a measure)
     return this.systemEvents.measure.items()
       .find(e => e.tick > after && e.tick < before && e.measure[1] === 0)?.tick;
+  }
+
+  private beatlineBetween(after: Tick, before: Tick): Tick | undefined {
+    return this.systemEvents.measure.items()
+      .find(e => e.tick > after && e.tick < before)?.tick;
   }
 
   private vampAction(p0: Tick): { action: VampAction | undefined; limit?: Tick } {
@@ -466,18 +510,74 @@ export default class PlayerEngine {
       return { action: undefined };
     }
 
-    // If no manual exit was requested and we are still below the vamp's iteration limit, return "repeat"
-    const shouldExit = vamp.manualExit
-      || (vamp.iterations > 0 && vamp.currentIteration >= vamp.iterations);
+    const shouldExit = vamp.manualExit || (vamp.iterations > 0 && vamp.currentIteration >= vamp.iterations);
     if (!shouldExit) {
       return { action: "repeat", limit: vamp.end };
     }
 
-    // Return exit either at the next barline within the vamp (if any) or at the vamp's end if there is no barline
-    const barline = this.barlineBetween(p0, vamp.end);
-    return barline !== undefined
-      ? { action: "exit-at-barline", limit: barline }
-      : { action: "exit-at-end", limit: vamp.end };
+    if (vamp.out === "everyBeat") {
+      const beatline = this.beatlineBetween(p0, vamp.end);
+      if (beatline !== undefined) {
+        return { action: "exitEarly", limit: beatline };
+      }
+    } else if (vamp.out === "everyBar") {
+      const barline = this.barlineBetween(p0, vamp.end);
+      if (barline !== undefined) {
+        return { action: "exitEarly", limit: barline };
+      }
+    }
+
+    return { action: "exitAtEnd", limit: vamp.end };
+  }
+
+  private currentVampPhase(pos: Tick): VampPhase | undefined {
+    const vamp = this.currentVamp.get();
+    return vamp ? this.vampPhaseAt(vamp, pos) : undefined;
+  }
+
+  private vocalsAreMuted(pos: Tick): boolean {
+    const phase = this.currentVampPhase(pos);
+    if (!phase) {
+      return false;
+    }
+
+    const vocals: VampVocals = this.currentVamp.get()?.vocals ?? "every";
+    switch (vocals) {
+      case "every": return false;
+      case "first": return phase !== "entering";
+      case "last": return phase !== "exiting";
+      case "split": return phase === "repeating";
+    }
+  }
+
+  private applyVampAction(p1: Tick, action: VampAction, remainingTime: number): Tick {
+    const vamp = this.currentVamp.get()!;
+    let jumpOffset = 0;
+    let nextLimit: Tick | undefined;
+
+    if (action === "exitEarly") {
+      jumpOffset = vamp.end - p1;
+      this.currentVamp.set(undefined);
+    } else if (action === "exitAtEnd") {
+      this.currentVamp.set(undefined);
+    } else {
+      jumpOffset = -(vamp.end - vamp.start);
+      this.currentVamp.set({ ...vamp, currentIteration: vamp.currentIteration + 1 });
+      nextLimit = vamp.end;
+    }
+
+    let pos = p1;
+    if (jumpOffset !== 0) {
+      pos += jumpOffset;
+      this.backend!.onPositionJump(jumpOffset, pos);
+    }
+
+    if (remainingTime > 0) {
+      const { p1: p1b } = this.backend!.step(pos, remainingTime, nextLimit, this.vocalsAreMuted(pos));
+      pos = p1b;
+    }
+
+    return pos;
   }
 
   private handleStep(deltaTime: number): void {
@@ -487,30 +587,23 @@ export default class PlayerEngine {
 
     let pos = this.position.get();
 
-    // If we're not currently in a vamp but there is one at the current position, enter it
-    if (!this.currentVamp.get() && this.vamps.length > 0) {
+    // Enter a vamp if the current position crosses into one for the first time
+    if (!this.currentVamp.get()) {
       const v = this.vampAt(pos);
       if (v) {
         this.currentVamp.set(v);
       }
     }
 
-    // Perform the actual playback logic by invoking the backend's step function and advancing the position accordingly.
-    // When the current step region contains a vamp exit point, we have to make sure that the backend plays only the first portion up until the exit point.
-    // For this reason, we pass a "limit" location to the backend's step function, that should not be exceeded
-    // The actual number of ticks played by the backend is returned in deltaConsumed and the actual target position in p1
+    // Advance position via the backend, capped at the vamp boundary (if any) so jump targets are exact
     const { action, limit } = this.vampAction(pos);
-    const { p1, deltaTimeConsumed } = this.backend.step(pos, deltaTime, limit);
+    const { p1, deltaTimeConsumed } = this.backend.step(pos, deltaTime, limit, this.vocalsAreMuted(pos));
     pos = p1;
 
-    // Note: At this point, pos <- min(pos + delta, limit)
-    // If the limit position was reached, pos will only be advanced up until that limit, and not for the full delta duration
-
-    // If the new position is beyond the end of the song, pause and invoke segue if enabled
+    // Clamp to the song duration and stop when the end is reached
     if (pos >= this.duration.get()) {
       this.position.set(this.duration.get());
       this.pause();
-
       if (this.currentSegue.get()?.enabled) {
         this.emitters.segue.fire(undefined);
       }
@@ -518,51 +611,21 @@ export default class PlayerEngine {
       return;
     }
 
-    // Check if there is an active vamp action and the associated limit position was reached within this step
+    // Apply the vamp action (repeat jump or early exit) if the boundary was reached
     if (action && this.currentVamp.get() && limit !== undefined && p1 >= limit) {
-      const vamp = this.currentVamp.get()!;
-      const remainingTime = deltaTime - deltaTimeConsumed;
-      let jumpOffset = 0;
-      let nextLimit: Tick | undefined;
-
-      if (action === "exit-at-barline") {
-        // Exit the vamp by jumping from the current position to the end point
-        jumpOffset = vamp.end - p1;
-        this.currentVamp.set(undefined);
-      } else if (action === "exit-at-end") {
-        // Exit the vamp. As we are already at the vamp's end point, no jump is required
-        this.currentVamp.set(undefined);
-      } else {
-        // Jump back to the vamp's start point and increment the current iteration count
-        jumpOffset = -(vamp.end - vamp.start);
-        this.currentVamp.set({ ...vamp, currentIteration: vamp.currentIteration + 1 });
-        nextLimit = vamp.end;
-      }
-
-      // Perform the jump
-      if (jumpOffset !== 0) {
-        pos += jumpOffset;
-        this.backend.onPositionJump(jumpOffset, pos);
-      }
-
-      // As the jump (most likely) happened during the current step, there is still some remaining time that needs to be played after the jump
-      if (remainingTime > 0) {
-        const { p1: p1b } = this.backend.step(pos, remainingTime, nextLimit);
-        pos = p1b;
-      }
+      pos = this.applyVampAction(pos, action, deltaTime - deltaTimeConsumed);
     }
 
-    // Update the position property
-    this.position.set(Math.max(0, Math.min(this.duration.get(), pos)));
+    const finalPos = Math.max(0, Math.min(this.duration.get(), pos));
+
+    this.position.set(finalPos);
   }
 
-  private syncStateAt(pos: Tick): void {
-    // Get the most recent events at or before the new position, and update the current state accordingly
+  private syncDisplayAt(pos: Tick): TempoEvent | undefined {
     const opts = { direction: "backward" as const, inclusive: true, extend: true };
     const measureEvent = this.systemEvents.measure.search({ tick: pos } as MeasureEvent, opts);
     const tempoEvent = this.systemEvents.tempo.search({ tick: pos } as TempoEvent, opts);
     const timeSigEvent = this.systemEvents.timeSignature.search({ tick: pos } as TimeSignatureEvent, opts);
-
     if (measureEvent) {
       this.currentMeasure.set(measureEvent.measure);
     }
@@ -575,6 +638,11 @@ export default class PlayerEngine {
       this.currentTimeSignature.set(timeSigEvent.signature);
     }
 
+    return tempoEvent;
+  }
+
+  private syncStateAt(pos: Tick): void {
+    const tempoEvent = this.syncDisplayAt(pos);
     // seek must precede onTempoRestored so lastKnownPosition is anchored first
     this.backend?.seek(pos);
     if (tempoEvent) {
@@ -597,7 +665,7 @@ export default class PlayerEngine {
       e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
       e.$endTick = song.findMeasure(e.end[0])?.$beatTicks[0];
       if (e.$startTick !== undefined && e.$endTick !== undefined) {
-        this.vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations });
+        this.vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations, out: e.out ?? "onEnd", vocals: e.vocals ?? "every" });
       } else {
         console.error("Could not resolve location of Vamp:", e);
       }

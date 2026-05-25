@@ -154,6 +154,31 @@ describe("AudioDriver", () => {
     driver.dispose();
   });
 
+  // ── scheduleSeek ──────────────────────────────────────────────────────────
+
+  it("scheduleSeek while not playing updates position immediately", async () => {
+    const driver = await AudioDriver.create(ctx, [makeSilentBuffer(ctx)], {
+      tracks: [{}],
+      onAmplitudes: () => {},
+    });
+    driver.scheduleSeek(0.7);
+    expect(driver.getPosition()).toBe(0.7);
+    driver.dispose();
+  });
+
+  it("scheduleSeek while playing reports new position immediately", async () => {
+    const driver = await AudioDriver.create(ctx, [makeSilentBuffer(ctx)], {
+      tracks: [{}],
+      onAmplitudes: () => {},
+    });
+    driver.play();
+    driver.scheduleSeek(0.4);
+    // During the lookahead window getPosition() returns the new refPosition
+    expect(driver.getPosition()).toBe(0.4);
+    driver.pause();
+    driver.dispose();
+  });
+
   // ── dispose ───────────────────────────────────────────────────────────────
 
   it("dispose clears the amplitude interval without throwing", async () => {
