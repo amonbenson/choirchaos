@@ -309,16 +309,16 @@ describe("PlayerEngine – MIDI mode", () => {
         [],
         [
           { delta: 0, trackName: TRACK_NAMES.instrument },
-          { delta: 480, noteOn: { noteNumber: 60, velocity: 80 } },
-          { delta: 240, noteOff: { noteNumber: 60, velocity: 0 } },
+          { delta: 480, noteOn: { noteNumber: 60, velocity: 80 } } as any,
+          { delta: 240, noteOff: { noteNumber: 60, velocity: 0 } } as any,
         ],
         [
           { delta: 0, trackName: TRACK_NAMES.vocals },
-          { delta: 4280, noteOn: { noteNumber: 65, velocity: 80 } }, // F4 at tick 4280, in danger zone
-          { delta: 480, noteOff: { noteNumber: 65, velocity: 0 } },
+          { delta: 4280, noteOn: { noteNumber: 65, velocity: 80 } } as any, // F4 at tick 4280, in danger zone
+          { delta: 480, noteOff: { noteNumber: 65, velocity: 0 } } as any,
         ],
       ],
-    });
+    } as any);
     mockAxios();
     await vp.load(makeMidiSongWithVamp());
 
