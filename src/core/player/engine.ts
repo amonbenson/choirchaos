@@ -78,6 +78,7 @@ export default class PlayerEngine {
 
   private currentSong?: Song;
   private vamps: PlayerVamp[] = [];
+  private vampsEnabled = true;
 
   private updater: Updater;
   private audioContext: AudioContext;
@@ -324,6 +325,18 @@ export default class PlayerEngine {
     }
   }
 
+  setVampsEnabled(enabled: boolean): void {
+    this.vampsEnabled = enabled;
+
+    // Exit any ongoing vamp immediately
+    if (!enabled) {
+      const vamp = this.currentVamp.get();
+      if (vamp && !vamp.manualExit) {
+        this.currentVamp.set({ ...vamp, manualExit: true });
+      }
+    }
+  }
+
   setSegueEnabled(enabled: boolean): void {
     const segue = this.currentSegue.get();
     if (segue) {
@@ -489,7 +502,12 @@ export default class PlayerEngine {
   }
 
   private vampAt(tick: Tick): PlayerVampState | undefined {
-    // Find a vamp at a given tick. As a typical song has comparatively few vamps, a simple linear search is sufficient here.
+    // If vamps are disabled, treat all measures as regular measures
+    if (!this.vampsEnabled) {
+      return undefined;
+    }
+
+    // As a typical song has comparatively few vamps, a simple linear search is sufficient here.
     const v = this.vamps.find(v => tick >= v.start && tick < v.end);
     return v ? { ...v, currentIteration: 0, manualExit: false } : undefined;
   }

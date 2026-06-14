@@ -157,6 +157,7 @@ onMounted(() => {
   player.playbackSpeed = settings.current.playback.speed;
   player.playbackTransposition = settings.current.playback.transposition;
   player.setSegueEnabled(settings.current.playback.segueEnabled);
+  player.setVampsEnabled(settings.current.playback.vampsEnabled);
 });
 
 watch(() => player.playbackSpeed, value => settings.update({ playback: { speed: value } }));
@@ -168,6 +169,8 @@ watch(() => [song.value, settings.current.playback.segueEnabled], () => {
     player.setSegueEnabled(settings.current.playback.segueEnabled);
   }
 });
+
+watch(() => settings.current.playback.vampsEnabled, value => player.setVampsEnabled(value));
 
 // DATA LOADING PROCEDURE
 

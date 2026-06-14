@@ -232,7 +232,21 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
             <div class="flex items-center justify-between gap-4">
               <div>
                 <div class="font-medium">
-                  Auto-advance on segue
+                  Play Vamps
+                </div>
+                <div class="text-sm text-muted-color">
+                  When disabled, vamp sections are played through once without repeating.
+                </div>
+              </div>
+              <ToggleSwitch
+                :model-value="settings.current.playback.vampsEnabled"
+                @update:model-value="settings.update({ playback: { vampsEnabled: $event } })"
+              />
+            </div>
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <div class="font-medium">
+                  Auto-advance on Segue
                 </div>
                 <div class="text-sm text-muted-color">
                   Automatically move to the next song when a segue is triggered.
