@@ -102,6 +102,7 @@ export const usePlayerStore = defineStore("player", () => {
     exitVamp: () => globalPlayer.exitVamp(),
     resetVamp: () => globalPlayer.resetVamp(),
     toggleVamp: () => globalPlayer.toggleVamp(),
+    setVampsEnabled: (enabled: boolean) => globalPlayer.setVampsEnabled(enabled),
     setSegueEnabled: (enabled: boolean) => globalPlayer.setSegueEnabled(enabled),
     toggleSegue: () => globalPlayer.toggleSegue(),
     seek,
