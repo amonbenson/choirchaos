@@ -12,7 +12,13 @@ import { type AudioChunk, detectChunks } from "./chunkDetector";
 import ChunkedAudioPlayer from "./chunkedPlayer";
 
 const MAX_CONCURRENT_DECODE_BYTES = 750 * 1024 * 1024;
-const DECODED_BYTES_PER_COMPRESSED_BYTE = 170; // Rough estimate for spares MP3s with VBR and stereo channels
+const DECODED_BYTES_PER_COMPRESSED_BYTE = 128; // Rough estimate for spares MP3s with VBR and stereo channels
+
+function medianRatio(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
+}
 
 export default class AudioBackend extends PlayerBackend {
   private audioDriver: ChunkedAudioPlayer | undefined = undefined;
@@ -61,10 +67,12 @@ export default class AudioBackend extends PlayerBackend {
     // Files are decoded in parallel up to MAX_CONCURRENT_DECODE_BYTES to avoid out-of-memory crashes.
     let bytesInFlight = 0;
     const decodeWaiters: Array<() => void> = [];
+    const completedRatios: number[] = [];
 
     const decodeResults = await Promise.all(
       compressedBuffers.map(async (compressed) => {
-        const estimate = compressed.byteLength * DECODED_BYTES_PER_COMPRESSED_BYTE;
+        const ratio = completedRatios.length > 0 ? medianRatio(completedRatios) : DECODED_BYTES_PER_COMPRESSED_BYTE;
+        const estimate = compressed.byteLength * ratio;
         while (bytesInFlight > 0 && bytesInFlight + estimate > MAX_CONCURRENT_DECODE_BYTES) {
           await new Promise<void>(resolve => decodeWaiters.push(resolve));
           signal.throwIfAborted();
@@ -72,11 +80,17 @@ export default class AudioBackend extends PlayerBackend {
 
         bytesInFlight += estimate;
         console.log(`Decoding audio file of size ${compressed.byteLength} bytes, bytes in flight: ${bytesInFlight}`);
+        let actualBytes = 0;
         try {
           const decoded = await this.context.decodeAudioData(compressed);
+          actualBytes = decoded.numberOfChannels * decoded.length * 4;
           return { duration: decoded.duration, chunks: detectChunks(decoded, this.context) };
         } finally {
           bytesInFlight -= estimate;
+          if (actualBytes > 0) {
+            completedRatios.push(actualBytes / compressed.byteLength);
+          }
+
           decodeWaiters.splice(0).forEach(r => r());
         }
       }),
