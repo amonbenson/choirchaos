@@ -46,18 +46,17 @@ const NUM_PEAKS = 10000;
 const peaks = ref<{ min: number; max: number }[]>([]);
 
 async function computePeaks(): Promise<void> {
-  const buffers = player.player.getAudioBuffers();
-  if (buffers.length === 0) {
+  const allChunks = player.player.getTrackChunks();
+  const dur = totalDuration.value;
+  if (allChunks.length === 0 || dur <= 0) {
     peaks.value = [];
     return;
   }
 
-  // Yield to avoid blocking the initial render
   await new Promise(resolve => setTimeout(resolve, 0));
 
-  const dur = Math.min(...buffers.map(b => b.duration));
   const result: { min: number; max: number }[] = [];
-  const STEP = 4; // check every 4th sample — fast enough for all reasonable file sizes
+  const STEP = 4;
 
   for (let bucket = 0; bucket < NUM_PEAKS; bucket++) {
     const t0 = (bucket / NUM_PEAKS) * dur;
@@ -65,12 +64,19 @@ async function computePeaks(): Promise<void> {
     let min = 0;
     let max = 0;
 
-    for (const buffer of buffers) {
-      const s0 = Math.floor(t0 * buffer.sampleRate);
-      const s1 = Math.min(Math.ceil(t1 * buffer.sampleRate), buffer.length);
+    for (const trackChunks of allChunks) {
+      for (const chunk of trackChunks) {
+        const sr = chunk.audioBuffer.sampleRate;
+        const chunkStart = chunk.sampleOffset / sr;
+        const chunkEnd = chunkStart + chunk.audioBuffer.duration;
 
-      for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-        const data = buffer.getChannelData(ch);
+        if (chunkEnd <= t0 || chunkStart >= t1) {
+          continue;
+        }
+
+        const s0 = Math.max(0, Math.floor((t0 - chunkStart) * sr));
+        const s1 = Math.min(chunk.audioBuffer.length, Math.ceil((t1 - chunkStart) * sr));
+        const data = chunk.audioBuffer.getChannelData(0);
 
         for (let s = s0; s < s1; s += STEP) {
           const v = data[s]!;
