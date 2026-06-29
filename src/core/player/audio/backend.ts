@@ -11,6 +11,9 @@ import type { SystemEvents } from "../types";
 import { type AudioChunk, detectChunks } from "./chunkDetector";
 import ChunkedAudioPlayer from "./chunkedPlayer";
 
+const MAX_CONCURRENT_DECODE_BYTES = 750 * 1024 * 1024;
+const DECODED_BYTES_PER_COMPRESSED_BYTE = 170; // Rough estimate for spares MP3s with VBR and stereo channels
+
 export default class AudioBackend extends PlayerBackend {
   private audioDriver: ChunkedAudioPlayer | undefined = undefined;
   private trackChunks: AudioChunk[][] = [];
@@ -40,6 +43,7 @@ export default class AudioBackend extends PlayerBackend {
       throw new Error(`No audio files in song '${song.title}'`);
     }
 
+    // Load all MP3s in raw (compressed) form
     const compressedBuffers = await Promise.all(
       song.audioFiles.map(async (file) => {
         const res = await axios.get(resolveUrl(file, "songs", song.id), {
@@ -53,17 +57,37 @@ export default class AudioBackend extends PlayerBackend {
 
     signal.throwIfAborted();
 
-    const fileChunks: AudioChunk[][] = [];
-    const fileDurations: number[] = [];
+    // Decode and split each audio file into non-silent chunks.
+    // Files are decoded in parallel up to MAX_CONCURRENT_DECODE_BYTES to avoid out-of-memory crashes.
+    let bytesInFlight = 0;
+    const decodeWaiters: Array<() => void> = [];
 
-    for (const compressed of compressedBuffers) {
-      const decoded = await this.context.decodeAudioData(compressed);
-      fileDurations.push(decoded.duration);
-      fileChunks.push(detectChunks(decoded, this.context));
-    }
+    const decodeResults = await Promise.all(
+      compressedBuffers.map(async (compressed) => {
+        const estimate = compressed.byteLength * DECODED_BYTES_PER_COMPRESSED_BYTE;
+        while (bytesInFlight > 0 && bytesInFlight + estimate > MAX_CONCURRENT_DECODE_BYTES) {
+          await new Promise<void>(resolve => decodeWaiters.push(resolve));
+          signal.throwIfAborted();
+        }
+
+        bytesInFlight += estimate;
+        console.log(`Decoding audio file of size ${compressed.byteLength} bytes, bytes in flight: ${bytesInFlight}`);
+        try {
+          const decoded = await this.context.decodeAudioData(compressed);
+          return { duration: decoded.duration, chunks: detectChunks(decoded, this.context) };
+        } finally {
+          bytesInFlight -= estimate;
+          decodeWaiters.splice(0).forEach(r => r());
+        }
+      }),
+    );
+
+    const fileChunks = decodeResults.map(r => r.chunks);
+    const fileDurations = decodeResults.map(r => r.duration);
 
     signal.throwIfAborted();
 
+    // Organize all chunks by track
     this.trackChunks = song.tracks.map((track) => {
       const fileIndex = song.audioFiles.findIndex(file => file === track.audioFile);
       const chunks = fileChunks[fileIndex];
@@ -79,6 +103,7 @@ export default class AudioBackend extends PlayerBackend {
     this.currentSong = song;
     this.buildWarpEvents();
 
+    // Setup the underlying audio player
     this.audioDriver?.dispose();
     this.audioDriver = await ChunkedAudioPlayer.create(
       this.context,
