@@ -40,17 +40,24 @@ export default class AudioBackend extends PlayerBackend {
       throw new Error(`No audio files in song '${song.title}'`);
     }
 
+    const compressedBuffers = await Promise.all(
+      song.audioFiles.map(async (file) => {
+        const res = await axios.get(resolveUrl(file, "songs", song.id), {
+          validateStatus: status => status === 200,
+          responseType: "arraybuffer",
+          signal,
+        });
+        return res.data as ArrayBuffer;
+      }),
+    );
+
+    signal.throwIfAborted();
+
     const fileChunks: AudioChunk[][] = [];
     const fileDurations: number[] = [];
 
-    for (const file of song.audioFiles) {
-      const res = await axios.get(resolveUrl(file, "songs", song.id), {
-        validateStatus: status => status === 200,
-        responseType: "arraybuffer",
-        signal,
-      });
-      signal.throwIfAborted();
-      const decoded = await this.context.decodeAudioData(res.data);
+    for (const compressed of compressedBuffers) {
+      const decoded = await this.context.decodeAudioData(compressed);
       fileDurations.push(decoded.duration);
       fileChunks.push(detectChunks(decoded, this.context));
     }
