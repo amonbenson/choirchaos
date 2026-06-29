@@ -8,11 +8,21 @@ import type Song from "../../models/song";
 import { resolveUrl } from "../../utils/file";
 import { type BackendCallbacks, type LoadResult, PlayerBackend, type StepResult } from "../backend";
 import type { SystemEvents } from "../types";
+import { type AudioChunk, detectChunks } from "./chunkDetector";
 import AudioDriver from "./driver";
+
+const MAX_CONCURRENT_DECODE_BYTES = 750 * 1024 * 1024;
+const DECODED_BYTES_PER_COMPRESSED_BYTE = 128; // Rough estimate for spares MP3s with VBR and stereo channels
+
+function medianRatio(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
+}
 
 export default class AudioBackend extends PlayerBackend {
   private audioDriver: AudioDriver | undefined = undefined;
-  private buffers: AudioBuffer[] = [];
+  private trackChunks: AudioChunk[][] = [];
   private warpMap = new WarpMap();
   private currentSong: Song | undefined = undefined;
   private lastMeasure: MeasureReference | undefined = undefined;
@@ -26,8 +36,8 @@ export default class AudioBackend extends PlayerBackend {
     super(context, masterInput, systemEvents, callbacks);
   }
 
-  getAudioBuffers(): AudioBuffer[] {
-    return this.buffers;
+  getTrackChunks(): AudioChunk[][] {
+    return this.trackChunks;
   }
 
   syncWarp(): void {
@@ -39,56 +49,95 @@ export default class AudioBackend extends PlayerBackend {
       throw new Error(`No audio files in song '${song.title}'`);
     }
 
-    // Load and decode all audio files in parallel
-    const rawBuffers = await Promise.all(
+    // Load all MP3s in raw (compressed) form
+    const compressedBuffers = await Promise.all(
       song.audioFiles.map(async (file) => {
         const res = await axios.get(resolveUrl(file, "songs", song.id), {
           validateStatus: status => status === 200,
           responseType: "arraybuffer",
           signal,
         });
-        return this.context.decodeAudioData(res.data);
+        return res.data as ArrayBuffer;
       }),
     );
 
     signal.throwIfAborted();
 
-    // Match buffers to tracks by audio file reference
-    this.buffers = song.tracks.map((track) => {
-      const bufferIndex = song.audioFiles.findIndex(file => file === track.audioFile);
-      const buffer = rawBuffers[bufferIndex];
-      if (!buffer) {
-        throw new Error(`Audio file '${track.audioFile}' for track '${track.title}' not found in song '${song.title}'`);
+    // Decode and split each audio file into non-silent chunks.
+    // Files are decoded in parallel up to MAX_CONCURRENT_DECODE_BYTES to avoid out-of-memory crashes.
+    let bytesInFlight = 0;
+    const decodeWaiters: Array<() => void> = [];
+    const completedRatios: number[] = [];
+
+    const decodeResults = await Promise.all(
+      compressedBuffers.map(async (compressed) => {
+        const ratio = completedRatios.length > 0 ? medianRatio(completedRatios) : DECODED_BYTES_PER_COMPRESSED_BYTE;
+        const estimate = compressed.byteLength * ratio;
+        while (bytesInFlight > 0 && bytesInFlight + estimate > MAX_CONCURRENT_DECODE_BYTES) {
+          await new Promise<void>(resolve => decodeWaiters.push(resolve));
+          signal.throwIfAborted();
+        }
+
+        bytesInFlight += estimate;
+        let actualBytes = 0;
+        try {
+          const decoded = await this.context.decodeAudioData(compressed);
+          actualBytes = decoded.numberOfChannels * decoded.length * 4;
+          return { duration: decoded.duration, chunks: detectChunks(decoded, this.context) };
+        } finally {
+          bytesInFlight -= estimate;
+          if (actualBytes > 0) {
+            completedRatios.push(actualBytes / compressed.byteLength);
+          }
+
+          decodeWaiters.splice(0).forEach(r => r());
+        }
+      }),
+    );
+
+    const fileChunks = decodeResults.map(r => r.chunks);
+    const fileDurations = decodeResults.map(r => r.duration);
+
+    signal.throwIfAborted();
+
+    // Organize all chunks by track
+    this.trackChunks = song.tracks.map((track) => {
+      const fileIndex = song.audioFiles.findIndex(file => file === track.audioFile);
+      const chunks = fileChunks[fileIndex];
+      if (!chunks) {
+        throw new Error(
+          `Audio file '${track.audioFile}' for track '${track.title}' not found in song '${song.title}'`,
+        );
       }
 
-      return buffer;
+      return chunks;
     });
 
-    // Generate warp map
     this.currentSong = song;
     this.buildWarpEvents();
 
-    // Dispose existing driver (if any) and create a new one with the loaded buffers
+    // Setup the underlying audio player
     this.audioDriver?.dispose();
     this.audioDriver = await AudioDriver.create(
       this.context,
-      this.buffers,
+      this.trackChunks,
       {
         tracks: song.tracks.map(t => ({
           highPassFilter: t.classification === "Vocal",
           compressor: t.classification === "Vocal",
         })),
-        onAmplitudes: amplitudes => this.callbacks.onAmplitudes(amplitudes),
+        onAmplitudes: (amplitudes: number[]) => this.callbacks.onAmplitudes(amplitudes),
       },
     );
 
     signal.throwIfAborted();
-    this.audioDriver.connect(this.masterInput);
+    this.audioDriver!.connect(this.masterInput);
 
-    // Initialize duration and final measure based on the longest buffer and the warp map
-    const audioDuration = Math.min(...this.buffers.map(b => b.duration)) * 1000;
+    const audioDuration = Math.min(...fileDurations) * 1000;
     const measures = song.measures.items();
-    const finalMeasure = [...measures].reverse().find(m => (m.$beatTicks[0] ?? Infinity) <= audioDuration) ?? measures[0]!;
+    const finalMeasure
+      = [...measures].reverse().find(m => (m.$beatTicks[0] ?? Infinity) <= audioDuration)
+        ?? measures[0]!;
 
     return {
       duration: audioDuration,
@@ -105,15 +154,13 @@ export default class AudioBackend extends PlayerBackend {
   }
 
   seek(position: Tick): void {
-    this.audioDriver?.seek(position / 1000); // one tick = one millisecond in audio mode
+    this.audioDriver?.seek(position / 1000);
   }
 
   step(currentPosition: Tick, deltaTime: number, limit?: Tick, muteVocals?: boolean): StepResult {
     const driverPosition = (this.audioDriver?.getPosition() ?? 0) * 1000;
-    // Clamp to limit so overshoot doesn't shift the vamp jump target.
     const p1 = limit !== undefined ? Math.min(driverPosition, limit) : driverPosition;
 
-    // Continuously update track gains and tempo/pitch (unchanged values are ignored by the driver).
     const tracks = this.currentSong?.tracks ?? [];
     for (let i = 0; i < tracks.length; i++) {
       const track = tracks[i]!;
@@ -124,16 +171,16 @@ export default class AudioBackend extends PlayerBackend {
     this.audioDriver?.setTempo(this.playbackSpeed);
     this.audioDriver?.setPitch(this.playbackTransposition);
 
-    // Detect and emit measure changes based on the current driver position, skipping when at the vamp boundary
     if (this.systemEvents.measure.items().length > 0 && (limit === undefined || driverPosition < limit)) {
       const measureEvent = this.systemEvents.measure.search(
         { tick: driverPosition } as MeasureEvent,
         { direction: "backward", inclusive: true, extend: true },
       );
-      if (measureEvent && (
-        measureEvent.measure[0] !== this.lastMeasure?.[0]
-        || measureEvent.measure[1] !== this.lastMeasure?.[1]
-      )) {
+      if (
+        measureEvent
+        && (measureEvent.measure[0] !== this.lastMeasure?.[0]
+          || measureEvent.measure[1] !== this.lastMeasure?.[1])
+      ) {
         this.lastMeasure = measureEvent.measure;
         this.callbacks.onMeasureChanged(measureEvent.measure);
       }
@@ -143,8 +190,6 @@ export default class AudioBackend extends PlayerBackend {
   }
 
   onPositionJump(_offset: Tick, newPosition: Tick): void {
-    // Use lookahead=0 so vamp jumps switch audio immediately (within SEEK_CROSSFADE only),
-    // preventing old sources from playing past the vamp boundary.
     this.audioDriver?.scheduleSeek(newPosition / 1000, 0);
   }
 
@@ -163,7 +208,7 @@ export default class AudioBackend extends PlayerBackend {
   dispose(): void {
     this.audioDriver?.dispose();
     this.audioDriver = undefined;
-    this.buffers = [];
+    this.trackChunks = [];
     this.currentSong = undefined;
     this.lastMeasure = undefined;
   }
@@ -171,14 +216,12 @@ export default class AudioBackend extends PlayerBackend {
   private buildWarpEvents(): void {
     const measures = this.currentSong!.measures.items();
 
-    // Rebuild the warp map from the song's warp markers
     this.warpMap.setMarkers(
       this.currentSong!.warpMarkers
         .map(m => ({ measure: measures.findIndex(m2 => m2.value === m.measure), time: m.time }))
         .filter(m => m.measure !== -1),
     );
 
-    // Regenerate beat-level measure events for all measures based on the updated warp map
     this.systemEvents.measure = new MidiEventList();
     this.systemEvents.tempo = new MidiEventList();
     this.systemEvents.timeSignature = new MidiEventList();
@@ -197,7 +240,6 @@ export default class AudioBackend extends PlayerBackend {
       }
     }
 
-    // Single default tempo event: 125 BPM -> 1 tick/ms
     this.systemEvents.tempo.insert(new TempoEvent(0, 125));
     this.systemEvents.timeSignature.insert(new TimeSignatureEvent(0, [4, 2]));
 

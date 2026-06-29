@@ -6,6 +6,7 @@ import type Song from "../models/song";
 import { Emitter, type Emitters, Property } from "../utils/events";
 import { SetIntervalUpdater, type UpdateCallback, type Updater } from "../utils/updater";
 import AudioBackend from "./audio/backend";
+import type { AudioChunk } from "./audio/chunkDetector";
 import { PlayerBackend } from "./backend";
 import MidiBackend from "./midi/backend";
 import {
@@ -153,8 +154,8 @@ export default class PlayerEngine {
     return this.currentSong;
   }
 
-  getAudioBuffers(): AudioBuffer[] {
-    return this.backend instanceof AudioBackend ? this.backend.getAudioBuffers() : [];
+  getTrackChunks(): AudioChunk[][] {
+    return this.backend instanceof AudioBackend ? this.backend.getTrackChunks() : [];
   }
 
   getPlaybackSpeed(): number {
