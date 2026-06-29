@@ -29,7 +29,7 @@ Choir accompaniment web app: PDF score + real-time MIDI or audio playback.
 
 ## Player Architecture
 
-**Key files:** `src/core/player/engine.ts` (PlayerEngine), `backend.ts` (abstract), `midi/backend.ts` (MidiBackend), `audio/backend.ts` (AudioBackend), `audio/driver.ts` (AudioDriver), `src/core/midi/warp.ts` (WarpMap), `src/core/utils/events.ts` (Property/Emitter), `src/composables/event.ts` (useEvent).
+**Key files:** `src/core/player/engine.ts` (PlayerEngine), `backend.ts` (abstract), `midi/backend.ts` (MidiBackend), `audio/backend.ts` (AudioBackend), `audio/driver.ts` (AudioDriver), `audio/chunkDetector.ts` (detectChunks + AudioChunk type), `src/core/midi/warp.ts` (WarpMap), `src/core/utils/events.ts` (Property/Emitter), `src/composables/event.ts` (useEvent).
 
 **Conventions:**
 - No `_` prefixes — TypeScript access modifiers enforce privacy. `_` only for ignored callback args.
@@ -55,9 +55,11 @@ Choir accompaniment web app: PDF score + real-time MIDI or audio playback.
 - `exitVamp()`, `resetVamp()`, `toggleVamp()` — manipulate `manualExit`/`currentIteration` on the current vamp.
 - `setVampsEnabled(enabled)` — global toggle; disabling force-exits any active vamp and makes `vampAt()` return `undefined`.
 - `VampOut = "onEnd" | "anyBar" | "anyBeat"`, `VampVocals = "all" | "first" | "last" | "split"` (from `src/core/models/measureEvent.ts`, re-exported from `types.ts`).
-- `VampPhase = "entering" | "repeating" | "exiting"`. Phase passed as 4th arg to `backend.step()`; AudioBackend uses it to mute Vocal tracks during `"repeating"`.
+- `VampPhase = "entering" | "repeating" | "exiting"`. Internal to PlayerEngine — computed by `vampPhaseAt()` / `currentVampPhase()`. The 4th arg to `backend.step()` is `muteVocals: boolean`, derived via `vocalsAreMuted(pos)` which reads the current phase and vocals setting. AudioBackend mutes Vocal tracks when `muteVocals` is true.
 
-**AudioDriver:** `scheduleSeek()` does a crossfade seek (for vamp jumps); `seek()` is a hard cut (initial seeks only). `AUDIO_LOOKAHEAD = 0.1` must match MIDI's `AUDIO_CLOCK_OFFSET`.
+**AudioDriver:** Takes `AudioChunk[][]` — one array of chunks per track. `AudioChunk = { sampleOffset: number; audioBuffer: AudioBuffer }` where `audioBuffer` is mono and `sampleOffset` is the chunk's start in the original file (in samples). `detectChunks(decoded, ctx)` strips silence and returns the chunks. `scheduleSeek()` does a crossfade seek (for vamp jumps); `seek()` is a hard cut (initial seeks only). `AUDIO_LOOKAHEAD = 0.1` must match MIDI's `AUDIO_CLOCK_OFFSET`.
+
+**AudioBackend decode phase:** MP3s are decoded in parallel up to `MAX_CONCURRENT_DECODE_BYTES = 750 MB` to avoid OOM on mobile. A sequential `for` loop dispatches decodes; a single `notifyDecodeComplete` callback slot unblocks the next waiter when a decode finishes.
 
 **Store (src/stores/player.ts):** Uses `useEvent()` for all engine-reactive values. `loading`/`ready` are plain `computed()` from `status`.
 
