@@ -9,7 +9,7 @@ import { resolveUrl } from "../../utils/file";
 import { type BackendCallbacks, type LoadResult, PlayerBackend, type StepResult } from "../backend";
 import type { SystemEvents } from "../types";
 import { type AudioChunk, detectChunks } from "./chunkDetector";
-import ChunkedAudioPlayer from "./chunkedPlayer";
+import AudioDriver from "./driver";
 
 const MAX_CONCURRENT_DECODE_BYTES = 750 * 1024 * 1024;
 const DECODED_BYTES_PER_COMPRESSED_BYTE = 128; // Rough estimate for spares MP3s with VBR and stereo channels
@@ -21,7 +21,7 @@ function medianRatio(values: number[]): number {
 }
 
 export default class AudioBackend extends PlayerBackend {
-  private audioDriver: ChunkedAudioPlayer | undefined = undefined;
+  private audioDriver: AudioDriver | undefined = undefined;
   private trackChunks: AudioChunk[][] = [];
   private warpMap = new WarpMap();
   private currentSong: Song | undefined = undefined;
@@ -79,7 +79,6 @@ export default class AudioBackend extends PlayerBackend {
         }
 
         bytesInFlight += estimate;
-        console.log(`Decoding audio file of size ${compressed.byteLength} bytes, bytes in flight: ${bytesInFlight}`);
         let actualBytes = 0;
         try {
           const decoded = await this.context.decodeAudioData(compressed);
@@ -119,7 +118,7 @@ export default class AudioBackend extends PlayerBackend {
 
     // Setup the underlying audio player
     this.audioDriver?.dispose();
-    this.audioDriver = await ChunkedAudioPlayer.create(
+    this.audioDriver = await AudioDriver.create(
       this.context,
       this.trackChunks,
       {
@@ -127,12 +126,12 @@ export default class AudioBackend extends PlayerBackend {
           highPassFilter: t.classification === "Vocal",
           compressor: t.classification === "Vocal",
         })),
-        onAmplitudes: amplitudes => this.callbacks.onAmplitudes(amplitudes),
+        onAmplitudes: (amplitudes: number[]) => this.callbacks.onAmplitudes(amplitudes),
       },
     );
 
     signal.throwIfAborted();
-    this.audioDriver.connect(this.masterInput);
+    this.audioDriver!.connect(this.masterInput);
 
     const audioDuration = Math.min(...fileDurations) * 1000;
     const measures = song.measures.items();

@@ -5,11 +5,11 @@ import type { VampVocals } from "@/core/player/types";
 import { makeAudioSong, makeAudioSongWithVamp, makeAudioSongWithVampOut, makeAudioSongWithVocalVamp } from "@/test/fixtures";
 import { ManualUpdater } from "@/test/updater";
 
-import ChunkedAudioPlayer from "./audio/chunkedPlayer";
+import AudioDriver from "./audio/driver";
 import PlayerEngine from "./engine";
 
 vi.mock("axios");
-vi.mock("./audio/chunkedPlayer", () => ({ default: { create: vi.fn() } }));
+vi.mock("./audio/driver", () => ({ default: { create: vi.fn() } }));
 vi.mock("midi-json-parser", () => ({ parseArrayBuffer: vi.fn() }));
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ async function loadAudioSong(
   const buf = ctx.createBuffer(2, 44100, 44100);
   vi.spyOn(ctx, "decodeAudioData").mockResolvedValue(buf);
   vi.mocked(axios.get).mockResolvedValue({ data: new ArrayBuffer(8) });
-  vi.mocked(ChunkedAudioPlayer.create).mockResolvedValue(mockAP as unknown as ChunkedAudioPlayer);
+  vi.mocked(AudioDriver.create).mockResolvedValue(mockAP as unknown as AudioDriver);
 
   const song = makeAudioSong();
   if (segue) {
@@ -80,7 +80,7 @@ async function loadOutSong(
   const buf = ctx.createBuffer(2, 44100, 44100);
   vi.spyOn(ctx, "decodeAudioData").mockResolvedValue(buf);
   vi.mocked(axios.get).mockResolvedValue({ data: new ArrayBuffer(8) });
-  vi.mocked(ChunkedAudioPlayer.create).mockResolvedValue(mockAP as unknown as ChunkedAudioPlayer);
+  vi.mocked(AudioDriver.create).mockResolvedValue(mockAP as unknown as AudioDriver);
   await player.load(makeAudioSongWithVampOut(out));
 }
 
@@ -93,7 +93,7 @@ async function loadVocalSong(
   const buf = ctx.createBuffer(2, 44100, 44100);
   vi.spyOn(ctx, "decodeAudioData").mockResolvedValue(buf);
   vi.mocked(axios.get).mockResolvedValue({ data: new ArrayBuffer(8) });
-  vi.mocked(ChunkedAudioPlayer.create).mockResolvedValue(mockAP as unknown as ChunkedAudioPlayer);
+  vi.mocked(AudioDriver.create).mockResolvedValue(mockAP as unknown as AudioDriver);
   await player.load(makeAudioSongWithVocalVamp(vocals));
 }
 
@@ -220,7 +220,7 @@ describe("PlayerEngine – audio mode", () => {
     const buf = vc.createBuffer(2, 44100, 44100);
     vi.spyOn(vc, "decodeAudioData").mockResolvedValue(buf);
     vi.mocked(axios.get).mockResolvedValue({ data: new ArrayBuffer(8) });
-    vi.mocked(ChunkedAudioPlayer.create).mockResolvedValue(ap as unknown as ChunkedAudioPlayer);
+    vi.mocked(AudioDriver.create).mockResolvedValue(ap as unknown as AudioDriver);
 
     await vp.load(makeAudioSongWithVamp());
     // Clear calls from load() (initial seek to 0) so assertions below are unambiguous.
@@ -373,7 +373,7 @@ describe("PlayerEngine – audio mode", () => {
     const buf = vc.createBuffer(2, 44100, 44100);
     vi.spyOn(vc, "decodeAudioData").mockResolvedValue(buf);
     vi.mocked(axios.get).mockResolvedValue({ data: new ArrayBuffer(8) });
-    vi.mocked(ChunkedAudioPlayer.create).mockResolvedValue(ap as unknown as ChunkedAudioPlayer);
+    vi.mocked(AudioDriver.create).mockResolvedValue(ap as unknown as AudioDriver);
     await vp.load(makeAudioSongWithVamp());
     ap.seek.mockClear();
     ap.scheduleSeek.mockClear();
@@ -405,7 +405,7 @@ describe("PlayerEngine – audio mode", () => {
     const buf = vc.createBuffer(2, 44100, 44100);
     vi.spyOn(vc, "decodeAudioData").mockResolvedValue(buf);
     vi.mocked(axios.get).mockResolvedValue({ data: new ArrayBuffer(8) });
-    vi.mocked(ChunkedAudioPlayer.create).mockResolvedValue(ap as unknown as ChunkedAudioPlayer);
+    vi.mocked(AudioDriver.create).mockResolvedValue(ap as unknown as AudioDriver);
     await vp.load(makeAudioSongWithVamp());
     ap.seek.mockClear();
     ap.scheduleSeek.mockClear();
