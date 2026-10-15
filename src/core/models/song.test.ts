@@ -221,3 +221,34 @@ describe("Song measure layouts", () => {
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 });
+
+describe("Song measure detection", () => {
+  const layout = { page: 1, x: 0.2, y: 0.3, width: 0.2, height: 0.1 };
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("places existing measures and inserts new ones in one save", async () => {
+    const song = new Song("song-id", "1", "Song", undefined, undefined, undefined, [], [], new MeasureList([
+      new Measure("1", 4),
+      new Measure("3", 4),
+    ]));
+
+    await song.applyMeasureDetection({
+      placements: [{ measure: song.measures.items()[0]!, layout }],
+      additions: [new Measure("2", 3, layout)],
+      keptPlaced: [],
+      duplicates: [],
+      unmatched: [],
+      lowConfidence: [],
+    });
+
+    expect(song.measures.items().map(m => [m.value, m.beats, m.layout])).toEqual([
+      ["1", 4, layout],
+      ["2", 3, layout],
+      ["3", 4, undefined],
+    ]);
+    expect(dbUpdate).toHaveBeenCalledTimes(1);
+  });
+});

@@ -86,6 +86,41 @@ test.describe("measure editing", () => {
   });
 });
 
+test.describe("measure detection", () => {
+  type Layout = NonNullable<SongMeasure["layout"]>;
+
+  function containsCenter(outer: Layout, inner: Layout): boolean {
+    const x = inner.x + inner.width / 2;
+    const y = inner.y + inner.height / 2;
+    return inner.page === outer.page && x > outer.x && x < outer.x + outer.width && y > outer.y && y < outer.y + outer.height;
+  }
+
+  test("detected boxes are applied to the measures they belong to", async ({ page, admin, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const bundle = await buildSongBundle(MINIMAL, { mode: "audio" });
+    const expected = bundle.fields.measures;
+    bundle.fields.measures = expected.map(({ value, beats }) => ({ value, beats }));
+    const song = await factory.createSong(owner, show, bundle);
+    const errors = collectPageErrors(page);
+    await loginAs(owner);
+    await openEditor(page, show, song);
+
+    await page.getByRole("button", { name: "Detect measures" }).click();
+    await page.getByRole("button", { name: "Detect", exact: true }).click();
+    await expect(page.getByText(`Places ${expected.length} measures of the song.`)).toBeVisible({ timeout: 60_000 });
+    await page.getByRole("button", { name: "Apply" }).click();
+
+    await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).measures.every((m: SongMeasure) => m.layout)).toBe(true);
+    const stored = await admin.collection("songs").getOne(song.id);
+    for (const measure of expected) {
+      expect(containsCenter(measure.layout!, layoutOf(stored, measure.value)!), `measure ${measure.value}`).toBe(true);
+    }
+
+    expect(errors).toEqual([]);
+  });
+});
+
 test.describe("audio synchronization", () => {
   async function waveformState(page: Page): Promise<{ scale: number; sampleRate: number }> {
     const root = page.locator("[data-zoom-scale]");

@@ -50,6 +50,11 @@ export default defineConfig({
     tailwindcss(),
     svgLoader(),
   ],
+  // Pre-bundling moves these packages away from the files they load relative to themselves
+  // (the measure-detection worker, the onnxruntime WASM binaries).
+  optimizeDeps: {
+    exclude: ["measure-detection", "onnxruntime-web"],
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

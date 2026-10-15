@@ -2,7 +2,7 @@
 
 Choir rehearsal web app: a PDF score synchronized with real-time MIDI or multi-track audio playback.
 
-**Stack:** Vue 3, Vite, TypeScript, Pinia, PrimeVue, Tailwind v4, PocketBase, Web Audio API, `webaudiofont`, `rubberband-web`, `pdfjs-dist`.
+**Stack:** Vue 3, Vite, TypeScript, Pinia, PrimeVue, Tailwind v4, PocketBase, Web Audio API, `webaudiofont`, `rubberband-web`, `pdfjs-dist`, `measure-detection`.
 
 ---
 
@@ -47,11 +47,11 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 | `src/components/` | UI components (transport, mixer, PDF viewer, warp/marker panels, dialogs) |
 | `src/composables/` | Reusable reactive logic. `event.ts` bridges core events into Vue |
 | `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
-| `src/core/models/` | Domain models: Show, Song, Track, Measure, MeasureEvent. `SongDraft` holds unsaved song dialog edits, `songSetup` derives what a song still lacks |
+| `src/core/models/` | Domain models: Show, Song, Track, Measure, MeasureEvent. `SongDraft` holds unsaved song dialog edits, `songSetup` derives what a song still lacks, `measureDetection` merges detected measures into a song |
 | `src/core/import/` | Groups dropped files into songs by the number in their names |
 | `src/core/player/` | Playback engine with MIDI and audio backends. See `src/core/player/AGENTS.md` |
 | `src/core/midi/` | MIDI event types and the tick/time `WarpMap` |
-| `src/core/pdf/` | PDF rendering in a Web Worker with a job cache |
+| `src/core/pdf/` | PDF rendering in a Web Worker with a job cache. `measureDetector` runs automatic measure detection |
 | `src/core/utils/` | `Property`/`Emitter` events, measure numbering, binary search, `Updater`, `ZoomLadder` for wheel zoom |
 | `src/pocketbase/` | PocketBase client, auth, DB access |
 | `src/test/` | Shared test setup, fixtures, and helpers |
@@ -77,6 +77,14 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 - Canvas based components cannot use CSS variables. Resolve theme colors at runtime (see `WaveformView`) and rebuild when the `.dark` class changes, so they follow any theme preset.
 - Shows are managed on `ShowEditView` (`/show/:id/edit`). The player's edit mode is only for per-song work (measures, layout, tracks, audio sync). Song files are edited in `SongDetailsDialog`, not in the panels.
 - Dark mode is class-based (`.dark` selector). Check every visual change in both light and dark mode.
+
+## Measure Detection
+
+- `measure-detection` finds measure boxes and reads their numbers in the browser. Its layouts use the same page fractions and 0-based pages as `MeasureLayout`, so they are stored unchanged.
+- The package, its ONNX models and the onnxruntime WASM binaries are tens of megabytes. `measureDetector.ts` imports them dynamically so they only load when someone runs a detection. Keep every import of them behind that dynamic import.
+- `vite.config.ts` excludes `measure-detection` and `onnxruntime-web` from dependency pre-bundling. Pre-bundling moves them away from the worker and WASM files they load relative to `import.meta.url`, which breaks detection in the dev server only.
+- `pdfjs-dist` must satisfy the `measure-detection` peer range, since the app passes its own `PDFDocumentProxy` in.
+- Detection never writes directly. `planMeasureDetection()` builds a plan the user reviews in `MeasureDetectionDialog`. In MIDI mode it only places measures of the beat map and never adds any.
 
 ---
 

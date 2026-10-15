@@ -14,6 +14,7 @@ import { useAuthStore } from "@/stores/auth";
 import { usePlayerStore } from "@/stores/player";
 
 import Draggable from "./Draggable.vue";
+import MeasureDetectionDialog from "./MeasureDetectionDialog.vue";
 import PdfViewer from "./PdfViewer.vue";
 
 const player = usePlayerStore();
@@ -31,6 +32,7 @@ const emit = defineEmits<{
 const access = computed(() => getAccessFlags(props.song?.permissions ?? NoPermissions, auth.user?.id));
 const currentTool = ref<"edit" | "add">("edit");
 const pdfViewer = ref();
+const detectionVisible = ref(false);
 
 watch(() => props.editMode, (value) => {
   if (!value) {
@@ -501,6 +503,14 @@ function deleteMeasureLayout(measure: Measure): void {
         class="absolute right-2 bottom-2 flex gap-2"
       >
         <Button
+          v-if="song?.pdfFile"
+          icon="pi pi-sparkles"
+          label="Detect measures"
+          severity="secondary"
+          rounded
+          @click="detectionVisible = true"
+        />
+        <Button
           v-tooltip.top="currentTool === 'add' ? 'Drag a box around measures on the score' : undefined"
           icon="pi pi-plus"
           label="Place measures"
@@ -511,6 +521,12 @@ function deleteMeasureLayout(measure: Measure): void {
           @click="currentTool = currentTool === 'add' ? 'edit' : 'add'"
         />
       </div>
+
+      <MeasureDetectionDialog
+        v-if="song"
+        v-model="detectionVisible"
+        :song="song"
+      />
 
       <Popover
         ref="splitPopover"

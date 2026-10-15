@@ -11,6 +11,7 @@ import type { UrlOrFile } from "../utils/file";
 import type { Numbering } from "../utils/numbering";
 import { inferTrackClassification } from "../utils/trackInference";
 import Measure, { type MeasureLayout, MeasureList } from "./measure";
+import type { MeasureDetectionPlan } from "./measureDetection";
 import { MarkerEvent, MeasureEventList, VampEvent } from "./measureEvent";
 import Track, { type TrackPatch } from "./track";
 
@@ -409,6 +410,18 @@ export default class Song {
     const targetLayout = target.layout;
     target._applyLayout(measure.layout);
     measure._applyLayout(targetLayout);
+    await this.saveMeasures();
+  }
+
+  public async applyMeasureDetection(plan: MeasureDetectionPlan): Promise<void> {
+    for (const { measure, layout } of plan.placements) {
+      measure._applyLayout(layout);
+    }
+
+    for (const measure of plan.additions) {
+      this.measures.insert(measure);
+    }
+
     await this.saveMeasures();
   }
 
