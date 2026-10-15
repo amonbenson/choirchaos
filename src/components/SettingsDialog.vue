@@ -163,7 +163,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
         <!-- Appearance -->
         <TabPanel value="appearance">
           <div class="flex flex-col gap-6 py-4">
-            <div class="flex items-center justify-between gap-4">
+            <div class="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <div class="font-medium">
                   Theme
@@ -194,7 +194,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                 @update:model-value="settings.update({ appearance: { mergeAccompaniment: $event } })"
               />
             </div>
-            <div class="flex flex-col gap-2">
+            <div class="@container flex flex-col gap-2">
               <div>
                 <div class="font-medium">
                   Transport bar buttons
@@ -221,6 +221,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                 option-value="value"
                 multiple
                 fluid
+                pt:root:class="grid grid-cols-2 @sm:grid-cols-3 @2xl:grid-cols-6"
               />
             </div>
           </div>
