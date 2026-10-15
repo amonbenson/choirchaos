@@ -35,7 +35,7 @@ npm run e2e:serve            # seeded local backend + frontend for manual checks
 
 Do not use `npm test`. It starts vitest in watch mode and never exits.
 
-**Before finishing a task:** run `npm run lint:fix`, `npm run typecheck`, and `npx vitest run`. If the change touches backend access, uploads, routing, or other user flows, also run `npm run test:e2e`. CI runs lint, typecheck, build, and the e2e tests, but not the unit tests.
+**Before finishing a task:** run `npm run lint:fix`, `npm run typecheck`, and `npx vitest run`. If the change touches backend access, uploads, routing, or other user flows, also run `npm run test:e2e`. CI runs lint, typecheck, unit tests, build, and the e2e tests.
 
 ---
 
