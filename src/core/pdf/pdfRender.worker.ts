@@ -20,6 +20,16 @@ import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
+// Copied from pdfjs-dist by vite.config.ts. pdf.js fetches these on demand:
+// standard fonts for PDFs that reference but do not embed them, CMaps for CJK
+// text, and WASM decoders for JBIG2 and JPEG 2000 images in scanned scores.
+// The URLs must be absolute because the document shim has no baseURI.
+const pdfjsAssetsUrl = new URL(`${import.meta.env.BASE_URL}pdfjs/`, self.location.origin);
+
+function getPdfjsAssetUrl(directory: string): string {
+  return new URL(`${directory}/`, pdfjsAssetsUrl).href;
+}
+
 // ── Message types (exported for use in pdfRenderer.ts) ───────────────────────
 
 // WorkerRequest is WorkerInMessage without the id field, defined as a proper
@@ -131,7 +141,16 @@ const docCache = new Map<string, Promise<PDFDocumentProxy>>();
 
 function getDoc(url: string): Promise<PDFDocumentProxy> {
   if (!docCache.has(url)) {
-    docCache.set(url, pdfjsLib.getDocument({ url }).promise);
+    docCache.set(url, pdfjsLib.getDocument({
+      url,
+      // The FontFace API needs document.fonts, which the shim cannot provide.
+      // Without it every embedded glyph renders as an empty box, so glyphs are
+      // drawn as paths instead.
+      disableFontFace: true,
+      standardFontDataUrl: getPdfjsAssetUrl("standard_fonts"),
+      cMapUrl: getPdfjsAssetUrl("cmaps"),
+      wasmUrl: getPdfjsAssetUrl("wasm"),
+    }).promise);
   }
 
   return docCache.get(url)!;

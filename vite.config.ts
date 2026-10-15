@@ -1,4 +1,4 @@
-import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 
 // import vueDevTools from "vite-plugin-vue-devtools";
@@ -9,6 +9,8 @@ import svgLoader from "vite-svg-loader";
 
 // load vite environment variables
 const viteEnv = loadEnv(process.env.NODE_ENV as string, process.cwd());
+
+const PDFJS_ASSET_DIRECTORIES = ["standard_fonts", "cmaps", "wasm"];
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -32,6 +34,15 @@ export default defineConfig({
             "return this.module.HEAPF32.subarray((this.dataPtr>>2)+A*this.length,(this.dataPtr>>2)+(A+1)*this.length)",
           ),
         );
+      },
+    },
+    {
+      name: "copy-pdfjs-assets",
+      // Runs in config() so the files exist before the dev server indexes the public directory.
+      config() {
+        for (const directory of PDFJS_ASSET_DIRECTORIES) {
+          cpSync(`node_modules/pdfjs-dist/${directory}`, `public/pdfjs/${directory}`, { recursive: true });
+        }
       },
     },
     vue(),

@@ -68,6 +68,5 @@ A `ScoreSpec` (`generators/score/types.ts`, presets in `presets.ts`) is expanded
 - `songs` has no list rule, so regular users can only read songs through `shows?expand=songs_via_show` or by id.
 - The MIDI player downloads instruments for `webaudiofont` from the internet at load time. MIDI playback tests need network access or a `page.route()` stub.
 - MuseScore's `.mpos` coordinates scale with the image export resolution. `convertWithMuseScore()` pins `--image-resolution`. Keep `MPOS_UNITS_PER_INCH` in sync with it.
-- Generated PDFs embed fonts. The app's PDF worker currently renders their glyphs as empty boxes, while staff lines and bar positions are correct.
 - `e2e:serve` binds fixed ports (8091, 5174). Right after a previous run stops, Testcontainers may need a few seconds to release 8091.
 - `testcontainers` is pinned to 11.x because 12.x requires Node 22.22+, and the project still supports Node 20. The `uuid` override in `package.json` patches its dockerode dependency.

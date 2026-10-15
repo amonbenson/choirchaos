@@ -36,5 +36,8 @@ coverage
 /public/test/
 /tmp/
 
+# copied from pdfjs-dist by vite.config.ts
+/public/pdfjs/
+
 # e2e build output, test results and reports
 /e2e/.cache/
