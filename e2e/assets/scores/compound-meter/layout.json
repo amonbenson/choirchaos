@@ -1,0 +1,97 @@
+{
+  "hash": "10672b20d17d1d51e201934136f7a6bdb4a2a2fc07984e1554e554d2d014edc4",
+  "museScoreVersion": "MuseScore4 4.7.5",
+  "pageCount": 1,
+  "measures": [
+    {
+      "number": "1",
+      "layout": {
+        "page": 0,
+        "x": 0.15179,
+        "y": 0.15684,
+        "width": 0.32265,
+        "height": 0.19427
+      }
+    },
+    {
+      "number": "2",
+      "layout": {
+        "page": 0,
+        "x": 0.47444,
+        "y": 0.15684,
+        "width": 0.23403,
+        "height": 0.19427
+      }
+    },
+    {
+      "number": "3",
+      "layout": {
+        "page": 0,
+        "x": 0.70847,
+        "y": 0.15684,
+        "width": 0.23403,
+        "height": 0.19427
+      }
+    },
+    {
+      "number": "4",
+      "layout": {
+        "page": 0,
+        "x": 0.10905,
+        "y": 0.42922,
+        "width": 0.42551,
+        "height": 0.20483
+      }
+    },
+    {
+      "number": "5",
+      "layout": {
+        "page": 0,
+        "x": 0.53456,
+        "y": 0.42922,
+        "width": 0.20314,
+        "height": 0.20483
+      }
+    },
+    {
+      "number": "6",
+      "layout": {
+        "page": 0,
+        "x": 0.7377,
+        "y": 0.42922,
+        "width": 0.2048,
+        "height": 0.20483
+      }
+    },
+    {
+      "number": "7",
+      "layout": {
+        "page": 0,
+        "x": 0.10905,
+        "y": 0.71217,
+        "width": 0.3468,
+        "height": 0.20584
+      }
+    },
+    {
+      "number": "8",
+      "layout": {
+        "page": 0,
+        "x": 0.45586,
+        "y": 0.71217,
+        "width": 0.23621,
+        "height": 0.20584
+      }
+    },
+    {
+      "number": "9",
+      "layout": {
+        "page": 0,
+        "x": 0.69207,
+        "y": 0.71217,
+        "width": 0.25043,
+        "height": 0.20584
+      }
+    }
+  ]
+}

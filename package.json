@@ -11,11 +11,14 @@
     "build": "run-p typecheck \"build-only {@}\" --",
     "preview": "vite preview",
     "test": "vitest",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "build-only": "vite build",
     "typecheck": "vue-tsc --build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "bundlemti": "vite-node ./scripts/bundlemti.ts"
+    "bundlemti": "vite-node ./scripts/bundlemti.ts",
+    "e2e:scores": "vite-node e2e/scripts/generateScores.ts",
+    "e2e:serve": "vite-node e2e/scripts/serve.ts"
   },
   "dependencies": {
     "@primeuix/themes": "^2.0.3",
@@ -43,9 +46,11 @@
   },
   "overrides": {
     "minimatch": "^10.2.1",
-    "glob": "^13.0.0"
+    "glob": "^13.0.0",
+    "uuid": "^11.1.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@tsconfig/node22": "^22.0.5",
     "@types/jsdom": "^28.0.0",
@@ -62,14 +67,17 @@
     "eslint-plugin-vue": "^10.8.0",
     "jiti": "^2.6.1",
     "jsdom": "^29.0.0",
+    "midi-file": "^1.2.4",
     "node-web-audio-api": "^1.0.9",
     "npm-run-all2": "^8.0.4",
+    "testcontainers": "^11.14.0",
     "typescript": "~5.9.3",
     "vite": "^7.0.0",
     "vite-node": "^6.0.0",
     "vite-plugin-vue-devtools": "^8.1.0",
     "vite-svg-loader": "^5.1.1",
     "vitest": "^4.1.0",
-    "vue-tsc": "^3.2.5"
+    "vue-tsc": "^3.2.5",
+    "wasm-media-encoders": "^0.7.0"
   }
 }

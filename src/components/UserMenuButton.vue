@@ -6,6 +6,7 @@ import Menu from "primevue/menu";
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 
+import { pb } from "@/pocketbase";
 import { logout } from "@/pocketbase/auth";
 import { useAuthStore } from "@/stores/auth";
 
@@ -32,7 +33,7 @@ const avatarUrl = computed(() => {
     return null;
   }
 
-  return `${import.meta.env.VITE_PB_URL}/api/files/users/${r.id}/${r.avatar}`;
+  return pb.files.getURL(r, r.avatar);
 });
 
 const menuItems = computed(() => [

@@ -35,3 +35,6 @@ coverage
 # temporary test files
 /public/test/
 /tmp/
+
+# e2e build output, test results and reports
+/e2e/.cache/

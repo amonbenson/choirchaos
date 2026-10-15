@@ -57,6 +57,18 @@ VITE_PB_URL="https://your-pocketbase-instance.com"
 
 `VITE_PB_URL` must point to a PocketBase instance with the correct collections and access rules configured. The backend, including all PocketBase migrations, lives in [choirchaos-pb](https://github.com/amonbenson/choirchaos-pb).
 
+### End-to-End Tests
+
+The `e2e/` suite runs the production build in Chromium against a fresh PocketBase container built from a pinned `choirchaos-pb` commit. It needs Docker.
+
+```bash
+npx playwright install chromium   # once
+npm run test:e2e                  # run the suite
+npm run e2e:serve                 # seeded backend + frontend for manual testing
+```
+
+Test scores, MIDI files and audio stems are generated from code. See [`e2e/AGENTS.md`](e2e/AGENTS.md) for details.
+
 ## Deployment
 
 The app is deployed to a Dokku server using the included `Dockerfile`. Pushing to `main` triggers the GitHub Actions CI pipeline, which runs lint and type checks and then deploys automatically via `git push dokku main`.

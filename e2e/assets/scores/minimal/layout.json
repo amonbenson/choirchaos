@@ -1,0 +1,47 @@
+{
+  "hash": "1ce917300f0de5af52718015df469f5d7367165da43f441a1b36e862443d00f7",
+  "museScoreVersion": "MuseScore4 4.7.5",
+  "pageCount": 1,
+  "measures": [
+    {
+      "number": "1",
+      "layout": {
+        "page": 0,
+        "x": 0.12024,
+        "y": 0.15684,
+        "width": 0.2477,
+        "height": 0.18493
+      }
+    },
+    {
+      "number": "2",
+      "layout": {
+        "page": 0,
+        "x": 0.36794,
+        "y": 0.15684,
+        "width": 0.18896,
+        "height": 0.18493
+      }
+    },
+    {
+      "number": "3",
+      "layout": {
+        "page": 0,
+        "x": 0.55691,
+        "y": 0.15684,
+        "width": 0.18896,
+        "height": 0.18493
+      }
+    },
+    {
+      "number": "4",
+      "layout": {
+        "page": 0,
+        "x": 0.74587,
+        "y": 0.15684,
+        "width": 0.19663,
+        "height": 0.18493
+      }
+    }
+  ]
+}

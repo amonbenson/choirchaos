@@ -29,11 +29,13 @@ npm run typecheck            # vue-tsc --build
 npx vitest run               # all tests
 npx vitest run <path>        # single test file
 npm run build                # typecheck + production build
+npm run test:e2e             # end-to-end tests (needs Docker), see e2e/AGENTS.md
+npm run e2e:serve            # seeded local backend + frontend for manual checks
 ```
 
 Do not use `npm test`. It starts vitest in watch mode and never exits.
 
-**Before finishing a task:** run `npm run lint:fix`, `npm run typecheck`, and `npx vitest run`. CI runs lint, typecheck, and build, but not tests.
+**Before finishing a task:** run `npm run lint:fix`, `npm run typecheck`, and `npx vitest run`. If the change touches backend access, uploads, routing, or other user flows, also run `npm run test:e2e`. CI runs lint, typecheck, build, and the e2e tests, but not the unit tests.
 
 ---
 
@@ -52,6 +54,7 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 | `src/core/utils/` | `Property`/`Emitter` events, measure numbering, binary search, `Updater` |
 | `src/pocketbase/` | PocketBase client, auth, DB access |
 | `src/test/` | Shared test setup, fixtures, and helpers |
+| `e2e/` | Playwright end-to-end tests against a Dockerized backend, plus score/MIDI/audio generators. See `e2e/AGENTS.md` |
 
 `src/core/` is framework-free TypeScript. Vue and Pinia code lives outside it and consumes core state through `useEvent()`.
 
@@ -75,7 +78,7 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 
 ## Backend
 
-PocketBase is a separate repository (`choirchaos-pb`). The app reads its URL from `VITE_PB_URL` in `.env`. Unit tests do not need a running PocketBase. Mock `axios` and pass songs built from `src/test/fixtures.ts`.
+PocketBase is a separate repository (`choirchaos-pb`). The app reads its URL from `VITE_PB_URL` in `.env`. Unit tests do not need a running PocketBase. Mock `axios` and pass songs built from `src/test/fixtures.ts`. The e2e tests build the backend from a pinned `choirchaos-pb` commit (`e2e/config.ts`).
 
 ---
 
@@ -92,6 +95,7 @@ PocketBase is a separate repository (`choirchaos-pb`). The app reads its URL fro
 Agent guidance is split by scope:
 - `AGENTS.md` (this file): project-wide rules, commands, layout, and conventions.
 - `src/core/player/AGENTS.md`: playback engine internals, invariants, and player test patterns.
+- `e2e/AGENTS.md`: end-to-end harness, backend fixtures and invariants, and test data generators.
 
 `AGENTS.md` is the only agent instruction format in this repo. Do not add tool-specific copies or pointer files such as `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, or `.github/copilot-instructions.md`. A root `CLAUDE.md` would make Claude Code ignore every nested `AGENTS.md`. Tools that need configuration to read `AGENTS.md` get a settings entry, not a copy of the content.
 
