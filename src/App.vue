@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { useMediaQuery } from "@vueuse/core";
+import ConfirmDialog from "primevue/confirmdialog";
+import Toast from "primevue/toast";
 import { onMounted, watchEffect } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 
@@ -35,4 +37,6 @@ onMounted(async () => {
 
 <template>
   <RouterView />
+  <Toast position="bottom-right" />
+  <ConfirmDialog class="max-w-[calc(100vw-2rem)]" />
 </template>

@@ -45,4 +45,43 @@ export function compareNumberings(a: Numbering, b: Numbering): number {
   return letterA.localeCompare(letterB);
 }
 
-;
+/** The next whole number after the highest existing numbering, e.g. "8" after "7a". */
+export function getNextSongNumber(numbers: Numbering[]): Numbering {
+  const highest = numbers
+    .map(number => parseInt(number.match(NUMBERING_REGEX)?.[1] ?? "0", 10))
+    .reduce((max, value) => Math.max(max, value), 0);
+  return String(highest + 1);
+}
+
+const MEASURE_RANGE = /^(\d+)\s*\.\.\s*(\d+)$/;
+const MAX_RANGE_LENGTH = 2000;
+
+/**
+ * Parses a comma separated list of measure numbers and ranges, e.g. "1..32, 33a".
+ * Returns undefined if any part is invalid.
+ */
+export function parseMeasureList(input: string): Numbering[] | undefined {
+  const parts = input.split(",").map(part => part.trim()).filter(Boolean);
+  const result: Numbering[] = [];
+
+  for (const part of parts) {
+    const range = part.match(MEASURE_RANGE);
+    if (range) {
+      const from = parseInt(range[1]!, 10);
+      const to = parseInt(range[2]!, 10);
+      if (Math.abs(to - from) >= MAX_RANGE_LENGTH) {
+        return undefined;
+      }
+
+      for (let n = Math.min(from, to); n <= Math.max(from, to); n++) {
+        result.push(String(n));
+      }
+    } else if (isNumbering(part)) {
+      result.push(part);
+    } else {
+      return undefined;
+    }
+  }
+
+  return result.length > 0 ? result : undefined;
+}

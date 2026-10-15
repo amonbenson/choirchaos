@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { compareNumberings } from "./numbering";
+import { compareNumberings, getNextSongNumber, parseMeasureList } from "./numbering";
 
 describe("compareMeasures", () => {
   it("returns 0 for equal measures", () => {
@@ -50,5 +50,26 @@ describe("compareMeasures", () => {
     expect(compareNumberings("10a-2", "10a-1")).toBeGreaterThan(0);
     expect(compareNumberings("10a-1", "10a")).toBeGreaterThan(0);
     expect(compareNumberings("11a-1", "11b")).toBeGreaterThan(0);
+  });
+});
+
+describe("getNextSongNumber", () => {
+  it("continues after the highest number", () => {
+    expect(getNextSongNumber([])).toBe("1");
+    expect(getNextSongNumber(["1", "7a", "3"])).toBe("8");
+  });
+});
+
+describe("parseMeasureList", () => {
+  it("parses single measures, ranges and lists", () => {
+    expect(parseMeasureList("4")).toEqual(["4"]);
+    expect(parseMeasureList("1..3, 3a, 5")).toEqual(["1", "2", "3", "3a", "5"]);
+    expect(parseMeasureList("3 .. 1")).toEqual(["1", "2", "3"]);
+  });
+
+  it("rejects invalid input", () => {
+    expect(parseMeasureList("")).toBeUndefined();
+    expect(parseMeasureList("1, x?")).toBeUndefined();
+    expect(parseMeasureList("1..99999")).toBeUndefined();
   });
 });

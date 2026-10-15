@@ -1,13 +1,15 @@
 import { pb, type PbRecord } from "@/pocketbase";
 import { NoPermissions, type Permissions } from "@/pocketbase/auth";
-import { dbCreate, dbUpdate, dbUpdateWithFiles } from "@/pocketbase/db";
+import { dbCreate, dbCreateWithFiles, dbDelete, dbUpdate, dbUpdateWithFiles } from "@/pocketbase/db";
 
+import { measuresFromBeatMap, tracksFromBeatMap } from "../midi/beatMap";
 import type { Tick } from "../midi/types";
 import type { WarpMarker } from "../midi/warp";
 import type { PlayerMode, SystemEvents } from "../player/types";
 import { binarySearch } from "../utils/binarySearch";
 import type { UrlOrFile } from "../utils/file";
 import type { Numbering } from "../utils/numbering";
+import { inferTrackClassification } from "../utils/trackInference";
 import Measure, { type MeasureLayout, MeasureList } from "./measure";
 import { MarkerEvent, MeasureEventList, VampEvent } from "./measureEvent";
 import Track, { type TrackPatch } from "./track";
@@ -24,6 +26,25 @@ export type SongWarpMarker = {
   measure: Numbering; // measure number (e.g. "1", "2a")
   time: number;
 };
+
+export type SongDetails = {
+  number: SongNumber;
+  title: string;
+};
+
+export type SongRecording = {
+  file: File;
+  title: string;
+};
+
+export type SongFiles = {
+  score?: File;
+  midi?: File;
+  beatMap?: File;
+  recordings?: SongRecording[];
+};
+
+const EMPTY_EVENTS = Object.freeze({ markers: [], vamps: [], segue: false });
 
 export default class Song {
   public playerMode: PlayerMode = "none";
@@ -46,11 +67,11 @@ export default class Song {
 
   constructor(
     public readonly id: string,
-    public readonly number: Numbering,
-    public readonly title: string,
-    public readonly midiFile: UrlOrFile | undefined,
-    public readonly jsonFile: UrlOrFile | undefined,
-    public readonly pdfFile: UrlOrFile | undefined,
+    public number: Numbering,
+    public title: string,
+    public midiFile: UrlOrFile | undefined,
+    public jsonFile: UrlOrFile | undefined,
+    public pdfFile: UrlOrFile | undefined,
     audioFiles: UrlOrFile[] = [],
     tracks: Track[] = [],
     public readonly measures: MeasureList = new MeasureList(),
@@ -209,19 +230,83 @@ export default class Song {
 
   // ── File mutations ────────────────────────────────────────────────────────────
 
-  public async uploadMidiFile(file: File): Promise<void> {
-    const formData = new FormData();
-    formData.append("midiFile", file);
-    const record = await dbUpdateWithFiles("songs", this.id, formData);
-    (this as any).midiFile = record.midiFile;
-    this._syncPlayerMode();
+  public async updateDetails({ number, title }: SongDetails): Promise<void> {
+    await this._save({ number, title });
+    this.number = number;
+    this.title = title;
   }
 
+  /**
+   * Uploads score, MIDI and recordings in one request. A beat map also fills in the measures and
+   * the MIDI tracks while the song has none, so a freshly imported MIDI song is playable at once.
+   */
+  public async addFiles({ score, midi, beatMap, recordings = [] }: SongFiles): Promise<void> {
+    const formData = new FormData();
+    const beatMapJson = beatMap ? JSON.parse(await beatMap.text()) : undefined;
+
+    if (score) {
+      formData.append("pdfFile", score);
+    }
+
+    if (midi) {
+      formData.append("midiFile", midi);
+    }
+
+    if (beatMap) {
+      formData.append("jsonFile", beatMap);
+    }
+
+    if (beatMapJson && this.measures.items().length === 0) {
+      measuresFromBeatMap(beatMapJson).forEach(measure => this.measures.insert(measure));
+      formData.append("measures", JSON.stringify(this._serializeMeasures()));
+    }
+
+    if (beatMapJson && this._tracks.length === 0) {
+      this._tracks.push(...tracksFromBeatMap(beatMapJson));
+      this._tracks.forEach((track, i) => track.mixer.index = i);
+      formData.append("tracks", JSON.stringify(this._serializeTracks()));
+    }
+
+    if ([...formData.keys()].length === 0) {
+      await this.addRecordings(recordings);
+      return;
+    }
+
+    const record = await dbUpdateWithFiles("songs", this.id, formData);
+    this.pdfFile = record.pdfFile || this.pdfFile;
+    this.midiFile = record.midiFile || this.midiFile;
+    this.jsonFile = record.jsonFile || this.jsonFile;
+    this._syncPlayerMode();
+
+    await this.addRecordings(recordings);
+  }
+
+  public async addRecordings(recordings: SongRecording[]): Promise<void> {
+    if (recordings.length === 0) {
+      return;
+    }
+
+    const filenames = await this.uploadAudioFiles(recordings.map(recording => recording.file));
+    await this.addTracks(recordings.map((recording, i) => new Track(
+      recording.title,
+      inferTrackClassification(recording.title),
+      0,
+      filenames[i] ?? "",
+    )));
+  }
+
+  public async removeScore(): Promise<void> {
+    await this._save({ pdfFile: null });
+    this.pdfFile = undefined;
+  }
+
+  // Without its beat map a MIDI file cannot play, so both are always removed together.
   public async removeMidiFile(): Promise<void> {
-    (this as any).midiFile = undefined;
+    this.midiFile = undefined;
+    this.jsonFile = undefined;
     this._tracks.splice(0, this._tracks.length);
     this._syncPlayerMode();
-    await this._save({ midiFile: null, tracks: [] });
+    await this._save({ midiFile: null, jsonFile: null, tracks: [] });
   }
 
   public async uploadAudioFiles(files: File[]): Promise<string[]> {
@@ -311,6 +396,22 @@ export default class Song {
     measure._applyLayout(layout);
   }
 
+  /**
+   * Moves the layout of a measure to the measure with the given number. If that measure already
+   * has a layout, the two layouts swap, so a mislabelled box can be fixed in one step.
+   */
+  public async reassignMeasureLayout(measure: Measure, targetValue: Numbering): Promise<void> {
+    const target = this.measures.items().find(m => m.value === targetValue);
+    if (!target || target === measure) {
+      return;
+    }
+
+    const targetLayout = target.layout;
+    target._applyLayout(measure.layout);
+    measure._applyLayout(targetLayout);
+    await this.saveMeasures();
+  }
+
   public async saveMeasures(): Promise<void> {
     await this._save({ measures: this._serializeMeasures() });
   }
@@ -393,6 +494,26 @@ export default class Song {
 
   public async create(): Promise<PbRecord> {
     return await dbCreate("songs", this.serialize());
+  }
+
+  public static async create(showId: string, { number, title }: SongDetails, files: SongFiles = {}, permissions?: Permissions): Promise<Song> {
+    const formData = new FormData();
+    formData.append("show", showId);
+    formData.append("number", number);
+    formData.append("title", title);
+    formData.append("tracks", "[]");
+    formData.append("measures", "[]");
+    formData.append("events", JSON.stringify(EMPTY_EVENTS));
+    formData.append("warpMarkers", "[]");
+
+    const record = await dbCreateWithFiles("songs", formData);
+    const song = Song.deserialize({ ...record, tracks: [], measures: [], events: EMPTY_EVENTS, warpMarkers: [] }, permissions);
+    await song.addFiles(files);
+    return song;
+  }
+
+  public async delete(): Promise<void> {
+    await dbDelete("songs", this.id);
   }
 
   public static async list(): Promise<Song[]> {

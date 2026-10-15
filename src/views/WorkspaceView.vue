@@ -8,6 +8,7 @@ import BabySvenja from "@/components/BabySvenja.vue";
 import KbdShortcut from "@/components/KbdShortcut.vue";
 import MarkerPanel from "@/components/MarkerPanel.vue";
 import MixerPanel from "@/components/MixerPanel.vue";
+import SongDetailsDialog from "@/components/SongDetailsDialog.vue";
 import SongPdfViewer from "@/components/SongPdfViewer.vue";
 import TransportBar from "@/components/TransportBar.vue";
 import VampCard from "@/components/VampCard.vue";
@@ -38,8 +39,11 @@ const showLoading = ref(true);
 
 const song = ref<Song | undefined>();
 const songLoading = ref(true);
-const editMode = ref(false);
-const canEdit = computed(() => !!song.value && getAccessFlags(song.value.permissions, auth.user?.id).editor);
+const editMode = ref(route.query.edit === "1");
+const canEdit = computed(() => !!show.value && getAccessFlags(show.value.permissions, auth.user?.id).editor);
+const showWarpPanel = computed(() => editMode.value && song.value?.playerMode === "audio");
+const songDetailsVisible = ref(false);
+const songDetailsTarget = ref<Song>();
 
 const songs = computed(() => show.value?.songs ?? []);
 const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
@@ -150,6 +154,39 @@ watch(() => auth.user, (user) => {
   }
 });
 
+// SONG MANAGEMENT
+
+function openSongDetails(target?: Song): void {
+  songDetailsTarget.value = target;
+  songDetailsVisible.value = true;
+}
+
+async function onSongSaved(saved: Song, { created, filesChanged }: { created: boolean; filesChanged: boolean }): Promise<void> {
+  if (created) {
+    show.value?.addSong(saved);
+    selectSong(saved.id);
+    return;
+  }
+
+  show.value?.sortSongs();
+  if (filesChanged && saved === song.value) {
+    await player.load(saved);
+  }
+}
+
+function onSongDeleted(deleted: Song): void {
+  if (deleted !== song.value) {
+    return;
+  }
+
+  const next = songs.value[songIndex.value] ?? songs.value[songIndex.value - 1];
+  if (next) {
+    selectSong(next.id);
+  } else {
+    router.replace({ name: "show-edit", params: { showId: props.showId } });
+  }
+}
+
 // SETTINGS
 
 onMounted(() => {
@@ -210,11 +247,21 @@ watch(() => props.songId, async (songId) => {
       return;
     }
 
+    // Consume the edit flag that links from the show page use, so reloading opens the player normally.
+    if (route.query.edit) {
+      const { edit: _, ...query } = route.query;
+      router.replace({ ...route, query });
+    }
+
     // Select the song
     song.value = show.value.songs.find(s => s.id === songId);
     if (!song.value) {
       console.error("Invalid song id:", songId);
-      router.replace({ name: "song", params: { showId: props.showId, songId: show.value.songs[0]!.id } });
+      const firstSong = show.value.songs[0];
+      if (firstSong) {
+        router.replace({ name: "song", params: { showId: props.showId, songId: firstSong.id } });
+      }
+
       return;
     }
 
@@ -245,7 +292,7 @@ const pdfLoading = ref(false);
 <template>
   <div
     class="grid size-full grid-cols-1 gap-2 overflow-hidden p-2 lg:grid-cols-[auto_1fr_auto]"
-    :class="editMode
+    :class="showWarpPanel
       ? 'grid-rows-[auto_auto_1fr_auto] lg:grid-rows-[auto_1fr_auto]'
       : 'grid-rows-[auto_auto_1fr] lg:grid-rows-[auto_1fr]'"
   >
@@ -263,6 +310,9 @@ const pdfLoading = ref(false);
       @toggle-vamp="toggleVamp"
       @toggle-segue="toggleSegue"
       @toggle-edit-mode="editMode = !editMode"
+      @open-song-details="openSongDetails(song)"
+      @add-song="openSongDetails()"
+      @edit-show="router.push({ name: 'show-edit', params: { showId } })"
     />
     <ButtonGroup class="w-full lg:hidden">
       <Button
@@ -342,6 +392,14 @@ const pdfLoading = ref(false);
           </VampCard>
         </div>
         <div
+          v-if="show && !showLoading && songs.length === 0"
+          class="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center"
+        >
+          <i class="pi pi-book text-5xl text-muted-color" />
+          <span class="text-xl font-semibold">No songs yet</span>
+          <span class="text-muted-color">Songs appear here as soon as they are added to "{{ show.title }}".</span>
+        </div>
+        <div
           v-if="player.loading || pdfLoading"
           class="absolute top-0 left-0 flex size-full flex-col items-center justify-center bg-black/50 text-white select-none"
         >
@@ -367,6 +425,7 @@ const pdfLoading = ref(false);
           ]"
           :song="song"
           :edit-mode="editMode"
+          @open-song-details="openSongDetails(song)"
         />
         <Button
           class="absolute top-2 right-full z-10 hidden transition-all lg:block"
@@ -382,9 +441,18 @@ const pdfLoading = ref(false);
 
     <!-- Warp Panel (audio mode) -->
     <WarpPanel
-      v-if="editMode"
+      v-if="showWarpPanel"
       class="lg:col-span-3"
       :song="song"
+    />
+
+    <SongDetailsDialog
+      v-if="show"
+      v-model="songDetailsVisible"
+      :show="show"
+      :song="songDetailsTarget"
+      @saved="onSongSaved"
+      @deleted="onSongDeleted"
     />
   </div>
 </template>

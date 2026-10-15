@@ -6,8 +6,7 @@ import { encodeMp3, renderPartStem } from "../generators/audio";
 import { MINIMAL } from "../generators/score/presets";
 import { buildSongBundle, type SongTrack } from "../generators/song";
 import { expect, test } from "../harness/fixtures";
-
-type UploadFile = { name: string; mimeType: string; buffer: Buffer };
+import { chooseFiles, collectPageErrors, type UploadFile } from "../harness/page";
 
 async function buildStem(partId: string, name: string): Promise<UploadFile> {
   const bundle = await buildSongBundle(MINIMAL, { mode: "none", withPdf: false });
@@ -15,25 +14,18 @@ async function buildStem(partId: string, name: string): Promise<UploadFile> {
   return { name, mimeType: "audio/mpeg", buffer: Buffer.from(mp3) };
 }
 
-/** Vue reports render errors through console.error, so uncaught exceptions alone miss them. */
-function collectPageErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on("pageerror", error => errors.push(error.message));
-  page.on("console", (message) => {
-    if (message.type() === "error") {
-      errors.push(message.text());
-    }
-  });
-  return errors;
-}
-
-async function openSongInEditMode(page: Page, show: RecordModel, song: RecordModel): Promise<void> {
+async function openSongDetails(page: Page, show: RecordModel, song: RecordModel): Promise<void> {
   await page.goto(`/show/${show.id}/song/${song.id}`);
   await page.getByRole("button", { name: "Toggle Edit Mode" }).click();
+  await page.getByRole("button", { name: "Song details" }).click();
 }
 
-async function uploadStems(page: Page, files: UploadFile[]): Promise<void> {
-  await page.locator("input[type=file][accept='audio/*']").setInputFiles(files);
+async function addRecordings(page: Page, files: UploadFile[]): Promise<void> {
+  const dialog = page.getByRole("dialog", { name: "Song details" });
+  await dialog.getByRole("button", { name: "Recordings", exact: true }).click();
+  await chooseFiles(page, dialog.getByRole("button", { name: "Add recordings" }), files);
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toBeHidden();
 }
 
 async function waitForTracks(admin: PocketBase, songId: string, count: number): Promise<RecordModel> {
@@ -53,9 +45,8 @@ test.describe("audio upload", () => {
     const errors = collectPageErrors(page);
 
     await loginAs(owner);
-    await openSongInEditMode(page, show, song);
-    await page.getByRole("button", { name: "MP3" }).click();
-    await uploadStems(page, [await buildStem("solo", "solo.mp3")]);
+    await openSongDetails(page, show, song);
+    await addRecordings(page, [await buildStem("solo", "solo.mp3")]);
 
     const stored = await waitForTracks(admin, song.id, 1);
     expect(stored.audioFiles).toHaveLength(1);
@@ -73,9 +64,8 @@ test.describe("audio upload", () => {
     const errors = collectPageErrors(page);
 
     await loginAs(owner);
-    await openSongInEditMode(page, show, song);
-    await page.getByRole("button", { name: "MP3" }).click();
-    await uploadStems(page, [await buildStem("solo", "solo.mp3"), await buildStem("piano", "piano.mp3")]);
+    await openSongDetails(page, show, song);
+    await addRecordings(page, [await buildStem("solo", "solo.mp3"), await buildStem("piano", "piano.mp3")]);
 
     const stored = await waitForTracks(admin, song.id, 2);
     expect(trackFileStems(stored)).toEqual({ Solo: "solo", Piano: "piano" });
@@ -93,8 +83,8 @@ test.describe("audio upload", () => {
     const errors = collectPageErrors(page);
 
     await loginAs(owner);
-    await openSongInEditMode(page, show, song);
-    await uploadStems(page, [await buildStem("solo", "extra-vocals.mp3")]);
+    await openSongDetails(page, show, song);
+    await addRecordings(page, [await buildStem("solo", "extra-vocals.mp3")]);
 
     const stored = await waitForTracks(admin, song.id, song.tracks.length + 1);
     expect(stored.audioFiles).toHaveLength(song.audioFiles.length + 1);
@@ -105,23 +95,25 @@ test.describe("audio upload", () => {
     expect(errors).toEqual([]);
   });
 
-  test("deleting the only track removes its file and returns to mode selection", async ({ page, admin, factory, loginAs }) => {
+  test("removing the only recording removes its file and track", async ({ page, admin, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "none" }));
     const errors = collectPageErrors(page);
 
     await loginAs(owner);
-    await openSongInEditMode(page, show, song);
-    await page.getByRole("button", { name: "MP3" }).click();
-    await uploadStems(page, [await buildStem("solo", "solo.mp3")]);
+    await openSongDetails(page, show, song);
+    await addRecordings(page, [await buildStem("solo", "solo.mp3")]);
     await waitForTracks(admin, song.id, 1);
 
-    await page.getByRole("button", { name: "Delete track" }).click();
+    await page.getByRole("button", { name: "Song details" }).click();
+    const dialog = page.getByRole("dialog", { name: "Song details" });
+    await dialog.getByRole("button", { name: "Remove Solo" }).click();
+    await dialog.getByRole("button", { name: "Save" }).click();
 
     const stored = await waitForTracks(admin, song.id, 0);
     expect(stored.audioFiles).toEqual([]);
-    await expect(page.getByRole("button", { name: "MP3" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add playback" })).toBeVisible();
     expect(errors).toEqual([]);
   });
 });

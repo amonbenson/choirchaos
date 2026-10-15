@@ -23,11 +23,13 @@ export function isLoggedIn(): boolean {
   return !!pb.authStore.token;
 }
 
+export type Visibility = "private" | "unlisted" | "public";
+
 export type Permissions = {
   owner?: string;
   editors: string[];
   viewers: string[];
-  visibility: "private" | "unlisted" | "public";
+  visibility: Visibility;
 };
 
 export const NoPermissions: Permissions = Object.freeze({

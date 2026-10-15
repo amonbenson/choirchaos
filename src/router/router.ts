@@ -3,9 +3,12 @@ import { markRaw } from "vue";
 import { createRouter, createWebHistory, type RouteLocationNormalized } from "vue-router";
 
 import Show from "@/core/models/show";
+import { pb } from "@/pocketbase";
 import { login } from "@/pocketbase/auth";
 import AuthView from "@/views/AuthView.vue";
 import HomeView from "@/views/HomeView.vue";
+import NotFoundView from "@/views/NotFoundView.vue";
+import ShowEditView from "@/views/ShowEditView.vue";
 import WorkspaceView from "@/views/WorkspaceView.vue";
 
 let pendingShow: Show | undefined;
@@ -42,7 +45,9 @@ async function autoLogin(to: RouteLocationNormalized): Promise<any> {
 
 async function resolveFirstSong(to: RouteLocationNormalized): Promise<any> {
   try {
-    const show: Show = await Show.get(to.params.showId as string);
+    // Redirecting from the show to its first song enters this guard twice. Reuse the first fetch.
+    const showId = to.params.showId as string;
+    const show: Show = pendingShow?.id === showId ? pendingShow : await Show.get(showId);
     pendingShow = show;
 
     // mark expensive/large reference properties as raw so vue doesn't try to make them reactive.
@@ -59,6 +64,12 @@ async function resolveFirstSong(to: RouteLocationNormalized): Promise<any> {
       }
     }
 
+    // A show without songs has nothing to play yet, so editors go straight to adding songs.
+    if (show.songs.length === 0 && show.getAccess(pb.authStore.record?.id).editor) {
+      pendingShow = undefined;
+      return { name: "show-edit", params: { showId: to.params.showId } };
+    }
+
     // Select the first song
     const firstSongId = show.songs[0]?.id as string | undefined;
 
@@ -71,11 +82,21 @@ async function resolveFirstSong(to: RouteLocationNormalized): Promise<any> {
     }
   } catch (err) {
     if (err instanceof ClientResponseError) {
-      return { name: "home" };
+      return notFound(to);
     }
 
     throw err;
   }
+}
+
+// Keeps the requested address in the URL, so signing in and reloading retries the same show.
+function notFound(to: RouteLocationNormalized): object {
+  return {
+    name: "not-found",
+    params: { pathMatch: to.path.substring(1).split("/") },
+    query: to.query,
+    hash: to.hash,
+  };
 }
 
 const routes = [
@@ -102,9 +123,20 @@ const routes = [
     path: "/show/:showId/song/:songId",
     component: WorkspaceView,
     props: true,
+    beforeEnter: resolveFirstSong,
+  },
+  {
+    name: "show-edit",
+    path: "/show/:showId/edit",
+    component: ShowEditView,
+    props: true,
   },
   // { name: "mti", path: "/mti", component: () => import("@/views/MTIImportView.vue") },
-  { path: "/:pathMatch(.*)*", redirect: "/" },
+  {
+    name: "not-found",
+    path: "/:pathMatch(.*)*",
+    component: NotFoundView,
+  },
 ];
 
 export const router = createRouter({

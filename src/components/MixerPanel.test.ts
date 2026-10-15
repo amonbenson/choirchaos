@@ -1,13 +1,13 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import PrimeVue from "primevue/config";
+import Tooltip from "primevue/tooltip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { reactive } from "vue";
 
 import Song from "@/core/models/song";
 import Track, { type TrackClassification } from "@/core/models/track";
-import { dbUpdateWithFiles } from "@/pocketbase/db";
-import { usePlayerStore } from "@/stores/player";
+import { dbUpdate } from "@/pocketbase/db";
 import { useSettingsStore } from "@/stores/settings";
 
 import MixerPanel from "./MixerPanel.vue";
@@ -39,7 +39,7 @@ function makeEmptySong(): Song {
 function mountPanel(song: Song, editMode = false): VueWrapper {
   return mount(MixerPanel, {
     props: { song: reactive(song) as Song, editMode },
-    global: { plugins: [PrimeVue] },
+    global: { plugins: [PrimeVue], directives: { tooltip: Tooltip } },
   });
 }
 
@@ -81,23 +81,26 @@ describe("MixerPanel", () => {
     });
   });
 
-  it("creates one track per uploaded file, linked to its stored name", async () => {
-    vi.spyOn(usePlayerStore(), "load").mockResolvedValue(undefined as never);
-    vi.mocked(dbUpdateWithFiles).mockResolvedValueOnce({ id: "song-id", audioFiles: ["lead_vocals_1.mp3", "piano_2.mp3"] });
-    const song = makeEmptySong();
+  it("asks for playback in edit mode when the song has none", async () => {
+    const wrapper = mountPanel(makeEmptySong(), true);
+
+    const button = wrapper.findAll("button").find(b => b.text() === "Add playback")!;
+    await button.trigger("click");
+
+    expect(wrapper.emitted("openSongDetails")).toHaveLength(1);
+    expect(wrapper.find("input[type=file]").exists()).toBe(false);
+  });
+
+  it("renames a track in edit mode", async () => {
+    const song = makeAudioSong(["Vocal"]);
     const wrapper = mountPanel(song, true);
 
-    await wrapper.findAll("button").find(b => b.text() === "MP3")!.trigger("click");
-    const input = wrapper.find<HTMLInputElement>("input[type=file][accept='audio/*']");
-    const files = [new File(["a"], "lead_vocals.mp3"), new File(["b"], "piano.mp3")];
-    Object.defineProperty(input.element, "files", { value: files });
+    const input = wrapper.find<HTMLInputElement>("input[aria-label='Name of track 1']");
+    input.element.value = "Soprano";
     await input.trigger("change");
     await flushPromises();
 
-    expect(song.tracks.map(t => [t.title, t.classification, t.audioFile])).toEqual([
-      ["Lead Vocals", "Vocal", "lead_vocals_1.mp3"],
-      ["Piano", "Accompaniment", "piano_2.mp3"],
-    ]);
-    expect(groupHeadings(wrapper)).toEqual(["Accompaniment", "Vocal"]);
+    expect(song.tracks[0]!.title).toBe("Soprano");
+    expect(dbUpdate).toHaveBeenCalledWith("songs", "song-id", { tracks: [expect.objectContaining({ title: "Soprano" })] });
   });
 });

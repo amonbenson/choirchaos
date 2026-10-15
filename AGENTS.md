@@ -43,15 +43,16 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 
 | Path | Contents |
 |---|---|
-| `src/views/` | Routed pages: `AuthView`, `HomeView`, `WorkspaceView` |
+| `src/views/` | Routed pages: `AuthView`, `HomeView`, `ShowEditView` (show settings, songs, sharing), `WorkspaceView` (player and song editor), `NotFoundView` |
 | `src/components/` | UI components (transport, mixer, PDF viewer, warp/marker panels, dialogs) |
 | `src/composables/` | Reusable reactive logic. `event.ts` bridges core events into Vue |
 | `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
-| `src/core/models/` | Domain models: Show, Song, Track, Measure, MeasureEvent |
+| `src/core/models/` | Domain models: Show, Song, Track, Measure, MeasureEvent. `SongDraft` holds unsaved song dialog edits, `songSetup` derives what a song still lacks |
+| `src/core/import/` | Groups dropped files into songs by the number in their names |
 | `src/core/player/` | Playback engine with MIDI and audio backends. See `src/core/player/AGENTS.md` |
 | `src/core/midi/` | MIDI event types and the tick/time `WarpMap` |
 | `src/core/pdf/` | PDF rendering in a Web Worker with a job cache |
-| `src/core/utils/` | `Property`/`Emitter` events, measure numbering, binary search, `Updater` |
+| `src/core/utils/` | `Property`/`Emitter` events, measure numbering, binary search, `Updater`, `ZoomLadder` for wheel zoom |
 | `src/pocketbase/` | PocketBase client, auth, DB access |
 | `src/test/` | Shared test setup, fixtures, and helpers |
 | `e2e/` | Playwright end-to-end tests against a Dockerized backend, plus score/MIDI/audio generators. See `e2e/AGENTS.md` |
@@ -71,14 +72,19 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 
 ## UI
 
-- Use PrimeVue components first and style them with Tailwind utilities.
+- Use PrimeVue components first and style them with Tailwind utilities. For behaviour PrimeVue lacks, prefer a library (vueuse `useDropZone`/`useFileDialog`, peaks.js for waveforms) over hand-written pointer, scroll or drag handling.
+- Use popovers and dialogs instead of `prompt()`/`confirm()`. Destructive confirmations go through PrimeVue's `useConfirm()`, errors through `useNotify()` toasts.
+- Canvas based components cannot use CSS variables. Resolve theme colors at runtime (see `WaveformView`) and rebuild when the `.dark` class changes, so they follow any theme preset.
+- Shows are managed on `ShowEditView` (`/show/:id/edit`). The player's edit mode is only for per-song work (measures, layout, tracks, audio sync). Song files are edited in `SongDetailsDialog`, not in the panels.
 - Dark mode is class-based (`.dark` selector). Check every visual change in both light and dark mode.
 
 ---
 
 ## Backend
 
-PocketBase is a separate repository (`choirchaos-pb`). The app reads its URL from `VITE_PB_URL` in `.env`. Updating a multi-file field (such as `audioFiles`) under its plain name replaces every stored file. Use `audioFiles+` to append and `audioFiles-` to remove. Unit tests do not need a running PocketBase. Mock `axios` and pass songs built from `src/test/fixtures.ts`. The e2e tests build the backend from a pinned `choirchaos-pb` commit (`e2e/config.ts`).
+PocketBase is a separate repository (`choirchaos-pb`). The app reads its URL from `VITE_PB_URL` in `.env`. Updating a multi-file field (such as `audioFiles`) under its plain name replaces every stored file. Use `audioFiles+` to append and `audioFiles-` to remove.
+
+Users can only read their own record, so the client cannot resolve the names of a show's editors and viewers or look up users by email. `choirchaos-pb/pb_hooks/members.pb.js` provides `GET/POST /api/choirchaos/shows/{id}/members` for that (`Show.getMembers()`/`addMember()`). Role changes and removals use the regular show update, which only the owner may do. `Show.delete()` deletes songs before the show, so it works whether or not the relation cascades. A MIDI song is only playable together with its beat map (`jsonFile`). Never store one without the other. Unit tests do not need a running PocketBase. Mock `axios` and pass songs built from `src/test/fixtures.ts`. The e2e tests build the backend from a pinned `choirchaos-pb` commit (`e2e/config.ts`).
 
 ---
 

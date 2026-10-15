@@ -10,6 +10,14 @@ export function resolveFilename(file: UrlOrFile): string {
   }
 }
 
+// PocketBase appends "_" and a random 10 character suffix to every stored file name.
+const STORED_SUFFIX = /_[a-z0-9]{10}(\.[^.]+)?$/i;
+
+export function displayFilename(file: UrlOrFile): string {
+  const name = resolveFilename(file);
+  return file instanceof File ? name : name.replace(STORED_SUFFIX, "$1");
+}
+
 export function resolveUrl(file: UrlOrFile, collectionIdOrName: string, recordId: string): string {
   if (file instanceof File) {
     return URL.createObjectURL(file);

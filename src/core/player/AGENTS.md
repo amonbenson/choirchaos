@@ -18,6 +18,7 @@ Playback engine shared by both modes:
 | `audio/chunkDetector.ts` | `detectChunks()` strips silence, `AudioChunk` type |
 | `../midi/warp.ts` | `WarpMap`: tick to time mapping |
 | `src/stores/player.ts` | Pinia wrapper. Exposes engine state through `useEvent()`. `loading`/`ready` are plain `computed()` from `status` |
+| `audio/mixdown.ts` | Sums all track chunks into one mono buffer for the warp panel waveform |
 
 ## Engine Invariants
 
@@ -34,6 +35,12 @@ Playback engine shared by both modes:
 - `SongWarpMarker` (`models/song.ts`) stores `{ measure: Numbering, time: number }`, which stays stable when measures are reordered.
 - `AudioBackend` converts markers to indices with `findIndex`. Markers whose measure no longer exists are silently dropped.
 - `Song.deserialize()` migrates legacy integer-index markers to Numbering strings.
+
+## Warp Editing
+
+- The warp panel draws `mixdownChunks()` of the decoded chunks with peaks.js through `WaveformView`. Audio mode positions are milliseconds, peaks.js works in seconds.
+- `warpEditing.ts` keeps markers in measure order: new markers only go to measures between the neighbouring markers, and dragging is clamped between them. The backend invariant requires strictly increasing marker times.
+- peaks.js resamples every zoom level from the closest finer level it has cached. Zoom only moves along `ZoomLadder` levels, so the cache stays bounded. The base waveform is built at one sample per pixel (coarser only for very long recordings), which is what allows zooming to single samples.
 
 ## Vamps
 

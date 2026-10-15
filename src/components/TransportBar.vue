@@ -47,6 +47,9 @@ const emit = defineEmits([
   "toggleVamp",
   "toggleSegue",
   "toggleEditMode",
+  "openSongDetails",
+  "addSong",
+  "editShow",
 ]);
 
 const songId = defineModel<string>();
@@ -89,8 +92,35 @@ const playbackSpeedPercentage = computed({
           :options="songs"
           option-value="id"
           :option-label="song => `#${song.number} ${song.title}`"
-          scroll-height="80vh"
-        />
+          scroll-height="70vh"
+          aria-label="Song"
+        >
+          <template
+            v-if="canEdit"
+            #footer
+          >
+            <div class="flex gap-1 border-t border-(--p-content-border-color) p-1">
+              <Button
+                label="Add song"
+                icon="pi pi-plus"
+                severity="secondary"
+                size="small"
+                class="flex-1"
+                text
+                @click="emit('addSong')"
+              />
+              <Button
+                label="Edit show"
+                icon="pi pi-cog"
+                severity="secondary"
+                size="small"
+                class="flex-1"
+                text
+                @click="emit('editShow')"
+              />
+            </div>
+          </template>
+        </Select>
       </template>
 
       <template #center>
@@ -129,6 +159,16 @@ const playbackSpeedPercentage = computed({
           rounded
           text
           @click="emit('toggleEditMode')"
+        />
+        <Button
+          v-if="canEdit && editMode"
+          v-tooltip.bottom="'Song details'"
+          icon="pi pi-file-edit"
+          severity="secondary"
+          aria-label="Song details"
+          rounded
+          text
+          @click="emit('openSongDetails')"
         />
       </template>
 

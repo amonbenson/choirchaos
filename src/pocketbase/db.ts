@@ -32,3 +32,21 @@ export async function dbCreate(collection: string, data: PbRecord): Promise<PbRe
 
   return pb.collection(collection).create(data);
 }
+
+export async function dbCreateWithFiles(collection: string, formData: FormData): Promise<PbRecord> {
+  if (DRY_RUN) {
+    console.log(`[DRY RUN] create ${collection} (files):`, Object.fromEntries(formData.entries()));
+    return { id: "dry-run" };
+  }
+
+  return pb.collection(collection).create(formData);
+}
+
+export async function dbDelete(collection: string, id: string): Promise<void> {
+  if (DRY_RUN) {
+    console.log(`[DRY RUN] delete ${collection}/${id}`);
+    return;
+  }
+
+  await pb.collection(collection).delete(id);
+}

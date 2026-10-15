@@ -30,9 +30,11 @@
     "axios": "^1.13.6",
     "events": "^3.3.0",
     "file-saver": "^2.0.5",
+    "konva": "^9.3.22",
     "midi-json-parser": "^8.1.72",
     "p5": "^2.2.2",
     "pdfjs-dist": "^5.5.207",
+    "peaks.js": "^4.0.0",
     "pinia": "^3.0.4",
     "pocketbase": "^0.26.8",
     "primeicons": "^7.0.0",
@@ -42,6 +44,7 @@
     "tailwindcss-primeui": "^0.6.1",
     "vue": "^3.5.30",
     "vue-router": "^5.0.3",
+    "waveform-data": "^4.5.2",
     "webaudiofont": "^3.0.4"
   },
   "overrides": {

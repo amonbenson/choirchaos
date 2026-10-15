@@ -1,26 +1,47 @@
 <script setup lang="ts">
+import Button from "primevue/button";
 import Toolbar from "primevue/toolbar";
-import { useRoute } from "vue-router";
 
 import UserMenuButton from "./UserMenuButton.vue";
 
-const route = useRoute();
+defineProps<{
+  title?: string;
+  backTo?: object;
+}>();
 </script>
+
 <template>
   <div class="relative">
-    <Toolbar>
+    <Toolbar
+      pt:root="flex-nowrap gap-4"
+      pt:start="min-w-0 gap-2"
+    >
       <template #start>
-        <h1 class="overflow-hidden text-2xl font-bold text-ellipsis whitespace-nowrap">
-          Choir Chaos
+        <RouterLink
+          v-if="backTo"
+          v-slot="{ navigate }"
+          :to="backTo"
+          custom
+        >
+          <Button
+            icon="pi pi-arrow-left"
+            severity="secondary"
+            aria-label="Back"
+            text
+            rounded
+            @click="navigate"
+          />
+        </RouterLink>
+        <h1 class="truncate text-xl font-bold sm:text-2xl">
+          {{ title ?? "Choir Chaos" }}
         </h1>
-
-        <template v-if="route.name === 'edit'">
-          TODO: Edit
-        </template>
       </template>
 
       <template #end>
-        <UserMenuButton class="-m-1 -ml-4" />
+        <div class="flex items-center gap-4">
+          <slot name="end" />
+          <UserMenuButton class="-m-1" />
+        </div>
       </template>
     </Toolbar>
   </div>
