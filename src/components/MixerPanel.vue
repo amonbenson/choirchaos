@@ -43,7 +43,8 @@ const tracks = computed(() => props.song?.tracks ?? []);
 
 const tracksByClassification = computed<Record<string, (Track | MergedTrack)[]>>(() => {
   const nonVocalTracks = tracks.value.filter(t => t.classification !== "Vocal");
-  const accompanimentTracks = settingsStore.current.appearance.mergeAccompaniment
+  const shouldMerge = settingsStore.current.appearance.mergeAccompaniment && nonVocalTracks.length > 0;
+  const accompanimentTracks = shouldMerge
     ? [new MergedTrack(nonVocalTracks, "Accompaniment (Merged)")]
     : nonVocalTracks;
 
@@ -109,7 +110,7 @@ function setTrackGain(track: Track | MergedTrack, value: number): void {
 const trackFlashTriggered = ref<boolean[]>([]);
 
 player.onNote((event) => {
-  if (trackFlashTriggered.value[event.trackIndex] || tracks.value[event.trackIndex].mixer.effectiveGain < 0.01) {
+  if (trackFlashTriggered.value[event.trackIndex] || (tracks.value[event.trackIndex]?.mixer.effectiveGain ?? 0) < 0.01) {
     return;
   }
 
@@ -464,6 +465,7 @@ async function handleTrackProgramChange(index: number, value: number | null): Pr
                 icon="pi pi-trash"
                 size="small"
                 severity="danger"
+                aria-label="Delete track"
                 text
                 rounded
                 @click="handleMidiTrackDelete(i)"
@@ -579,6 +581,7 @@ async function handleTrackProgramChange(index: number, value: number | null): Pr
               icon="pi pi-trash"
               size="small"
               severity="danger"
+              aria-label="Delete track"
               text
               rounded
               @click="handleAudioTrackDelete(i)"

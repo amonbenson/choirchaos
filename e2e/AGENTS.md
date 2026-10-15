@@ -43,6 +43,7 @@ Import `test` and `expect` from `harness/fixtures.ts`, never from `@playwright/t
 
 - When a feature adds a cross-record or cross-field rule, add it to `DEFAULT_INVARIANTS` in `harness/state.ts`. That protects every existing test, not just the new one.
 - Prefer asserting backend state through `admin` over asserting UI text. Many UI elements have no accessible text (show tiles on the home page, for example).
+- Vue reports errors thrown during render through `console.error`, not as uncaught page errors. To assert that a flow is error-free, listen to both `pageerror` and `console` (see `collectPageErrors()` in `tests/audioUpload.spec.ts`).
 - `harness.spec.ts` checks the harness itself. Keep it passing when you change the harness.
 
 ## Test Data Generators

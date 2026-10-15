@@ -235,8 +235,9 @@ export default class Song {
 
     const formData = new FormData();
 
+    // Without the "+" modifier PocketBase replaces all existing audio files, orphaning their tracks.
     for (const file of files) {
-      formData.append("audioFiles", file);
+      formData.append("audioFiles+", file);
     }
 
     const record = await dbUpdateWithFiles("songs", this.id, formData);
