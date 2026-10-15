@@ -18,9 +18,11 @@ src/
 ├── components/     # Reusable UI components (TransportBar, MixerPanel, PdfViewer, …)
 ├── composables/    # Reactive logic (pan/zoom, keyboard shortcuts, PDF pages)
 ├── core/
-│   ├── midi/       # MIDI playback engine, audio player, warp mapping
+│   ├── midi/       # MIDI event types, warp mapping
 │   ├── models/     # Data models (Show, Song, Track, Measure)
-│   └── pdf/        # PDF rendering via Web Worker
+│   ├── pdf/        # PDF rendering via Web Worker
+│   ├── player/     # Playback engine with MIDI and audio backends
+│   └── utils/      # Events, numbering, binary search, updater
 ├── stores/         # Pinia stores (auth, player, settings, PDF renderer)
 ├── pocketbase/     # PocketBase client, auth helpers, permissions model
 └── router/         # Vue Router routes and navigation guards
@@ -51,10 +53,9 @@ VITE_PB_URL="https://your-pocketbase-instance.com"
 # VITE_PB_AUTOLOGIN_EMAIL="user@example.com"
 # VITE_PB_AUTOLOGIN_PASS="yourpassword"
 # VITE_PB_AUTOLOGIN_SHOW="<show-id>"
-# VITE_PB_AUTOLOGIN_SONG="<song-id>"
 ```
 
-`VITE_PB_URL` must point to a PocketBase instance with the correct collections and access rules configured. See `tmp/pocketbase_rules.md` for the expected filter rules.
+`VITE_PB_URL` must point to a PocketBase instance with the correct collections and access rules configured. The backend, including all PocketBase migrations, lives in [choirchaos-pb](https://github.com/amonbenson/choirchaos-pb).
 
 ## Deployment
 

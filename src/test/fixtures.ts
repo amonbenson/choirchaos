@@ -59,6 +59,27 @@ export const MIDI_TRACKS: TestTrack[] = [
   },
 ];
 
+// midi-json-parser output for MIDI_TRACKS, returned by the global mock in setup.ts
+export const PARSED_MIDI = {
+  tracks: [
+    [],
+    [
+      { delta: 0, trackName: TRACK_NAMES.instrument },
+      { delta: 480, noteOn: { noteNumber: 60, velocity: 80 } },
+      { delta: 240, noteOff: { noteNumber: 60, velocity: 0 } },
+      { delta: 1680, noteOn: { noteNumber: 64, velocity: 80 } },
+      { delta: 240, noteOff: { noteNumber: 64, velocity: 0 } },
+    ],
+    [
+      { delta: 0, trackName: TRACK_NAMES.vocals },
+      { delta: 4320, noteOn: { noteNumber: 67, velocity: 80 } },
+      { delta: 480, noteOff: { noteNumber: 67, velocity: 0 } },
+      { delta: 480, noteOn: { noteNumber: 69, velocity: 80 } },
+      { delta: 480, noteOff: { noteNumber: 69, velocity: 0 } },
+    ],
+  ],
+};
+
 // ── Song factories ────────────────────────────────────────────────────────────
 
 function makeLayout(x: number): MeasureLayout {

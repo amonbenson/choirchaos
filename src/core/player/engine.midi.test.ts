@@ -2,46 +2,12 @@ import axios from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { makeMidiBuffer, makeMidiSong, makeMidiSongWithVamp, makeMtiJson, TICKS, TRACK_NAMES } from "@/test/fixtures";
-import { ManualUpdater } from "@/test/updater";
+import { ManualUpdater, stepPast, stepUntil } from "@/test/updater";
 
 import type { NoteEvent } from "../midi/events";
 import PlayerEngine from "./engine";
 
 vi.mock("axios");
-
-// rubberband-web imports tone (broken ESM, extensionless imports) which fails in Node.
-vi.mock("rubberband-web", () => ({
-  createRubberBandNode: vi.fn().mockImplementation(async (ctx: AudioContext) => {
-    const node = ctx.createGain();
-    (node as any).setPitch = vi.fn();
-    (node as any).close = vi.fn();
-    return node;
-  }),
-}));
-
-// Replace midi-json-parser (uses Web Workers, unavailable in jsdom/node) with a
-// synchronous mock returning the event structure our fixture MIDI_TRACKS produces.
-vi.mock("midi-json-parser", () => ({
-  parseArrayBuffer: vi.fn().mockResolvedValue({
-    tracks: [
-      [],
-      [
-        { delta: 0, trackName: TRACK_NAMES.instrument },
-        { delta: 480, noteOn: { noteNumber: 60, velocity: 80 } },
-        { delta: 240, noteOff: { noteNumber: 60, velocity: 0 } },
-        { delta: 1680, noteOn: { noteNumber: 64, velocity: 80 } },
-        { delta: 240, noteOff: { noteNumber: 64, velocity: 0 } },
-      ],
-      [
-        { delta: 0, trackName: TRACK_NAMES.vocals },
-        { delta: 4320, noteOn: { noteNumber: 67, velocity: 80 } },
-        { delta: 480, noteOff: { noteNumber: 67, velocity: 0 } },
-        { delta: 480, noteOn: { noteNumber: 69, velocity: 80 } },
-        { delta: 480, noteOff: { noteNumber: 69, velocity: 0 } },
-      ],
-    ],
-  }),
-}));
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -59,24 +25,6 @@ function mockAxios(): void {
   vi.mocked(axios.get)
     .mockResolvedValueOnce({ data: makeMidiBuffer() })
     .mockResolvedValueOnce({ data: makeMtiJson() });
-}
-
-function stepPast(updater: ManualUpdater, player: PlayerEngine, targetTick: number): void {
-  for (let i = 0; i < 10_000; i++) {
-    if (player.getPosition() > targetTick) {
-      break;
-    }
-
-    if (!updater.isRunning()) {
-      break;
-    }
-
-    updater.step(0.02);
-  }
-
-  if (updater.isRunning()) {
-    updater.step(0.02);
-  }
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -236,9 +184,7 @@ describe("PlayerEngine – MIDI mode", () => {
     await vp.load(makeMidiSongWithVamp());
 
     vp.play();
-    for (let i = 0; i < 10_000 && (vp.getCurrentVamp()?.currentIteration ?? 0) === 0; i++) {
-      vu.step(0.02);
-    }
+    stepUntil(vu, () => (vp.getCurrentVamp()?.currentIteration ?? 0) > 0);
 
     expect(vp.getCurrentVamp()).toBeDefined();
     expect(vp.getCurrentVamp()!.currentIteration).toBeGreaterThan(0);
@@ -254,13 +200,9 @@ describe("PlayerEngine – MIDI mode", () => {
     await vp.load(makeMidiSongWithVamp()); // 2 iterations
 
     vp.play();
-    for (let i = 0; i < 10_000 && vp.getCurrentVamp() === undefined; i++) {
-      vu.step(0.02);
-    }
+    stepUntil(vu, () => vp.getCurrentVamp() !== undefined);
 
-    for (let i = 0; i < 10_000 && vp.getCurrentVamp() !== undefined; i++) {
-      vu.step(0.02);
-    }
+    stepUntil(vu, () => vp.getCurrentVamp() === undefined);
 
     expect(vp.getCurrentVamp()).toBeUndefined();
     expect(vp.getPosition()).toBeGreaterThanOrEqual(TICKS.measure3);
@@ -280,9 +222,7 @@ describe("PlayerEngine – MIDI mode", () => {
     vp.play();
 
     // Step until the first iteration completes (currentIteration becomes 1)
-    for (let i = 0; i < 10_000 && (vp.getCurrentVamp()?.currentIteration ?? 0) < 1; i++) {
-      vu.step(0.02);
-    }
+    stepUntil(vu, () => (vp.getCurrentVamp()?.currentIteration ?? 0) >= 1);
 
     expect(vp.getCurrentVamp()?.currentIteration).toBe(1);
     expect(vp.getPosition()).toBeLessThan(TICKS.measure3);
@@ -331,9 +271,7 @@ describe("PlayerEngine – MIDI mode", () => {
     vp.play();
 
     // Step until first iteration completes (currentIteration becomes 1)
-    for (let i = 0; i < 10_000 && (vp.getCurrentVamp()?.currentIteration ?? 0) < 1; i++) {
-      vu.step(0.02);
-    }
+    stepUntil(vu, () => (vp.getCurrentVamp()?.currentIteration ?? 0) >= 1);
 
     expect(vp.getCurrentVamp()?.currentIteration).toBe(1);
 
@@ -361,9 +299,7 @@ describe("PlayerEngine – MIDI mode", () => {
     vp.play();
 
     // Wait for the vamp to exit entirely, then step past the vocal note at tick 4320
-    for (let i = 0; i < 10_000 && vp.getCurrentVamp() !== undefined; i++) {
-      vu.step(0.02);
-    }
+    stepUntil(vu, () => vp.getCurrentVamp() === undefined);
 
     stepPast(vu, vp, TICKS.measure3 + 10);
 
@@ -385,9 +321,7 @@ describe("PlayerEngine – MIDI mode", () => {
 
     vp.play();
 
-    for (let i = 0; i < 10_000 && (vp.getCurrentVamp()?.currentIteration ?? 0) < 1; i++) {
-      vu.step(0.02);
-    }
+    stepUntil(vu, () => (vp.getCurrentVamp()?.currentIteration ?? 0) >= 1);
 
     expect(vp.getCurrentVamp()?.currentIteration).toBe(1);
     // Measure "3" must never appear while still repeating

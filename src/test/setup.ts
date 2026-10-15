@@ -1,6 +1,22 @@
 import { AudioContext, OfflineAudioContext } from "node-web-audio-api";
 import { vi } from "vitest";
 
+// rubberband-web imports tone (broken ESM, extensionless imports) which fails in Node.
+vi.mock("rubberband-web", () => ({
+  createRubberBandNode: vi.fn().mockImplementation(async (ctx: AudioContext) => {
+    const node = ctx.createGain();
+    (node as any).setPitch = vi.fn();
+    (node as any).close = vi.fn();
+    return node;
+  }),
+}));
+
+// midi-json-parser uses Web Workers, which are unavailable in Node.
+vi.mock("midi-json-parser", async () => {
+  const { PARSED_MIDI } = await import("./fixtures");
+  return { parseArrayBuffer: vi.fn().mockResolvedValue(PARSED_MIDI) };
+});
+
 // jsdom's localStorage can be missing or broken in some vitest worker configurations.
 // Provide a minimal in-memory implementation so pocketbase initialisation doesn't throw.
 if (typeof globalThis.localStorage === "undefined" || typeof globalThis.localStorage?.getItem !== "function") {

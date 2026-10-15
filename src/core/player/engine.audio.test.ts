@@ -10,7 +10,6 @@ import PlayerEngine from "./engine";
 
 vi.mock("axios");
 vi.mock("./audio/driver", () => ({ default: { create: vi.fn() } }));
-vi.mock("midi-json-parser", () => ({ parseArrayBuffer: vi.fn() }));
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 

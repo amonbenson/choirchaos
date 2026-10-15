@@ -9,15 +9,6 @@ import { computeRms } from "@/test/fixtures";
 import { type AudioChunk, detectChunks } from "./chunkDetector";
 import AudioDriver from "./driver";
 
-vi.mock("rubberband-web", () => ({
-  createRubberBandNode: vi.fn().mockImplementation(async (ctx: AudioContext) => {
-    const node = ctx.createGain();
-    (node as any).setPitch = vi.fn();
-    (node as any).close = vi.fn();
-    return node;
-  }),
-}));
-
 const SAMPLE_RATE = 44100;
 const DATA_DIR = resolve(process.cwd(), "src/test/data");
 
