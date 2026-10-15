@@ -35,7 +35,7 @@ npm run e2e:serve            # seeded local backend + frontend for manual checks
 
 Do not use `npm test`. It starts vitest in watch mode and never exits.
 
-**Before finishing a task:** run `npm run lint:fix`, `npm run typecheck`, and `npx vitest run`. If the change touches backend access, uploads, routing, or other user flows, also run `npm run test:e2e`. CI runs lint, typecheck, build, and the e2e tests, but not the unit tests.
+**Before finishing a task:** run `npm run lint:fix`, `npm run typecheck`, and `npx vitest run`. If the change touches backend access, uploads, routing, or other user flows, also run `npm run test:e2e`. CI runs lint, typecheck, unit tests, build, and the e2e tests.
 
 ---
 
@@ -84,7 +84,7 @@ PocketBase is a separate repository (`choirchaos-pb`). The app reads its URL fro
 
 ## Testing
 
-- `src/test/setup.ts` globally mocks `rubberband-web` and `midi-json-parser` (neither runs in Node) and polyfills `AudioContext` and `WebAudioFontPlayer`. Do not re-mock them per file. Override per test with `vi.mocked(parseArrayBuffer).mockResolvedValueOnce(...)`.
+- `src/test/setup.ts` globally mocks `rubberband-web` and `midi-json-parser` (neither runs in Node) and polyfills `AudioContext` and `WebAudioFontPlayer`. Do not re-mock them per file. The `AudioContext` polyfill renders to no output device because CI runners have none, so always use the global instead of importing `AudioContext` from `node-web-audio-api` directly. Override per test with `vi.mocked(parseArrayBuffer).mockResolvedValueOnce(...)`.
 - In `afterEach`, use `vi.clearAllMocks()`, not `vi.resetAllMocks()`. Reset wipes the return values set in the global mock factories.
 - Reuse `src/test/fixtures.ts` (song factories, `TICKS`, `PARSED_MIDI`) and `src/test/updater.ts` (`ManualUpdater`, `stepUntil`, `stepPast`) instead of writing new helpers.
 

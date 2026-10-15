@@ -43,7 +43,21 @@ if (typeof globalThis.localStorage === "undefined" || typeof globalThis.localSto
   });
 }
 
-Object.assign(globalThis, { AudioContext, OfflineAudioContext });
+// CI runners have no audio output device, so a default AudioContext throws DeviceNotAvailable.
+// Rendering to no sink also keeps local runs silent and identical to CI.
+// TypeScript's DOM lib does not declare sinkId on AudioContextOptions yet.
+interface HeadlessAudioContextOptions extends AudioContextOptions {
+  sinkId: { type: "none" };
+}
+
+class HeadlessAudioContext extends AudioContext {
+  constructor(options: AudioContextOptions = {}) {
+    const headlessOptions: HeadlessAudioContextOptions = { ...options, sinkId: { type: "none" } };
+    super(headlessOptions);
+  }
+}
+
+Object.assign(globalThis, { AudioContext: HeadlessAudioContext, OfflineAudioContext });
 
 const mockWebAudioFontPlayerInstance = {
   queueWaveTable: vi.fn(),
