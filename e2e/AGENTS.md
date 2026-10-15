@@ -45,7 +45,7 @@ Import `test` and `expect` from `harness/fixtures.ts`, never from `@playwright/t
 - Prefer asserting backend state through `admin` over asserting UI text. Many UI elements have no accessible text.
 - `harness/page.ts` has `collectPageErrors()`, `toUploadFile()` and `chooseFiles()`. The app opens file dialogs from buttons (vueuse `useFileDialog`) without a permanent `<input type=file>`, so upload through `chooseFiles()`, which uses Playwright's file chooser event.
 - `WaveformView` exposes `data-zoom-scale` (samples per pixel) and `data-sample-rate`, so tests can convert marker times to pixels on the canvas.
-- Vue reports errors thrown during render through `console.error`, not as uncaught page errors. To assert that a flow is error-free, listen to both `pageerror` and `console` (see `collectPageErrors()` in `tests/audioUpload.spec.ts`).
+- Vue reports errors thrown during render through `console.error`, not as uncaught page errors. To assert that a flow is error-free, listen to both `pageerror` and `console` (`collectPageErrors()` in `harness/page.ts` does both).
 - `harness.spec.ts` checks the harness itself. Keep it passing when you change the harness.
 
 ## Test Data Generators
@@ -69,7 +69,7 @@ A `ScoreSpec` (`generators/score/types.ts`, presets in `presets.ts`) is expanded
 
 - PocketBase renames uploaded files (`name_<random>.ext`). `createSong()` uploads first and then writes tracks with the stored names, like the frontend does. Do the same in new helpers.
 - `songs` has no list rule, so regular users can only read songs through `shows?expand=songs_via_show` or by id.
-- Sharing uses the `/api/choirchaos/shows/{id}/members` route from `choirchaos-pb/pb_hooks`. `sharing.spec.ts` fails against a pinned `BACKEND_COMMIT` that predates the hook. Run it with `E2E_BACKEND_SOURCE=../choirchaos-pb` until the commit is bumped.
+- Sharing depends on the members route in `choirchaos-pb/pb_hooks`, not only on the schema. Changes to backend hooks need a `BACKEND_COMMIT` bump just like migrations. Test them first with `E2E_BACKEND_SOURCE`.
 - The MIDI player downloads instruments for `webaudiofont` from the internet at load time. MIDI playback tests need network access or a `page.route()` stub.
 - MuseScore's `.mpos` coordinates scale with the image export resolution. `convertWithMuseScore()` pins `--image-resolution`. Keep `MPOS_UNITS_PER_INCH` in sync with it.
 - `e2e:serve` binds fixed ports (8091, 5174). Right after a previous run stops, Testcontainers may need a few seconds to release 8091.
