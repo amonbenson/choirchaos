@@ -27,21 +27,34 @@ watch(() => auth.user, async () => {
   <div class="flex size-full flex-col gap-2 p-2">
     <HeaderBar class="relative z-10" />
 
-    <div class="relative z-0 flex size-full flex-1 items-center justify-center gap-4 overflow-hidden">
-      <div
-        v-for="show in shows"
-        :key="show.id"
-        class="relative size-64 cursor-pointer rounded bg-cover bg-center"
-        :style="{
-          backgroundImage: show.thumbnail && `url(${resolveUrl(show.thumbnail, 'shows', show.id)})`
-        }"
-        @click="router.push({ name: 'show', params: { showId: show.id } })"
-      >
-        <div class="absolute inset-0 flex size-full items-center justify-center bg-black/50 opacity-0 transition-opacity hover:opacity-100">
-          <i class="pi pi-play-circle text-8xl text-white" />
-          <!--           <div class="text-center text-2xl font-bold">
+    <div class="relative z-0 flex-1 overflow-y-auto">
+      <div class="flex min-h-full flex-wrap content-center justify-center gap-4 p-2">
+        <div
+          v-for="show in shows"
+          :key="show.id"
+          class="group flex w-40 cursor-pointer flex-col gap-2 sm:w-64"
+          @click="router.push({ name: 'show', params: { showId: show.id } })"
+        >
+          <div
+            class="relative flex aspect-square items-center justify-center overflow-hidden rounded bg-surface-200 bg-cover bg-center dark:bg-surface-800"
+            :style="{
+              backgroundImage: show.thumbnail && `url(${resolveUrl(show.thumbnail, 'shows', show.id)})`
+            }"
+          >
+            <i
+              v-if="!show.thumbnail"
+              class="pi pi-book text-5xl text-muted-color sm:text-7xl"
+            />
+            <div class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+              <i class="pi pi-play-circle text-6xl text-white sm:text-8xl" />
+            </div>
+          </div>
+          <div
+            class="truncate text-center font-medium text-color"
+            :title="show.title"
+          >
             {{ show.title }}
-          </div> -->
+          </div>
         </div>
       </div>
     </div>
