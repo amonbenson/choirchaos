@@ -10,7 +10,7 @@ import { binarySearch } from "../utils/binarySearch";
 import type { UrlOrFile } from "../utils/file";
 import type { Numbering } from "../utils/numbering";
 import { inferTrackClassification } from "../utils/trackInference";
-import Measure, { isSameLayout, type MeasureLayout, MeasureList } from "./measure";
+import Measure, { isSameLayout, type MeasureLayout, MeasureList, type MeasureReference } from "./measure";
 import type { MeasureDetectionPlan } from "./measureDetection";
 import { isEmptyEdit, type MeasureEdit } from "./measureEditing";
 import { MarkerEvent, type MeasureEvent, MeasureEventList, VampEvent } from "./measureEvent";
@@ -457,6 +457,38 @@ export default class Song {
 
   public async saveMeasures(): Promise<void> {
     await this._save({ measures: this._serializeMeasures() });
+  }
+
+  // Markers only label the timeline, so editing them never needs a player reload.
+  public async addMarker(start: MeasureReference, name: string): Promise<MarkerEvent> {
+    const marker = new MarkerEvent(start, name);
+    marker.$startTick = this.findMeasure(start[0])?.$beatTicks[start[1]];
+    this.events.markers.insert(marker);
+    await this._save({ events: this._serializeEvents() });
+    return marker;
+  }
+
+  public async updateMarker(marker: MarkerEvent, start: MeasureReference, name: string): Promise<void> {
+    this.removeMarkerEvent(marker);
+    marker.start = start;
+    marker.end = start;
+    marker.marker = name;
+    marker.$startTick = this.findMeasure(start[0])?.$beatTicks[start[1]];
+    this.events.markers.insert(marker);
+    await this._save({ events: this._serializeEvents() });
+  }
+
+  public async removeMarker(marker: MarkerEvent): Promise<void> {
+    this.removeMarkerEvent(marker);
+    await this._save({ events: this._serializeEvents() });
+  }
+
+  // Markers can share a start, so they are removed by identity instead of by position.
+  private removeMarkerEvent(marker: MarkerEvent): void {
+    const index = this.events.markers.items().indexOf(marker);
+    if (index !== -1) {
+      this.events.markers.removeAt(index);
+    }
   }
 
   // ── Warp marker mutations ─────────────────────────────────────────────────────

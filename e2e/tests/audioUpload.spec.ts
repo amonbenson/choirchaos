@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import type PocketBase from "pocketbase";
 import type { RecordModel } from "pocketbase";
 
@@ -28,17 +28,18 @@ function isMpegAudio(bytes: Uint8Array): boolean {
   return startsWithId3 || startsWithFrameSync;
 }
 
-async function openSongDetails(page: Page, show: RecordModel, song: RecordModel): Promise<void> {
+async function openSongDetails(page: Page, show: RecordModel, song: RecordModel): Promise<Locator> {
   await page.goto(`/show/${show.id}/song/${song.id}/edit`);
-  await page.getByRole("button", { name: "Details..." }).click();
+  await page.getByRole("tab", { name: "Details" }).click();
+  return page.getByRole("tabpanel", { name: "Details" });
 }
 
-async function addRecordings(page: Page, files: UploadFile[]): Promise<void> {
-  const dialog = page.getByRole("dialog", { name: "Song details" });
-  await dialog.getByRole("button", { name: "Recordings", exact: true }).click();
-  await chooseFiles(page, dialog.getByRole("button", { name: "Add recordings" }), files);
-  await dialog.getByRole("button", { name: "Save" }).click();
-  await expect(dialog).toBeHidden();
+// After saving, the panel starts over from the stored song, so there is nothing left to save.
+async function addRecordings(panel: Locator, files: UploadFile[]): Promise<void> {
+  await panel.getByRole("button", { name: "Recordings", exact: true }).click();
+  await chooseFiles(panel.page(), panel.getByRole("button", { name: "Add recordings" }), files);
+  await panel.getByRole("button", { name: "Save" }).click();
+  await expect(panel.getByRole("button", { name: "Save" })).toBeDisabled({ timeout: 30_000 });
 }
 
 async function waitForTracks(admin: PocketBase, songId: string, count: number): Promise<RecordModel> {
@@ -58,8 +59,8 @@ test.describe("audio upload", () => {
     const errors = collectPageErrors(page);
 
     await loginAs(owner);
-    await openSongDetails(page, show, song);
-    await addRecordings(page, [await buildStem("solo", "solo.mp3")]);
+    const panel = await openSongDetails(page, show, song);
+    await addRecordings(panel, [await buildStem("solo", "solo.mp3")]);
 
     const stored = await waitForTracks(admin, song.id, 1);
     expect(stored.audioFiles).toHaveLength(1);
@@ -77,8 +78,8 @@ test.describe("audio upload", () => {
     const errors = collectPageErrors(page);
 
     await loginAs(owner);
-    await openSongDetails(page, show, song);
-    await addRecordings(page, [await buildStem("solo", "solo.mp3"), await buildStem("piano", "piano.mp3")]);
+    const panel = await openSongDetails(page, show, song);
+    await addRecordings(panel, [await buildStem("solo", "solo.mp3"), await buildStem("piano", "piano.mp3")]);
 
     const stored = await waitForTracks(admin, song.id, 2);
     expect(trackFileStems(stored)).toEqual({ Solo: "solo", Piano: "piano" });
@@ -96,8 +97,8 @@ test.describe("audio upload", () => {
     const errors = collectPageErrors(page);
 
     await loginAs(owner);
-    await openSongDetails(page, show, song);
-    await addRecordings(page, [await buildStem("solo", "extra-vocals.mp3")]);
+    const panel = await openSongDetails(page, show, song);
+    await addRecordings(panel, [await buildStem("solo", "extra-vocals.mp3")]);
 
     const stored = await waitForTracks(admin, song.id, song.tracks.length + 1);
     expect(stored.audioFiles).toHaveLength(song.audioFiles.length + 1);
@@ -115,8 +116,8 @@ test.describe("audio upload", () => {
     const errors = collectPageErrors(page);
 
     await loginAs(owner);
-    await openSongDetails(page, show, song);
-    await addRecordings(page, [await buildWavStem("solo", "solo.wav")]);
+    const panel = await openSongDetails(page, show, song);
+    await addRecordings(panel, [await buildWavStem("solo", "solo.wav")]);
 
     const stored = await waitForTracks(admin, song.id, 1);
     expect(stored.audioFiles).toEqual([expect.stringMatching(/^solo_[a-z0-9]+\.mp3$/)]);
@@ -136,16 +137,15 @@ test.describe("audio upload", () => {
     const broken = { name: "solo.wav", mimeType: "audio/wav", buffer: Buffer.from("not audio") };
 
     await loginAs(owner);
-    await openSongDetails(page, show, song);
+    const panel = await openSongDetails(page, show, song);
     const before = await snapshot();
 
-    const dialog = page.getByRole("dialog", { name: "Song details" });
-    await dialog.getByRole("button", { name: "Recordings", exact: true }).click();
-    await chooseFiles(page, dialog.getByRole("button", { name: "Add recordings" }), [broken]);
-    await dialog.getByRole("button", { name: "Save" }).click();
+    await panel.getByRole("button", { name: "Recordings", exact: true }).click();
+    await chooseFiles(page, panel.getByRole("button", { name: "Add recordings" }), [broken]);
+    await panel.getByRole("button", { name: "Save" }).click();
 
     await expect(page.getByText("Could not read 'solo.wav' as audio.")).toBeVisible();
-    await expect(dialog).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Save" })).toBeEnabled();
     expect(await snapshot()).toEqual(before);
   });
 
@@ -156,14 +156,12 @@ test.describe("audio upload", () => {
     const errors = collectPageErrors(page);
 
     await loginAs(owner);
-    await openSongDetails(page, show, song);
-    await addRecordings(page, [await buildStem("solo", "solo.mp3")]);
+    const panel = await openSongDetails(page, show, song);
+    await addRecordings(panel, [await buildStem("solo", "solo.mp3")]);
     await waitForTracks(admin, song.id, 1);
 
-    await page.getByRole("button", { name: "Details..." }).click();
-    const dialog = page.getByRole("dialog", { name: "Song details" });
-    await dialog.getByRole("button", { name: "Remove Solo" }).click();
-    await dialog.getByRole("button", { name: "Save" }).click();
+    await panel.getByRole("button", { name: "Remove Solo" }).click();
+    await panel.getByRole("button", { name: "Save" }).click();
 
     const stored = await waitForTracks(admin, song.id, 0);
     expect(stored.audioFiles).toEqual([]);

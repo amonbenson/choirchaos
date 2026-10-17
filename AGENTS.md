@@ -80,12 +80,12 @@ The app has two audiences. Rehearsers (viewers) only play songs back. Editors (e
 2. **Each element type has one kind of job.**
    - Links, list rows and breadcrumb items navigate and change the URL.
    - Pickers (the song in the breadcrumb) choose which item the current page shows and keep the page.
-   - Buttons run an action or open a dialog or popover. A button that opens a dialog ends its label with "...", e.g. "Details...", "Share...".
+   - Buttons run an action or open a dialog or popover. A button that opens a dialog ends its label with "...", e.g. "Detect...", "Share...".
    - Segmented controls and toggle buttons switch a tool, option or mode and look pressed while active. The "Edit" toggle switches a song between player and editor, which are two routes of one page.
    Never make a navigation look like a mode switch or the other way round.
 3. **One meaning per icon, app-wide.** Before adding an icon, check the table below and do not give a listed icon a second meaning. Icon-only buttons are reserved for universally known controls (transport, close, overflow). Everything else carries a text label wherever the layout has room for it, and always an `aria-label`.
 4. **State that matters lives in the URL.** Reloading or pressing the browser back button keeps the user where they were. Editing a song is a route, not a flag.
-5. **Every action has one home.** A secondary entry point opens the same dialog or page, never a variant of it. A plain entry keeps the home's label. An empty state or status hint may name the step instead, e.g. "Add playback..." for the details dialog.
+5. **Every action has one home.** A secondary entry point opens the same dialog or page, never a variant of it. A plain entry keeps the home's label. An empty state or status hint may name the step instead, e.g. "Add playback..." for the song details.
 6. **Do not duplicate information.** A canvas (the score, the waveform) is the list of its objects. Side panels show the properties of the selection or what the canvas cannot show, not a second copy of the canvas.
 7. **Select, then act.** Objects on a canvas are selected first. The panel next to it edits the whole selection at once, and shows mixed values as empty.
 8. **Automation proposes, the user decides, leftovers stay visible.** Automatic results are previewed where they will appear. Anything the user still has to check stays marked on the object until it is resolved. Never ask the user to remember a list.
@@ -99,7 +99,7 @@ The app has two audiences. Rehearsers (viewers) only play songs back. Editors (e
 | App logo | Home |
 | `pi-pencil` | The "Edit" toggle, or opening a song in the editor |
 | `pi-check` | A confirmed or ready state |
-| `pi-file-edit` | Song details dialog (number, title, files, tracks) |
+| `pi-file-edit` | The song details (number, title, files, tracks) |
 | `pi-play` | Play |
 | `pi-sliders-v` | Personal preferences |
 | `pi-ellipsis-v` | More actions for this item |
@@ -111,7 +111,7 @@ The app has two audiences. Rehearsers (viewers) only play songs back. Editors (e
 ### Conventions
 
 - Use PrimeVue components first and style them with Tailwind utilities. For behaviour PrimeVue lacks, prefer a library (vueuse `useDropZone`/`useFileDialog`, peaks.js for waveforms) over hand-written pointer, scroll or drag handling.
-- Reorderable lists use `useSortable` from `@vueuse/integrations` (SortableJS, works with mouse and touch) with a drag handle. In `onUpdate`, undo Sortable's DOM move and change the model instead, so Vue keeps owning the DOM. Every drag handle also needs a way to move without dragging (a menu and arrow keys, see `SongDetailsDialog`).
+- Reorderable lists use `useSortable` from `@vueuse/integrations` (SortableJS, works with mouse and touch) with a drag handle. In `onUpdate`, undo Sortable's DOM move and change the model instead, so Vue keeps owning the DOM. Every drag handle also needs a way to move without dragging (a menu and arrow keys, see `SongDetailsForm`).
 - Use popovers and dialogs instead of `prompt()`/`confirm()`. Destructive confirmations go through PrimeVue's `useConfirm()`, errors through `useNotify()` toasts.
 - Canvas based components cannot use CSS variables. Resolve theme colors at runtime (see `WaveformView`) and rebuild when the `.dark` class changes, so they follow any theme preset.
 - A MIDI track's title links it to its MIDI data by name, so MIDI tracks cannot be renamed.
@@ -120,7 +120,7 @@ The app has two audiences. Rehearsers (viewers) only play songs back. Editors (e
 ## Measure Editing
 
 - A box is a measure's layout on the score. Its number says which measure it shows, so renumbering moves boxes between measures. MIDI songs only have the measures of their beat map. Audio songs own their measures, so placing a box on a missing number creates the measure, or renames the box's old measure when that one would be left without a box.
-- `measureEditing.ts` plans, `Song.applyMeasureEdit()` applies. Every action in the Measures panel builds one `MeasureEdit`, which saves once, and the player reloads once and only when timing changed (`changesPlayback()`). Renames and deletions update warp markers, markers and vamps in the same save, since the e2e invariants reject references to missing measures.
+- `measureEditing.ts` plans, `Song.applyMeasureEdit()` applies. Every action in the Measures tab builds one `MeasureEdit`, which saves once, and the player reloads once and only when timing changed (`changesPlayback()`). Renames and deletions update warp markers, markers and vamps in the same save, since the e2e invariants reject references to missing measures.
 - A box in the way is a conflict the user resolves in the panel (swap, or shift the following boxes until a measure without a box takes the last one). Planning never resolves a conflict on its own.
 - Reading order (page, row, left to right) decides range selection, renumbering order and the default first number of a new box. Boxes share a row when one's vertical center lies inside the row.
 - `useMeasureEditor` keeps raw `Measure` objects in the selection, because the song hands out reactive proxies while measures created by an edit are plain. Compare measures with `toRaw()` there. Unnumbered boxes are plain layouts, so they are compared by position (`isSameLayout()`), in `Song` too.
@@ -131,7 +131,7 @@ The app has two audiences. Rehearsers (viewers) only play songs back. Editors (e
 - The package, its ONNX models and the onnxruntime WASM binaries are tens of megabytes. `measureDetector.ts` imports them dynamically so they only load when someone runs a detection. Keep every import of them behind that dynamic import.
 - `vite.config.ts` excludes `measure-detection` and `onnxruntime-web` from dependency pre-bundling. Pre-bundling moves them away from the worker and WASM files they load relative to `import.meta.url`, which breaks detection in the dev server only.
 - `pdfjs-dist` must satisfy the `measure-detection` peer range, since the app passes its own `PDFDocumentProxy` in.
-- Detection never writes directly. It runs inside the Measures panel (`useMeasureDetection`), and `planMeasureDetection()` builds a plan that is previewed as dashed boxes on the score until the user applies or discards it. In MIDI mode it only places measures of the beat map and never adds any.
+- Detection never writes directly. It runs inside the Measures tab (`useMeasureDetection`), and `planMeasureDetection()` builds a plan that is previewed as dashed boxes on the score until the user applies or discards it. In MIDI mode it only places measures of the beat map and never adds any.
 - Applying keeps what detection was unsure about. A low-confidence box gets `review: true` in its `MeasureLayout`, and a box without a usable number (no label, an invalid one, a label read twice, or a measure the song does not have) goes into the song's `unnumberedBoxes` field. Leftover boxes on top of a box that is already there are dropped, so detecting a score twice does not pile them up.
 - Review items stay marked on the score until resolved: confirming clears the flag, renumbering a box clears it too (boxes shifted out of the way keep theirs), and numbering an unnumbered box turns it into that measure's layout. While any are open, `songSetup` does not report the song as ready.
 

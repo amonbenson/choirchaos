@@ -1,5 +1,7 @@
 import { SettingsBase } from "./base";
 
+export type EditorTab = "details" | "markers" | "measures";
+
 export class PanelVisibleSettings extends SettingsBase {
   constructor(
     public readonly markers: boolean = true,
@@ -12,6 +14,7 @@ export class PanelVisibleSettings extends SettingsBase {
 export class WorkspaceSettings extends SettingsBase {
   constructor(
     public readonly selectedTab: "markers" | "pdf" | "mixer" = "pdf",
+    public readonly editorTab: EditorTab = "details",
     public readonly panelVisible: PanelVisibleSettings = new PanelVisibleSettings(),
   ) {
     super();

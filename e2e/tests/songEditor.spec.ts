@@ -10,6 +10,7 @@ async function openEditor(page: Page, show: RecordModel, song: RecordModel): Pro
   await page.goto(`/show/${show.id}/song/${song.id}`);
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/song/${song.id}/edit$`));
+  await page.getByRole("tab", { name: "Measures" }).click();
 }
 
 function layoutOf(song: RecordModel, value: string): SongMeasure["layout"] {
@@ -90,7 +91,7 @@ test.describe("measure editing", () => {
     await openEditor(page, show, song);
 
     await page.getByRole("button", { name: "Add..." }).click();
-    await page.getByLabel("Measures", { exact: true }).fill("10..12");
+    await page.getByRole("textbox", { name: "Measures", exact: true }).fill("10..12");
     await page.getByRole("button", { name: "Add 3 measures" }).click();
 
     await expect.poll(async () => (await storedMeasures(admin, song.id)).map(m => m.value))
@@ -131,6 +132,61 @@ test.describe("measure editing", () => {
     await expect(page.getByTestId("measure-panel")).toContainText(`${placed} measures selected`);
     await expect(page.getByTestId("measure-panel")).toContainText("from the beat map");
     await expect(page.getByRole("button", { name: "Delete measures" })).toHaveCount(0);
+  });
+});
+
+test.describe("markers", () => {
+  test("markers are added, renamed and deleted in the song editor", async ({ page, admin, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "audio" }));
+    const errors = collectPageErrors(page);
+    await loginAs(owner);
+    await openEditor(page, show, song);
+
+    await page.getByRole("tab", { name: "Markers" }).click();
+    const panel = page.getByRole("tabpanel", { name: "Markers" });
+    await panel.getByRole("button", { name: "Add marker" }).click();
+    const name = panel.getByLabel("Name of marker A");
+    await expect(name).toBeFocused();
+    await name.fill("Chorus");
+    await name.press("Enter");
+    await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).events.markers)
+      .toEqual([{ type: "marker", start: ["1", 0], marker: "Chorus" }]);
+
+    await panel.getByLabel("Measure of marker Chorus").fill("3");
+    await panel.getByLabel("Measure of marker Chorus").press("Enter");
+    await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).events.markers[0].start).toEqual(["3", 0]);
+
+    await panel.getByRole("button", { name: "Delete marker Chorus" }).click();
+    await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).events.markers).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test("selecting a box on the score switches to the measures", async ({ page, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "audio" }));
+    await loginAs(owner);
+    await openEditor(page, show, song);
+
+    await page.getByRole("tab", { name: "Details" }).click();
+    await page.getByRole("button", { name: "Measure 1", exact: true }).click();
+
+    await expect(page.getByRole("tab", { name: "Measures" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("measure-panel")).toContainText("Measure 1");
+  });
+
+  test("rehearsers do not see a markers panel for a song without markers", async ({ page, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "audio" }));
+    await loginAs(owner);
+    await page.goto(`/show/${show.id}/song/${song.id}`);
+
+    await expect(page.getByRole("button", { name: "Play / Pause" })).toBeVisible();
+    await expect(page.getByText("No markers available.")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Show Markers Panel" })).toHaveCount(0);
   });
 });
 

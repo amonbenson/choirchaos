@@ -33,7 +33,7 @@ const NOTE_VALUE_SVG_MAP: Record<NoteValue, object> = {
   dottedHalf: DottedHalfNoteSvg,
 };
 
-// The breadcrumb shares the row with these buttons. Below sm, and from lg up where the transport
+// The breadcrumb shares the row with the Edit toggle. Below sm, and from lg up where the transport
 // shares the row too, it only fits when they drop their labels.
 const NARROW_HIDDEN_LABEL = "hidden sm:inline lg:hidden xl:inline";
 
@@ -52,7 +52,6 @@ const emit = defineEmits([
   "toggleVamp",
   "toggleSegue",
   "toggleEditMode",
-  "openSongDetails",
   "selectSong",
 ]);
 
@@ -106,16 +105,6 @@ const playbackSpeedPercentage = computed({
           class="flex-none"
           :pt:label="NARROW_HIDDEN_LABEL"
           @click="emit('toggleEditMode')"
-        />
-        <Button
-          v-if="canEdit && editMode"
-          label="Details..."
-          icon="pi pi-file-edit"
-          severity="secondary"
-          aria-label="Details..."
-          class="flex-none"
-          :pt:label="NARROW_HIDDEN_LABEL"
-          @click="emit('openSongDetails')"
         />
         <slot name="actions" />
       </template>

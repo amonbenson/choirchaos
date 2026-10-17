@@ -13,8 +13,8 @@ import { type RouteLocationRaw, useRouter } from "vue-router";
 
 import CoverPicker from "@/components/CoverPicker.vue";
 import DeleteShowDialog from "@/components/DeleteShowDialog.vue";
+import NewSongDialog from "@/components/NewSongDialog.vue";
 import ShareDialog from "@/components/ShareDialog.vue";
-import SongDetailsDialog from "@/components/SongDetailsDialog.vue";
 import SongImportDialog from "@/components/SongImportDialog.vue";
 import SongSetupStatus from "@/components/SongSetupStatus.vue";
 import TransportBar from "@/components/TransportBar.vue";
@@ -25,12 +25,14 @@ import type Song from "@/core/models/song";
 import { getSongSetup, isFileStep } from "@/core/models/songSetup";
 import { displayFilename } from "@/core/utils/file";
 import { useAuthStore } from "@/stores/auth";
+import { useSettingsStore } from "@/stores/settings";
 
 const props = defineProps<{
   showId: string;
 }>();
 
 const auth = useAuthStore();
+const settings = useSettingsStore();
 const router = useRouter();
 const confirm = useConfirm();
 const { notifyError } = useNotify();
@@ -48,8 +50,7 @@ const shareVisible = ref(false);
 const deleteVisible = ref(false);
 const importFiles = ref<File[]>([]);
 const importVisible = ref(false);
-const detailsVisible = ref(false);
-const detailsSong = ref<Song>();
+const newSongVisible = ref(false);
 const songMenu = ref();
 const songMenuItems = ref<MenuItem[]>([]);
 
@@ -133,30 +134,14 @@ const { isOverDropZone } = useDropZone(dropZone, {
 const fileDialog = useFileDialog({ multiple: true, reset: true, accept: `.pdf,.mid,.midi,.json,application/pdf,audio/midi,application/json,${RECORDING_FILE_ACCEPT}` });
 fileDialog.onChange(files => startImport(Array.from(files ?? [])));
 
-function openDetails(song?: Song): void {
-  detailsSong.value = song;
-  detailsVisible.value = true;
-}
-
 function songRoute(song: Song, name: "song" | "song-edit"): RouteLocationRaw {
   return { name, params: { showId: props.showId, songId: song.id } };
 }
 
 function continueSetup(song: Song): void {
   const next = getSongSetup(song).next;
-  if (next && isFileStep(next.id)) {
-    openDetails(song);
-  } else {
-    router.push(songRoute(song, "song-edit"));
-  }
-}
-
-function onSongSaved(song: Song, { created }: { created: boolean }): void {
-  if (created) {
-    show.value?.addSong(song);
-  } else {
-    show.value?.sortSongs();
-  }
+  settings.update({ workspace: { editorTab: next && isFileStep(next.id) ? "details" : "measures" } });
+  router.push(songRoute(song, "song-edit"));
 }
 
 function confirmDeleteSong(song: Song): void {
@@ -179,7 +164,6 @@ function confirmDeleteSong(song: Song): void {
 function openSongMenu(event: Event, song: Song): void {
   songMenuItems.value = [
     { label: "Edit", icon: "pi pi-pencil", command: () => router.push(songRoute(song, "song-edit")) },
-    { label: "Details...", icon: "pi pi-file-edit", command: () => openDetails(song) },
     { separator: true },
     { label: "Delete song", icon: "pi pi-trash", command: () => confirmDeleteSong(song) },
   ];
@@ -324,7 +308,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
                 severity="secondary"
                 size="small"
                 pt:label="hidden sm:inline"
-                @click="openDetails()"
+                @click="newSongVisible = true"
               />
             </div>
           </div>
@@ -359,7 +343,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
                 label="Add song manually..."
                 severity="secondary"
                 text
-                @click="openDetails()"
+                @click="newSongVisible = true"
               />
             </div>
           </div>
@@ -522,11 +506,10 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
         :show="show"
         :files="importFiles"
       />
-      <SongDetailsDialog
-        v-model="detailsVisible"
+      <NewSongDialog
+        v-model="newSongVisible"
         :show="show"
-        :song="detailsSong"
-        @saved="onSongSaved"
+        @created="show.addSong($event)"
       />
     </template>
   </div>

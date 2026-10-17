@@ -1,15 +1,9 @@
-import type { Page } from "@playwright/test";
 import type { RecordModel } from "pocketbase";
 
 import { CONDUCTOR, MINIMAL } from "../generators/score/presets";
 import { buildSongBundle } from "../generators/song";
 import { expect, test } from "../harness/fixtures";
 import { chooseFiles, collectPageErrors, toUploadFile, type UploadFile } from "../harness/page";
-
-async function openDetails(page: Page, title: string): Promise<void> {
-  await page.getByRole("button", { name: `Options for ${title}` }).click();
-  await page.getByRole("menuitem", { name: "Details..." }).click();
-}
 
 async function importBundleFiles(): Promise<UploadFile[]> {
   const audio = await buildSongBundle(MINIMAL, { mode: "audio" });
@@ -149,31 +143,34 @@ test.describe("show management", () => {
     expect(songs[0]!.title).toBe(MINIMAL.title);
   });
 
-  test("song details rename, renumber and delete a song", async ({ page, admin, factory, loginAs }) => {
+  test("the song editor's details rename, renumber and delete a song", async ({ page, admin, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "none", withPdf: false }));
-    await factory.createSong(owner, show, await buildSongBundle(CONDUCTOR, { mode: "none", withPdf: false }));
+    const other = await factory.createSong(owner, show, await buildSongBundle(CONDUCTOR, { mode: "none", withPdf: false }));
     await loginAs(owner);
     await page.goto(`/show/${show.id}/edit`);
 
-    await openDetails(page, song.title);
-    const dialog = page.getByRole("dialog", { name: "Song details" });
-    await dialog.getByLabel("No.").fill(CONDUCTOR.number);
-    await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(dialog.getByText(`Song ${CONDUCTOR.number} already exists.`)).toBeVisible();
+    await page.getByRole("button", { name: `Options for ${song.title}` }).click();
+    await expect(page.getByRole("menuitem", { name: "Details..." })).toHaveCount(0);
+    await page.getByRole("menuitem", { name: "Edit" }).click();
+    await page.getByRole("tab", { name: "Details" }).click();
+    const panel = page.getByRole("tabpanel", { name: "Details" });
 
-    await dialog.getByLabel("No.").fill("12a");
-    await dialog.getByLabel("Title").fill("Renamed");
-    await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(dialog).toBeHidden();
+    await panel.getByLabel("No.").fill(CONDUCTOR.number);
+    await panel.getByRole("button", { name: "Save" }).click();
+    await expect(panel.getByText(`Song ${CONDUCTOR.number} already exists.`)).toBeVisible();
+
+    await panel.getByLabel("No.").fill("12a");
+    await panel.getByLabel("Title").fill("Renamed");
+    await panel.getByRole("button", { name: "Save" }).click();
+    await expect(panel.getByRole("button", { name: "Save" })).toBeDisabled();
     await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).title).toBe("Renamed");
     expect((await admin.collection("songs").getOne(song.id)).number).toBe("12a");
 
-    await openDetails(page, "Renamed");
-    await dialog.getByRole("button", { name: "Delete song" }).click();
+    await panel.getByRole("button", { name: "Delete song" }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: "Delete song" }).click();
-    await expect(page.getByTestId("song-row-12a")).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`/song/${other.id}/edit$`));
     expect(await admin.collection("songs").getFullList()).toHaveLength(1);
   });
 
@@ -323,7 +320,7 @@ test.describe("navigation", () => {
     await page.goto(`/show/${show.id}/song/${song.id}/edit`);
 
     await expect(page).toHaveURL(new RegExp(`/show/${show.id}/song/${song.id}$`));
-    await expect(page.getByRole("button", { name: "Details..." })).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: "Details" })).toHaveCount(0);
   });
 });
 

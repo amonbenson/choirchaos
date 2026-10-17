@@ -43,6 +43,22 @@ describe("SongDraft", () => {
     expect(draft.recordingTracks.map(t => [t.title, t.audioFile])).toEqual([["Alto", "alto_1.mp3"], ["Bass", "bass_2.mp3"]]);
   });
 
+  it("reports changes against the song", () => {
+    const draft = new SongDraft(audioSong());
+    expect(draft.hasChanges()).toBe(false);
+
+    draft.moveTrack(0, 1);
+    expect(draft.hasChanges()).toBe(true);
+
+    draft.moveTrack(1, 0);
+    draft.addRecordings([new File(["x"], "tenor.mp3")]);
+    expect(draft.hasChanges()).toBe(true);
+  });
+
+  it("counts a new song as changed", () => {
+    expect(new SongDraft(undefined, "1").hasChanges()).toBe(true);
+  });
+
   it("validates number, title and MIDI files", () => {
     const draft = new SongDraft(undefined, "");
     draft.playback = "midi";

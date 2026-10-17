@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { breakpointsTailwind, useBreakpoints, useEventListener } from "@vueuse/core";
+import { useEventListener } from "@vueuse/core";
 import Button from "primevue/button";
 import InputNumber from "primevue/inputnumber";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
-import Panel from "primevue/panel";
 import Popover from "primevue/popover";
-import { computed, ref, watch } from "vue";
+import { computed, ref } from "vue";
 
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
@@ -29,17 +28,7 @@ const editor = injectMeasureEditor();
 const { measures, mode, selection, pendingBox, tool, placeFrom, selectedBox, reviewItems, currentReviewItem, detection } = editor;
 const { notifyError } = useNotify();
 
-// Below lg the panel is a bottom sheet over the score, which stays out of the way until needed.
-const isSheet = useBreakpoints(breakpointsTailwind).smaller("lg");
-const collapsed = ref(true);
-
 const detecting = computed(() => !!detection.progress.value);
-
-watch(() => selection.value.length > 0 || !!pendingBox.value || !!selectedBox.value || detecting.value, (active) => {
-  if (active) {
-    collapsed.value = false;
-  }
-});
 
 const placedCount = computed(() => measures.value.filter(measure => measure.layout).length);
 const unplacedRuns = computed(() => getUnplacedRuns(measures.value));
@@ -159,33 +148,23 @@ async function addMeasures(): Promise<void> {
 </script>
 
 <template>
-  <Panel
-    :toggleable="isSheet"
-    :collapsed="isSheet && collapsed"
-    pt:root="flex flex-col max-lg:rounded-b-none max-lg:shadow-lg"
-    pt:header="flex-none max-lg:py-2"
-    pt:content-container="flex-1 min-h-0 flex flex-col"
-    pt:content-wrapper="flex-1 min-h-0 flex flex-col"
-    pt:content="flex-1 min-h-0 overflow-y-auto"
-    pt:footer="flex-none flex gap-2"
+  <div
+    class="flex min-h-0 flex-col gap-4"
     data-testid="measure-panel"
-    @update:collapsed="collapsed = $event"
   >
-    <template #header>
-      <div class="flex min-w-0 items-baseline gap-2">
-        <span class="font-semibold">Measures</span>
-        <span
-          class="truncate text-sm text-muted-color"
-          aria-live="polite"
-        >{{ summary }}</span>
-      </div>
-    </template>
+    <span
+      class="flex-none truncate text-sm font-semibold"
+      aria-live="polite"
+    >{{ summary }}</span>
 
-    <MeasureDetectionForm v-if="detecting" />
+    <MeasureDetectionForm
+      v-if="detecting"
+      class="min-h-0 flex-1 overflow-y-auto"
+    />
 
     <div
       v-else
-      class="flex flex-col gap-4"
+      class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto"
     >
       <MeasureReviewBar
         v-if="showReviewBar"
@@ -263,13 +242,9 @@ async function addMeasures(): Promise<void> {
       </template>
     </div>
 
-    <template #toggleicon="{ collapsed: isCollapsed }">
-      <i :class="isCollapsed ? 'pi pi-chevron-up' : 'pi pi-chevron-down'" />
-    </template>
-
-    <template
-      v-if="!detecting && !pendingBox && !selectedBox && selection.length === 0"
-      #footer
+    <div
+      v-if="!detecting && !pendingBox && !selectedBox && selection.length === 0 && (mode === 'audio' || song?.pdfFile)"
+      class="flex flex-none gap-2"
     >
       <Button
         v-if="mode === 'audio'"
@@ -287,7 +262,7 @@ async function addMeasures(): Promise<void> {
         size="small"
         @click="detection.start()"
       />
-    </template>
+    </div>
 
     <Popover ref="addPopover">
       <form
@@ -344,5 +319,5 @@ async function addMeasures(): Promise<void> {
         />
       </form>
     </Popover>
-  </Panel>
+  </div>
 </template>

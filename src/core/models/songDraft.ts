@@ -52,6 +52,11 @@ function draftRecordingTracks(song: Song): DraftTrack[] {
   return [...tracks, ...untracked];
 }
 
+function serializeDraftTracks(tracks: readonly DraftTrack[]): string {
+  return JSON.stringify(tracks.map(({ title, classification, program, audioFile, file }) =>
+    ({ title, classification, program, audioFile, upload: !!file })));
+}
+
 function serializeTracks(tracks: readonly Track[]): string {
   return JSON.stringify(tracks.map(track => track.serialize()));
 }
@@ -159,6 +164,22 @@ export default class SongDraft {
     }
 
     return errors;
+  }
+
+  /** A new draft has nothing to compare against, so it always counts as changed. */
+  public hasChanges(): boolean {
+    if (!this.song) {
+      return true;
+    }
+
+    const original = new SongDraft(this.song);
+    return this.number !== original.number
+      || this.title !== original.title
+      || this.score !== original.score
+      || this.playback !== original.playback
+      || this.midi !== original.midi
+      || this.beatMap !== original.beatMap
+      || serializeDraftTracks(this.getTracks()) !== serializeDraftTracks(original.getTracks());
   }
 
   public getRemovedPlaybackKind(): "MIDI" | "recordings" | undefined {

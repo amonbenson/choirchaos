@@ -2,7 +2,6 @@
 import { useFileDialog } from "@vueuse/core";
 import { insertNodeAt, removeNode, useSortable } from "@vueuse/integrations/useSortable";
 import Button from "primevue/button";
-import Dialog from "primevue/dialog";
 import InputNumber from "primevue/inputnumber";
 import InputText from "primevue/inputtext";
 import Menu from "primevue/menu";
@@ -31,9 +30,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   saved: [song: Song, details: { created: boolean; playbackChanged: boolean }];
   deleted: [song: Song];
+  cancel: [];
 }>();
-
-const visible = defineModel<boolean>({ required: true });
 
 const confirm = useConfirm();
 const { notifyError } = useNotify();
@@ -56,6 +54,7 @@ const takenNumbers = computed(() => props.show.songs.map(song => song.number));
 const errors = computed(() => submitted.value ? draft.validate(takenNumbers.value) : {});
 const removedPlaybackKind = computed(() => draft.getRemovedPlaybackKind());
 const tracks = computed(() => draft.getTracks());
+const hasChanges = computed(() => draft.hasChanges());
 const isUploadingRecordings = computed(() => saving.value && tracks.value.some(track => track.file));
 const saveLabel = computed(() => {
   if (isUploadingRecordings.value) {
@@ -65,15 +64,13 @@ const saveLabel = computed(() => {
   return isNew.value ? "Create song" : "Save";
 });
 
-watch(visible, (value) => {
-  if (!value) {
-    return;
-  }
-
+function resetDraft(): void {
   Object.assign(draft, new SongDraft(props.song, getNextSongNumber(takenNumbers.value)));
   submitted.value = false;
   beatMapError.value = "";
-}, { immediate: true });
+}
+
+watch(() => props.song, resetDraft, { immediate: true });
 
 const recordingDialog = useFileDialog({ accept: RECORDING_FILE_ACCEPT, multiple: true, reset: true });
 recordingDialog.onChange((files) => {
@@ -122,7 +119,7 @@ function openMoveMenu(event: MouseEvent, index: number): void {
 
 async function save(): Promise<void> {
   submitted.value = true;
-  if (Object.keys(draft.validate(takenNumbers.value)).length > 0 || saving.value) {
+  if (Object.keys(draft.validate(takenNumbers.value)).length > 0 || saving.value || !hasChanges.value) {
     return;
   }
 
@@ -130,7 +127,7 @@ async function save(): Promise<void> {
   try {
     const { song, playbackChanged } = await draft.save(props.show.id, props.show.permissions);
     emit("saved", song, { created: isNew.value, playbackChanged });
-    visible.value = false;
+    resetDraft();
   } catch (error) {
     notifyError("Could not save the song", error);
   } finally {
@@ -154,7 +151,6 @@ function deleteSong(): void {
       try {
         await props.show.deleteSong(song);
         emit("deleted", song);
-        visible.value = false;
       } catch (error) {
         notifyError("Could not delete the song", error);
       }
@@ -164,16 +160,11 @@ function deleteSong(): void {
 </script>
 
 <template>
-  <Dialog
-    v-model:visible="visible"
-    :header="isNew ? 'New song' : 'Song details'"
-    class="w-[36rem] max-w-[calc(100vw-2rem)]"
-    modal
+  <form
+    class="@container flex min-h-0 flex-col gap-4"
+    @submit.prevent="save"
   >
-    <form
-      class="flex flex-col gap-6"
-      @submit.prevent="save"
-    >
+    <div class="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto">
       <div class="flex gap-3">
         <div class="flex w-24 flex-col gap-2">
           <label
@@ -283,7 +274,7 @@ function deleteSong(): void {
               >
                 <i class="pi pi-bars" />
               </button>
-              <div class="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+              <div class="flex min-w-0 flex-1 flex-col gap-1 @md:flex-row @md:items-center @md:gap-2">
                 <div class="flex min-w-0 flex-1 flex-col gap-0.5">
                   <InputText
                     v-if="draft.playback === 'audio'"
@@ -309,7 +300,7 @@ function deleteSong(): void {
                     v-model="track.classification"
                     :options="VOICES"
                     size="small"
-                    class="min-w-0 flex-1 sm:w-44 sm:flex-none"
+                    class="min-w-0 flex-1 @md:w-44 @md:flex-none"
                     :aria-label="`Voice of ${track.title}`"
                   />
                   <InputNumber
@@ -385,32 +376,40 @@ function deleteSong(): void {
           class="text-sm text-muted-color"
         >Track names come from the beat map. Removed tracks return when you select the beat map again.</span>
       </div>
-    </form>
+    </div>
 
-    <template #footer>
-      <div class="flex w-full flex-wrap items-center justify-between gap-2">
+    <div class="flex flex-none flex-wrap items-center justify-between gap-2">
+      <Button
+        v-if="!isNew"
+        label="Delete song"
+        icon="pi pi-trash"
+        severity="danger"
+        text
+        @click="deleteSong"
+      />
+      <div class="ml-auto flex gap-2">
         <Button
-          v-if="!isNew"
-          label="Delete song"
-          icon="pi pi-trash"
-          severity="danger"
+          v-if="isNew"
+          label="Cancel"
+          severity="secondary"
           text
-          @click="deleteSong"
+          @click="emit('cancel')"
         />
-        <div class="ml-auto flex gap-2">
-          <Button
-            label="Cancel"
-            severity="secondary"
-            text
-            @click="visible = false"
-          />
-          <Button
-            :label="saveLabel"
-            :loading="saving"
-            @click="save"
-          />
-        </div>
+        <Button
+          v-else
+          label="Revert"
+          severity="secondary"
+          text
+          :disabled="!hasChanges || saving"
+          @click="resetDraft"
+        />
+        <Button
+          type="submit"
+          :label="saveLabel"
+          :loading="saving"
+          :disabled="!hasChanges"
+        />
       </div>
-    </template>
-  </Dialog>
+    </div>
+  </form>
 </template>

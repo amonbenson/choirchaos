@@ -318,3 +318,46 @@ describe("Song unnumbered boxes", () => {
     expect(dbUpdate).toHaveBeenCalledWith("songs", "song-id", { measures: expect.any(Array), unnumberedBoxes: [{ ...box, page: 1 }] });
   });
 });
+
+describe("Song markers", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function savedMarkers(): unknown {
+    const fields = vi.mocked(dbUpdate).mock.calls.at(-1)![2] as { events: { markers: unknown } };
+    return fields.events.markers;
+  }
+
+  it("adds markers in measure order", async () => {
+    const song = makeSong();
+    await song.addMarker(["5", 0], "B");
+    await song.addMarker(["1", 0], "A");
+
+    expect(song.events.markers.items().map(m => m.marker)).toEqual(["A", "B"]);
+    expect(savedMarkers()).toEqual([
+      { type: "marker", start: ["1", 0], marker: "A" },
+      { type: "marker", start: ["5", 0], marker: "B" },
+    ]);
+  });
+
+  it("keeps the order when a marker moves", async () => {
+    const song = makeSong();
+    const first = await song.addMarker(["1", 0], "A");
+    await song.addMarker(["5", 0], "B");
+
+    await song.updateMarker(first, ["9", 0], "C");
+
+    expect(song.events.markers.items().map(m => [m.start[0], m.marker])).toEqual([["5", "B"], ["9", "C"]]);
+  });
+
+  it("removes only the given marker when two share a measure", async () => {
+    const song = makeSong();
+    await song.addMarker(["3", 0], "A");
+    const second = await song.addMarker(["3", 0], "B");
+
+    await song.removeMarker(second);
+
+    expect(song.events.markers.items().map(m => m.marker)).toEqual(["A"]);
+  });
+});
