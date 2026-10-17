@@ -83,7 +83,7 @@ describe("MixerPanel", () => {
   it("asks for playback in edit mode when the song has none", async () => {
     const wrapper = mountPanel(makeEmptySong(), true);
 
-    const button = wrapper.findAll("button").find(b => b.text() === "Add playback")!;
+    const button = wrapper.findAll("button").find(b => b.text() === "Add playback...")!;
     await button.trigger("click");
 
     expect(wrapper.emitted("openSongDetails")).toHaveLength(1);

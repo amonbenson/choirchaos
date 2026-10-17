@@ -2,7 +2,7 @@
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
 import { computed, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { type RouteLocationRaw, useRoute, useRouter } from "vue-router";
 
 import BabySvenja from "@/components/BabySvenja.vue";
 import KbdShortcut from "@/components/KbdShortcut.vue";
@@ -39,11 +39,11 @@ const showLoading = ref(true);
 
 const song = ref<Song | undefined>();
 const songLoading = ref(true);
-const editMode = ref(route.query.edit === "1");
+const editMode = computed(() => route.name === "song-edit");
 const canEdit = computed(() => !!show.value && getAccessFlags(show.value.permissions, auth.user?.id).editor);
 const showWarpPanel = computed(() => editMode.value && song.value?.playerMode === "audio");
 const songDetailsVisible = ref(false);
-const songDetailsTarget = ref<Song>();
+const backTo = computed<RouteLocationRaw>(() => canEdit.value ? { name: "show-edit", params: { showId: props.showId } } : { name: "home" });
 
 const songs = computed(() => show.value?.songs ?? []);
 const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
@@ -144,30 +144,41 @@ player.onSegue(() => {
   selectSong(nextSong.id, true);
 });
 
-// Redirect home on logout if the show is no longer accessible
+// Leave pages the user lost access to, e.g. after signing out
 watch(() => auth.user, (user) => {
-  if (show.value) {
-    const access = getAccessFlags(show.value.permissions, user?.id);
-    if (!access.viewer) {
-      router.replace({ name: "home" });
-    }
-  }
-});
-
-// SONG MANAGEMENT
-
-function openSongDetails(target?: Song): void {
-  songDetailsTarget.value = target;
-  songDetailsVisible.value = true;
-}
-
-async function onSongSaved(saved: Song, { created, playbackChanged }: { created: boolean; playbackChanged: boolean }): Promise<void> {
-  if (created) {
-    show.value?.addSong(saved);
-    selectSong(saved.id);
+  if (!show.value) {
     return;
   }
 
+  const access = getAccessFlags(show.value.permissions, user?.id);
+  if (!access.viewer) {
+    router.replace({ name: "home" });
+  } else if (!access.editor && editMode.value) {
+    router.replace({ name: "song", params: route.params });
+  }
+});
+
+// NAVIGATION
+
+// Player and editor share one history entry, so the browser back button leaves both. The entry
+// remembers that it started in the player, because its previous entry can be the show page too.
+function editSong(): void {
+  router.replace({ name: "song-edit", params: route.params, state: { editedFromPlayer: true } });
+}
+
+function finishEditing(): void {
+  const { back, editedFromPlayer } = router.options.history.state;
+  const showPage = router.resolve({ name: "show-edit", params: { showId: props.showId } }).fullPath;
+  if (!editedFromPlayer && back === showPage) {
+    router.back();
+  } else {
+    router.replace({ name: "song", params: route.params, state: { editedFromPlayer: false } });
+  }
+}
+
+// SONG MANAGEMENT
+
+async function onSongSaved(saved: Song, { playbackChanged }: { playbackChanged: boolean }): Promise<void> {
   show.value?.sortSongs();
   if (playbackChanged && saved === song.value) {
     await player.load(saved);
@@ -215,7 +226,7 @@ function selectSong(songId?: string, autoplay: boolean = false): void {
   // route to the correct song
   if (songId && songId !== props.songId) {
     router.replace({
-      name: "song",
+      name: editMode.value ? "song-edit" : "song",
       params: {
         showId: props.showId,
         songId,
@@ -247,19 +258,13 @@ watch(() => props.songId, async (songId) => {
       return;
     }
 
-    // Consume the edit flag that links from the show page use, so reloading opens the player normally.
-    if (route.query.edit) {
-      const { edit: _, ...query } = route.query;
-      router.replace({ ...route, query });
-    }
-
     // Select the song
     song.value = show.value.songs.find(s => s.id === songId);
     if (!song.value) {
       console.error("Invalid song id:", songId);
       const firstSong = show.value.songs[0];
       if (firstSong) {
-        router.replace({ name: "song", params: { showId: props.showId, songId: firstSong.id } });
+        selectSong(firstSong.id);
       }
 
       return;
@@ -303,16 +308,16 @@ const pdfLoading = ref(false);
       :loading="showLoading || songLoading"
       :edit-mode="editMode"
       :can-edit="canEdit"
+      :back-to="backTo"
       @update:model-value="selectSong($event)"
       @play-pause="playPause"
       @rewind="rewind"
       @forward="forward"
       @toggle-vamp="toggleVamp"
       @toggle-segue="toggleSegue"
-      @toggle-edit-mode="editMode = !editMode"
-      @open-song-details="openSongDetails(song)"
-      @add-song="openSongDetails()"
-      @edit-show="router.push({ name: 'show-edit', params: { showId } })"
+      @edit-song="editSong"
+      @finish-editing="finishEditing"
+      @open-song-details="songDetailsVisible = true"
     />
     <ButtonGroup class="w-full lg:hidden">
       <Button
@@ -425,7 +430,7 @@ const pdfLoading = ref(false);
           ]"
           :song="song"
           :edit-mode="editMode"
-          @open-song-details="openSongDetails(song)"
+          @open-song-details="songDetailsVisible = true"
         />
         <Button
           class="absolute top-2 right-full z-10 hidden transition-all lg:block"
@@ -447,10 +452,10 @@ const pdfLoading = ref(false);
     />
 
     <SongDetailsDialog
-      v-if="show"
+      v-if="show && song"
       v-model="songDetailsVisible"
       :show="show"
-      :song="songDetailsTarget"
+      :song="song"
       @saved="onSongSaved"
       @deleted="onSongDeleted"
     />

@@ -8,7 +8,8 @@ import { collectPageErrors } from "../harness/page";
 
 async function openEditor(page: Page, show: RecordModel, song: RecordModel): Promise<void> {
   await page.goto(`/show/${show.id}/song/${song.id}`);
-  await page.getByRole("button", { name: "Toggle Edit Mode" }).click();
+  await page.getByRole("button", { name: "Edit song" }).click();
+  await expect(page).toHaveURL(new RegExp(`/song/${song.id}/edit$`));
 }
 
 function layoutOf(song: RecordModel, value: string): SongMeasure["layout"] {

@@ -43,7 +43,7 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 
 | Path | Contents |
 |---|---|
-| `src/views/` | Routed pages: `AuthView`, `HomeView`, `ShowEditView` (show settings, songs, sharing), `WorkspaceView` (player and song editor), `NotFoundView` |
+| `src/views/` | Routed pages: `AuthView`, `HomeView`, `ShowEditView` (show settings, songs, sharing), `WorkspaceView` (player and song editor), `NotFoundView`. See `src/views/AGENTS.md` |
 | `src/components/` | UI components (transport, mixer, PDF viewer, warp/marker panels, dialogs) |
 | `src/composables/` | Reusable reactive logic. `event.ts` bridges core events into Vue |
 | `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
@@ -72,11 +72,44 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 
 ## UI
 
+The app has two audiences. Rehearsers (viewers) only play songs back. Editors (editors and owners) also set up shows, songs, measures and audio sync. Which page owns which action is mapped in `src/views/AGENTS.md`. Every page, the song editor included, must work on phones, tablets and desktops.
+
+### Design Principles
+
+1. **Rehearsers never see editing.** No edit control, hint or empty state that asks for editing is shown to someone who cannot edit. Editors get exactly one labelled way into editing per level: "Edit show" and "Edit song".
+2. **Each element type has one kind of job.**
+   - Links, list rows, back arrows and "Done" navigate and change the URL.
+   - Buttons run an action or open a dialog or popover. A button that opens a dialog ends its label with "...", e.g. "Details...", "Share...".
+   - Segmented controls and toggle buttons switch a tool or option inside the current page and look pressed while active.
+   Never make a navigation look like a mode switch or the other way round.
+3. **One meaning per icon, app-wide.** Before adding an icon, check the table below and do not give a listed icon a second meaning. Icon-only buttons are reserved for universally known controls (transport, close, overflow, back). Everything else carries a text label, at least from `sm` up, and always an `aria-label`.
+4. **State that matters lives in the URL.** Reloading or pressing the browser back button keeps the user where they were. Editing a song is a route, not a flag.
+5. **Every action has one home.** A secondary entry point opens the same dialog or page, never a variant of it. A plain entry keeps the home's label. An empty state or status hint may name the step instead, e.g. "Add playback..." for the details dialog.
+6. **Do not duplicate information.** A canvas (the score, the waveform) is the list of its objects. Side panels show the properties of the selection or what the canvas cannot show, not a second copy of the canvas.
+7. **Select, then act.** Objects on a canvas are selected first. The panel next to it edits the whole selection at once, and shows mixed values as empty.
+8. **Automation proposes, the user decides, leftovers stay visible.** Automatic results are previewed where they will appear. Anything the user still has to check stays marked on the object until it is resolved. Never ask the user to remember a list.
+9. **Empty states and status hints name the next step** and contain the control that does it.
+10. **Every editor page and dialog has one obvious exit** ("Done", "Cancel"). Destructive actions are confirmed, everything else saves without asking.
+11. **Keep the canvas readable.** Overlays on the score are small, and handles appear only where the user is working.
+
+| Icon | Meaning |
+|---|---|
+| `pi-arrow-left` | Up one level (back to the show, back home) |
+| `pi-pencil` | Go to the editor of this thing ("Edit song") |
+| `pi-check` | Leave an editor ("Done"), or a confirmed/ready state |
+| `pi-file-edit` | Song details dialog (number, title, files, tracks) |
+| `pi-play` | Play, or open the player ("Rehearse") |
+| `pi-ellipsis-v` | More actions for this item |
+| `pi-sparkles` | Automatic measure detection |
+| `pi-trash` | Delete or remove |
+
+### Conventions
+
 - Use PrimeVue components first and style them with Tailwind utilities. For behaviour PrimeVue lacks, prefer a library (vueuse `useDropZone`/`useFileDialog`, peaks.js for waveforms) over hand-written pointer, scroll or drag handling.
 - Reorderable lists use `useSortable` from `@vueuse/integrations` (SortableJS, works with mouse and touch) with a drag handle. In `onUpdate`, undo Sortable's DOM move and change the model instead, so Vue keeps owning the DOM. Every drag handle also needs a way to move without dragging (a menu and arrow keys, see `SongDetailsDialog`).
 - Use popovers and dialogs instead of `prompt()`/`confirm()`. Destructive confirmations go through PrimeVue's `useConfirm()`, errors through `useNotify()` toasts.
 - Canvas based components cannot use CSS variables. Resolve theme colors at runtime (see `WaveformView`) and rebuild when the `.dark` class changes, so they follow any theme preset.
-- Shows are managed on `ShowEditView` (`/show/:id/edit`). The player's edit mode is only for per-song work (measures, layout, audio sync). Song files and tracks (names, voices, order) are edited in `SongDetailsDialog`, not in the panels. A MIDI track's title links it to its MIDI data by name, so MIDI tracks cannot be renamed.
+- A MIDI track's title links it to its MIDI data by name, so MIDI tracks cannot be renamed.
 - Dark mode is class-based (`.dark` selector). Check every visual change in both light and dark mode.
 
 ## Measure Detection
@@ -112,6 +145,7 @@ Users can only read their own record, so the client cannot resolve the names of 
 Agent guidance is split by scope:
 - `AGENTS.md` (this file): project-wide rules, commands, layout, and conventions.
 - `src/core/player/AGENTS.md`: playback engine internals, invariants, and player test patterns.
+- `src/views/AGENTS.md`: pages, navigation between them, and which page owns which action.
 - `e2e/AGENTS.md`: end-to-end harness, backend fixtures and invariants, and test data generators.
 
 `AGENTS.md` is the only agent instruction format in this repo. Do not add tool-specific copies or pointer files such as `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, or `.github/copilot-instructions.md`. A root `CLAUDE.md` would make Claude Code ignore every nested `AGENTS.md`. Tools that need configuration to read `AGENTS.md` get a settings entry, not a copy of the content.

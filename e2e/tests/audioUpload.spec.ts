@@ -29,9 +29,8 @@ function isMpegAudio(bytes: Uint8Array): boolean {
 }
 
 async function openSongDetails(page: Page, show: RecordModel, song: RecordModel): Promise<void> {
-  await page.goto(`/show/${show.id}/song/${song.id}`);
-  await page.getByRole("button", { name: "Toggle Edit Mode" }).click();
-  await page.getByRole("button", { name: "Song details" }).click();
+  await page.goto(`/show/${show.id}/song/${song.id}/edit`);
+  await page.getByRole("button", { name: "Details..." }).click();
 }
 
 async function addRecordings(page: Page, files: UploadFile[]): Promise<void> {
@@ -161,7 +160,7 @@ test.describe("audio upload", () => {
     await addRecordings(page, [await buildStem("solo", "solo.mp3")]);
     await waitForTracks(admin, song.id, 1);
 
-    await page.getByRole("button", { name: "Song details" }).click();
+    await page.getByRole("button", { name: "Details..." }).click();
     const dialog = page.getByRole("dialog", { name: "Song details" });
     await dialog.getByRole("button", { name: "Remove Solo" }).click();
     await dialog.getByRole("button", { name: "Save" }).click();

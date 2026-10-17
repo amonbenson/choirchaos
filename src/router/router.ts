@@ -70,11 +70,15 @@ async function resolveFirstSong(to: RouteLocationNormalized): Promise<any> {
       return { name: "show-edit", params: { showId: to.params.showId } };
     }
 
+    if (to.name === "song-edit" && !show.getAccess(pb.authStore.record?.id).editor) {
+      return { name: "song", params: to.params };
+    }
+
     // Select the first song
     const firstSongId = show.songs[0]?.id as string | undefined;
 
     // If a valid id was found, redirect to that song's slug
-    if (firstSongId && to.name !== "song") {
+    if (firstSongId && to.name === "show") {
       return {
         name: "song",
         params: { showId: to.params.showId, songId: firstSongId },
@@ -121,6 +125,13 @@ const routes = [
   {
     name: "song",
     path: "/show/:showId/song/:songId",
+    component: WorkspaceView,
+    props: true,
+    beforeEnter: resolveFirstSong,
+  },
+  {
+    name: "song-edit",
+    path: "/show/:showId/song/:songId/edit",
     component: WorkspaceView,
     props: true,
     beforeEnter: resolveFirstSong,

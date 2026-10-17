@@ -6,6 +6,7 @@ import Select from "primevue/select";
 import Slider from "primevue/slider";
 import Toolbar from "primevue/toolbar";
 import { computed, type ComputedRef } from "vue";
+import type { RouteLocationRaw } from "vue-router";
 
 import Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
@@ -38,6 +39,7 @@ const props = defineProps<{
   loading?: boolean;
   editMode?: boolean;
   canEdit?: boolean;
+  backTo: RouteLocationRaw;
 }>();
 
 const emit = defineEmits([
@@ -46,10 +48,9 @@ const emit = defineEmits([
   "playPause",
   "toggleVamp",
   "toggleSegue",
-  "toggleEditMode",
+  "editSong",
+  "finishEditing",
   "openSongDetails",
-  "addSong",
-  "editShow",
 ]);
 
 const songId = defineModel<string>();
@@ -81,46 +82,65 @@ const playbackSpeedPercentage = computed({
   <div class="relative">
     <Toolbar
       class="relative grid grid-cols-[auto_auto] px-4 lg:grid-cols-[repeat(3,auto)] lg:overflow-x-auto"
-      pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-8 min-w-0 overflow-hidden"
+      :class="editMode ? 'outline-2 outline-primary' : ''"
+      pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-2 min-w-0 overflow-hidden"
       pt:center="flex justify-center items-center -space-x-2 sm:space-x-0"
       pt:end="overflow-x-auto lg:overflow-x-visible min-w-0"
     >
       <template #start>
+        <RouterLink
+          v-if="!editMode"
+          v-slot="{ navigate }"
+          :to="backTo"
+          custom
+        >
+          <Button
+            v-tooltip.bottom="canEdit ? 'Back to the show' : 'Back home'"
+            icon="pi pi-arrow-left"
+            severity="secondary"
+            :aria-label="canEdit ? 'Back to the show' : 'Back home'"
+            class="flex-none"
+            text
+            rounded
+            @click="navigate"
+          />
+        </RouterLink>
+        <Button
+          v-else
+          label="Done"
+          icon="pi pi-check"
+          class="flex-none"
+          @click="emit('finishEditing')"
+        />
         <Select
           v-model="songId"
-          class="w-full min-w-0 border-none whitespace-nowrap lg:w-88"
+          class="min-w-0 flex-1 border-none whitespace-nowrap lg:w-88 lg:flex-none"
           :options="songs"
           option-value="id"
           :option-label="song => `#${song.number} ${song.title}`"
           scroll-height="70vh"
           aria-label="Song"
-        >
-          <template
-            v-if="canEdit"
-            #footer
-          >
-            <div class="flex gap-1 border-t border-(--p-content-border-color) p-1">
-              <Button
-                label="Add song"
-                icon="pi pi-plus"
-                severity="secondary"
-                size="small"
-                class="flex-1"
-                text
-                @click="emit('addSong')"
-              />
-              <Button
-                label="Edit show"
-                icon="pi pi-cog"
-                severity="secondary"
-                size="small"
-                class="flex-1"
-                text
-                @click="emit('editShow')"
-              />
-            </div>
-          </template>
-        </Select>
+        />
+        <Button
+          v-if="canEdit && !editMode"
+          label="Edit song"
+          icon="pi pi-pencil"
+          severity="secondary"
+          aria-label="Edit song"
+          class="flex-none"
+          pt:label="hidden sm:inline"
+          @click="emit('editSong')"
+        />
+        <Button
+          v-if="editMode"
+          label="Details..."
+          icon="pi pi-file-edit"
+          severity="secondary"
+          aria-label="Details..."
+          class="flex-none"
+          pt:label="hidden sm:inline"
+          @click="emit('openSongDetails')"
+        />
       </template>
 
       <template #center>
@@ -150,25 +170,6 @@ const playbackSpeedPercentage = computed({
           rounded
           text
           @click="emit('forward')"
-        />
-        <Button
-          v-if="canEdit"
-          icon="pi pi-pencil"
-          :severity="editMode ? 'primary' : 'secondary'"
-          aria-label="Toggle Edit Mode"
-          rounded
-          text
-          @click="emit('toggleEditMode')"
-        />
-        <Button
-          v-if="canEdit && editMode"
-          v-tooltip.bottom="'Song details'"
-          icon="pi pi-file-edit"
-          severity="secondary"
-          aria-label="Song details"
-          rounded
-          text
-          @click="emit('openSongDetails')"
         />
       </template>
 
