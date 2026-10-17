@@ -12,7 +12,7 @@ import { pb } from "@/pocketbase";
 import { logout } from "@/pocketbase/auth";
 import { useAuthStore } from "@/stores/auth";
 
-import SettingsDialog from "./SettingsDialog.vue";
+import PreferencesDialog from "./PreferencesDialog.vue";
 
 const router = useRouter();
 const route = useRoute();
@@ -89,5 +89,5 @@ function signIn(): void {
     :model="menuItems"
     popup
   />
-  <SettingsDialog v-model="preferencesVisible" />
+  <PreferencesDialog v-model="preferencesVisible" />
 </template>

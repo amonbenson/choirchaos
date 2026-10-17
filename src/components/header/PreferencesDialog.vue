@@ -11,11 +11,10 @@ import Tabs from "primevue/tabs";
 import ToggleSwitch from "primevue/toggleswitch";
 import { computed, ref, watch } from "vue";
 
+import KbdShortcut from "@/components/base/KbdShortcut.vue";
 import type { ShortcutAction } from "@/composables/useGlobalShortcuts";
 import type { AppearanceSettings, TransportButtonKey } from "@/stores/settings";
 import { useSettingsStore } from "@/stores/settings";
-
-import KbdShortcut from "./KbdShortcut.vue";
 
 const visible = defineModel<boolean>({ default: false });
 const settings = useSettingsStore();

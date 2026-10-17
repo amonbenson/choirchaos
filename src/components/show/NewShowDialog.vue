@@ -5,10 +5,11 @@ import InputText from "primevue/inputtext";
 import { ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
-import CoverPicker from "@/components/CoverPicker.vue";
 import { useNotify } from "@/composables/useNotify";
 import Show from "@/core/models/show";
 import { useAuthStore } from "@/stores/auth";
+
+import CoverPicker from "./CoverPicker.vue";
 
 const visible = defineModel<boolean>({ required: true });
 

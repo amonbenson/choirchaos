@@ -44,7 +44,7 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 | Path | Contents |
 |---|---|
 | `src/views/` | Routed pages: `AuthView`, `HomeView`, `ShowEditView` (show settings, songs, sharing), `WorkspaceView` (player and song editor), `NotFoundView`. See `src/views/AGENTS.md` |
-| `src/components/` | UI components (transport, mixer, PDF viewer, warp/marker panels, dialogs) |
+| `src/components/` | UI components grouped by where they appear: `header/` (`HeaderBar`, breadcrumb, account menu), `show/` and `song/` (cards, dialogs and forms of the home and show pages), `player/` (mixer, markers, vamps), `editor/` (song editor panel and its tabs, `warp/`, `measures/`), `score/` (PDF and score viewer), `base/` (generic building blocks), `icons/` |
 | `src/composables/` | Reusable reactive logic. `event.ts` bridges core events into Vue. `useMeasureEditor` holds the song editor's selection and tool |
 | `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
 | `src/core/models/` | Domain models: Show, Song, Track, Measure, MeasureEvent. `SongDraft` holds unsaved song dialog edits, `songSetup` derives what a song still lacks, `measureDetection` merges detected measures into a song, `measureEditing` plans every edit of measures and their boxes, `measureReview` orders and resolves what detection left to check |
@@ -90,7 +90,7 @@ The app has two audiences. Rehearsers (viewers) only play songs back. Editors (e
 7. **Select, then act.** Objects on a canvas are selected first. The panel next to it edits the whole selection at once, and shows mixed values as empty.
 8. **Automation proposes, the user decides, leftovers stay visible.** Automatic results are previewed where they will appear. Anything the user still has to check stays marked on the object until it is resolved. Never ask the user to remember a list.
 9. **Empty states and status hints name the next step** and contain the control that does it.
-10. **The top bar always says where you are.** Every page starts with `TransportBar`, whose breadcrumb (logo, show, song) leads up to every parent, so no page needs its own back or exit button. Dialogs have one obvious exit ("Cancel"). Destructive actions are confirmed, everything else saves without asking.
+10. **The top bar always says where you are.** Every page starts with `HeaderBar`, whose breadcrumb (logo, show, song) leads up to every parent, so no page needs its own back or exit button. Dialogs have one obvious exit ("Cancel"). Destructive actions are confirmed, everything else saves without asking.
 11. **The account menu is for the account only** (preferences, signing out). App navigation never hides in it.
 12. **Keep the canvas readable.** Overlays on the score are small, and handles appear only where the user is working.
 
@@ -110,6 +110,7 @@ The app has two audiences. Rehearsers (viewers) only play songs back. Editors (e
 
 ### Conventions
 
+- A component lives in the `src/components/` folder of the area it appears in. Only components that know nothing about shows, songs or playback go into `base/`. Components shared by two areas live with the one that owns the action (`SongDetailsForm` is in `song/` although the editor's Details tab uses it too).
 - Use PrimeVue components first and style them with Tailwind utilities. For behaviour PrimeVue lacks, prefer a library (vueuse `useDropZone`/`useFileDialog`, peaks.js for waveforms) over hand-written pointer, scroll or drag handling.
 - Reorderable lists use `useSortable` from `@vueuse/integrations` (SortableJS, works with mouse and touch) with a drag handle. In `onUpdate`, undo Sortable's DOM move and change the model instead, so Vue keeps owning the DOM. Every drag handle also needs a way to move without dragging (a menu and arrow keys, see `SongDetailsForm`).
 - Use popovers and dialogs instead of `prompt()`/`confirm()`. Destructive confirmations go through PrimeVue's `useConfirm()`, errors through `useNotify()` toasts.

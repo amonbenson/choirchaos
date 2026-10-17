@@ -12,6 +12,7 @@ import SelectButton from "primevue/selectbutton";
 import { useConfirm } from "primevue/useconfirm";
 import { computed, nextTick, reactive, ref, useTemplateRef, watch } from "vue";
 
+import FileSlot from "@/components/base/FileSlot.vue";
 import { useNotify } from "@/composables/useNotify";
 import { RECORDING_FILE_ACCEPT } from "@/core/import/songImport";
 import type Show from "@/core/models/show";
@@ -19,8 +20,6 @@ import type Song from "@/core/models/song";
 import SongDraft, { type PlaybackMode } from "@/core/models/songDraft";
 import type { TrackClassification } from "@/core/models/track";
 import { getNextSongNumber } from "@/core/utils/numbering";
-
-import FileSlot from "./FileSlot.vue";
 
 const props = defineProps<{
   show: Show;

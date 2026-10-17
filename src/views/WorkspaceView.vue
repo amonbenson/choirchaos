@@ -4,15 +4,15 @@ import ButtonGroup from "primevue/buttongroup";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
-import BabySvenja from "@/components/BabySvenja.vue";
-import KbdShortcut from "@/components/KbdShortcut.vue";
-import MarkerPanel from "@/components/MarkerPanel.vue";
-import MixerPanel from "@/components/MixerPanel.vue";
-import SongEditorPanel from "@/components/SongEditorPanel.vue";
-import SongPdfViewer from "@/components/SongPdfViewer.vue";
-import TransportBar from "@/components/TransportBar.vue";
-import VampCard from "@/components/VampCard.vue";
-import WarpPanel from "@/components/WarpPanel.vue";
+import KbdShortcut from "@/components/base/KbdShortcut.vue";
+import SongEditorPanel from "@/components/editor/SongEditorPanel.vue";
+import WarpPanel from "@/components/editor/warp/WarpPanel.vue";
+import HeaderBar from "@/components/header/HeaderBar.vue";
+import BabySvenja from "@/components/icons/BabySvenja.vue";
+import MarkerPanel from "@/components/player/MarkerPanel.vue";
+import MixerPanel from "@/components/player/MixerPanel.vue";
+import VampCard from "@/components/player/VampCard.vue";
+import ScoreViewer from "@/components/score/ScoreViewer.vue";
 import { type ShortcutAction, useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
 import { provideMeasureEditor, useMeasureEditor } from "@/composables/useMeasureEditor";
 import Show from "@/core/models/show";
@@ -316,7 +316,7 @@ const pdfLoading = ref(false);
       ? 'grid-rows-[auto_auto_1fr_auto] lg:grid-rows-[auto_1fr_auto]'
       : 'grid-rows-[auto_auto_1fr] lg:grid-rows-[auto_1fr]'"
   >
-    <TransportBar
+    <HeaderBar
       class="lg:col-span-3"
       :show="show"
       :song-id="songId"
@@ -389,7 +389,7 @@ const pdfLoading = ref(false);
         :class="selectedTab !== 'pdf' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : ''"
       >
         <div class="absolute inset-0">
-          <SongPdfViewer
+          <ScoreViewer
             class="size-full"
             :song="song"
             :edit-mode="editMode"

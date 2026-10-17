@@ -11,13 +11,13 @@ import { useConfirm } from "primevue/useconfirm";
 import { computed, type Ref, ref, useTemplateRef, watch } from "vue";
 import { type RouteLocationRaw, useRouter } from "vue-router";
 
-import CoverPicker from "@/components/CoverPicker.vue";
-import DeleteShowDialog from "@/components/DeleteShowDialog.vue";
-import NewSongDialog from "@/components/NewSongDialog.vue";
-import ShareDialog from "@/components/ShareDialog.vue";
-import SongImportDialog from "@/components/SongImportDialog.vue";
-import SongSetupStatus from "@/components/SongSetupStatus.vue";
-import TransportBar from "@/components/TransportBar.vue";
+import HeaderBar from "@/components/header/HeaderBar.vue";
+import CoverPicker from "@/components/show/CoverPicker.vue";
+import DeleteShowDialog from "@/components/show/DeleteShowDialog.vue";
+import ShareDialog from "@/components/show/ShareDialog.vue";
+import NewSongDialog from "@/components/song/NewSongDialog.vue";
+import SongImportDialog from "@/components/song/SongImportDialog.vue";
+import SongSetupStatus from "@/components/song/SongSetupStatus.vue";
 import { useNotify } from "@/composables/useNotify";
 import { RECORDING_FILE_ACCEPT } from "@/core/import/songImport";
 import Show from "@/core/models/show";
@@ -189,7 +189,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
     ref="dropZone"
     class="relative flex size-full flex-col gap-2 p-2"
   >
-    <TransportBar
+    <HeaderBar
       class="relative z-10"
       :show="show"
     />

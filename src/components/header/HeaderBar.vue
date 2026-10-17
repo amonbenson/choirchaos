@@ -6,16 +6,16 @@ import Slider from "primevue/slider";
 import Toolbar from "primevue/toolbar";
 import { computed, type ComputedRef } from "vue";
 
+import PopoverButton from "@/components/base/PopoverButton.vue";
+import DottedHalfNoteIcon from "@/components/icons/DottedHalfNoteIcon.vue";
+import DottedQuarterNoteIcon from "@/components/icons/DottedQuarterNoteIcon.vue";
+import HalfNoteIcon from "@/components/icons/HalfNoteIcon.vue";
+import QuarterNoteIcon from "@/components/icons/QuarterNoteIcon.vue";
 import type Show from "@/core/models/show";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
-import PopoverButton from "./PopoverButton.vue";
 import ShowBreadcrumb from "./ShowBreadcrumb.vue";
-import DottedHalfNoteSvg from "./svg/DottedHalfNoteSvg.vue";
-import DottedQuarterNoteSvg from "./svg/DottedQuarterNoteSvg.vue";
-import HalfNoteSvg from "./svg/HalfNoteSvg.vue";
-import QuarterNoteSvg from "./svg/QuarterNoteSvg.vue";
 import UserMenuButton from "./UserMenuButton.vue";
 
 type NoteValue = "quarter" | "half" | "dottedQuarter" | "dottedHalf";
@@ -27,10 +27,10 @@ const NOTE_VALUE_QUARTER_MAP: Record<NoteValue, number> = {
   dottedHalf: 3,
 };
 const NOTE_VALUE_SVG_MAP: Record<NoteValue, object> = {
-  quarter: QuarterNoteSvg,
-  half: HalfNoteSvg,
-  dottedQuarter: DottedQuarterNoteSvg,
-  dottedHalf: DottedHalfNoteSvg,
+  quarter: QuarterNoteIcon,
+  half: HalfNoteIcon,
+  dottedQuarter: DottedQuarterNoteIcon,
+  dottedHalf: DottedHalfNoteIcon,
 };
 
 // The breadcrumb shares the row with the Edit toggle. Below sm, and from lg up where the transport

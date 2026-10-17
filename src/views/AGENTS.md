@@ -4,7 +4,7 @@ Extends the root `AGENTS.md`, whose rules and UI design principles apply here to
 
 ## Navigation Model
 
-Every page starts with `TransportBar`. Its start holds `ShowBreadcrumb`, modelled on GitHub's `owner / repo` header:
+Every page starts with `HeaderBar`. Its start holds `ShowBreadcrumb`, modelled on GitHub's `owner / repo` header:
 
 ```
 [logo] / Show title / #3 Song v   [Edit]     |<< > >|   measure  tempo  vamp ...  (account)

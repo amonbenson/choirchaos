@@ -8,7 +8,7 @@ import type Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
-import MarkerEditorRow from "./MarkerEditorRow.vue";
+import MarkerRow from "./MarkerRow.vue";
 
 const props = defineProps<{
   song: Song | undefined;
@@ -84,7 +84,7 @@ async function removeMarker(marker: MarkerEvent): Promise<void> {
   <div class="flex min-h-0 flex-col gap-4">
     <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
       <template v-if="song && markers.length > 0">
-        <MarkerEditorRow
+        <MarkerRow
           v-for="marker in markers"
           :key="getMarkerKey(marker)"
           :song="song"

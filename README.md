@@ -15,7 +15,7 @@ A basic song editing interface is included, but it is not yet production-ready. 
 ```
 src/
 ├── views/          # Page components (AuthView, HomeView, WorkspaceView)
-├── components/     # Reusable UI components (TransportBar, MixerPanel, PdfViewer, …)
+├── components/     # UI components grouped by area (header, show, song, player, editor, score, base)
 ├── composables/    # Reactive logic (pan/zoom, keyboard shortcuts, PDF pages)
 ├── core/
 │   ├── midi/       # MIDI event types, warp mapping

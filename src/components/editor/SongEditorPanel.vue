@@ -8,15 +8,15 @@ import TabPanels from "primevue/tabpanels";
 import Tabs from "primevue/tabs";
 import { computed, ref, watch } from "vue";
 
+import MeasureTab from "@/components/editor/measures/MeasureTab.vue";
+import SongDetailsForm from "@/components/song/SongDetailsForm.vue";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import type Show from "@/core/models/show";
 import type Song from "@/core/models/song";
 import { useSettingsStore } from "@/stores/settings";
 import type { EditorTab } from "@/stores/settings/workspace";
 
-import MarkerEditor from "./MarkerEditor.vue";
-import MeasurePanel from "./MeasurePanel.vue";
-import SongDetailsForm from "./SongDetailsForm.vue";
+import MarkerTab from "./MarkerTab.vue";
 
 defineProps<{
   show: Show | undefined;
@@ -124,7 +124,7 @@ watch(isWorkingOnMeasures, (working) => {
         value="markers"
         class="flex min-h-0 flex-1 flex-col"
       >
-        <MarkerEditor
+        <MarkerTab
           class="flex-1"
           :song="song"
         />
@@ -133,7 +133,7 @@ watch(isWorkingOnMeasures, (working) => {
         value="measures"
         class="flex min-h-0 flex-1 flex-col"
       >
-        <MeasurePanel
+        <MeasureTab
           class="flex-1"
           :song="song"
         />

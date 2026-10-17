@@ -3,6 +3,7 @@ import { onLongPress, useEventListener } from "@vueuse/core";
 import SelectButton from "primevue/selectbutton";
 import { computed, type ComputedRef, type Ref, ref, watch } from "vue";
 
+import Draggable from "@/components/base/Draggable.vue";
 import { injectMeasureEditor, type MeasureTool } from "@/composables/useMeasureEditor";
 import Measure, { type MeasureLayout, needsReview } from "@/core/models/measure";
 import { getReadingOrder, intersects, normalizeLayout, splitLayout } from "@/core/models/measureEditing";
@@ -11,7 +12,6 @@ import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
 import { usePlayerStore } from "@/stores/player";
 
-import Draggable from "./Draggable.vue";
 import PdfViewer from "./PdfViewer.vue";
 
 const player = usePlayerStore();

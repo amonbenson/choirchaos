@@ -2,9 +2,9 @@
 import { computed, type Ref, ref, watch } from "vue";
 import { type RouteLocationRaw, useRouter } from "vue-router";
 
-import NewShowDialog from "@/components/NewShowDialog.vue";
-import ShowCard from "@/components/ShowCard.vue";
-import TransportBar from "@/components/TransportBar.vue";
+import HeaderBar from "@/components/header/HeaderBar.vue";
+import NewShowDialog from "@/components/show/NewShowDialog.vue";
+import ShowCard from "@/components/show/ShowCard.vue";
 import { useNotify } from "@/composables/useNotify";
 import Show from "@/core/models/show";
 import { useAuthStore } from "@/stores/auth";
@@ -66,7 +66,7 @@ function showLink(show: Show): RouteLocationRaw {
 
 <template>
   <div class="flex size-full flex-col gap-2 p-2">
-    <TransportBar class="relative z-10" />
+    <HeaderBar class="relative z-10" />
 
     <div class="relative z-0 flex-1 overflow-y-auto">
       <div
