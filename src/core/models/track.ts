@@ -2,13 +2,6 @@ import type { TrackEvents } from "../player/types";
 
 export type TrackClassification = "Accompaniment" | "Percussion" | "Vocal";
 
-export type TrackPatch = Partial<{
-  title: string;
-  classification: TrackClassification;
-  program: number;
-  audioFile: string;
-}>;
-
 export default class Track {
   constructor(
     public readonly title: string,
@@ -34,24 +27,6 @@ export default class Track {
     },
     public $midiTrackEvents: TrackEvents | object = {},
   ) {}
-
-  public _applyPatch(patch: TrackPatch): void {
-    if (patch.title !== undefined) {
-      (this as any).title = patch.title;
-    }
-
-    if (patch.classification !== undefined) {
-      (this as any).classification = patch.classification;
-    }
-
-    if (patch.program !== undefined) {
-      (this as any).program = Math.max(0, Math.min(127, patch.program));
-    }
-
-    if (patch.audioFile !== undefined) {
-      (this as any).audioFile = patch.audioFile;
-    }
-  }
 
   public serialize(): any {
     return {

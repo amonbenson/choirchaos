@@ -13,7 +13,7 @@ import { inferTrackClassification } from "../utils/trackInference";
 import Measure, { type MeasureLayout, MeasureList } from "./measure";
 import type { MeasureDetectionPlan } from "./measureDetection";
 import { MarkerEvent, MeasureEventList, VampEvent } from "./measureEvent";
-import Track, { type TrackPatch } from "./track";
+import Track from "./track";
 
 export type SongNumber = Numbering;
 
@@ -190,23 +190,6 @@ export default class Song {
 
   // ── Track mutations ───────────────────────────────────────────────────────────
 
-  public async updateTrackFields(index: number, patch: TrackPatch): Promise<void> {
-    const track = this._tracks[index];
-    if (!track) {
-      console.warn(`updateTrackFields: track index ${index} out of range.`);
-      return;
-    }
-
-    track._applyPatch(patch);
-    await this._save({ tracks: this._serializeTracks() });
-  }
-
-  public async addTrack(track: Track): Promise<void> {
-    track.mixer.index = this._tracks.length;
-    this._tracks.push(track);
-    await this._save({ tracks: this._serializeTracks() });
-  }
-
   public async addTracks(tracks: Track[]): Promise<void> {
     for (const track of tracks) {
       track.mixer.index = this._tracks.length;
@@ -216,15 +199,8 @@ export default class Song {
     await this._save({ tracks: this._serializeTracks() });
   }
 
-  public async removeTrack(index: number): Promise<void> {
-    this._tracks.splice(index, 1);
-    this._tracks.forEach((t, i) => (t.mixer.index = i));
-    await this._save({ tracks: this._serializeTracks() });
-  }
-
-  public async moveTrack(fromIndex: number, toIndex: number): Promise<void> {
-    const [track] = this._tracks.splice(fromIndex, 1);
-    this._tracks.splice(toIndex, 0, track!);
+  public async setTracks(tracks: Track[]): Promise<void> {
+    this._tracks.splice(0, this._tracks.length, ...tracks);
     this._tracks.forEach((t, i) => (t.mixer.index = i));
     await this._save({ tracks: this._serializeTracks() });
   }

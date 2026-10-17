@@ -2,11 +2,12 @@ import type { TrackClassification } from "../models/track";
 
 export function inferTrackTitle(filename: string): string {
   return filename
+    .normalize("NFC")
     .replace(/\.[^.]+$/, "")
     .replace(/[-_]+/g, " ")
     .trim()
     .replace(/\s+/g, " ")
-    .replace(/\b\w/g, c => c.toUpperCase());
+    .replace(/(?<![\p{L}\p{N}])\p{L}/gu, c => c.toUpperCase());
 }
 
 export function inferTrackClassification(name: string): TrackClassification {

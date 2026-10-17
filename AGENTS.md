@@ -73,9 +73,10 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 ## UI
 
 - Use PrimeVue components first and style them with Tailwind utilities. For behaviour PrimeVue lacks, prefer a library (vueuse `useDropZone`/`useFileDialog`, peaks.js for waveforms) over hand-written pointer, scroll or drag handling.
+- Reorderable lists use `useSortable` from `@vueuse/integrations` (SortableJS, works with mouse and touch) with a drag handle. In `onUpdate`, undo Sortable's DOM move and change the model instead, so Vue keeps owning the DOM. Every drag handle also needs a way to move without dragging (a menu and arrow keys, see `SongDetailsDialog`).
 - Use popovers and dialogs instead of `prompt()`/`confirm()`. Destructive confirmations go through PrimeVue's `useConfirm()`, errors through `useNotify()` toasts.
 - Canvas based components cannot use CSS variables. Resolve theme colors at runtime (see `WaveformView`) and rebuild when the `.dark` class changes, so they follow any theme preset.
-- Shows are managed on `ShowEditView` (`/show/:id/edit`). The player's edit mode is only for per-song work (measures, layout, tracks, audio sync). Song files are edited in `SongDetailsDialog`, not in the panels.
+- Shows are managed on `ShowEditView` (`/show/:id/edit`). The player's edit mode is only for per-song work (measures, layout, audio sync). Song files and tracks (names, voices, order) are edited in `SongDetailsDialog`, not in the panels. A MIDI track's title links it to its MIDI data by name, so MIDI tracks cannot be renamed.
 - Dark mode is class-based (`.dark` selector). Check every visual change in both light and dark mode.
 
 ## Measure Detection

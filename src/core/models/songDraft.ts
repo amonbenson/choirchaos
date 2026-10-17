@@ -1,20 +1,64 @@
 import { inferRecordingTitle } from "../import/songImport";
-import { resolveFilename, type UrlOrFile } from "../utils/file";
+import { isBeatMap, tracksFromBeatMap } from "../midi/beatMap";
+import { displayFilename, resolveFilename, type UrlOrFile } from "../utils/file";
 import { isNumbering } from "../utils/numbering";
-import Song, { type SongFiles, type SongRecording } from "./song";
+import { inferTrackClassification } from "../utils/trackInference";
+import Song, { type SongFiles } from "./song";
+import Track, { type TrackClassification } from "./track";
 
 export type PlaybackMode = "none" | "midi" | "audio";
 
-export type StoredRecording = {
-  filename: string;
+/**
+ * A track as edited in the song dialog. A recording track either points to a stored file
+ * (`audioFile`) or carries a new upload (`file`). MIDI tracks have neither.
+ */
+export type DraftTrack = {
+  key: number;
   title: string;
+  classification: TrackClassification;
+  program: number;
+  audioFile?: string;
+  file?: File;
 };
 
-export type SongDraftErrors = Partial<Record<"number" | "title" | "playback", string>>;
+export type SongDraftErrors = Partial<Record<"number" | "title" | "playback" | "tracks", string>>;
+
+let nextTrackKey = 0;
+
+function draftTrack(fields: Omit<DraftTrack, "key">): DraftTrack {
+  return { key: nextTrackKey++, ...fields };
+}
+
+function draftTrackFromTrack({ title, classification, program, audioFile }: Track): DraftTrack {
+  return draftTrack({ title, classification, program, audioFile: audioFile || undefined });
+}
+
+function draftTrackFromRecording(file: File): DraftTrack {
+  const title = inferRecordingTitle(file.name);
+  return draftTrack({ title, classification: inferTrackClassification(title), program: 0, file });
+}
+
+// A stored recording without a track would otherwise count as removed and be deleted on save.
+function draftRecordingTracks(song: Song): DraftTrack[] {
+  const filenames = song.audioFiles.map(resolveFilename);
+  const tracks = song.tracks.filter(track => filenames.includes(track.audioFile)).map(draftTrackFromTrack);
+  const untracked = filenames
+    .filter(filename => !song.tracks.some(track => track.audioFile === filename))
+    .map((filename) => {
+      const title = displayFilename(filename).replace(/\.[^.]+$/, "");
+      return draftTrack({ title, classification: inferTrackClassification(title), program: 0, audioFile: filename });
+    });
+
+  return [...tracks, ...untracked];
+}
+
+function serializeTracks(tracks: readonly Track[]): string {
+  return JSON.stringify(tracks.map(track => track.serialize()));
+}
 
 /**
- * Editable copy of a song's details and files. Nothing reaches the backend until save(), which
- * applies removals before uploads so the song never holds MIDI and recordings at the same time.
+ * Editable copy of a song's details, files and tracks. Nothing reaches the backend until save(),
+ * which applies removals before uploads so the song never holds MIDI and recordings at the same time.
  */
 export default class SongDraft {
   public number: string;
@@ -23,8 +67,8 @@ export default class SongDraft {
   public playback: PlaybackMode;
   public midi: UrlOrFile | undefined;
   public beatMap: UrlOrFile | undefined;
-  public storedRecordings: StoredRecording[];
-  public newRecordings: SongRecording[] = [];
+  public recordingTracks: DraftTrack[];
+  public midiTracks: DraftTrack[];
 
   constructor(private readonly song?: Song, defaultNumber = "") {
     this.number = song?.number ?? defaultNumber;
@@ -33,14 +77,63 @@ export default class SongDraft {
     this.playback = song?.playerMode ?? "none";
     this.midi = song?.midiFile;
     this.beatMap = song?.jsonFile;
-    this.storedRecordings = (song?.audioFiles ?? []).map((file) => {
-      const filename = resolveFilename(file);
-      return { filename, title: song?.tracks.find(t => t.audioFile === filename)?.title ?? filename };
-    });
+
+    this.recordingTracks = song && this.playback === "audio" ? draftRecordingTracks(song) : [];
+    this.midiTracks = song && this.playback === "midi" ? song.tracks.map(draftTrackFromTrack) : [];
+  }
+
+  public getTracks(): DraftTrack[] {
+    if (this.playback === "audio") {
+      return this.recordingTracks;
+    }
+
+    if (this.playback === "midi") {
+      return this.midiTracks;
+    }
+
+    return [];
   }
 
   public addRecordings(files: File[]): void {
-    this.newRecordings.push(...files.map(file => ({ file, title: inferRecordingTitle(file.name) })));
+    this.recordingTracks.push(...files.map(draftTrackFromRecording));
+  }
+
+  public removeTrack(track: DraftTrack): void {
+    const tracks = this.getTracks();
+    tracks.splice(tracks.indexOf(track), 1);
+  }
+
+  public moveTrack(from: number, to: number): void {
+    const tracks = this.getTracks();
+    if (to < 0 || to >= tracks.length) {
+      return;
+    }
+
+    const [track] = tracks.splice(from, 1);
+    tracks.splice(to, 0, track!);
+  }
+
+  /**
+   * Takes the MIDI tracks from a new beat map. Tracks whose name stays keep their voice and
+   * program, since only the name links a track to its MIDI data.
+   */
+  public async setBeatMap(file: File): Promise<boolean> {
+    let json: unknown;
+    try {
+      json = JSON.parse(await file.text());
+    } catch {
+      return false;
+    }
+
+    if (!isBeatMap(json)) {
+      return false;
+    }
+
+    this.beatMap = file;
+    this.midiTracks = tracksFromBeatMap(json).map(track =>
+      this.midiTracks.find(existing => existing.title === track.title) ?? draftTrackFromTrack(track),
+    );
+    return true;
   }
 
   public validate(takenNumbers: string[]): SongDraftErrors {
@@ -59,6 +152,10 @@ export default class SongDraft {
 
     if (this.playback === "midi" && (!this.midi || !this.beatMap)) {
       errors.playback = "MIDI playback needs a MIDI file and its beat map.";
+    }
+
+    if (this.getTracks().some(track => !track.title.trim())) {
+      errors.tracks = "Give every track a name.";
     }
 
     return errors;
@@ -88,25 +185,45 @@ export default class SongDraft {
       files.beatMap = this.beatMap instanceof File ? this.beatMap : undefined;
     }
 
-    if (this.playback === "audio") {
-      files.recordings = this.newRecordings;
-    }
-
     return files;
   }
 
+  private getNewRecordings(): File[] {
+    return this.playback === "audio" ? this.recordingTracks.flatMap(track => track.file ? [track.file] : []) : [];
+  }
+
   private getRemovedRecordings(song: Song): string[] {
-    const kept = this.playback === "audio" ? new Set(this.storedRecordings.map(r => r.filename)) : new Set();
+    const kept = this.playback === "audio" ? new Set(this.recordingTracks.map(track => track.audioFile)) : new Set();
     return song.audioFiles.map(resolveFilename).filter(filename => !kept.has(filename));
   }
 
-  /** Returns the saved song and whether its playback files changed, which requires a player reload. */
-  public async save(showId: string, permissions?: Song["permissions"]): Promise<{ song: Song; filesChanged: boolean }> {
+  /** Uploads new recordings and stores the track list in the edited order. Returns whether the tracks changed. */
+  private async saveTracks(song: Song): Promise<boolean> {
+    const newRecordings = this.getNewRecordings();
+    const uploadedFilenames = await song.uploadAudioFiles(newRecordings);
+    const filenameByFile = new Map(newRecordings.map((file, i) => [file, uploadedFilenames[i] ?? ""]));
+
+    const tracks = this.getTracks().map(({ title, classification, program, audioFile, file }) =>
+      new Track(title.trim(), classification, program, file ? filenameByFile.get(file) : audioFile),
+    );
+
+    if (serializeTracks(tracks) === serializeTracks(song.tracks)) {
+      return false;
+    }
+
+    await song.setTracks(tracks);
+    return true;
+  }
+
+  /** Returns the saved song and whether its playback changed, which requires a player reload. */
+  public async save(showId: string, permissions?: Song["permissions"]): Promise<{ song: Song; playbackChanged: boolean }> {
     const details = { number: this.number.trim(), title: this.title.trim() };
     const files = this.getNewFiles();
 
     if (!this.song) {
-      return { song: await Song.create(showId, details, files, permissions), filesChanged: true };
+      const song = await Song.create(showId, details, files, permissions);
+      await this.saveTracks(song);
+      return { song, playbackChanged: true };
     }
 
     const song = this.song;
@@ -114,7 +231,7 @@ export default class SongDraft {
     const removeScore = !!song.pdfFile && !this.score;
     const removeMidi = !!song.midiFile && this.playback !== "midi";
     const filesChanged = removeScore || removeMidi || removedRecordings.length > 0
-      || !!files.score || !!files.midi || !!files.beatMap || (files.recordings?.length ?? 0) > 0;
+      || !!files.score || !!files.midi || !!files.beatMap;
 
     if (details.number !== song.number || details.title !== song.title) {
       await song.updateDetails(details);
@@ -133,6 +250,7 @@ export default class SongDraft {
     }
 
     await song.addFiles(files);
-    return { song, filesChanged };
+    const tracksChanged = await this.saveTracks(song);
+    return { song, playbackChanged: filesChanged || tracksChanged };
   }
 }

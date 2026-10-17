@@ -7,7 +7,6 @@ import { reactive } from "vue";
 
 import Song from "@/core/models/song";
 import Track, { type TrackClassification } from "@/core/models/track";
-import { dbUpdate } from "@/pocketbase/db";
 import { useSettingsStore } from "@/stores/settings";
 
 import MixerPanel from "./MixerPanel.vue";
@@ -91,16 +90,21 @@ describe("MixerPanel", () => {
     expect(wrapper.find("input[type=file]").exists()).toBe(false);
   });
 
-  it("renames a track in edit mode", async () => {
-    const song = makeAudioSong(["Vocal"]);
-    const wrapper = mountPanel(song, true);
+  it("leaves track setup to the song details dialog", () => {
+    const wrapper = mountPanel(makeAudioSong(["Vocal"]), true);
 
-    const input = wrapper.find<HTMLInputElement>("input[aria-label='Name of track 1']");
-    input.element.value = "Soprano";
-    await input.trigger("change");
+    expect(wrapper.find("input").exists()).toBe(false);
+    expect(groupHeadings(wrapper)).toEqual(["Vocal"]);
+  });
+
+  it("applies the stored mixer settings to replaced tracks", async () => {
+    const song = reactive(makeAudioSong(["Vocal"])) as Song;
+    useSettingsStore().updateTrackMixer("Alto", { mute: true });
+    mountPanel(song);
+
+    await song.setTracks([new Track("Alto", "Vocal", 0, "track0.mp3")]);
     await flushPromises();
 
-    expect(song.tracks[0]!.title).toBe("Soprano");
-    expect(dbUpdate).toHaveBeenCalledWith("songs", "song-id", { tracks: [expect.objectContaining({ title: "Soprano" })] });
+    expect(song.tracks[0]!.mixer.mute).toBe(true);
   });
 });

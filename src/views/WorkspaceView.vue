@@ -161,7 +161,7 @@ function openSongDetails(target?: Song): void {
   songDetailsVisible.value = true;
 }
 
-async function onSongSaved(saved: Song, { created, filesChanged }: { created: boolean; filesChanged: boolean }): Promise<void> {
+async function onSongSaved(saved: Song, { created, playbackChanged }: { created: boolean; playbackChanged: boolean }): Promise<void> {
   if (created) {
     show.value?.addSong(saved);
     selectSong(saved.id);
@@ -169,7 +169,7 @@ async function onSongSaved(saved: Song, { created, filesChanged }: { created: bo
   }
 
   show.value?.sortSongs();
-  if (filesChanged && saved === song.value) {
+  if (playbackChanged && saved === song.value) {
     await player.load(saved);
   }
 }

@@ -1,16 +1,13 @@
 <script setup lang="ts">
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
-import InputNumber from "primevue/inputnumber";
-import InputText from "primevue/inputtext";
 import Panel from "primevue/panel";
-import Select from "primevue/select";
 import Slider from "primevue/slider";
 import { computed, ref, watch } from "vue";
 
 import type Song from "@/core/models/song";
-import Track, { type TrackClassification } from "@/core/models/track";
-import { displayFilename } from "@/core/utils/file";
+import type Track from "@/core/models/track";
+import type { TrackClassification } from "@/core/models/track";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -136,11 +133,9 @@ function trackAmplitude(track: Track | MergedTrack): number {
   return Math.max(0, ...indices.map(i => player.trackAmplitudes[i] ?? 0));
 }
 
-// ── Edit mode ────────────────────────────────────────────────────────────────
-
-const CLASSIFICATIONS: TrackClassification[] = ["Vocal", "Accompaniment", "Percussion"];
-
-watch(() => props.song, (song) => {
+// Tracks are replaced when the song details are saved, so the stored mixer settings are applied again.
+watch(() => [props.song, ...(props.song?.tracks ?? [])], () => {
+  const song = props.song;
   if (!song) {
     return;
   }
@@ -159,63 +154,6 @@ watch(() => props.song, (song) => {
 
   trackFlashTriggered.value = Array(song.tracks.length).fill(false);
 }, { immediate: true });
-
-async function addMidiTrack(): Promise<void> {
-  if (!props.song) {
-    return;
-  }
-
-  await props.song.addTrack(new Track("New Track", "Vocal", 0, ""));
-}
-
-async function handleMidiTrackDelete(index: number): Promise<void> {
-  if (!props.song) {
-    return;
-  }
-
-  await props.song.removeTrack(index);
-  await player.load(props.song);
-}
-
-async function handleTrackMoveUp(index: number): Promise<void> {
-  if (!props.song || index <= 0) {
-    return;
-  }
-
-  await props.song.moveTrack(index, index - 1);
-}
-
-async function handleTrackMoveDown(index: number): Promise<void> {
-  if (!props.song || index >= props.song.tracks.length - 1) {
-    return;
-  }
-
-  await props.song.moveTrack(index, index + 1);
-}
-
-async function handleTrackTitleChange(index: number, value: string): Promise<void> {
-  if (!props.song) {
-    return;
-  }
-
-  await props.song.updateTrackFields(index, { title: value });
-}
-
-async function handleTrackClassificationChange(index: number, value: TrackClassification): Promise<void> {
-  if (!props.song) {
-    return;
-  }
-
-  await props.song.updateTrackFields(index, { classification: value });
-}
-
-async function handleTrackProgramChange(index: number, value: number | null): Promise<void> {
-  if (!props.song || value === null) {
-    return;
-  }
-
-  await props.song.updateTrackFields(index, { program: value });
-}
 </script>
 
 <template>
@@ -225,134 +163,20 @@ async function handleTrackProgramChange(index: number, value: number | null): Pr
     pt:header="flex-none"
     pt:content-container="flex-1 overflow-y-scroll mb-2"
   >
-    <!-- Track setup (edit mode). Files are managed in the song details dialog. -->
     <div
-      v-if="editMode && song"
-      class="mb-4 flex flex-col gap-3 border-b border-(--p-content-border-color) pb-4"
+      v-if="editMode && song?.playerMode === 'none'"
+      class="mb-4 flex flex-col items-start gap-2 border-b border-(--p-content-border-color) pb-4"
     >
-      <div
-        v-if="song.playerMode === 'none'"
-        class="flex flex-col items-start gap-2"
-      >
-        <span class="text-sm text-muted-color">This song has no MIDI file or recordings yet.</span>
-        <Button
-          label="Add playback"
-          icon="pi pi-file-edit"
-          severity="secondary"
-          size="small"
-          @click="emit('openSongDetails')"
-        />
-      </div>
-
-      <template v-else>
-        <div class="flex items-center justify-between">
-          <span class="text-sm font-semibold">Tracks</span>
-          <div class="flex gap-1">
-            <Button
-              v-if="song.playerMode === 'midi'"
-              size="small"
-              icon="pi pi-plus"
-              label="Add track"
-              severity="secondary"
-              text
-              @click="addMidiTrack"
-            />
-            <Button
-              v-else
-              size="small"
-              icon="pi pi-file-edit"
-              label="Recordings"
-              severity="secondary"
-              text
-              @click="emit('openSongDetails')"
-            />
-          </div>
-        </div>
-        <div
-          v-for="track, i in song.tracks"
-          :key="i"
-          class="flex flex-col gap-1"
-        >
-          <div class="flex items-center gap-1">
-            <div class="flex flex-col">
-              <Button
-                icon="pi pi-chevron-up"
-                size="small"
-                :aria-label="`Move ${track.title} up`"
-                text
-                rounded
-                :disabled="i === 0"
-                @click="handleTrackMoveUp(i)"
-              />
-              <Button
-                icon="pi pi-chevron-down"
-                size="small"
-                :aria-label="`Move ${track.title} down`"
-                text
-                rounded
-                :disabled="i === song.tracks.length - 1"
-                @click="handleTrackMoveDown(i)"
-              />
-            </div>
-            <InputText
-              size="small"
-              class="min-w-0 flex-1"
-              :model-value="track.title"
-              :aria-label="`Name of track ${i + 1}`"
-              @change="handleTrackTitleChange(i, ($event.target as HTMLInputElement).value)"
-            />
-            <Button
-              v-if="song.playerMode === 'midi'"
-              icon="pi pi-trash"
-              size="small"
-              severity="danger"
-              aria-label="Delete track"
-              text
-              rounded
-              @click="handleMidiTrackDelete(i)"
-            />
-          </div>
-          <div class="flex items-center gap-2 pl-8">
-            <Select
-              size="small"
-              class="min-w-0 flex-1"
-              :model-value="track.classification"
-              :options="CLASSIFICATIONS"
-              :aria-label="`Voice of ${track.title}`"
-              @update:model-value="handleTrackClassificationChange(i, $event)"
-            />
-            <InputNumber
-              v-if="song.playerMode === 'midi'"
-              v-tooltip.top="'MIDI program'"
-              size="small"
-              class="w-20 shrink-0"
-              :model-value="track.program"
-              :min="0"
-              :max="127"
-              :use-grouping="false"
-              :show-buttons="false"
-              :aria-label="`MIDI program of ${track.title}`"
-              @update:model-value="handleTrackProgramChange(i, $event)"
-            />
-            <span
-              v-else
-              class="max-w-24 shrink-0 truncate text-xs text-muted-color"
-              :title="displayFilename(track.audioFile)"
-            >
-              {{ displayFilename(track.audioFile) }}
-            </span>
-          </div>
-        </div>
-        <span
-          v-if="song.tracks.length === 0"
-          class="text-sm text-muted-color italic"
-        >
-          Add one track per MIDI track name.
-        </span>
-      </template>
+      <span class="text-sm text-muted-color">This song has no MIDI file or recordings yet.</span>
+      <Button
+        label="Add playback"
+        icon="pi pi-file-edit"
+        severity="secondary"
+        size="small"
+        @click="emit('openSongDetails')"
+      />
     </div>
 
-    <!-- ── Mixer controls ────────────────────────────────────────── -->
     <div
       v-if="tracks.length > 0"
       class="flex flex-col items-stretch justify-stretch gap-12"

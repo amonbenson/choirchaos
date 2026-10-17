@@ -1,19 +1,24 @@
 <script setup lang="ts">
 import { useFileDialog } from "@vueuse/core";
+import { insertNodeAt, removeNode, useSortable } from "@vueuse/integrations/useSortable";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
+import InputNumber from "primevue/inputnumber";
 import InputText from "primevue/inputtext";
+import Menu from "primevue/menu";
+import type { MenuItem } from "primevue/menuitem";
 import Message from "primevue/message";
+import Select from "primevue/select";
 import SelectButton from "primevue/selectbutton";
 import { useConfirm } from "primevue/useconfirm";
-import { computed, reactive, ref, watch } from "vue";
+import { computed, nextTick, reactive, ref, useTemplateRef, watch } from "vue";
 
 import { useNotify } from "@/composables/useNotify";
 import { RECORDING_FILE_ACCEPT } from "@/core/import/songImport";
-import { isBeatMapFile } from "@/core/midi/beatMap";
 import type Show from "@/core/models/show";
 import type Song from "@/core/models/song";
 import SongDraft, { type PlaybackMode } from "@/core/models/songDraft";
+import type { TrackClassification } from "@/core/models/track";
 import { getNextSongNumber } from "@/core/utils/numbering";
 
 import FileSlot from "./FileSlot.vue";
@@ -24,7 +29,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  saved: [song: Song, details: { created: boolean; filesChanged: boolean }];
+  saved: [song: Song, details: { created: boolean; playbackChanged: boolean }];
   deleted: [song: Song];
 }>();
 
@@ -39,6 +44,8 @@ const PLAYBACK_OPTIONS: { label: string; value: PlaybackMode }[] = [
   { label: "Recordings", value: "audio" },
 ];
 
+const VOICES: TrackClassification[] = ["Vocal", "Accompaniment", "Percussion"];
+
 const draft = reactive(new SongDraft());
 const saving = ref(false);
 const submitted = ref(false);
@@ -48,7 +55,8 @@ const isNew = computed(() => !props.song);
 const takenNumbers = computed(() => props.show.songs.map(song => song.number));
 const errors = computed(() => submitted.value ? draft.validate(takenNumbers.value) : {});
 const removedPlaybackKind = computed(() => draft.getRemovedPlaybackKind());
-const isUploadingRecordings = computed(() => saving.value && draft.playback === "audio" && draft.newRecordings.length > 0);
+const tracks = computed(() => draft.getTracks());
+const isUploadingRecordings = computed(() => saving.value && tracks.value.some(track => track.file));
 const saveLabel = computed(() => {
   if (isUploadingRecordings.value) {
     return "Converting audio...";
@@ -73,10 +81,43 @@ recordingDialog.onChange((files) => {
 });
 
 async function selectBeatMap(file: File): Promise<void> {
-  beatMapError.value = await isBeatMapFile(file) ? "" : `"${file.name}" is not a beat map.`;
-  if (!beatMapError.value) {
-    draft.beatMap = file;
-  }
+  beatMapError.value = await draft.setBeatMap(file) ? "" : `"${file.name}" is not a beat map.`;
+}
+
+const trackList = useTemplateRef<HTMLElement>("trackList");
+const moveMenu = useTemplateRef<InstanceType<typeof Menu>>("moveMenu");
+const moveMenuIndex = ref(0);
+
+useSortable(trackList, tracks, {
+  watchElement: true,
+  handle: "[data-drag-handle]",
+  animation: 150,
+  ghostClass: "opacity-40",
+  onUpdate: ({ item, from, oldIndex, newIndex }) => {
+    // Vue renders the rows from the draft, so Sortable's own DOM move is undone before the draft changes.
+    removeNode(item);
+    insertNodeAt(from, item, oldIndex!);
+    draft.moveTrack(oldIndex!, newIndex!);
+  },
+});
+
+async function moveTrack(from: number, to: number): Promise<void> {
+  draft.moveTrack(from, to);
+  await nextTick();
+  trackList.value?.querySelectorAll<HTMLElement>("[data-drag-handle]")[to]?.focus();
+}
+
+const moveMenuItems = computed<MenuItem[]>(() => {
+  const index = moveMenuIndex.value;
+  return [
+    { label: "Move up", icon: "pi pi-arrow-up", disabled: index === 0, command: () => moveTrack(index, index - 1) },
+    { label: "Move down", icon: "pi pi-arrow-down", disabled: index === tracks.value.length - 1, command: () => moveTrack(index, index + 1) },
+  ];
+});
+
+function openMoveMenu(event: MouseEvent, index: number): void {
+  moveMenuIndex.value = index;
+  moveMenu.value?.toggle(event);
 }
 
 async function save(): Promise<void> {
@@ -87,8 +128,8 @@ async function save(): Promise<void> {
 
   saving.value = true;
   try {
-    const { song, filesChanged } = await draft.save(props.show.id, props.show.permissions);
-    emit("saved", song, { created: isNew.value, filesChanged });
+    const { song, playbackChanged } = await draft.save(props.show.id, props.show.permissions);
+    emit("saved", song, { created: isNew.value, playbackChanged });
     visible.value = false;
   } catch (error) {
     notifyError("Could not save the song", error);
@@ -218,53 +259,93 @@ function deleteSong(): void {
         </template>
 
         <div
-          v-else-if="draft.playback === 'audio'"
+          v-if="draft.playback !== 'none'"
           class="flex flex-col rounded-md border border-(--p-content-border-color)"
         >
           <div
-            v-for="recording in draft.storedRecordings"
-            :key="recording.filename"
-            class="flex items-center gap-3 border-b border-(--p-content-border-color) p-2 pl-3"
+            ref="trackList"
+            class="flex flex-col"
           >
-            <i class="pi pi-volume-up text-muted-color" />
-            <span class="min-w-0 flex-1 truncate text-sm">{{ recording.title }}</span>
-            <Button
-              icon="pi pi-times"
-              severity="secondary"
-              size="small"
-              :aria-label="`Remove ${recording.title}`"
-              text
-              rounded
-              @click="draft.storedRecordings = draft.storedRecordings.filter(r => r !== recording)"
-            />
+            <div
+              v-for="track, i in tracks"
+              :key="track.key"
+              class="flex items-center gap-2 border-b border-(--p-content-border-color) bg-(--p-content-background) p-2 pl-1"
+            >
+              <button
+                type="button"
+                data-drag-handle
+                class="flex size-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-color hover:bg-(--p-content-hover-background) focus-visible:outline-2 focus-visible:outline-primary active:cursor-grabbing"
+                :aria-label="`Move ${track.title}`"
+                aria-haspopup="menu"
+                @click="openMoveMenu($event, i)"
+                @keydown.up.prevent="moveTrack(i, i - 1)"
+                @keydown.down.prevent="moveTrack(i, i + 1)"
+              >
+                <i class="pi pi-bars" />
+              </button>
+              <div class="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+                <div class="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <InputText
+                    v-if="draft.playback === 'audio'"
+                    v-model="track.title"
+                    size="small"
+                    :invalid="!!errors.tracks && !track.title.trim()"
+                    :aria-label="`Name of track ${i + 1}`"
+                    fluid
+                  />
+                  <span
+                    v-else
+                    class="truncate text-sm"
+                    :title="track.title"
+                  >{{ track.title }}</span>
+                  <span
+                    v-if="track.file"
+                    class="truncate text-xs text-muted-color"
+                    :title="track.file.name"
+                  >{{ track.file.name }}</span>
+                </div>
+                <div class="flex gap-2">
+                  <Select
+                    v-model="track.classification"
+                    :options="VOICES"
+                    size="small"
+                    class="min-w-0 flex-1 sm:w-44 sm:flex-none"
+                    :aria-label="`Voice of ${track.title}`"
+                  />
+                  <InputNumber
+                    v-if="draft.playback === 'midi'"
+                    v-model="track.program"
+                    v-tooltip.top="'MIDI program'"
+                    size="small"
+                    class="shrink-0"
+                    input-class="w-14"
+                    :min="0"
+                    :max="127"
+                    :use-grouping="false"
+                    :allow-empty="false"
+                    :aria-label="`MIDI program of ${track.title}`"
+                  />
+                </div>
+              </div>
+              <Button
+                icon="pi pi-times"
+                severity="secondary"
+                size="small"
+                :aria-label="`Remove ${track.title}`"
+                text
+                rounded
+                @click="draft.removeTrack(track)"
+              />
+            </div>
           </div>
+          <span
+            v-if="draft.playback === 'midi' && tracks.length === 0"
+            class="p-3 text-sm text-muted-color"
+          >The tracks are read from the beat map.</span>
           <div
-            v-for="recording in draft.newRecordings"
-            :key="recording.file.name"
-            class="flex items-center gap-3 border-b border-(--p-content-border-color) p-2 pl-3"
+            v-if="draft.playback === 'audio'"
+            class="p-1"
           >
-            <i class="pi pi-volume-up text-primary" />
-            <InputText
-              v-model="recording.title"
-              size="small"
-              class="min-w-0 flex-1"
-              :aria-label="`Track name for ${recording.file.name}`"
-            />
-            <span
-              class="hidden max-w-32 truncate text-xs text-muted-color sm:inline"
-              :title="recording.file.name"
-            >{{ recording.file.name }}</span>
-            <Button
-              icon="pi pi-times"
-              severity="secondary"
-              size="small"
-              :aria-label="`Remove ${recording.file.name}`"
-              text
-              rounded
-              @click="draft.newRecordings = draft.newRecordings.filter(r => r !== recording)"
-            />
-          </div>
-          <div class="p-1">
             <Button
               label="Add recordings"
               icon="pi pi-plus"
@@ -276,14 +357,21 @@ function deleteSong(): void {
             />
           </div>
         </div>
+        <!-- Escape would otherwise bubble up to the dialog and close it together with the menu. -->
+        <Menu
+          ref="moveMenu"
+          :model="moveMenuItems"
+          popup
+          @keydown.esc.stop
+        />
 
         <Message
-          v-if="beatMapError || errors.playback"
+          v-if="beatMapError || errors.playback || errors.tracks"
           severity="error"
           size="small"
           variant="simple"
         >
-          {{ beatMapError || errors.playback }}
+          {{ beatMapError || errors.playback || errors.tracks }}
         </Message>
         <Message
           v-if="removedPlaybackKind"
@@ -293,9 +381,9 @@ function deleteSong(): void {
           Saving removes the current {{ removedPlaybackKind }} of this song.
         </Message>
         <span
-          v-if="draft.playback !== 'none'"
+          v-if="draft.playback === 'midi' && tracks.length > 0"
           class="text-sm text-muted-color"
-        >Track names, voices and order are set in the mixer while editing in the player.</span>
+        >Track names come from the beat map. Removed tracks return when you select the beat map again.</span>
       </div>
     </form>
 

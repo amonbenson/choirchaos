@@ -40,7 +40,7 @@ describe("SongDraft", () => {
     const draft = new SongDraft(audioSong());
 
     expect([draft.number, draft.title, draft.score, draft.playback]).toEqual(["3", "Prologue", "score.pdf", "audio"]);
-    expect(draft.storedRecordings).toEqual([{ filename: "alto_1.mp3", title: "Alto" }, { filename: "bass_2.mp3", title: "Bass" }]);
+    expect(draft.recordingTracks.map(t => [t.title, t.audioFile])).toEqual([["Alto", "alto_1.mp3"], ["Bass", "bass_2.mp3"]]);
   });
 
   it("validates number, title and MIDI files", () => {
@@ -67,16 +67,16 @@ describe("SongDraft", () => {
     const draft = new SongDraft();
     draft.addRecordings([new File(["x"], "03 Prologue - Soprano.mp3"), new File(["x"], "piano.mp3")]);
 
-    expect(draft.newRecordings.map(r => r.title)).toEqual(["Soprano", "Piano"]);
+    expect(draft.recordingTracks.map(t => [t.title, t.classification])).toEqual([["Soprano", "Vocal"], ["Piano", "Accompaniment"]]);
   });
 
   it("only saves details when nothing else changed", async () => {
     const draft = new SongDraft(audioSong());
     draft.title = "Prologue (new)";
 
-    const { filesChanged } = await draft.save("show-id");
+    const { playbackChanged } = await draft.save("show-id");
 
-    expect(filesChanged).toBe(false);
+    expect(playbackChanged).toBe(false);
     expect(vi.mocked(dbUpdate).mock.calls).toEqual([["songs", "song-id", { number: "3", title: "Prologue (new)" }]]);
     expect(dbUpdateWithFiles).not.toHaveBeenCalled();
   });
@@ -84,11 +84,11 @@ describe("SongDraft", () => {
   it("removes a single recording", async () => {
     const song = audioSong();
     const draft = new SongDraft(song);
-    draft.storedRecordings = draft.storedRecordings.filter(r => r.filename !== "alto_1.mp3");
+    draft.removeTrack(draft.recordingTracks[0]!);
 
-    const { filesChanged } = await draft.save("show-id");
+    const { playbackChanged } = await draft.save("show-id");
 
-    expect(filesChanged).toBe(true);
+    expect(playbackChanged).toBe(true);
     expect(song.audioFiles).toEqual(["bass_2.mp3"]);
     expect(song.tracks.map(t => t.title)).toEqual(["Bass"]);
   });
@@ -98,7 +98,7 @@ describe("SongDraft", () => {
     const draft = new SongDraft(song);
     draft.playback = "midi";
     draft.midi = new File(["m"], "a.mid");
-    draft.beatMap = beatMapFile();
+    await draft.setBeatMap(beatMapFile());
     expect(draft.getRemovedPlaybackKind()).toBe("recordings");
 
     await draft.save("show-id");
@@ -106,6 +106,64 @@ describe("SongDraft", () => {
     expect(song.audioFiles).toEqual([]);
     const uploaded = Array.from(vi.mocked(dbUpdateWithFiles).mock.calls[0]![2].keys());
     expect(uploaded).toEqual(expect.arrayContaining(["midiFile", "jsonFile", "tracks"]));
+  });
+
+  it("saves renamed and reordered tracks in one write", async () => {
+    const song = audioSong();
+    const draft = new SongDraft(song);
+    draft.recordingTracks[1]!.title = "Königin";
+    draft.moveTrack(1, 0);
+
+    const { playbackChanged } = await draft.save("show-id");
+
+    expect(playbackChanged).toBe(true);
+    expect(dbUpdateWithFiles).not.toHaveBeenCalled();
+    expect(song.tracks.map(t => [t.title, t.audioFile, t.mixer.index])).toEqual([["Königin", "bass_2.mp3", 0], ["Alto", "alto_1.mp3", 1]]);
+    expect(vi.mocked(dbUpdate).mock.calls).toEqual([["songs", "song-id", { tracks: song.tracks.map(t => t.serialize()) }]]);
+  });
+
+  it("places new recordings where they were moved", async () => {
+    vi.mocked(dbUpdateWithFiles).mockResolvedValueOnce({ id: "song-id", audioFiles: ["alto_1.mp3", "bass_2.mp3", "tenor_3.mp3"] });
+    const song = audioSong();
+    const draft = new SongDraft(song);
+    draft.addRecordings([new File(["x"], "Tenor.wav")]);
+    draft.moveTrack(2, 0);
+
+    await draft.save("show-id");
+
+    expect(song.tracks.map(t => [t.title, t.audioFile])).toEqual([["Tenor", "tenor_3.mp3"], ["Alto", "alto_1.mp3"], ["Bass", "bass_2.mp3"]]);
+  });
+
+  it("keeps stored recordings that have no track", () => {
+    const song = new Song("song-id", "3", "Prologue", undefined, undefined, undefined, ["alto_1.mp3", "extra_abcdefghij.mp3"], [
+      new Track("Alto", "Vocal", 0, "alto_1.mp3"),
+    ]);
+
+    const draft = new SongDraft(song);
+
+    expect(draft.recordingTracks.map(t => [t.title, t.audioFile])).toEqual([["Alto", "alto_1.mp3"], ["extra", "extra_abcdefghij.mp3"]]);
+  });
+
+  it("asks for a name for every track", () => {
+    const draft = new SongDraft(audioSong());
+    draft.recordingTracks[0]!.title = " ";
+
+    expect(draft.validate([]).tracks).toBe("Give every track a name.");
+  });
+
+  it("takes the MIDI tracks from a new beat map and keeps their settings by name", async () => {
+    const draft = new SongDraft(undefined, "1");
+    draft.playback = "midi";
+    expect(await draft.setBeatMap(beatMapFile())).toBe(true);
+    const [first, second] = draft.midiTracks;
+    first!.program = 40;
+    draft.moveTrack(0, 1);
+
+    await draft.setBeatMap(beatMapFile());
+
+    expect(draft.midiTracks.map(t => t.title)).toEqual([first!.title, second!.title]);
+    expect(draft.midiTracks[0]!.program).toBe(40);
+    expect(await draft.setBeatMap(new File(["{}"], "x.json"))).toBe(false);
   });
 
   it("removes MIDI and its beat map when switching to no playback", async () => {
