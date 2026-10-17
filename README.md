@@ -1,10 +1,6 @@
 # Choir Chaos
 
-A web-based rehearsal platform for musical ensembles. Based loosely on [ChordChaos](https://chordchaos.com/) and other existing proprietary solutions. Directors can organize shows into songs, upload sheet music PDFs and MIDI/audio files, and run synchronized playback sessions with multi-track mixing, vamp loops, segue transitions, and real-time audio time-stretching. Access is role-based — shows can be private, unlisted, or public, with separate owner, editor, and viewer permissions.
-
-## Current Limitations
-
-A basic song editing interface is included, but it is not yet production-ready. Adding and synchronizing new media files (PDFs, MIDI, audio) currently requires direct access to the PocketBase admin dashboard.
+A web-based rehearsal platform for musical ensembles, loosely based on [ChordChaos](https://chordchaos.com/) and similar proprietary tools. Editors organize shows into songs, upload sheet music PDFs with MIDI or audio files, and sync them to the score with automatic measure detection. Rehearsers play songs back with multi-track mixing, vamp loops, segues and real-time time-stretching. Shows can be private, unlisted or public, with owner, editor and viewer roles.
 
 ## Technology Stack
 
@@ -14,36 +10,21 @@ A basic song editing interface is included, but it is not yet production-ready. 
 
 ```
 src/
-├── views/          # Page components (AuthView, HomeView, WorkspaceView)
-├── components/     # UI components grouped by area (header, show, song, player, editor, score, base)
-├── composables/    # Reactive logic (pan/zoom, keyboard shortcuts, PDF pages)
-├── core/
-│   ├── midi/       # MIDI event types, warp mapping
-│   ├── models/     # Data models (Show, Song, Track, Measure)
-│   ├── pdf/        # PDF rendering via Web Worker
-│   ├── player/     # Playback engine with MIDI and audio backends
-│   └── utils/      # Events, numbering, binary search, updater
-├── stores/         # Pinia stores (auth, player, settings, PDF renderer)
-├── pocketbase/     # PocketBase client, auth helpers, permissions model
-└── router/         # Vue Router routes and navigation guards
+├── views/          # Routed pages
+├── components/     # UI components grouped by area
+├── composables/    # Reusable reactive logic
+├── stores/         # Pinia stores
+├── router/         # Routes and navigation guards
+├── pocketbase/     # PocketBase client and DB access
+└── core/           # Framework-free models, playback engine, MIDI, PDF rendering, utilities
+e2e/                # Playwright end-to-end tests
 ```
+
+[`AGENTS.md`](AGENTS.md) describes the architecture and conventions in detail.
 
 ## Development Setup
 
-Node.js 20.19+ or 22.12+ is required. A running PocketBase instance is needed as the backend.
-
-```bash
-npm install
-npm run dev       # dev server at http://localhost:5173
-npm run typecheck # TypeScript validation
-npm run lint:fix  # auto-fix linting issues
-npm run build     # production build → dist/
-npm run test      # unit tests
-```
-
-### Environment Variables
-
-Create a `.env` file in the project root:
+Node.js 20.19+ or 22.12+ and a running [choirchaos-pb](https://github.com/amonbenson/choirchaos-pb) backend are required. Create a `.env` file in the project root:
 
 ```env
 VITE_BASE_URL="/"
@@ -55,11 +36,18 @@ VITE_PB_URL="https://your-pocketbase-instance.com"
 # VITE_PB_AUTOLOGIN_SHOW="<show-id>"
 ```
 
-`VITE_PB_URL` must point to a PocketBase instance with the correct collections and access rules configured. The backend, including all PocketBase migrations, lives in [choirchaos-pb](https://github.com/amonbenson/choirchaos-pb).
+```bash
+npm install
+npm run dev        # dev server at http://localhost:5173
+npm run lint:fix   # lint with autofix
+npm run typecheck  # TypeScript validation
+npx vitest run     # unit tests
+npm run build      # production build into dist/
+```
 
 ### End-to-End Tests
 
-The `e2e/` suite runs the production build in Chromium against a fresh PocketBase container built from a pinned `choirchaos-pb` commit. It needs Docker.
+The e2e suite runs the production build in Chromium against a fresh PocketBase container and needs Docker. Test scores, MIDI and audio are generated from code, see [`e2e/AGENTS.md`](e2e/AGENTS.md).
 
 ```bash
 npx playwright install chromium   # once
@@ -67,13 +55,9 @@ npm run test:e2e                  # run the suite
 npm run e2e:serve                 # seeded backend + frontend for manual testing
 ```
 
-Test scores, MIDI files and audio stems are generated from code. See [`e2e/AGENTS.md`](e2e/AGENTS.md) for details.
-
 ## Deployment
 
-The app is deployed to a Dokku server using the included `Dockerfile`. Pushing to `main` triggers the GitHub Actions CI pipeline, which runs lint and type checks and then deploys automatically via `git push dokku main`.
-
-The following repository secrets and variables must be configured in GitHub:
+The app is deployed to a Dokku server using the included `Dockerfile`. On every push to `main`, the GitHub Actions pipeline runs lint, typecheck, unit tests, build and e2e tests and then deploys via `git push dokku`. It needs these repository settings:
 
 | Name | Type | Description |
 |---|---|---|
@@ -84,6 +68,5 @@ The following repository secrets and variables must be configured in GitHub:
 To test the Docker build locally:
 
 ```bash
-docker compose up --build
-# serves on http://localhost:8080
+docker compose up --build   # serves on http://localhost:8080
 ```

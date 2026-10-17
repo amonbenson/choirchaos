@@ -1,8 +1,8 @@
 # E2E Tests — Agent Guide
 
-Extends the root `AGENTS.md`, whose rules apply here too. Keep this file current under the rules in its "Agent Guides" section.
+Extends the root `AGENTS.md`, whose rules apply here too.
 
-End-to-end tests run the compiled frontend in Chromium against a real PocketBase backend in Docker. They use Playwright Test, separate from the Vitest unit tests. jsdom cannot run Web Audio, AudioWorklets, pdf.js workers or canvas.
+Playwright tests run the compiled frontend in Chromium against a real PocketBase backend in Docker. They cover what jsdom cannot run: Web Audio, AudioWorklets, pdf.js workers and canvas.
 
 ## Commands
 
@@ -15,18 +15,16 @@ npm run e2e:scores [-- <presetId>]       # regenerate committed score PDFs (need
 npx playwright show-trace <trace.zip>    # inspect a failed test
 ```
 
-Requirements: Docker running, and Chromium installed once with `npx playwright install chromium`. CI (`e2e` job in `.github/workflows/ci.yaml`) runs the same command on `ubuntu-latest`.
+Requirements: Docker running, and Chromium installed once with `npx playwright install chromium`. CI runs the same command.
 
 ## How a Run Works
 
-1. `globalSetup.ts` builds the frontend once into `e2e/.cache/dist` and builds the backend image. Both happen once per run.
+1. `globalSetup.ts` builds the frontend into `e2e/.cache/dist` and the backend image, once per run.
 2. Each Playwright worker starts its own PocketBase container (Testcontainers, data in tmpfs) and its own `vite preview` server on a random port.
 3. The frontend is built with `VITE_PB_URL="/"`. The preview server proxies `/api` and `/_` to its worker's backend, so one build serves any number of backends and parallel runs never collide.
-4. Before every test, all app collections are truncated. After every test that passed, the invariants in `harness/state.ts` run against the whole database. A test that leaves the backend inconsistent fails.
+4. Before every test, all app collections are truncated. After every passing test, the invariants in `harness/state.ts` check the whole database, so a test that leaves it inconsistent fails.
 
-The backend comes from `BACKEND_REPOSITORY` at `BACKEND_COMMIT` (`config.ts`). Bump the commit when the frontend needs a newer schema. To test against unpushed backend changes, set `E2E_BACKEND_SOURCE=../choirchaos-pb` (path to a local checkout). It is rebuilt on every run.
-
-The superuser is created with `pocketbase superuser upsert` before `serve`, so its credentials are always `SUPERUSER` in `config.ts`.
+The backend is built from `BACKEND_REPOSITORY` at `BACKEND_COMMIT` (`config.ts`). Bump the commit whenever the frontend needs newer migrations or hooks. To test unpushed backend changes, set `E2E_BACKEND_SOURCE=../choirchaos-pb` (a local checkout, rebuilt on every run).
 
 ## Writing Tests
 
@@ -41,13 +39,13 @@ Import `test` and `expect` from `harness/fixtures.ts`, never from `@playwright/t
 | `invariants` | Option. Override with `test.use({ invariants: [...] })` only for tests that deliberately create broken data. |
 | `page`, `baseURL` | Standard Playwright. `page.goto("/")` hits the worker's frontend. |
 
-- When a feature adds a cross-record or cross-field rule, add it to `DEFAULT_INVARIANTS` in `harness/state.ts`. That protects every existing test, not just the new one.
+- When a feature adds a cross-record or cross-field rule, add it to `DEFAULT_INVARIANTS` in `harness/state.ts`, so every test checks it.
 - Prefer asserting backend state through `admin` over asserting UI text. Many UI elements have no accessible text.
-- `harness/page.ts` has `collectPageErrors()`, `toUploadFile()` and `chooseFiles()`. The app opens file dialogs from buttons (vueuse `useFileDialog`) without a permanent `<input type=file>`, so upload through `chooseFiles()`, which uses Playwright's file chooser event.
-- In the song editor, `score-page` is the overlay of a score page (drag on it to draw or marquee-select) and `measure-panel` is the content of the Measures tab. The editor panel's tabs are ARIA tabs, so reach their content with `getByRole("tabpanel", { name: "Details" })`. Measure boxes are buttons named "Measure N", boxes without a number are buttons named "Box without a number", and detection preview boxes carry `data-detection-preview`.
+- The app opens file dialogs from buttons without a permanent `<input type=file>`, so upload through `chooseFiles()` in `harness/page.ts`, which uses Playwright's file chooser event.
+- In the song editor, `score-page` is a score page's overlay (drag on it to draw or marquee-select) and `measure-panel` is the Measures tab. Reach tab content with `getByRole("tabpanel", { name: "Details" })`. Boxes are buttons named "Measure N" or "Box without a number", and detection preview boxes carry `data-detection-preview`.
 - To test review flows without running detection, arrange `layout.review` on measures and `unnumberedBoxes` on the song through the bundle fields.
 - `WaveformView` exposes `data-zoom-scale` (samples per pixel) and `data-sample-rate`, so tests can convert marker times to pixels on the canvas.
-- Vue reports errors thrown during render through `console.error`, not as uncaught page errors. To assert that a flow is error-free, listen to both `pageerror` and `console` (`collectPageErrors()` in `harness/page.ts` does both).
+- Vue reports render errors through `console.error`, not as page errors. Use `collectPageErrors()`, which listens to both, to assert that a flow is error-free.
 - `harness.spec.ts` checks the harness itself. Keep it passing when you change the harness.
 
 ## Test Data Generators
@@ -71,8 +69,7 @@ A `ScoreSpec` (`generators/score/types.ts`, presets in `presets.ts`) is expanded
 
 - PocketBase renames uploaded files (`name_<random>.ext`). `createSong()` uploads first and then writes tracks with the stored names, like the frontend does. Do the same in new helpers.
 - `songs` has no list rule, so regular users can only read songs through `shows?expand=songs_via_show` or by id.
-- Every recording goes through the backend transcoder (`choirchaos-pb/pb_hooks/audio.pb.js`), so stored audio files are re-encoded MP3s, never the generated bytes. Compare their durations, not their content.
-- Sharing depends on the members route in `choirchaos-pb/pb_hooks`, not only on the schema. Changes to backend hooks need a `BACKEND_COMMIT` bump just like migrations. Test them first with `E2E_BACKEND_SOURCE`.
+- The backend transcodes every recording, so compare stored audio by duration, never by content.
 - The MIDI player downloads instruments for `webaudiofont` from the internet at load time. MIDI playback tests need network access or a `page.route()` stub.
 - MuseScore's `.mpos` coordinates scale with the image export resolution. `convertWithMuseScore()` pins `--image-resolution`. Keep `MPOS_UNITS_PER_INCH` in sync with it.
 - `e2e:serve` binds fixed ports (8091, 5174). Right after a previous run stops, Testcontainers may need a few seconds to release 8091.

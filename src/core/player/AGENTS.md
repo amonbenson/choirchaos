@@ -1,6 +1,6 @@
 # Player — Agent Guide
 
-Extends the root `AGENTS.md`, whose rules apply here too. Keep this file current under the rules in its "Agent Guides" section.
+Extends the root `AGENTS.md`, whose rules apply here too.
 
 Playback engine shared by both modes:
 - **MIDI:** `.mid` plus an MTIMidiJson `.json` that maps ticks to measures and beats.
@@ -17,8 +17,8 @@ Playback engine shared by both modes:
 | `audio/driver.ts` | `AudioDriver`: Web Audio graph, chunk scheduling, crossfade seeks |
 | `audio/chunkDetector.ts` | `detectChunks()` strips silence, `AudioChunk` type |
 | `../midi/warp.ts` | `WarpMap`: tick to time mapping |
-| `src/stores/player.ts` | Pinia wrapper. Exposes engine state through `useEvent()`. `loading`/`ready` are plain `computed()` from `status` |
-| `audio/mixdown.ts` | Sums all track chunks into one mono buffer for the warp panel waveform |
+| `audio/mixdown.ts` | Sums all tracks into one mono buffer for the warp panel waveform |
+| `src/stores/player.ts` | Pinia wrapper exposing engine state through `useEvent()` |
 
 ## Engine Invariants
 
@@ -31,30 +31,26 @@ Playback engine shared by both modes:
 
 ## WarpMap vs SongWarpMarker
 
-- `WarpMap` takes integer array indices.
-- `SongWarpMarker` (`models/song.ts`) stores `{ measure: Numbering, time: number }`, which stays stable when measures are reordered.
-- `AudioBackend` converts markers to indices with `findIndex`. Markers whose measure no longer exists are silently dropped.
-- `Song.deserialize()` migrates legacy integer-index markers to Numbering strings.
+- `WarpMap` takes integer array indices. `SongWarpMarker` (`models/song.ts`) stores a measure `Numbering`, which stays stable when measures are reordered.
+- `AudioBackend` converts markers to indices. Markers whose measure no longer exists are silently dropped.
 
 ## Warp Editing
 
-- The warp panel draws `mixdownChunks()` of the decoded chunks with peaks.js through `WaveformView`. Audio mode positions are milliseconds, peaks.js works in seconds.
-- `warpEditing.ts` keeps markers in measure order: new markers only go to measures between the neighbouring markers, and dragging is clamped between them. The backend invariant requires strictly increasing marker times.
-- peaks.js resamples every zoom level from the closest finer level it has cached. Zoom only moves along `ZoomLadder` levels, so the cache stays bounded. The base waveform is built at one sample per pixel (coarser only for very long recordings), which is what allows zooming to single samples.
+- `WaveformView` draws `mixdownChunks()` with peaks.js. Audio mode positions are milliseconds, peaks.js works in seconds.
+- `warpEditing.ts` keeps markers in measure order: new markers only go between their neighbours and dragging is clamped between them, since the backend requires strictly increasing marker times.
+- peaks.js caches every zoom level it resamples, so zoom only moves along `ZoomLadder` levels to keep the cache bounded. The base waveform has one sample per pixel (coarser for very long recordings), which allows zooming to single samples.
 
 ## Vamps
 
-- `exitVamp()`, `resetVamp()`, `toggleVamp()` manipulate `manualExit`/`currentIteration` on the current vamp.
-- `setVampsEnabled(enabled)` is a global toggle. Disabling force-exits an active vamp and makes `vampAt()` return `undefined`.
-- `VampOut` and `VampVocals` are defined in `src/core/models/measureEvent.ts` and re-exported from `types.ts`.
-- `VampPhase` (`"entering" | "repeating" | "exiting"`) is internal to `PlayerEngine`. The 4th argument to `backend.step()` is `muteVocals`, derived from the current phase and the vamp's vocals setting. `AudioBackend` mutes Vocal tracks when it is true.
+- `setVampsEnabled(false)` force-exits an active vamp and makes `vampAt()` return `undefined`.
+- `VampPhase` is internal to `PlayerEngine`. Together with the vamp's vocals setting it decides `muteVocals`, the 4th argument of `backend.step()`, which makes `AudioBackend` mute Vocal tracks.
 
 ## Audio
 
 - `AudioDriver` takes `AudioChunk[][]`: one array of mono chunks per track. `sampleOffset` is the chunk's start in the original file, in samples.
 - `scheduleSeek()` is a crossfade seek, used for vamp jumps. `seek()` is a hard cut, used only for initial seeks.
 - `AUDIO_LOOKAHEAD` in `audio/driver.ts` must equal `AUDIO_CLOCK_OFFSET` in `midi/backend.ts`. The visual position leads audio by this margin in both modes.
-- Decoding is memory-bounded for mobile: files are decoded in parallel only while the in-flight bytes stay under `MAX_CONCURRENT_DECODE_BYTES`. Do not replace this with an unbounded `Promise.all`.
+- Decoding is memory-bounded for mobile by `MAX_CONCURRENT_DECODE_BYTES`. Do not replace it with an unbounded `Promise.all`.
 
 ## Testing
 
@@ -77,7 +73,7 @@ Measure "5" (terminal):       tick 8160 = duration
 - Keep the position in sync: `ap.scheduleSeek.mockImplementation(pos => ap.getPosition.mockReturnValue(pos))`.
 - Clear `seek`/`scheduleSeek` after `load()`. The initial seek to 0 pollutes call counts.
 - Entering a vamp takes two steps: one to enter the region, one to hit the end and trigger the jump.
-- Fixtures: `makeAudioSong()`, `makeAudioSongWithVamp()`, `makeAudioSongWithVocalVamp(vocals?)`, `makeAudioSongWithVampOut(out)`. Vamp fixtures use markers `[{measure:"1", time:0}, {measure:"3", time:0.5}]` (0.25 s per measure).
+- Use the `makeAudioSong*()` fixtures. Their vamp variants place measures 0.25 s apart.
 
 **Silent failure traps:**
 - `setSegueEnabled()` does nothing if `load()` never ran, because the segue was never initialized.
