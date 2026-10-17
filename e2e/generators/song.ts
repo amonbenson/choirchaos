@@ -15,7 +15,7 @@ export type SongTrack = {
   audioFile: string;
 };
 
-export type SongMeasure = { value: string; beats: number; layout?: MeasureLayout };
+export type SongMeasure = { value: string; beats: number; layout?: MeasureLayout & { review?: boolean } };
 export type SongMarker = { type: "marker"; start: [string, number]; marker: string };
 export type SongVamp = { type: "vamp"; start: [string, number]; end: [string, number]; iterations: number };
 export type SongWarpMarker = { measure: string; time: number };
@@ -28,6 +28,7 @@ export type SongFields = {
   measures: SongMeasure[];
   events: { markers: SongMarker[]; vamps: SongVamp[]; segue: boolean };
   warpMarkers: SongWarpMarker[];
+  unnumberedBoxes?: MeasureLayout[];
 };
 
 export type SongFiles = {

@@ -7,7 +7,26 @@ export type MeasureLayout = {
   readonly y: number;
   readonly width: number;
   readonly height: number;
+  /** Set by automatic detection on boxes it is unsure about, until someone checks them. */
+  readonly review?: boolean;
 };
+
+export function needsReview(layout: MeasureLayout | undefined): boolean {
+  return layout?.review === true;
+}
+
+export function withoutReview(layout: MeasureLayout): MeasureLayout {
+  if (!needsReview(layout)) {
+    return layout;
+  }
+
+  return { page: layout.page, x: layout.x, y: layout.y, width: layout.width, height: layout.height };
+}
+
+/** Compares boxes by position, since stored boxes come back as new objects or reactive proxies. */
+export function isSameLayout(a: MeasureLayout, b: MeasureLayout): boolean {
+  return a.page === b.page && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
 
 export type MeasureNumber = Numbering;
 export type BeatNumber = number;

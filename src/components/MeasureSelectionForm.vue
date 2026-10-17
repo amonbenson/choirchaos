@@ -22,12 +22,13 @@ import {
   planRemoveBoxes,
   planRenumber,
 } from "@/core/models/measureEditing";
+import { planConfirm } from "@/core/models/measureReview";
 
 // Stepping through beats saves once the clicks stop, not on every click.
 const BEATS_SAVE_DELAY_MS = 400;
 
 const editor = injectMeasureEditor();
-const { measures, mode, selection, saving } = editor;
+const { measures, mode, selection, saving, currentReviewItem } = editor;
 const confirm = useConfirm();
 const { notifyError } = useNotify();
 
@@ -57,8 +58,31 @@ async function apply(edit: MeasureEdit, failure: string): Promise<void> {
   }
 }
 
+// Inside the review queue, fixing a box moves on to the next one to check.
+async function resolve(edit: MeasureEdit, failure: string): Promise<void> {
+  if (!currentReviewItem.value) {
+    await apply(edit, failure);
+    return;
+  }
+
+  try {
+    await editor.resolveReview(edit);
+  } catch (error) {
+    notifyError(failure, error);
+  }
+}
+
 async function renumber(resolution?: ConflictResolution): Promise<void> {
   const start = number.value.trim();
+  if (saving.value) {
+    return;
+  }
+
+  if (unchangedNumber.value && currentReviewItem.value?.measure) {
+    await resolve(planConfirm(selection.value), "Could not confirm the measure");
+    return;
+  }
+
   if (!start || unchangedNumber.value) {
     outcome.value = undefined;
     return;
@@ -72,7 +96,7 @@ async function renumber(resolution?: ConflictResolution): Promise<void> {
 
   outcome.value = undefined;
   if (!isEmptyEdit(result.edit)) {
-    await apply(result.edit, "Could not renumber");
+    await resolve(result.edit, "Could not renumber");
   }
 }
 
@@ -91,8 +115,10 @@ const boxLabel = computed(() => selection.value.length === 1 ? "Remove box" : "R
 const deleteLabel = computed(() => selection.value.length === 1 ? "Delete measure" : "Delete measures");
 
 function removeBoxes(): void {
-  apply(planRemoveBoxes(selection.value), "Could not remove the boxes");
+  resolve(planRemoveBoxes(selection.value), "Could not remove the boxes");
 }
+
+defineExpose({ removeBoxes });
 
 function deleteMeasures(): void {
   const targets = [...selection.value];

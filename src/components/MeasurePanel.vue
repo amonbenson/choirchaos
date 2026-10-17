@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { breakpointsTailwind, useBreakpoints } from "@vueuse/core";
+import { breakpointsTailwind, useBreakpoints, useEventListener } from "@vueuse/core";
 import Button from "primevue/button";
 import InputNumber from "primevue/inputnumber";
 import InputText from "primevue/inputtext";
@@ -15,23 +15,27 @@ import { getUnplacedRuns, type MeasureRun } from "@/core/models/measureEditing";
 import type Song from "@/core/models/song";
 import { parseMeasureList } from "@/core/utils/numbering";
 
-import MeasureDetectionDialog from "./MeasureDetectionDialog.vue";
+import MeasureDetectionForm from "./MeasureDetectionForm.vue";
 import MeasureNewBoxForm from "./MeasureNewBoxForm.vue";
+import MeasureReviewBar from "./MeasureReviewBar.vue";
 import MeasureSelectionForm from "./MeasureSelectionForm.vue";
+import MeasureUnnumberedForm from "./MeasureUnnumberedForm.vue";
 
 defineProps<{
   song: Song | undefined;
 }>();
 
 const editor = injectMeasureEditor();
-const { measures, mode, selection, pendingBox, tool, placeFrom } = editor;
+const { measures, mode, selection, pendingBox, tool, placeFrom, selectedBox, reviewItems, currentReviewItem, detection } = editor;
 const { notifyError } = useNotify();
 
 // Below lg the panel is a bottom sheet over the score, which stays out of the way until needed.
 const isSheet = useBreakpoints(breakpointsTailwind).smaller("lg");
 const collapsed = ref(true);
 
-watch(() => selection.value.length > 0 || !!pendingBox.value, (active) => {
+const detecting = computed(() => !!detection.progress.value);
+
+watch(() => selection.value.length > 0 || !!pendingBox.value || !!selectedBox.value || detecting.value, (active) => {
   if (active) {
     collapsed.value = false;
   }
@@ -39,11 +43,24 @@ watch(() => selection.value.length > 0 || !!pendingBox.value, (active) => {
 
 const placedCount = computed(() => measures.value.filter(measure => measure.layout).length);
 const unplacedRuns = computed(() => getUnplacedRuns(measures.value));
-const detectionVisible = ref(false);
+const showReviewBar = computed(() => !pendingBox.value && reviewItems.value.length > 0
+  && (selection.value.length === 0 || !!currentReviewItem.value));
 
 const summary = computed(() => {
+  if (detection.running.value) {
+    return "Detecting";
+  }
+
+  if (detection.plan.value) {
+    return "Detection result";
+  }
+
   if (pendingBox.value) {
     return "New box";
+  }
+
+  if (selectedBox.value) {
+    return "Box without a number";
   }
 
   if (selection.value.length === 1) {
@@ -54,7 +71,8 @@ const summary = computed(() => {
     return `${selection.value.length} measures selected`;
   }
 
-  return `${placedCount.value} of ${measures.value.length} placed`;
+  const placed = `${placedCount.value} of ${measures.value.length} placed`;
+  return reviewItems.value.length > 0 ? `${placed}, ${reviewItems.value.length} to review` : placed;
 });
 
 function runLabel(run: MeasureRun): string {
@@ -74,6 +92,56 @@ function openAddMeasures(event: Event): void {
   newMeasures.value = "";
   addPopover.value.toggle(event);
 }
+
+const reviewBar = ref<InstanceType<typeof MeasureReviewBar>>();
+const selectionForm = ref<InstanceType<typeof MeasureSelectionForm>>();
+const unnumberedForm = ref<InstanceType<typeof MeasureUnnumberedForm>>();
+
+const TYPED_CHARACTER = /^[0-9a-z]$/i;
+
+function isTyping(target: EventTarget | null): boolean {
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
+    || (target instanceof HTMLElement && target.isContentEditable);
+}
+
+function focusNumberField(): void {
+  const field = document.getElementById(selectedBox.value ? "box-number" : "measure-number");
+  if (field instanceof HTMLInputElement) {
+    field.focus();
+    field.select();
+  }
+}
+
+function onReviewKey(event: KeyboardEvent): void {
+  if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement)) {
+    event.preventDefault();
+    if (selectedBox.value) {
+      unnumberedForm.value?.place();
+    } else {
+      reviewBar.value?.confirmCurrent();
+    }
+  } else if (TYPED_CHARACTER.test(event.key)) {
+    // Focusing during keydown lets the browser type the key into the field, replacing its text.
+    focusNumberField();
+  }
+}
+
+// Keys work on the score selection, so they only act while no field has the focus.
+useEventListener("keydown", (event: KeyboardEvent) => {
+  if (isTyping(event.target) || event.ctrlKey || event.metaKey || event.altKey || detecting.value) {
+    return;
+  }
+
+  if (event.key === "Delete") {
+    if (selectedBox.value) {
+      unnumberedForm.value?.remove();
+    } else {
+      selectionForm.value?.removeBoxes();
+    }
+  } else if (currentReviewItem.value) {
+    onReviewKey(event);
+  }
+});
 
 async function addMeasures(): Promise<void> {
   const values = parsedNewMeasures.value;
@@ -113,68 +181,86 @@ async function addMeasures(): Promise<void> {
       </div>
     </template>
 
-    <MeasureNewBoxForm
-      v-if="pendingBox"
-      :layout="pendingBox"
-    />
-
-    <MeasureSelectionForm v-else-if="selection.length > 0" />
+    <MeasureDetectionForm v-if="detecting" />
 
     <div
       v-else
       class="flex flex-col gap-4"
     >
-      <div
-        v-if="measures.length > 0"
-        class="h-1 overflow-hidden rounded-full bg-surface-200 dark:bg-surface-700"
-      >
-        <div
-          class="h-full rounded-full bg-primary transition-all"
-          :style="{ width: `${placedCount / measures.length * 100}%` }"
-        />
-      </div>
+      <MeasureReviewBar
+        v-if="showReviewBar"
+        ref="reviewBar"
+      />
 
-      <span
-        v-if="tool === 'draw'"
-        class="text-sm"
-      >
-        Drag a box around one or more measures on the score.
-        <template v-if="placeFrom">The next box starts at measure {{ placeFrom }}.</template>
-      </span>
-      <span
-        v-else
-        class="text-sm text-muted-color"
-      >Select boxes on the score to edit them. Use the Draw tool to add boxes.</span>
+      <MeasureNewBoxForm
+        v-if="pendingBox"
+        :layout="pendingBox"
+      />
 
-      <div
-        v-if="unplacedRuns.length > 0"
-        class="flex flex-col"
-      >
-        <span class="mb-1 text-sm font-semibold">Not on the score</span>
+      <MeasureUnnumberedForm
+        v-else-if="selectedBox"
+        ref="unnumberedForm"
+        :box="selectedBox"
+      />
+
+      <MeasureSelectionForm
+        v-else-if="selection.length > 0"
+        ref="selectionForm"
+      />
+
+      <template v-else>
         <div
-          v-for="run in unplacedRuns"
-          :key="run.first.value"
-          class="flex items-center justify-between gap-2 rounded py-0.5 pl-2 hover:bg-surface-100 dark:hover:bg-surface-800"
+          v-if="measures.length > 0"
+          class="h-1 overflow-hidden rounded-full bg-surface-200 dark:bg-surface-700"
         >
-          <span class="text-sm">{{ runLabel(run) }}</span>
-          <Button
-            label="Place"
-            size="small"
-            severity="secondary"
-            text
-            :aria-label="`Place ${runLabel(run).toLowerCase()}`"
-            @click="editor.startPlacing(run.first.value)"
+          <div
+            class="h-full rounded-full bg-primary transition-all"
+            :style="{ width: `${placedCount / measures.length * 100}%` }"
           />
         </div>
-      </div>
-      <span
-        v-else-if="measures.length > 0"
-        class="flex items-center gap-2 text-sm"
-      ><i class="pi pi-check text-primary" /> Every measure is on the score.</span>
-      <span
-        v-else-if="mode === 'audio'"
-        class="text-sm"
-      >This song has no measures yet. Draw a box on the score or add them by number.</span>
+
+        <span
+          v-if="tool === 'draw'"
+          class="text-sm"
+        >
+          Drag a box around one or more measures on the score.
+          <template v-if="placeFrom">The next box starts at measure {{ placeFrom }}.</template>
+        </span>
+        <span
+          v-else
+          class="text-sm text-muted-color"
+        >Select boxes on the score to edit them. Use the Draw tool to add boxes.</span>
+
+        <div
+          v-if="unplacedRuns.length > 0"
+          class="flex flex-col"
+        >
+          <span class="mb-1 text-sm font-semibold">Not on the score</span>
+          <div
+            v-for="run in unplacedRuns"
+            :key="run.first.value"
+            class="flex items-center justify-between gap-2 rounded py-0.5 pl-2 hover:bg-surface-100 dark:hover:bg-surface-800"
+          >
+            <span class="text-sm">{{ runLabel(run) }}</span>
+            <Button
+              label="Place"
+              size="small"
+              severity="secondary"
+              text
+              :aria-label="`Place ${runLabel(run).toLowerCase()}`"
+              @click="editor.startPlacing(run.first.value)"
+            />
+          </div>
+        </div>
+        <span
+          v-else-if="measures.length > 0"
+          class="flex items-center gap-2 text-sm"
+        ><i class="pi pi-check text-primary" /> Every measure is on the score.</span>
+        <span
+          v-else-if="mode === 'audio'"
+          class="text-sm"
+        >This song has no measures yet. Draw a box on the score or add them by number.</span>
+      </template>
     </div>
 
     <template #toggleicon="{ collapsed: isCollapsed }">
@@ -182,7 +268,7 @@ async function addMeasures(): Promise<void> {
     </template>
 
     <template
-      v-if="!pendingBox && selection.length === 0"
+      v-if="!detecting && !pendingBox && !selectedBox && selection.length === 0"
       #footer
     >
       <Button
@@ -199,7 +285,7 @@ async function addMeasures(): Promise<void> {
         icon="pi pi-sparkles"
         severity="secondary"
         size="small"
-        @click="detectionVisible = true"
+        @click="detection.start()"
       />
     </template>
 
@@ -258,11 +344,5 @@ async function addMeasures(): Promise<void> {
         />
       </form>
     </Popover>
-
-    <MeasureDetectionDialog
-      v-if="song"
-      v-model="detectionVisible"
-      :song="song"
-    />
   </Panel>
 </template>

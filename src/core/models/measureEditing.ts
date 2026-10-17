@@ -1,5 +1,5 @@
 import { compareNumberings, isNumbering, type Numbering } from "../utils/numbering";
-import Measure, { type MeasureLayout } from "./measure";
+import Measure, { type MeasureLayout, withoutReview } from "./measure";
 
 /**
  * In MIDI songs the beat map fixes the measures, so editing only moves boxes between them. Audio
@@ -13,6 +13,8 @@ export type MeasureEdit = {
   renames: Map<Measure, Numbering>;
   additions: Measure[];
   removals: Measure[];
+  /** Boxes without a number that this edit numbers or removes. */
+  resolvedBoxes: MeasureLayout[];
   /** The measures holding the edited boxes afterwards, so a selection can follow its boxes. */
   boxes: Measure[];
 };
@@ -44,12 +46,12 @@ const DEFAULT_BEATS = 4;
 const NUMBERING_LEADING_DIGITS = /^\d+/;
 
 export function createEmptyEdit(): MeasureEdit {
-  return { layouts: new Map(), beats: new Map(), renames: new Map(), additions: [], removals: [], boxes: [] };
+  return { layouts: new Map(), beats: new Map(), renames: new Map(), additions: [], removals: [], resolvedBoxes: [], boxes: [] };
 }
 
 export function isEmptyEdit(edit: MeasureEdit): boolean {
   return edit.layouts.size === 0 && edit.beats.size === 0 && edit.renames.size === 0
-    && edit.additions.length === 0 && edit.removals.length === 0;
+    && edit.additions.length === 0 && edit.removals.length === 0 && edit.resolvedBoxes.length === 0;
 }
 
 /** Layout-only edits keep every measure's timing, so the player does not need to reload. */
@@ -63,40 +65,46 @@ function centerY(layout: MeasureLayout): number {
   return layout.y + layout.height / 2;
 }
 
-function groupRows(placed: Measure[]): Measure[][] {
-  const byCenter = [...placed].sort((a, b) => centerY(a.layout!) - centerY(b.layout!));
-  const rows: { top: number; bottom: number; measures: Measure[] }[] = [];
+function groupRows<T>(placed: T[], layoutOf: (item: T) => MeasureLayout): T[][] {
+  const byCenter = [...placed].sort((a, b) => centerY(layoutOf(a)) - centerY(layoutOf(b)));
+  const rows: { bottom: number; items: T[] }[] = [];
 
-  for (const measure of byCenter) {
-    const layout = measure.layout!;
+  for (const item of byCenter) {
+    const layout = layoutOf(item);
     const row = rows.at(-1);
     if (row && centerY(layout) <= row.bottom) {
-      row.measures.push(measure);
+      row.items.push(item);
       row.bottom = Math.max(row.bottom, layout.y + layout.height);
     } else {
-      rows.push({ top: layout.y, bottom: layout.y + layout.height, measures: [measure] });
+      rows.push({ bottom: layout.y + layout.height, items: [item] });
     }
   }
 
-  return rows.map(row => row.measures.sort((a, b) => a.layout!.x - b.layout!.x));
+  return rows.map(row => row.items.sort((a, b) => layoutOf(a).x - layoutOf(b).x));
 }
 
 /**
- * Placed measures page by page, row by row and left to right, the way the score is read. Boxes
+ * Items with a box page by page, row by row and left to right, the way the score is read. Boxes
  * share a row when one's vertical center lies within the row, so slightly uneven staves still read
  * as one line.
  */
-export function getReadingOrder(measures: readonly Measure[]): Measure[] {
-  const pages = new Map<number, Measure[]>();
-  for (const measure of measures) {
-    if (measure.layout) {
-      pages.set(measure.layout.page, [...pages.get(measure.layout.page) ?? [], measure]);
+export function sortInReadingOrder<T>(items: readonly T[], layoutOf: (item: T) => MeasureLayout | undefined): T[] {
+  const pages = new Map<number, T[]>();
+  for (const item of items) {
+    const layout = layoutOf(item);
+    if (layout) {
+      pages.set(layout.page, [...pages.get(layout.page) ?? [], item]);
     }
   }
 
   return [...pages.keys()]
     .sort((a, b) => a - b)
-    .flatMap(page => groupRows(pages.get(page)!).flat());
+    .flatMap(page => groupRows(pages.get(page)!, item => layoutOf(item)!).flat());
+}
+
+/** Placed measures in reading order. */
+export function getReadingOrder(measures: readonly Measure[]): Measure[] {
+  return sortInReadingOrder(measures, measure => measure.layout);
 }
 
 /** All placed measures from one to the other in reading order, both included. */
@@ -303,14 +311,14 @@ function planSwap(measures: readonly Measure[], measure: Measure, target: Number
 
   const edit = createEmptyEdit();
   edit.layouts.set(measure, other.layout);
-  edit.layouts.set(other, measure.layout);
+  edit.layouts.set(other, measure.layout && withoutReview(measure.layout));
   edit.boxes = [other];
   return { status: "ok", edit };
 }
 
 /**
  * Gives the selected boxes consecutive numbers from `start` on, in reading order. Swapping is only
- * possible for a single box.
+ * possible for a single box. Renumbering a box counts as checking it, so it loses its review flag.
  */
 export function planRenumber(
   measures: readonly Measure[],
@@ -325,7 +333,7 @@ export function planRenumber(
     return planSwap(measures, single, start);
   }
 
-  const boxes = ordered.map(measure => ({ layout: measure.layout!, source: measure }));
+  const boxes = ordered.map(measure => ({ layout: withoutReview(measure.layout!), source: measure }));
   return planPlacement(measures, boxes, start, mode, { shift: resolution === "shift" });
 }
 

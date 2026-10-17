@@ -10,7 +10,7 @@ import { binarySearch } from "../utils/binarySearch";
 import type { UrlOrFile } from "../utils/file";
 import type { Numbering } from "../utils/numbering";
 import { inferTrackClassification } from "../utils/trackInference";
-import Measure, { type MeasureLayout, MeasureList } from "./measure";
+import Measure, { isSameLayout, type MeasureLayout, MeasureList } from "./measure";
 import type { MeasureDetectionPlan } from "./measureDetection";
 import { isEmptyEdit, type MeasureEdit } from "./measureEditing";
 import { MarkerEvent, type MeasureEvent, MeasureEventList, VampEvent } from "./measureEvent";
@@ -98,6 +98,7 @@ export default class Song {
     warpMarkers: SongWarpMarker[] = [],
     public readonly permissions: Permissions = NoPermissions,
     public $midiSystemEvents: SystemEvents | object = {},
+    private readonly unnumberedBoxes: MeasureLayout[] = [],
   ) {
     this._tracks = tracks;
     this._audioFiles = audioFiles;
@@ -105,6 +106,11 @@ export default class Song {
 
     this._tracks.forEach((track, i) => track.mixer.index = i);
     this._syncPlayerMode();
+  }
+
+  /** Boxes on the score that detection could not give a number. They wait for the user to number or remove them. */
+  public getUnnumberedBoxes(): readonly MeasureLayout[] {
+    return this.unnumberedBoxes;
   }
 
   // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -405,6 +411,11 @@ export default class Song {
     this.measures.setItems([...kept, ...edit.additions]);
 
     const fields: PbRecord = { measures: this._serializeMeasures() };
+    if (edit.resolvedBoxes.length > 0) {
+      this.removeUnnumberedBoxes(edit.resolvedBoxes);
+      fields.unnumberedBoxes = this.unnumberedBoxes;
+    }
+
     if (renames.size > 0 || removed.size > 0) {
       this._updateMeasureReferences(renames, removed);
       fields.warpMarkers = this._warpMarkers;
@@ -412,6 +423,11 @@ export default class Song {
     }
 
     await this._save(fields);
+  }
+
+  private removeUnnumberedBoxes(resolved: readonly MeasureLayout[]): void {
+    const kept = this.unnumberedBoxes.filter(box => !resolved.some(other => isSameLayout(box, other)));
+    this.unnumberedBoxes.splice(0, this.unnumberedBoxes.length, ...kept);
   }
 
   private _updateMeasureReferences(renames: Map<Numbering, Numbering>, removed: Set<Numbering>): void {
@@ -435,7 +451,8 @@ export default class Song {
       this.measures.insert(measure);
     }
 
-    await this.saveMeasures();
+    this.unnumberedBoxes.push(...plan.unnumbered);
+    await this._save({ measures: this._serializeMeasures(), unnumberedBoxes: this.unnumberedBoxes });
   }
 
   public async saveMeasures(): Promise<void> {
@@ -482,10 +499,11 @@ export default class Song {
       measures: this._serializeMeasures(),
       events: this._serializeEvents(),
       warpMarkers: this._warpMarkers,
+      unnumberedBoxes: this.unnumberedBoxes,
     };
   }
 
-  public static deserialize({ id, number, title, midiFile, jsonFile, pdfFile, audioFiles, tracks, measures, events, warpMarkers }: PbRecord, showPermissions?: Permissions): Song {
+  public static deserialize({ id, number, title, midiFile, jsonFile, pdfFile, audioFiles, tracks, measures, events, warpMarkers, unnumberedBoxes }: PbRecord, showPermissions?: Permissions): Song {
     const measureList = new MeasureList(measures.map((m: PbRecord) => Measure.deserialize(m)));
 
     // Convert all warp markers from using indices to using measure numbers
@@ -511,6 +529,8 @@ export default class Song {
       },
       songWarpMarkers,
       showPermissions ?? NoPermissions,
+      {},
+      Array.isArray(unnumberedBoxes) ? unnumberedBoxes : [],
     );
   }
 
@@ -527,9 +547,10 @@ export default class Song {
     formData.append("measures", "[]");
     formData.append("events", JSON.stringify(EMPTY_EVENTS));
     formData.append("warpMarkers", "[]");
+    formData.append("unnumberedBoxes", "[]");
 
     const record = await dbCreateWithFiles("songs", formData);
-    const song = Song.deserialize({ ...record, tracks: [], measures: [], events: EMPTY_EVENTS, warpMarkers: [] }, permissions);
+    const song = Song.deserialize({ ...record, tracks: [], measures: [], events: EMPTY_EVENTS, warpMarkers: [], unnumberedBoxes: [] }, permissions);
     await song.addFiles(files);
     return song;
   }

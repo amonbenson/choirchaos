@@ -1,13 +1,20 @@
 import { computed, type ComputedRef, inject, type InjectionKey, provide, type Ref, ref, shallowRef, toRaw, watch } from "vue";
 
 import type Measure from "@/core/models/measure";
-import type { MeasureLayout } from "@/core/models/measure";
+import { isSameLayout, type MeasureLayout } from "@/core/models/measure";
 import { changesPlayback, getMeasuresBetween, type MeasureEdit, type MeasureEditMode } from "@/core/models/measureEditing";
+import { getAdjacentReviewItem, getReviewItemAfter, getReviewItems, isSameReviewItem, type ReviewItem } from "@/core/models/measureReview";
 import type Song from "@/core/models/song";
 import type { Numbering } from "@/core/utils/numbering";
 import { usePlayerStore } from "@/stores/player";
 
+import { type MeasureDetection, useMeasureDetection } from "./useMeasureDetection";
+import { useNotify } from "./useNotify";
+
 export type MeasureTool = "select" | "draw";
+
+/** A request to scroll the score to a box. A new object each time, so asking twice scrolls twice. */
+export type RevealRequest = { layout: MeasureLayout };
 
 export type MeasureEditor = {
   tool: Ref<MeasureTool>;
@@ -19,7 +26,15 @@ export type MeasureEditor = {
   measures: ComputedRef<Measure[]>;
   mode: ComputedRef<MeasureEditMode>;
   selection: ComputedRef<Measure[]>;
+  unnumberedBoxes: ComputedRef<readonly MeasureLayout[]>;
+  selectedBox: ComputedRef<MeasureLayout | undefined>;
+  reviewItems: ComputedRef<ReviewItem[]>;
+  currentReviewItem: ComputedRef<ReviewItem | undefined>;
+  revealRequest: Ref<RevealRequest | undefined>;
+  detection: MeasureDetection;
   isSelected: (measure: Measure) => boolean;
+  isBoxSelected: (box: MeasureLayout) => boolean;
+  selectBox: (box: MeasureLayout) => void;
   selectOnly: (measure: Measure) => void;
   toggle: (measure: Measure) => void;
   selectRange: (measure: Measure) => void;
@@ -30,6 +45,10 @@ export type MeasureEditor = {
   startPlacing: (value: Numbering) => void;
   apply: (edit: MeasureEdit) => Promise<void>;
   addMeasures: (measures: Measure[]) => Promise<void>;
+  showReviewItem: (item: ReviewItem) => void;
+  stepReview: (direction: 1 | -1) => void;
+  resolveReview: (edit: MeasureEdit) => Promise<void>;
+  applyDetection: () => Promise<void>;
 };
 
 /**
@@ -39,6 +58,7 @@ export type MeasureEditor = {
  */
 export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<boolean>): MeasureEditor {
   const player = usePlayerStore();
+  const { notifyError } = useNotify();
 
   const tool = ref<MeasureTool>("select");
   const selected = shallowRef(new Set<Measure>());
@@ -48,12 +68,28 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
   const pendingCount = ref(4);
   const placeFrom = ref<Numbering>();
   const saving = ref(false);
+  const selectedBoxKey = shallowRef<MeasureLayout>();
+  const revealRequest = shallowRef<RevealRequest>();
+  const detection = useMeasureDetection(song, error => notifyError("Could not detect measures", error));
 
   const measures = computed(() => song.value?.measures.items() ?? []);
   const mode = computed<MeasureEditMode>(() => song.value?.playerMode === "midi" ? "midi" : "audio");
   const selection = computed(() => measures.value.filter(measure => measure.layout && selected.value.has(toRaw(measure))));
+  const unnumberedBoxes = computed(() => song.value?.getUnnumberedBoxes() ?? []);
+  const selectedBox = computed(() => {
+    const key = selectedBoxKey.value;
+    return key && unnumberedBoxes.value.find(box => isSameLayout(box, key));
+  });
+
+  const reviewItems = computed(() => getReviewItems(measures.value, unnumberedBoxes.value));
+  const currentReviewItem = computed<ReviewItem | undefined>(() => {
+    const single = selection.value.length === 1 ? selection.value[0] : undefined;
+    const current = selectedBox.value ? { layout: selectedBox.value } : single && { layout: single.layout!, measure: single };
+    return current && reviewItems.value.find(item => isSameReviewItem(item, current));
+  });
 
   function setSelection(next: Measure[]): void {
+    selectedBoxKey.value = undefined;
     selected.value = new Set(next.map(measure => toRaw(measure)));
     anchor.value = next.at(-1) && toRaw(next.at(-1));
     if (next.length === 0) {
@@ -63,6 +99,15 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
 
   function isSelected(measure: Measure): boolean {
     return selected.value.has(toRaw(measure));
+  }
+
+  function isBoxSelected(box: MeasureLayout): boolean {
+    return !!selectedBoxKey.value && isSameLayout(box, selectedBoxKey.value);
+  }
+
+  function selectBox(box: MeasureLayout): void {
+    setSelection([]);
+    selectedBoxKey.value = toRaw(box);
   }
 
   function selectOnly(measure: Measure): void {
@@ -142,9 +187,61 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
     await reloadPlayer(target);
   }
 
+  function showReviewItem(item: ReviewItem): void {
+    setTool("select");
+    if (item.measure) {
+      selectOnly(item.measure);
+    } else {
+      selectBox(item.layout);
+    }
+
+    revealRequest.value = { layout: item.layout };
+  }
+
+  function stepReview(direction: 1 | -1): void {
+    const item = getAdjacentReviewItem(reviewItems.value, currentReviewItem.value, direction);
+    if (item) {
+      showReviewItem(item);
+    }
+  }
+
+  /** Applies an edit that resolves the current review item and moves on to the next one. */
+  async function resolveReview(edit: MeasureEdit): Promise<void> {
+    const current = currentReviewItem.value;
+    const next = current && getReviewItemAfter(reviewItems.value, current);
+    await apply(edit);
+    const fresh = next && reviewItems.value.find(item => isSameReviewItem(item, next));
+    if (fresh) {
+      showReviewItem(fresh);
+    } else if (current) {
+      clearSelection();
+    }
+  }
+
+  async function applyDetection(): Promise<void> {
+    const target = song.value;
+    const plan = detection.plan.value;
+    if (!target || !plan) {
+      return;
+    }
+
+    saving.value = true;
+    try {
+      await target.applyMeasureDetection(plan);
+      detection.discard();
+      clearSelection();
+      if (plan.additions.length > 0) {
+        await reloadPlayer(target);
+      }
+    } finally {
+      saving.value = false;
+    }
+  }
+
   function reset(): void {
     setTool("select");
     clearSelection();
+    detection.discard();
   }
 
   watch(song, reset);
@@ -160,7 +257,15 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
     measures,
     mode,
     selection,
+    unnumberedBoxes,
+    selectedBox,
+    reviewItems,
+    currentReviewItem,
+    revealRequest,
+    detection,
     isSelected,
+    isBoxSelected,
+    selectBox,
     selectOnly,
     toggle,
     selectRange,
@@ -171,6 +276,10 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
     startPlacing,
     apply,
     addMeasures,
+    showReviewItem,
+    stepReview,
+    resolveReview,
+    applyDetection,
   };
 }
 

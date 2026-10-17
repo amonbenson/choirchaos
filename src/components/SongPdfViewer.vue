@@ -4,7 +4,7 @@ import SelectButton from "primevue/selectbutton";
 import { computed, type ComputedRef, type Ref, ref, watch } from "vue";
 
 import { injectMeasureEditor, type MeasureTool } from "@/composables/useMeasureEditor";
-import Measure, { type MeasureLayout } from "@/core/models/measure";
+import Measure, { type MeasureLayout, needsReview } from "@/core/models/measure";
 import { getReadingOrder, intersects, normalizeLayout, splitLayout } from "@/core/models/measureEditing";
 import Song from "@/core/models/song";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
@@ -16,7 +16,7 @@ import PdfViewer from "./PdfViewer.vue";
 
 const player = usePlayerStore();
 const editor = injectMeasureEditor();
-const { tool, pendingBox, pendingCount, touchMultiSelect } = editor;
+const { tool, pendingBox, pendingCount, touchMultiSelect, detection, revealRequest } = editor;
 
 const props = defineProps<{
   song?: Song;
@@ -57,6 +57,74 @@ const measuresByPage = computed<{ [key: number]: Measure[] }>(() => {
   return groups;
 });
 
+// ── Detection preview and review marks ───────────────────────────────────────
+
+type PreviewBox = {
+  value?: string;
+  layout: MeasureLayout;
+};
+
+const previewing = computed(() => !!props.editMode && !!detection.plan.value);
+
+const previewByPage = computed(() => {
+  const plan = props.editMode ? detection.plan.value : undefined;
+  if (!plan) {
+    return {};
+  }
+
+  const boxes: PreviewBox[] = [
+    ...plan.placements.map(({ measure, layout }) => ({ value: measure.value, layout })),
+    ...plan.additions.map(measure => ({ value: measure.value, layout: measure.layout! })),
+    ...plan.unnumbered.map(layout => ({ layout })),
+  ];
+  return groupByPage(boxes, box => box.layout);
+});
+
+const replacedMeasures = computed(() => new Set(detection.plan.value?.placements.map(placement => placement.measure.value)));
+
+const unnumberedByPage = computed(() => props.editMode ? groupByPage(editor.unnumberedBoxes.value, box => box) : {});
+
+function groupByPage<T>(items: readonly T[], layoutOf: (item: T) => MeasureLayout): { [key: number]: T[] } {
+  const groups: { [key: number]: T[] } = {};
+  for (const item of items) {
+    const page = layoutOf(item).page;
+    groups[page] = [...groups[page] ?? [], item];
+  }
+
+  return groups;
+}
+
+function visibleMeasures(page: number): Measure[] {
+  const measures = measuresByPage.value[page] ?? [];
+  return previewing.value ? measures.filter(measure => !replacedMeasures.value.has(measure.value)) : measures;
+}
+
+const CHIP_CLASS = "pointer-events-none absolute top-0 left-0 rounded-br-sm px-1 text-[0.625rem] leading-4 font-semibold";
+
+function chipClass(layout: MeasureLayout | undefined, numbered: boolean): string[] {
+  if (!numbered) {
+    return [CHIP_CLASS, "bg-red-500 text-white"];
+  }
+
+  return [CHIP_CLASS, needsReview(layout) ? "bg-amber-400 text-amber-950" : "bg-primary text-primary-contrast"];
+}
+
+function previewClass(box: PreviewBox): string {
+  if (box.value === undefined) {
+    return "border-red-500 bg-red-500/10";
+  }
+
+  return needsReview(box.layout) ? "border-amber-500 bg-amber-400/15" : "border-primary bg-primary/10";
+}
+
+function unnumberedClass(box: MeasureLayout): string[] {
+  const interaction = tool.value === "draw" || previewing.value ? "pointer-events-none" : "";
+  const state = editor.isBoxSelected(box)
+    ? "border-2 border-primary bg-primary/30"
+    : "border-2 border-red-500/80 bg-red-500/10 hover:bg-red-500/20";
+  return [interaction, state, previewing.value ? "opacity-40" : ""];
+}
+
 const highlightedTracks: ComputedRef<Set<number>> = computed(
   () => new Set(props.song?.tracks.flatMap((t, i) => t.mixer.highlight ? [i] : []) ?? []),
 );
@@ -85,11 +153,18 @@ function boxClass(measure: Measure): string[] {
     return [isMeasureHighlighted(measure) ? "bg-sky-400/25 hover:bg-sky-400/45" : "bg-primary/0 hover:bg-primary/25"];
   }
 
-  const interaction = tool.value === "draw" ? "pointer-events-none" : "";
-  const state = editor.isSelected(measure)
-    ? "border-2 border-primary bg-primary/30"
+  const interaction = tool.value === "draw" || previewing.value ? "pointer-events-none" : "";
+  return [interaction, measureStateClass(measure), previewing.value ? "opacity-40" : ""];
+}
+
+function measureStateClass(measure: Measure): string {
+  if (editor.isSelected(measure)) {
+    return "border-2 border-primary bg-primary/30";
+  }
+
+  return needsReview(measure.layout)
+    ? "border-2 border-amber-500 bg-amber-400/15 hover:bg-amber-400/30"
     : "border border-primary/70 bg-primary/10 hover:bg-primary/25";
-  return [interaction, state];
 }
 
 function hasHandles(measure: Measure): boolean {
@@ -133,12 +208,20 @@ watch(highlightedTracks, () => {
 // ── Auto-scroll to current measure ───────────────────────────────────────────
 
 watch(currentWrittenMeasure, () => {
-  if (!pdfViewer.value) {
-    return;
+  const layout = currentWrittenMeasure.value?.layout;
+  if (layout) {
+    scrollToLayout(layout);
   }
+});
 
-  const layout: MeasureLayout | undefined = currentWrittenMeasure.value?.layout;
-  if (!layout) {
+watch(revealRequest, (request) => {
+  if (request) {
+    scrollToLayout(request.layout);
+  }
+});
+
+function scrollToLayout(layout: MeasureLayout): void {
+  if (!pdfViewer.value) {
     return;
   }
 
@@ -165,7 +248,7 @@ watch(currentWrittenMeasure, () => {
   }
 
   pdfViewer.value.redrawAll();
-});
+}
 
 // ── Selecting ─────────────────────────────────────────────────────────────────
 
@@ -245,7 +328,20 @@ function pageRelative(e: PointerEvent, el: EventTarget): { x: number; y: number 
   return { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height };
 }
 
+function onUnnumberedClick(box: MeasureLayout): void {
+  if (suppressNextClick) {
+    suppressNextClick = false;
+    return;
+  }
+
+  editor.selectBox(box);
+}
+
 function onPagePointerDown(e: PointerEvent, page: number): void {
+  if (previewing.value) {
+    return;
+  }
+
   const onEmptySpace = e.target === e.currentTarget;
   const marquee = tool.value === "select" && e.pointerType === "mouse" && onEmptySpace;
   if (e.button !== 0 || !(tool.value === "draw" || marquee)) {
@@ -425,7 +521,7 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
           @touchmove="stopTouchWhileDrawing"
         >
           <div
-            v-for="measure of measuresByPage[page.pageNumber] ?? []"
+            v-for="measure of visibleMeasures(page.pageNumber)"
             :key="measure.value"
             class="pointer-events-auto absolute cursor-pointer transition-colors select-none"
             :class="boxClass(measure)"
@@ -439,7 +535,7 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
           >
             <span
               v-if="editMode"
-              class="pointer-events-none absolute top-0 left-0 rounded-br-sm bg-primary px-1 text-[0.625rem] leading-4 font-semibold text-primary-contrast"
+              :class="chipClass(measure.layout, true)"
             >{{ measure.value }}</span>
 
             <!-- Playbar -->
@@ -473,6 +569,32 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
             </template>
           </div>
 
+          <div
+            v-for="(box, i) of unnumberedByPage[page.pageNumber] ?? []"
+            :key="`unnumbered-${i}`"
+            class="pointer-events-auto absolute cursor-pointer transition-colors select-none"
+            :class="unnumberedClass(box)"
+            :style="boxStyle(box)"
+            role="button"
+            aria-label="Box without a number"
+            :aria-pressed="editor.isBoxSelected(box)"
+            @contextmenu.stop.prevent
+            @click="onUnnumberedClick(box)"
+          >
+            <span :class="chipClass(box, false)">?</span>
+          </div>
+
+          <div
+            v-for="(box, i) of previewByPage[page.pageNumber] ?? []"
+            :key="`preview-${i}`"
+            class="pointer-events-none absolute border-2 border-dashed"
+            :class="previewClass(box)"
+            :style="boxStyle(box.layout)"
+            data-detection-preview
+          >
+            <span :class="chipClass(box.layout, box.value !== undefined)">{{ box.value ?? "?" }}</span>
+          </div>
+
           <!-- Box waiting for the panel to say what it holds -->
           <div
             v-for="(part, i) in pendingBox?.page === page.pageNumber ? pendingParts : []"
@@ -498,6 +620,7 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
         option-label="label"
         option-value="value"
         :allow-empty="false"
+        :disabled="previewing"
         aria-label="Score tool"
         size="small"
         @update:model-value="editor.setTool($event)"

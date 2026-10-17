@@ -47,7 +47,7 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 | `src/components/` | UI components (transport, mixer, PDF viewer, warp/marker panels, dialogs) |
 | `src/composables/` | Reusable reactive logic. `event.ts` bridges core events into Vue. `useMeasureEditor` holds the song editor's selection and tool |
 | `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
-| `src/core/models/` | Domain models: Show, Song, Track, Measure, MeasureEvent. `SongDraft` holds unsaved song dialog edits, `songSetup` derives what a song still lacks, `measureDetection` merges detected measures into a song, `measureEditing` plans every edit of measures and their boxes |
+| `src/core/models/` | Domain models: Show, Song, Track, Measure, MeasureEvent. `SongDraft` holds unsaved song dialog edits, `songSetup` derives what a song still lacks, `measureDetection` merges detected measures into a song, `measureEditing` plans every edit of measures and their boxes, `measureReview` orders and resolves what detection left to check |
 | `src/core/import/` | Groups dropped files into songs by the number in their names |
 | `src/core/player/` | Playback engine with MIDI and audio backends. See `src/core/player/AGENTS.md` |
 | `src/core/midi/` | MIDI event types and the tick/time `WarpMap` |
@@ -123,7 +123,7 @@ The app has two audiences. Rehearsers (viewers) only play songs back. Editors (e
 - `measureEditing.ts` plans, `Song.applyMeasureEdit()` applies. Every action in the Measures panel builds one `MeasureEdit`, which saves once, and the player reloads once and only when timing changed (`changesPlayback()`). Renames and deletions update warp markers, markers and vamps in the same save, since the e2e invariants reject references to missing measures.
 - A box in the way is a conflict the user resolves in the panel (swap, or shift the following boxes until a measure without a box takes the last one). Planning never resolves a conflict on its own.
 - Reading order (page, row, left to right) decides range selection, renumbering order and the default first number of a new box. Boxes share a row when one's vertical center lies inside the row.
-- `useMeasureEditor` keeps raw `Measure` objects in the selection, because the song hands out reactive proxies while measures created by an edit are plain. Compare measures with `toRaw()` there.
+- `useMeasureEditor` keeps raw `Measure` objects in the selection, because the song hands out reactive proxies while measures created by an edit are plain. Compare measures with `toRaw()` there. Unnumbered boxes are plain layouts, so they are compared by position (`isSameLayout()`), in `Song` too.
 
 ## Measure Detection
 
@@ -131,7 +131,9 @@ The app has two audiences. Rehearsers (viewers) only play songs back. Editors (e
 - The package, its ONNX models and the onnxruntime WASM binaries are tens of megabytes. `measureDetector.ts` imports them dynamically so they only load when someone runs a detection. Keep every import of them behind that dynamic import.
 - `vite.config.ts` excludes `measure-detection` and `onnxruntime-web` from dependency pre-bundling. Pre-bundling moves them away from the worker and WASM files they load relative to `import.meta.url`, which breaks detection in the dev server only.
 - `pdfjs-dist` must satisfy the `measure-detection` peer range, since the app passes its own `PDFDocumentProxy` in.
-- Detection never writes directly. `planMeasureDetection()` builds a plan the user reviews in `MeasureDetectionDialog`. In MIDI mode it only places measures of the beat map and never adds any.
+- Detection never writes directly. It runs inside the Measures panel (`useMeasureDetection`), and `planMeasureDetection()` builds a plan that is previewed as dashed boxes on the score until the user applies or discards it. In MIDI mode it only places measures of the beat map and never adds any.
+- Applying keeps what detection was unsure about. A low-confidence box gets `review: true` in its `MeasureLayout`, and a box without a usable number (no label, an invalid one, a label read twice, or a measure the song does not have) goes into the song's `unnumberedBoxes` field. Leftover boxes on top of a box that is already there are dropped, so detecting a score twice does not pile them up.
+- Review items stay marked on the score until resolved: confirming clears the flag, renumbering a box clears it too (boxes shifted out of the way keep theirs), and numbering an unnumbered box turns it into that measure's layout. While any are open, `songSetup` does not report the song as ready.
 
 ---
 

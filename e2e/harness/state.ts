@@ -134,10 +134,20 @@ function isMeasureReference(value: unknown): value is MeasureReference {
   return Array.isArray(value) && typeof value[0] === "string" && typeof value[1] === "number";
 }
 
+function isLayout(value: unknown): boolean {
+  const layout = value as Record<string, unknown> | null;
+  const coordinates = [layout?.x, layout?.y, layout?.width, layout?.height];
+  return Number.isInteger(layout?.page) && (layout!.page as number) >= 0 && coordinates.every(c => typeof c === "number" && Number.isFinite(c));
+}
+
+function isEmpty(value: unknown): boolean {
+  return value === null || value === undefined || value === "";
+}
+
 /** The frontend's `Song.deserialize()` crashes on records that break these rules. */
 function songShapeViolations(song: RecordModel): string[] {
   const violations: string[] = [];
-  const { tracks, measures, events, warpMarkers } = song;
+  const { tracks, measures, events, warpMarkers, unnumberedBoxes } = song;
 
   if (!Array.isArray(tracks)) {
     violations.push("tracks is not an array");
@@ -157,6 +167,10 @@ function songShapeViolations(song: RecordModel): string[] {
     violations.push("warpMarkers is neither empty nor an array");
   }
 
+  if (!isEmpty(unnumberedBoxes) && !(Array.isArray(unnumberedBoxes) && unnumberedBoxes.every(isLayout))) {
+    violations.push("unnumberedBoxes is neither empty nor an array of measure layouts");
+  }
+
   return violations;
 }
 
@@ -168,6 +182,17 @@ function songReferenceViolations(song: RecordModel): string[] {
 
   if (knownMeasures.size !== measureValues.length) {
     violations.push("measure numbers are not unique");
+  }
+
+  // A review flag belongs to a box, so it only exists inside a layout and is always a boolean.
+  for (const measure of song.measures as { value: string; layout?: Record<string, unknown>; review?: unknown }[]) {
+    if (measure.review !== undefined) {
+      violations.push(`measure ${measure.value} carries a review flag outside its layout`);
+    }
+
+    if (measure.layout && (!isLayout(measure.layout) || !["boolean", "undefined"].includes(typeof measure.layout.review))) {
+      violations.push(`measure ${measure.value} has a malformed layout`);
+    }
   }
 
   for (const track of song.tracks) {

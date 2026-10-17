@@ -169,9 +169,10 @@ describe("Song details and files", () => {
     const song = await Song.create("show-id", { number: "2", title: "New" });
 
     const entries = Object.fromEntries(vi.mocked(dbCreateWithFiles).mock.calls[0]![1].entries());
-    expect(entries).toMatchObject({ show: "show-id", number: "2", title: "New", tracks: "[]", measures: "[]" });
+    expect(entries).toMatchObject({ show: "show-id", number: "2", title: "New", tracks: "[]", measures: "[]", unnumberedBoxes: "[]" });
     expect(JSON.parse(entries.events as string)).toEqual({ markers: [], vamps: [], segue: false });
     expect([song.id, song.number, song.title]).toEqual(["new-id", "2", "New"]);
+    expect(song.getUnnumberedBoxes()).toEqual([]);
   });
 
   it("deletes itself", async () => {
@@ -249,6 +250,7 @@ describe("Song measure edits", () => {
 
 describe("Song measure detection", () => {
   const layout = { page: 1, x: 0.2, y: 0.3, width: 0.2, height: 0.1 };
+  const box = { page: 1, x: 0.6, y: 0.3, width: 0.2, height: 0.1 };
 
   afterEach(() => {
     vi.clearAllMocks();
@@ -264,8 +266,7 @@ describe("Song measure detection", () => {
       placements: [{ measure: song.measures.items()[0]!, layout }],
       additions: [new Measure("2", 3, layout)],
       keptPlaced: [],
-      duplicates: [],
-      unmatched: [],
+      unnumbered: [box],
       lowConfidence: [],
     });
 
@@ -274,6 +275,46 @@ describe("Song measure detection", () => {
       ["2", 3, layout],
       ["3", 4, undefined],
     ]);
+    expect(song.getUnnumberedBoxes()).toEqual([box]);
     expect(dbUpdate).toHaveBeenCalledTimes(1);
+    expect(dbUpdate).toHaveBeenCalledWith("songs", "song-id", { measures: expect.any(Array), unnumberedBoxes: [box] });
+  });
+});
+
+describe("Song unnumbered boxes", () => {
+  const box = { page: 0, x: 0.2, y: 0.3, width: 0.2, height: 0.1 };
+  const record = {
+    id: "song-id",
+    number: "1",
+    title: "Song",
+    audioFiles: [],
+    tracks: [],
+    measures: [{ value: "1", beats: 4, layout: { ...box, review: true } }],
+    events: { markers: [], vamps: [], segue: false },
+    warpMarkers: [],
+  };
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("loads records without unnumbered boxes", () => {
+    expect(Song.deserialize(record).getUnnumberedBoxes()).toEqual([]);
+    expect(Song.deserialize({ ...record, unnumberedBoxes: null }).getUnnumberedBoxes()).toEqual([]);
+  });
+
+  it("round-trips unnumbered boxes and review flags", () => {
+    const song = Song.deserialize({ ...record, unnumberedBoxes: [box] });
+
+    expect(song.serialize()).toMatchObject({ unnumberedBoxes: [box], measures: [{ layout: { ...box, review: true } }] });
+  });
+
+  it("removes resolved boxes by position in the same save", async () => {
+    const song = Song.deserialize({ ...record, unnumberedBoxes: [box, { ...box, page: 1 }] });
+
+    await song.applyMeasureEdit({ ...createEmptyEdit(), resolvedBoxes: [{ ...box }] });
+
+    expect(song.getUnnumberedBoxes()).toEqual([{ ...box, page: 1 }]);
+    expect(dbUpdate).toHaveBeenCalledWith("songs", "song-id", { measures: expect.any(Array), unnumberedBoxes: [{ ...box, page: 1 }] });
   });
 });

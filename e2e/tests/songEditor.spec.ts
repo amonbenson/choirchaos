@@ -143,7 +143,7 @@ test.describe("measure detection", () => {
     return inner.page === outer.page && x > outer.x && x < outer.x + outer.width && y > outer.y && y < outer.y + outer.height;
   }
 
-  test("detected boxes are applied to the measures they belong to", async ({ page, admin, factory, loginAs }) => {
+  test("detected boxes are previewed on the score and applied from the panel", async ({ page, admin, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const bundle = await buildSongBundle(MINIMAL, { mode: "audio" });
@@ -154,10 +154,13 @@ test.describe("measure detection", () => {
     await loginAs(owner);
     await openEditor(page, show, song);
 
-    await page.getByRole("button", { name: "Detect..." }).click();
-    await page.getByRole("button", { name: "Detect", exact: true }).click();
-    await expect(page.getByText(`Places ${expected.length} measures of the song.`)).toBeVisible({ timeout: 60_000 });
-    await page.getByRole("button", { name: "Apply" }).click();
+    const panel = page.getByTestId("measure-panel");
+    await panel.getByRole("button", { name: "Detect..." }).click();
+    await expect(panel.getByText(`Places ${expected.length} measures`)).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator("[data-detection-preview]")).toHaveCount(expected.length);
+    expect((await storedMeasures(admin, song.id)).some(m => m.layout)).toBe(false);
+    await panel.getByRole("button", { name: "Apply" }).click();
+    await expect(page.locator("[data-detection-preview]")).toHaveCount(0);
 
     await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).measures.every((m: SongMeasure) => m.layout)).toBe(true);
     const stored = await admin.collection("songs").getOne(song.id);
@@ -166,6 +169,60 @@ test.describe("measure detection", () => {
     }
 
     expect(errors).toEqual([]);
+  });
+});
+
+test.describe("measure review", () => {
+  test("flagged measures and boxes without a number are worked through in reading order", async ({ page, admin, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const bundle = await buildSongBundle(MINIMAL, { mode: "audio" });
+    const original = bundle.fields.measures;
+    const third = original.find(m => m.value === "3")!.layout!;
+    const stray = { page: 0, x: 0.02, y: 0.9, width: 0.05, height: 0.05 };
+    bundle.fields.measures = original.map(m => m.value === "2" ? { ...m, layout: { ...m.layout!, review: true } } : m.value === "3" ? { value: m.value, beats: m.beats } : m);
+    bundle.fields.unnumberedBoxes = [third, stray];
+    const song = await factory.createSong(owner, show, bundle);
+    const errors = collectPageErrors(page);
+    await loginAs(owner);
+    await openEditor(page, show, song);
+
+    const panel = page.getByTestId("measure-panel");
+    await expect(panel).toContainText("3 to review");
+    await panel.getByRole("button", { name: "Review" }).click();
+    await expect(panel).toContainText("1 of 3 to review");
+    await expect(page.getByRole("button", { name: "Measure 2", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+    await page.keyboard.press("Enter");
+    await expect(panel).toContainText("1 of 2 to review");
+    expect((await storedMeasures(admin, song.id)).find(m => m.value === "2")!.layout).toEqual(original.find(m => m.value === "2")!.layout);
+
+    await page.keyboard.press("3");
+    await expect(panel.getByLabel("Number")).toHaveValue("3");
+    await page.keyboard.press("Enter");
+    await expect(panel).toContainText("1 of 1 to review");
+
+    await page.keyboard.press("Delete");
+    await expect(panel).not.toContainText("to review");
+
+    const stored = await admin.collection("songs").getOne(song.id);
+    expect(stored.unnumberedBoxes).toEqual([]);
+    expect(layoutOf(stored, "3")).toEqual(third);
+    expect(stored.measures.some((m: SongMeasure) => m.layout?.review)).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
+  test("a song with boxes to review is not ready on the show page", async ({ page, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const bundle = await buildSongBundle(MINIMAL, { mode: "midi" });
+    bundle.fields.unnumberedBoxes = [{ page: 0, x: 0.02, y: 0.9, width: 0.05, height: 0.05 }];
+    const song = await factory.createSong(owner, show, bundle);
+    await loginAs(owner);
+    await page.goto(`/show/${show.id}/edit`);
+
+    await page.getByRole("button", { name: "Check measures (1 left)" }).click();
+    await expect(page).toHaveURL(new RegExp(`/song/${song.id}/edit$`));
   });
 });
 

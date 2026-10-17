@@ -41,6 +41,7 @@ export const EMPTY_SONG_FIELDS: Omit<SongFields, "number" | "title"> = Object.fr
   measures: [],
   events: { markers: [], vamps: [], segue: false },
   warpMarkers: [],
+  unnumberedBoxes: [],
 });
 
 function toFormData(fields: Record<string, unknown>, files: Record<string, File | File[] | undefined>): FormData {

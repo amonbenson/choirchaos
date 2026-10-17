@@ -162,6 +162,24 @@ describe("planRenumber", () => {
     expect(changesPlayback(edit)).toBe(true);
   });
 
+  it("clears the review flag of a renumbered box but not of the boxes it shifts", () => {
+    const flagged = { ...box(0.1, 0.2), review: true };
+    const shifted = { ...box(0.5, 0.2), review: true };
+    const list = measures(["1", flagged], ["2", shifted], ["3"]);
+
+    const edit = okEdit(planRenumber(list, [byValue(list, "1")], "2", "midi", "shift"));
+
+    expect(layoutsAfter(list, edit)).toEqual({ 1: undefined, 2: box(0.1, 0.2), 3: shifted });
+  });
+
+  it("clears the review flag of a box swapped onto another measure", () => {
+    const list = measures(["1", { ...box(0.1, 0.2), review: true }], ["3", box(0.5, 0.2)]);
+
+    const edit = okEdit(planRenumber(list, [byValue(list, "1")], "3", "midi", "swap"));
+
+    expect(layoutsAfter(list, edit)).toEqual({ 1: box(0.5, 0.2), 3: box(0.1, 0.2) });
+  });
+
   it("does nothing when a box keeps its number", () => {
     const list = measures(["1", box(0.1, 0.2)]);
 

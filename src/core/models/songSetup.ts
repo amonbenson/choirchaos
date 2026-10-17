@@ -1,6 +1,7 @@
+import { countReviewItems } from "./measureReview";
 import type Song from "./song";
 
-export type SetupStepId = "score" | "playback" | "measures" | "sync";
+export type SetupStepId = "score" | "playback" | "measures" | "review" | "sync";
 
 export type SetupStep = {
   id: SetupStepId;
@@ -32,6 +33,10 @@ function getMeasuresAction(song: Song): string {
   return total === 0 ? "Add measures" : `Place measures (${getPlacedMeasureCount(song)} of ${total})`;
 }
 
+function getReviewCount(song: Song): number {
+  return countReviewItems(song.measures.items(), song.getUnnumberedBoxes());
+}
+
 /**
  * What still needs to happen before a song is fully usable in rehearsal, in the order an editor
  * would naturally do it. The first open step is offered as the next action.
@@ -44,6 +49,12 @@ export function getSongSetup(song: Song): SongSetup {
     { id: "measures", label: "Measures on score", done: placeable > 0 && getPlacedMeasureCount(song) === placeable },
   ];
 
+  // Only detection leaves boxes to check, so songs set up by hand never see this step.
+  const reviewCount = getReviewCount(song);
+  if (reviewCount > 0) {
+    steps.push({ id: "review", label: "Detected measures checked", done: false });
+  }
+
   if (song.playerMode === "audio") {
     steps.push({ id: "sync", label: "Audio sync", done: song.warpMarkers.length >= MIN_SYNC_MARKERS });
   }
@@ -52,6 +63,7 @@ export function getSongSetup(song: Song): SongSetup {
     score: "Add score",
     playback: "Add playback",
     measures: getMeasuresAction(song),
+    review: `Check measures (${reviewCount} left)`,
     sync: "Sync audio",
   };
 

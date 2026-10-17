@@ -47,30 +47,45 @@ describe("planMeasureDetection", () => {
     expect(plan.additions.map(m => [m.value, m.beats, m.layout])).toEqual([["7", 3, layout]]);
   });
 
-  it("reports missing measures instead of creating them when creating is off", () => {
+  it("keeps missing measures as boxes without a number when creating is off", () => {
     const plan = planMeasureDetection([], [detected("7")], { ...OPTIONS, createMissing: false });
 
     expect(plan.additions).toEqual([]);
-    expect(plan.unmatched).toEqual(["7"]);
-    expect(hasMeasureDetectionChanges(plan)).toBe(false);
+    expect(plan.unnumbered).toEqual([layout]);
+    expect(hasMeasureDetectionChanges(plan)).toBe(true);
   });
 
-  it("reports labels that are not valid measure numbers", () => {
-    const plan = planMeasureDetection([], [detected("12AB"), detected(""), detected("")], OPTIONS);
+  it("keeps boxes whose label is not a valid measure number", () => {
+    const other = { ...layout, x: 0.1 };
+    const plan = planMeasureDetection([], [detected("12AB"), { ...detected(""), layout: other }], OPTIONS);
 
     expect(plan.additions).toEqual([]);
-    expect(plan.unmatched).toEqual(["12AB", "", ""]);
-    expect(plan.duplicates).toEqual([]);
+    expect(plan.unnumbered).toEqual([layout, other]);
   });
 
-  it("keeps the first box of a label that was read twice", () => {
+  it("keeps the first box of a label that was read twice and the second without a number", () => {
     const plan = planMeasureDetection([], [detected("4"), { ...detected("4"), layout: placed }], OPTIONS);
 
     expect(plan.additions.map(m => m.layout)).toEqual([layout]);
-    expect(plan.duplicates).toEqual(["4"]);
+    expect(plan.unnumbered).toEqual([placed]);
   });
 
-  it("lists low confidence measures that will change", () => {
+  it("drops leftover boxes on top of boxes that are already there", () => {
+    const covered = { ...layout, x: layout.x + 0.01, width: 0.1 };
+    const existingBox = { page: 2, x: 0, y: 0, width: 0.5, height: 0.5 };
+    const repeated = { page: 2, x: 0.1, y: 0.1, width: 0.1, height: 0.1 };
+
+    const plan = planMeasureDetection(
+      [new Measure("1", 4, layout)],
+      [{ ...detected("x"), layout: covered }, { ...detected("y"), layout: repeated }],
+      OPTIONS,
+      [existingBox],
+    );
+
+    expect(plan.unnumbered).toEqual([]);
+  });
+
+  it("flags low confidence measures that will change for review", () => {
     const plan = planMeasureDetection(
       [new Measure("1", 4, placed), new Measure("2", 4)],
       [detected("1", 0.1), detected("2", 0.2), detected("3", 0.3), detected("4")],
@@ -78,5 +93,7 @@ describe("planMeasureDetection", () => {
     );
 
     expect(plan.lowConfidence).toEqual(["2", "3"]);
+    expect(plan.placements[0]!.layout).toEqual({ ...layout, review: true });
+    expect(plan.additions.map(m => m.layout!.review)).toEqual([true, undefined]);
   });
 });

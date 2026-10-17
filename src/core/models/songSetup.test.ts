@@ -52,6 +52,22 @@ describe("getSongSetup", () => {
     expect(getSongSetup(song).steps.map(s => s.id)).toEqual(["score", "playback", "measures"]);
   });
 
+  it("is not ready while detected measures wait for review", () => {
+    const song = makeMidiSong();
+    song.pdfFile = "score.pdf";
+    const first = song.measures.items()[0]!;
+    first._applyLayout({ ...first.layout!, review: true });
+
+    expect(getSongSetup(song).next).toMatchObject({ id: "review", action: "Check measures (1 left)" });
+  });
+
+  it("counts unnumbered boxes as open review items", () => {
+    const song = new Song("song-id", "1", "Song", undefined, undefined, "score.pdf", ["mix.mp3"], [], new MeasureList([new Measure("1", 4, LAYOUT)]), undefined, [], undefined, {}, [LAYOUT, LAYOUT]);
+
+    expect(getSongSetup(song).steps.map(s => s.id)).toEqual(["score", "playback", "measures", "review", "sync"]);
+    expect(getSongSetup(song).next).toMatchObject({ id: "review", action: "Check measures (2 left)" });
+  });
+
   it("asks audio songs to sync once everything else is done", () => {
     const song = makeAudioSongWithVamp();
     song.pdfFile = "score.pdf";
