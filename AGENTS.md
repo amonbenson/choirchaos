@@ -76,29 +76,32 @@ The app has two audiences. Rehearsers (viewers) only play songs back. Editors (e
 
 ### Design Principles
 
-1. **Rehearsers never see editing.** No edit control, hint or empty state that asks for editing is shown to someone who cannot edit. Editors get exactly one labelled way into editing per level: "Edit show" and "Edit song".
+1. **Rehearsers never see editing.** No edit control, hint or empty state that asks for editing is shown to someone who cannot edit. Editors reach the show page through the show in the breadcrumb and the song editor through the "Edit" toggle.
 2. **Each element type has one kind of job.**
-   - Links, list rows, back arrows and "Done" navigate and change the URL.
+   - Links, list rows and breadcrumb items navigate and change the URL.
+   - Pickers (the song in the breadcrumb) choose which item the current page shows and keep the page.
    - Buttons run an action or open a dialog or popover. A button that opens a dialog ends its label with "...", e.g. "Details...", "Share...".
-   - Segmented controls and toggle buttons switch a tool or option inside the current page and look pressed while active.
+   - Segmented controls and toggle buttons switch a tool, option or mode and look pressed while active. The "Edit" toggle switches a song between player and editor, which are two routes of one page.
    Never make a navigation look like a mode switch or the other way round.
-3. **One meaning per icon, app-wide.** Before adding an icon, check the table below and do not give a listed icon a second meaning. Icon-only buttons are reserved for universally known controls (transport, close, overflow, back). Everything else carries a text label, at least from `sm` up, and always an `aria-label`.
+3. **One meaning per icon, app-wide.** Before adding an icon, check the table below and do not give a listed icon a second meaning. Icon-only buttons are reserved for universally known controls (transport, close, overflow). Everything else carries a text label wherever the layout has room for it, and always an `aria-label`.
 4. **State that matters lives in the URL.** Reloading or pressing the browser back button keeps the user where they were. Editing a song is a route, not a flag.
 5. **Every action has one home.** A secondary entry point opens the same dialog or page, never a variant of it. A plain entry keeps the home's label. An empty state or status hint may name the step instead, e.g. "Add playback..." for the details dialog.
 6. **Do not duplicate information.** A canvas (the score, the waveform) is the list of its objects. Side panels show the properties of the selection or what the canvas cannot show, not a second copy of the canvas.
 7. **Select, then act.** Objects on a canvas are selected first. The panel next to it edits the whole selection at once, and shows mixed values as empty.
 8. **Automation proposes, the user decides, leftovers stay visible.** Automatic results are previewed where they will appear. Anything the user still has to check stays marked on the object until it is resolved. Never ask the user to remember a list.
 9. **Empty states and status hints name the next step** and contain the control that does it.
-10. **Every editor page and dialog has one obvious exit** ("Done", "Cancel"). Destructive actions are confirmed, everything else saves without asking.
-11. **Keep the canvas readable.** Overlays on the score are small, and handles appear only where the user is working.
+10. **The top bar always says where you are.** Every page starts with `TransportBar`, whose breadcrumb (logo, show, song) leads up to every parent, so no page needs its own back or exit button. Dialogs have one obvious exit ("Cancel"). Destructive actions are confirmed, everything else saves without asking.
+11. **The account menu is for the account only** (preferences, signing out). App navigation never hides in it.
+12. **Keep the canvas readable.** Overlays on the score are small, and handles appear only where the user is working.
 
 | Icon | Meaning |
 |---|---|
-| `pi-arrow-left` | Up one level (back to the show, back home) |
-| `pi-pencil` | Go to the editor of this thing ("Edit song") |
-| `pi-check` | Leave an editor ("Done"), or a confirmed/ready state |
+| App logo | Home |
+| `pi-pencil` | The "Edit" toggle, or opening a song in the editor |
+| `pi-check` | A confirmed or ready state |
 | `pi-file-edit` | Song details dialog (number, title, files, tracks) |
-| `pi-play` | Play, or open the player ("Rehearse") |
+| `pi-play` | Play |
+| `pi-sliders-v` | Personal preferences |
 | `pi-ellipsis-v` | More actions for this item |
 | `pi-sparkles` | Automatic measure detection |
 | `pi-trash` | Delete or remove |

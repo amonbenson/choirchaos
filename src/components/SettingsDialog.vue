@@ -141,7 +141,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
 <template>
   <Dialog
     v-model:visible="visible"
-    header="Settings"
+    header="Preferences"
     modal
     dismissable-mask
     pt:root:class="w-[50rem] max-w-[calc(100vw-2rem)]"

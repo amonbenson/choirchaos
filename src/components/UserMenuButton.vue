@@ -2,9 +2,11 @@
 defineOptions({ inheritAttrs: false });
 
 import Avatar from "primevue/avatar";
+import Button from "primevue/button";
 import Menu from "primevue/menu";
+import type { MenuItem } from "primevue/menuitem";
 import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 
 import { pb } from "@/pocketbase";
 import { logout } from "@/pocketbase/auth";
@@ -13,9 +15,9 @@ import { useAuthStore } from "@/stores/auth";
 import SettingsDialog from "./SettingsDialog.vue";
 
 const router = useRouter();
+const route = useRoute();
 const menu = ref();
-const settingsVisible = ref(false);
-
+const preferencesVisible = ref(false);
 const auth = useAuthStore();
 
 const initials = computed(() => {
@@ -36,56 +38,56 @@ const avatarUrl = computed(() => {
   return pb.files.getURL(r, r.avatar);
 });
 
-const menuItems = computed(() => [
-  {
-    label: "Home",
-    icon: "pi pi-home",
-    command: () => router.push({ name: "home" }),
-  },
-  {
-    label: "Settings",
-    icon: "pi pi-cog",
-    command: () => {
-      settingsVisible.value = true;
-    },
-  },
-  { separator: true },
-  auth.user
-    ? {
-        label: "Sign Out",
-        icon: "pi pi-sign-out",
-        command: async () => {
-          await logout();
-        },
-      }
-    : {
-        label: "Sign In",
-        icon: "pi pi-sign-in",
-        command: () => router.push({ name: "login", query: { redirect: router.currentRoute.value.fullPath } }),
-      },
-]);
+// Account things only. Navigating the app is the header's job.
+const menuItems = computed<MenuItem[]>(() => {
+  const preferences = { label: "Preferences...", icon: "pi pi-sliders-v", command: () => preferencesVisible.value = true };
+  if (!auth.user) {
+    return [preferences];
+  }
 
-function toggle(event: MouseEvent): void {
-  menu.value.toggle(event);
+  return [
+    { label: auth.user.name || auth.user.email, disabled: true },
+    { separator: true },
+    preferences,
+    { label: "Sign out", icon: "pi pi-sign-out", command: () => logout() },
+  ];
+});
+
+function signIn(): void {
+  router.push({ name: "login", query: { redirect: route.fullPath } });
 }
 </script>
 
 <template>
-  <Avatar
+  <div
     v-bind="$attrs"
-    :image="avatarUrl ?? undefined"
-    :label="!avatarUrl && initials ? initials : undefined"
-    :icon="!avatarUrl && !initials ? 'pi pi-user' : undefined"
-    shape="circle"
-    class="cursor-pointer select-none"
-    @click="toggle"
-  />
-
+    class="flex flex-none items-center gap-2"
+  >
+    <Button
+      v-if="!auth.user"
+      label="Sign in"
+      severity="secondary"
+      size="small"
+      @click="signIn"
+    />
+    <Avatar
+      :image="avatarUrl ?? undefined"
+      :label="!avatarUrl && initials ? initials : undefined"
+      :icon="!avatarUrl && !initials ? 'pi pi-user' : undefined"
+      shape="circle"
+      class="cursor-pointer select-none"
+      role="button"
+      tabindex="0"
+      aria-label="Account"
+      aria-haspopup="menu"
+      @click="menu.toggle($event)"
+      @keydown.enter="menu.toggle($event)"
+    />
+  </div>
   <Menu
     ref="menu"
     :model="menuItems"
     popup
   />
-
-  <SettingsDialog v-model="settingsVisible" />
+  <SettingsDialog v-model="preferencesVisible" />
 </template>

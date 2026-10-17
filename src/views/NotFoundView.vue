@@ -3,7 +3,7 @@ import Button from "primevue/button";
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
-import HeaderBar from "@/components/HeaderBar.vue";
+import TransportBar from "@/components/TransportBar.vue";
 import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
@@ -29,7 +29,7 @@ function signIn(): void {
 
 <template>
   <div class="flex size-full flex-col gap-2 p-2">
-    <HeaderBar class="relative z-10" />
+    <TransportBar class="relative z-10" />
 
     <main class="flex flex-1 items-center justify-center overflow-y-auto p-4">
       <div class="flex max-w-md flex-col items-center gap-4 text-center">

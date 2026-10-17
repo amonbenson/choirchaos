@@ -2,7 +2,7 @@
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
 import { computed, onMounted, ref, watch } from "vue";
-import { type RouteLocationRaw, useRoute, useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 
 import BabySvenja from "@/components/BabySvenja.vue";
 import KbdShortcut from "@/components/KbdShortcut.vue";
@@ -43,7 +43,6 @@ const editMode = computed(() => route.name === "song-edit");
 const canEdit = computed(() => !!show.value && getAccessFlags(show.value.permissions, auth.user?.id).editor);
 const showWarpPanel = computed(() => editMode.value && song.value?.playerMode === "audio");
 const songDetailsVisible = ref(false);
-const backTo = computed<RouteLocationRaw>(() => canEdit.value ? { name: "show-edit", params: { showId: props.showId } } : { name: "home" });
 
 const songs = computed(() => show.value?.songs ?? []);
 const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
@@ -160,20 +159,9 @@ watch(() => auth.user, (user) => {
 
 // NAVIGATION
 
-// Player and editor share one history entry, so the browser back button leaves both. The entry
-// remembers that it started in the player, because its previous entry can be the show page too.
-function editSong(): void {
-  router.replace({ name: "song-edit", params: route.params, state: { editedFromPlayer: true } });
-}
-
-function finishEditing(): void {
-  const { back, editedFromPlayer } = router.options.history.state;
-  const showPage = router.resolve({ name: "show-edit", params: { showId: props.showId } }).fullPath;
-  if (!editedFromPlayer && back === showPage) {
-    router.back();
-  } else {
-    router.replace({ name: "song", params: route.params, state: { editedFromPlayer: false } });
-  }
+// Player and editor share one history entry, so the browser back button leaves both.
+function toggleEditMode(): void {
+  router.replace({ name: editMode.value ? "song" : "song-edit", params: route.params });
 }
 
 // SONG MANAGEMENT
@@ -303,20 +291,18 @@ const pdfLoading = ref(false);
   >
     <TransportBar
       class="lg:col-span-3"
-      :model-value="songId"
-      :songs="show?.songs"
-      :loading="showLoading || songLoading"
+      :show="show"
+      :song-id="songId"
       :edit-mode="editMode"
       :can-edit="canEdit"
-      :back-to="backTo"
-      @update:model-value="selectSong($event)"
+      playback
+      @select-song="selectSong($event)"
       @play-pause="playPause"
       @rewind="rewind"
       @forward="forward"
       @toggle-vamp="toggleVamp"
       @toggle-segue="toggleSegue"
-      @edit-song="editSong"
-      @finish-editing="finishEditing"
+      @toggle-edit-mode="toggleEditMode"
       @open-song-details="songDetailsVisible = true"
     />
     <ButtonGroup class="w-full lg:hidden">

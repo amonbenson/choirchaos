@@ -84,7 +84,10 @@ async function addMeasures(): Promise<void> {
     header="Markers"
     pt:root="flex flex-col"
     pt:header="flex-none"
-    pt:content-container="flex-1 overflow-y-scroll mb-2"
+    pt:content-container="flex-1 min-h-0 flex flex-col"
+    pt:content-wrapper="flex-1 min-h-0 flex flex-col"
+    pt:content="flex-1 min-h-0 overflow-y-scroll mb-2"
+    pt:footer="flex-none"
   >
     <!-- Markers list -->
     <div
@@ -181,15 +184,6 @@ async function addMeasures(): Promise<void> {
         No measures defined.
       </div>
 
-      <Button
-        icon="pi pi-plus"
-        label="Add measures"
-        size="small"
-        severity="secondary"
-        class="mt-2"
-        fluid
-        @click="openAddMeasures"
-      />
       <Popover ref="addPopover">
         <form
           class="flex w-72 flex-col gap-3"
@@ -245,6 +239,21 @@ async function addMeasures(): Promise<void> {
           />
         </form>
       </Popover>
+    </template>
+
+    <!-- Outside the scrolling content, because scrolling it closes the popover the button opens. -->
+    <template
+      v-if="editMode"
+      #footer
+    >
+      <Button
+        icon="pi pi-plus"
+        label="Add measures"
+        size="small"
+        severity="secondary"
+        fluid
+        @click="openAddMeasures"
+      />
     </template>
   </Panel>
 </template>

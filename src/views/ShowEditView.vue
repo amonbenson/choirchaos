@@ -13,11 +13,11 @@ import { type RouteLocationRaw, useRouter } from "vue-router";
 
 import CoverPicker from "@/components/CoverPicker.vue";
 import DeleteShowDialog from "@/components/DeleteShowDialog.vue";
-import HeaderBar from "@/components/HeaderBar.vue";
 import ShareDialog from "@/components/ShareDialog.vue";
 import SongDetailsDialog from "@/components/SongDetailsDialog.vue";
 import SongImportDialog from "@/components/SongImportDialog.vue";
 import SongSetupStatus from "@/components/SongSetupStatus.vue";
+import TransportBar from "@/components/TransportBar.vue";
 import { useNotify } from "@/composables/useNotify";
 import { RECORDING_FILE_ACCEPT } from "@/core/import/songImport";
 import Show from "@/core/models/show";
@@ -178,7 +178,7 @@ function confirmDeleteSong(song: Song): void {
 
 function openSongMenu(event: Event, song: Song): void {
   songMenuItems.value = [
-    { label: "Rehearse", icon: "pi pi-play", command: () => router.push(songRoute(song, "song")) },
+    { label: "Edit", icon: "pi pi-pencil", command: () => router.push(songRoute(song, "song-edit")) },
     { label: "Details...", icon: "pi pi-file-edit", command: () => openDetails(song) },
     { separator: true },
     { label: "Delete song", icon: "pi pi-trash", command: () => confirmDeleteSong(song) },
@@ -205,22 +205,10 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
     ref="dropZone"
     class="relative flex size-full flex-col gap-2 p-2"
   >
-    <HeaderBar
+    <TransportBar
       class="relative z-10"
-      :title="show?.title ?? ''"
-      :back-to="{ name: 'home' }"
-    >
-      <template #end>
-        <Button
-          v-if="songs.length > 0"
-          icon="pi pi-play"
-          label="Rehearse"
-          aria-label="Rehearse"
-          pt:label="hidden sm:inline"
-          @click="router.push({ name: 'show', params: { showId } })"
-        />
-      </template>
-    </HeaderBar>
+      :show="show"
+    />
 
     <div
       v-if="loading && !show"
@@ -387,7 +375,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
             >
               <span class="w-8 font-mono text-muted-color">{{ song.number }}</span>
               <RouterLink
-                :to="songRoute(song, 'song-edit')"
+                :to="songRoute(song, 'song')"
                 class="min-w-0 flex-1 text-left"
               >
                 <div class="truncate font-medium">
@@ -437,14 +425,14 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
                 :key="song.id"
                 class="group cursor-pointer border-t border-(--p-content-border-color) transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/60"
                 :data-testid="`song-row-${song.number}`"
-                @click="router.push(songRoute(song, 'song-edit'))"
+                @click="router.push(songRoute(song, 'song'))"
               >
                 <td class="py-3 pl-2 font-mono text-muted-color">
                   {{ song.number }}
                 </td>
                 <td class="py-3 font-medium">
                   <RouterLink
-                    :to="songRoute(song, 'song-edit')"
+                    :to="songRoute(song, 'song')"
                     class="focus-visible:underline focus-visible:outline-none"
                     @click.stop
                   >

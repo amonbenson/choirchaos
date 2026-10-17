@@ -249,7 +249,7 @@ function deleteSong(): void {
           />
           <FileSlot
             :file="draft.beatMap"
-            icon="pi-list"
+            icon="pi-map"
             accept=".json,application/json"
             empty-label="No beat map"
             description="Maps the MIDI file to measures and beats (.json)"

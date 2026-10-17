@@ -8,7 +8,7 @@ import { collectPageErrors } from "../harness/page";
 
 async function openEditor(page: Page, show: RecordModel, song: RecordModel): Promise<void> {
   await page.goto(`/show/${show.id}/song/${song.id}`);
-  await page.getByRole("button", { name: "Edit song" }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/song/${song.id}/edit$`));
 }
 

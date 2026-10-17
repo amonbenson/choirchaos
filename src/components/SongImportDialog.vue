@@ -163,7 +163,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
   return [
     ...(score ? [{ icon: "pi-file-pdf", label: "Score" }] : []),
     ...(midi ? [{ icon: "pi-sliders-h", label: "MIDI" }] : []),
-    ...(beatMap ? [{ icon: "pi-list", label: "Beat map" }] : []),
+    ...(beatMap ? [{ icon: "pi-map", label: "Beat map" }] : []),
     ...recordings.map(recording => ({ icon: "pi-volume-up", label: recording.title })),
   ];
 }
