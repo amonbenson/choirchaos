@@ -37,15 +37,19 @@ export type ResolvedImportRow = {
   warnings: string[];
 };
 
+// The backend converts every recording to MP3, so any format its decoder reads is accepted.
+const RECORDING_EXTENSIONS = ["mp3", "wav", "aif", "aiff", "flac", "m4a", "aac", "ogg", "oga", "opus", "wma"];
+
+// Some browsers report no or unusual MIME types for AIFF, FLAC and M4A, so the extensions are listed too.
+export const RECORDING_FILE_ACCEPT = ["audio/*", ...RECORDING_EXTENSIONS.map(extension => `.${extension}`)].join(",");
+
 const KIND_BY_EXTENSION: Record<string, ImportFileKind> = {
   pdf: "score",
   mid: "midi",
   midi: "midi",
   json: "beatMap",
-  mp3: "recording",
+  ...Object.fromEntries(RECORDING_EXTENSIONS.map(extension => [extension, "recording"])),
 };
-
-const OTHER_AUDIO_EXTENSIONS = new Set(["wav", "flac", "ogg", "oga", "m4a", "aac", "aif", "aiff", "wma"]);
 
 // "03 Title", "3a_Title", "No. 3 - Title", "#3 Title"
 const NUMBERED_NAME = /^\s*(?:no\.?\s*|#)?0*(\d+[a-z]?)(?=$|[\s._)-])[\s._)-]*(.*)$/i;
@@ -87,15 +91,7 @@ function classifyFile(file: File): { kind: ImportFileKind } | { reason: string }
   const [, extension] = splitExtension(file.name);
   const kind = KIND_BY_EXTENSION[extension];
 
-  if (kind) {
-    return { kind };
-  }
-
-  if (OTHER_AUDIO_EXTENSIONS.has(extension)) {
-    return { reason: "Recordings must be MP3 files." };
-  }
-
-  return { reason: "This file type is not supported." };
+  return kind ? { kind } : { reason: "This file type is not supported." };
 }
 
 function groupKey(parsed: ParsedName): string {

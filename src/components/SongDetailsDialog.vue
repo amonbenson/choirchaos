@@ -9,6 +9,7 @@ import { useConfirm } from "primevue/useconfirm";
 import { computed, reactive, ref, watch } from "vue";
 
 import { useNotify } from "@/composables/useNotify";
+import { RECORDING_FILE_ACCEPT } from "@/core/import/songImport";
 import { isBeatMapFile } from "@/core/midi/beatMap";
 import type Show from "@/core/models/show";
 import type Song from "@/core/models/song";
@@ -47,6 +48,14 @@ const isNew = computed(() => !props.song);
 const takenNumbers = computed(() => props.show.songs.map(song => song.number));
 const errors = computed(() => submitted.value ? draft.validate(takenNumbers.value) : {});
 const removedPlaybackKind = computed(() => draft.getRemovedPlaybackKind());
+const isUploadingRecordings = computed(() => saving.value && draft.playback === "audio" && draft.newRecordings.length > 0);
+const saveLabel = computed(() => {
+  if (isUploadingRecordings.value) {
+    return "Converting audio...";
+  }
+
+  return isNew.value ? "Create song" : "Save";
+});
 
 watch(visible, (value) => {
   if (!value) {
@@ -58,7 +67,7 @@ watch(visible, (value) => {
   beatMapError.value = "";
 }, { immediate: true });
 
-const recordingDialog = useFileDialog({ accept: ".mp3,audio/mpeg", multiple: true, reset: true });
+const recordingDialog = useFileDialog({ accept: RECORDING_FILE_ACCEPT, multiple: true, reset: true });
 recordingDialog.onChange((files) => {
   draft.addRecordings(Array.from(files ?? []));
 });
@@ -308,7 +317,7 @@ function deleteSong(): void {
             @click="visible = false"
           />
           <Button
-            :label="isNew ? 'Create song' : 'Save'"
+            :label="saveLabel"
             :loading="saving"
             @click="save"
           />

@@ -19,6 +19,7 @@ import SongDetailsDialog from "@/components/SongDetailsDialog.vue";
 import SongImportDialog from "@/components/SongImportDialog.vue";
 import SongSetupStatus from "@/components/SongSetupStatus.vue";
 import { useNotify } from "@/composables/useNotify";
+import { RECORDING_FILE_ACCEPT } from "@/core/import/songImport";
 import Show from "@/core/models/show";
 import type Song from "@/core/models/song";
 import { getSongSetup, isFileStep } from "@/core/models/songSetup";
@@ -129,7 +130,7 @@ const { isOverDropZone } = useDropZone(dropZone, {
   preventDefaultForUnhandled: true,
 });
 
-const fileDialog = useFileDialog({ multiple: true, reset: true, accept: ".pdf,.mid,.midi,.json,.mp3,application/pdf,audio/midi,audio/mpeg,application/json" });
+const fileDialog = useFileDialog({ multiple: true, reset: true, accept: `.pdf,.mid,.midi,.json,application/pdf,audio/midi,application/json,${RECORDING_FILE_ACCEPT}` });
 fileDialog.onChange(files => startImport(Array.from(files ?? [])));
 
 function openDetails(song?: Song): void {
@@ -352,7 +353,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
               Add the songs of this show
             </div>
             <div class="max-w-lg text-muted-color">
-              Drop score PDFs, MIDI files with their beat maps and MP3 recordings here. Files that start with the same number become one song.
+              Drop score PDFs, MIDI files with their beat maps and audio recordings here. Files that start with the same number become one song.
             </div>
             <div class="flex max-w-full flex-col gap-1 overflow-hidden rounded bg-surface-100 px-4 py-3 text-left font-mono text-sm text-muted-color dark:bg-surface-800">
               <span>03 Swing Low.pdf</span>

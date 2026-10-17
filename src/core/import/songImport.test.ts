@@ -66,13 +66,20 @@ describe("planImport", () => {
     expect(rows[0]!.files.recordings?.map(r => r.title)).toEqual(["Full Mix"]);
   });
 
+  it("accepts recordings in any common audio format", async () => {
+    const names = ["04 River - Soprano.wav", "04 River - Alto.aiff", "04 River - Tenor.FLAC", "04 River - Bass.m4a", "04 River - Piano.ogg"];
+    const { rows, skipped } = await planImport(names.map(name => file(name)));
+
+    expect(skipped).toEqual([]);
+    expect(rows[0]!.files.recordings?.map(r => r.file.name)).toEqual(names);
+  });
+
   it("skips unsupported files with a reason", async () => {
-    const { rows, skipped } = await planImport([file("notes.docx"), file("04 River - Tenor.wav"), file("04 River.json", "{}")]);
+    const { rows, skipped } = await planImport([file("notes.docx"), file("04 River.json", "{}")]);
 
     expect(rows).toEqual([]);
     expect(skipped.map(s => [s.file.name, s.reason])).toEqual([
       ["notes.docx", "This file type is not supported."],
-      ["04 River - Tenor.wav", "Recordings must be MP3 files."],
       ["04 River.json", "This JSON file is not a beat map."],
     ]);
   });

@@ -92,6 +92,8 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 
 PocketBase is a separate repository (`choirchaos-pb`). The app reads its URL from `VITE_PB_URL` in `.env`. Updating a multi-file field (such as `audioFiles`) under its plain name replaces every stored file. Use `audioFiles+` to append and `audioFiles-` to remove.
 
+`choirchaos-pb/pb_hooks/audio.pb.js` converts every uploaded recording to VBR MP3 before it is saved, so the player can assume MP3 and the app accepts any audio format the backend can decode. A stored filename keeps the upload's base name but always ends in `.mp3`, so never match stored files to uploads by extension. `Song.uploadAudioFiles()` maps them by upload order, which the hook preserves. A file that cannot be decoded fails the whole request.
+
 Users can only read their own record, so the client cannot resolve the names of a show's editors and viewers or look up users by email. `choirchaos-pb/pb_hooks/members.pb.js` provides `GET/POST /api/choirchaos/shows/{id}/members` for that (`Show.getMembers()`/`addMember()`). Role changes and removals use the regular show update, which only the owner may do. `Show.delete()` deletes songs before the show, so it works whether or not the relation cascades. A MIDI song is only playable together with its beat map (`jsonFile`). Never store one without the other. Unit tests do not need a running PocketBase. Mock `axios` and pass songs built from `src/test/fixtures.ts`. The e2e tests build the backend from a pinned `choirchaos-pb` commit (`e2e/config.ts`).
 
 ---

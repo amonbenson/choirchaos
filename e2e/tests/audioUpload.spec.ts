@@ -2,16 +2,30 @@ import type { Page } from "@playwright/test";
 import type PocketBase from "pocketbase";
 import type { RecordModel } from "pocketbase";
 
-import { encodeMp3, renderPartStem } from "../generators/audio";
+import { encodeMp3, encodeWav, type PcmAudio, renderPartStem } from "../generators/audio";
 import { MINIMAL } from "../generators/score/presets";
 import { buildSongBundle, type SongTrack } from "../generators/song";
 import { expect, test } from "../harness/fixtures";
 import { chooseFiles, collectPageErrors, type UploadFile } from "../harness/page";
 
-async function buildStem(partId: string, name: string): Promise<UploadFile> {
+async function renderStem(partId: string): Promise<PcmAudio> {
   const bundle = await buildSongBundle(MINIMAL, { mode: "none", withPdf: false });
-  const mp3 = await encodeMp3(renderPartStem(bundle.timeline, partId));
+  return renderPartStem(bundle.timeline, partId);
+}
+
+async function buildStem(partId: string, name: string): Promise<UploadFile> {
+  const mp3 = await encodeMp3(await renderStem(partId));
   return { name, mimeType: "audio/mpeg", buffer: Buffer.from(mp3) };
+}
+
+async function buildWavStem(partId: string, name: string): Promise<UploadFile> {
+  return { name, mimeType: "audio/wav", buffer: Buffer.from(encodeWav(await renderStem(partId))) };
+}
+
+function isMpegAudio(bytes: Uint8Array): boolean {
+  const startsWithId3 = String.fromCharCode(...bytes.slice(0, 3)) === "ID3";
+  const startsWithFrameSync = bytes[0] === 0xff && (bytes[1]! & 0xe0) === 0xe0;
+  return startsWithId3 || startsWithFrameSync;
 }
 
 async function openSongDetails(page: Page, show: RecordModel, song: RecordModel): Promise<void> {
@@ -93,6 +107,47 @@ test.describe("audio upload", () => {
     expect(stored.audioFiles).toContain(stored.tracks.at(-1).audioFile);
     expect(song.audioFiles).not.toContain(stored.tracks.at(-1).audioFile);
     expect(errors).toEqual([]);
+  });
+
+  test("a WAV recording is stored as MP3 and plays", async ({ page, admin, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "none" }));
+    const errors = collectPageErrors(page);
+
+    await loginAs(owner);
+    await openSongDetails(page, show, song);
+    await addRecordings(page, [await buildWavStem("solo", "solo.wav")]);
+
+    const stored = await waitForTracks(admin, song.id, 1);
+    expect(stored.audioFiles).toEqual([expect.stringMatching(/^solo_[a-z0-9]+\.mp3$/)]);
+    expect(stored.tracks[0]).toMatchObject({ title: "Solo", audioFile: stored.audioFiles[0] });
+
+    const response = await fetch(admin.files.getURL(stored, stored.audioFiles[0]));
+    expect(isMpegAudio(new Uint8Array(await response.arrayBuffer()))).toBe(true);
+
+    await expect(page.locator("[data-zoom-scale]")).not.toHaveAttribute("data-zoom-scale", "0");
+    expect(errors).toEqual([]);
+  });
+
+  test("a file that is not audio is rejected and nothing is stored", async ({ page, factory, loginAs, snapshot }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "none" }));
+    const broken = { name: "solo.wav", mimeType: "audio/wav", buffer: Buffer.from("not audio") };
+
+    await loginAs(owner);
+    await openSongDetails(page, show, song);
+    const before = await snapshot();
+
+    const dialog = page.getByRole("dialog", { name: "Song details" });
+    await dialog.getByRole("button", { name: "Recordings", exact: true }).click();
+    await chooseFiles(page, dialog.getByRole("button", { name: "Add recordings" }), [broken]);
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    await expect(page.getByText("Could not read 'solo.wav' as audio.")).toBeVisible();
+    await expect(dialog).toBeVisible();
+    expect(await snapshot()).toEqual(before);
   });
 
   test("removing the only recording removes its file and track", async ({ page, admin, factory, loginAs }) => {
