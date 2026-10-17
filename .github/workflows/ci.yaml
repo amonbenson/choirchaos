@@ -86,6 +86,10 @@ jobs:
           retention-days: 7
 
   deploy:
+    needs: [lint, typecheck, unit, build, e2e]
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
@@ -105,4 +109,4 @@ jobs:
       - name: Push to dokku server
         run: |
           git remote add dokku dokku@${{ vars.DOKKU_HOST }}:${{ vars.DOKKU_APP }}
-          git push dokku main
+          git push dokku HEAD:main
