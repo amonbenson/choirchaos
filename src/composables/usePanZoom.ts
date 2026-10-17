@@ -4,6 +4,7 @@ import { type Ref } from "vue";
 import type PageTransform from "@/core/pdf/pageTransform";
 
 const TAP_MAX_MOVEMENT = 10;
+const MIDDLE_BUTTON = 1;
 
 export function usePanZoom(
   container: Ref<HTMLElement | undefined>,
@@ -38,15 +39,24 @@ export function usePanZoom(
   let movedBeyondTap = false;
 
   useEventListener(container, "pointerdown", (e: PointerEvent) => {
-    // Only pan when the click originates inside the pan zone, not on UI overlays.
+    // Only pan when the click originates inside the pan zone, not on UI overlays. The middle button
+    // pans everywhere, because overlays such as the song editor's use the left button for themselves.
     const zone = options.panZone?.value ?? container.value;
-    if (e.pointerType !== "mouse" || !zone?.contains(e.target as Node)) {
+    const isMiddleButton = e.button === MIDDLE_BUTTON;
+    if (e.pointerType !== "mouse" || !(isMiddleButton || zone?.contains(e.target as Node))) {
       return;
     }
 
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     lastPos = { x: e.clientX, y: e.clientY };
     movedBeyondTap = false;
+  });
+
+  // Keeps the browser from starting its own autoscroll on a middle-button drag.
+  useEventListener(container, "mousedown", (e: MouseEvent) => {
+    if (e.button === MIDDLE_BUTTON) {
+      e.preventDefault();
+    }
   });
 
   useEventListener(container, "pointermove", (e: PointerEvent) => {

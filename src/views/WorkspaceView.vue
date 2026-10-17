@@ -7,6 +7,7 @@ import { useRoute, useRouter } from "vue-router";
 import BabySvenja from "@/components/BabySvenja.vue";
 import KbdShortcut from "@/components/KbdShortcut.vue";
 import MarkerPanel from "@/components/MarkerPanel.vue";
+import MeasurePanel from "@/components/MeasurePanel.vue";
 import MixerPanel from "@/components/MixerPanel.vue";
 import SongDetailsDialog from "@/components/SongDetailsDialog.vue";
 import SongPdfViewer from "@/components/SongPdfViewer.vue";
@@ -14,6 +15,7 @@ import TransportBar from "@/components/TransportBar.vue";
 import VampCard from "@/components/VampCard.vue";
 import WarpPanel from "@/components/WarpPanel.vue";
 import { type ShortcutAction, useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
+import { provideMeasureEditor, useMeasureEditor } from "@/composables/useMeasureEditor";
 import Show from "@/core/models/show";
 import type Song from "@/core/models/song";
 import { getAccessFlags } from "@/pocketbase/auth";
@@ -43,6 +45,16 @@ const editMode = computed(() => route.name === "song-edit");
 const canEdit = computed(() => !!show.value && getAccessFlags(show.value.permissions, auth.user?.id).editor);
 const showWarpPanel = computed(() => editMode.value && song.value?.playerMode === "audio");
 const songDetailsVisible = ref(false);
+
+provideMeasureEditor(useMeasureEditor(song, editMode));
+
+// The song editor has no markers tab. Below lg its Measures panel is a bottom sheet over the score.
+const tabs = computed(() => editMode.value
+  ? { pdf: "PDF", mixer: "Mixer" }
+  : { markers: "Markers", pdf: "PDF", mixer: "Mixer" });
+const selectedTab = computed(() => editMode.value && settings.current.workspace.selectedTab === "markers"
+  ? "pdf"
+  : settings.current.workspace.selectedTab);
 
 const songs = computed(() => show.value?.songs ?? []);
 const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
@@ -307,14 +319,10 @@ const pdfLoading = ref(false);
     />
     <ButtonGroup class="w-full lg:hidden">
       <Button
-        v-for="name, tab in {
-          markers: 'Markers',
-          pdf: 'PDF',
-          mixer: 'Mixer',
-        }"
+        v-for="name, tab in tabs"
         :key="tab"
         :label="name"
-        :severity="settings.current.workspace.selectedTab === tab ? 'primary' : 'secondary'"
+        :severity="selectedTab === tab ? 'primary' : 'secondary'"
         fluid
         @click="settings.update({ workspace: { selectedTab: tab } })"
       />
@@ -324,26 +332,34 @@ const pdfLoading = ref(false);
       mobile: div acts as a single grid cell where all panels overlap absolutely
     -->
     <div class="relative size-full lg:contents">
-      <!-- Markers Panel -->
+      <!-- Markers Panel (player) or Measures Panel (editor) -->
       <div
         class="absolute inset-0 transition-all lg:relative lg:inset-auto lg:size-full"
         :class="[
-          settings.current.workspace.selectedTab !== 'markers' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : '',
+          editMode
+            ? ['pointer-events-none z-10 lg:pointer-events-auto', selectedTab !== 'pdf' ? 'invisible lg:visible' : '']
+            : selectedTab !== 'markers' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : '',
           settings.current.workspace.panelVisible.markers ? 'lg:w-96' : 'lg:w-0',
         ]"
       >
+        <MeasurePanel
+          v-if="editMode"
+          class="pointer-events-auto absolute inset-x-0 bottom-0 max-h-[60%] min-h-0 lg:inset-0 lg:max-h-none"
+          :class="settings.current.workspace.panelVisible.markers ? 'lg:opacity-100' : 'lg:opacity-0'"
+          :song="song"
+        />
         <MarkerPanel
+          v-else
           class="absolute inset-0 min-h-0"
           :class="[
             settings.current.workspace.panelVisible.markers ? 'lg:opacity-100' : 'lg:opacity-0',
           ]"
           :song="song"
-          :edit-mode="editMode"
         />
         <Button
           class="absolute top-2 left-full z-10 hidden transition-all lg:block"
           :class="settings.current.workspace.panelVisible.markers ? 'rounded-l-none' : ''"
-          aria-label="Show Markers Panel"
+          :aria-label="editMode ? 'Show Measures Panel' : 'Show Markers Panel'"
           :icon="`pi ${settings.current.workspace.panelVisible.markers ? 'pi-chevron-left' : 'pi-chevron-right'}`"
           severity="secondary"
           rounded
@@ -354,7 +370,7 @@ const pdfLoading = ref(false);
       <!-- PDF Panel -->
       <div
         class="absolute inset-0 lg:relative lg:inset-auto lg:size-full"
-        :class="settings.current.workspace.selectedTab !== 'pdf' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : ''"
+        :class="selectedTab !== 'pdf' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : ''"
       >
         <div class="absolute inset-0">
           <SongPdfViewer
@@ -405,7 +421,7 @@ const pdfLoading = ref(false);
       <div
         class="absolute inset-0 transition-all lg:relative lg:inset-auto lg:size-full"
         :class="[
-          settings.current.workspace.selectedTab !== 'mixer' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : '',
+          selectedTab !== 'mixer' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : '',
           settings.current.workspace.panelVisible.mixer ? 'lg:w-96' : 'lg:w-0',
         ]"
       >

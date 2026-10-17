@@ -45,9 +45,9 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 |---|---|
 | `src/views/` | Routed pages: `AuthView`, `HomeView`, `ShowEditView` (show settings, songs, sharing), `WorkspaceView` (player and song editor), `NotFoundView`. See `src/views/AGENTS.md` |
 | `src/components/` | UI components (transport, mixer, PDF viewer, warp/marker panels, dialogs) |
-| `src/composables/` | Reusable reactive logic. `event.ts` bridges core events into Vue |
+| `src/composables/` | Reusable reactive logic. `event.ts` bridges core events into Vue. `useMeasureEditor` holds the song editor's selection and tool |
 | `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
-| `src/core/models/` | Domain models: Show, Song, Track, Measure, MeasureEvent. `SongDraft` holds unsaved song dialog edits, `songSetup` derives what a song still lacks, `measureDetection` merges detected measures into a song |
+| `src/core/models/` | Domain models: Show, Song, Track, Measure, MeasureEvent. `SongDraft` holds unsaved song dialog edits, `songSetup` derives what a song still lacks, `measureDetection` merges detected measures into a song, `measureEditing` plans every edit of measures and their boxes |
 | `src/core/import/` | Groups dropped files into songs by the number in their names |
 | `src/core/player/` | Playback engine with MIDI and audio backends. See `src/core/player/AGENTS.md` |
 | `src/core/midi/` | MIDI event types and the tick/time `WarpMap` |
@@ -105,6 +105,8 @@ The app has two audiences. Rehearsers (viewers) only play songs back. Editors (e
 | `pi-ellipsis-v` | More actions for this item |
 | `pi-sparkles` | Automatic measure detection |
 | `pi-trash` | Delete or remove |
+| `pi-arrow-up-left` | The score's Select tool |
+| `pi-stop` | The score's Draw tool |
 
 ### Conventions
 
@@ -114,6 +116,14 @@ The app has two audiences. Rehearsers (viewers) only play songs back. Editors (e
 - Canvas based components cannot use CSS variables. Resolve theme colors at runtime (see `WaveformView`) and rebuild when the `.dark` class changes, so they follow any theme preset.
 - A MIDI track's title links it to its MIDI data by name, so MIDI tracks cannot be renamed.
 - Dark mode is class-based (`.dark` selector). Check every visual change in both light and dark mode.
+
+## Measure Editing
+
+- A box is a measure's layout on the score. Its number says which measure it shows, so renumbering moves boxes between measures. MIDI songs only have the measures of their beat map. Audio songs own their measures, so placing a box on a missing number creates the measure, or renames the box's old measure when that one would be left without a box.
+- `measureEditing.ts` plans, `Song.applyMeasureEdit()` applies. Every action in the Measures panel builds one `MeasureEdit`, which saves once, and the player reloads once and only when timing changed (`changesPlayback()`). Renames and deletions update warp markers, markers and vamps in the same save, since the e2e invariants reject references to missing measures.
+- A box in the way is a conflict the user resolves in the panel (swap, or shift the following boxes until a measure without a box takes the last one). Planning never resolves a conflict on its own.
+- Reading order (page, row, left to right) decides range selection, renumbering order and the default first number of a new box. Boxes share a row when one's vertical center lies inside the row.
+- `useMeasureEditor` keeps raw `Measure` objects in the selection, because the song hands out reactive proxies while measures created by an edit are plain. Compare measures with `toRaw()` there.
 
 ## Measure Detection
 
