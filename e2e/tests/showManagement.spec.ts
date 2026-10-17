@@ -47,6 +47,29 @@ test.describe("home page", () => {
     await expect(page.getByRole("heading", { level: 2 })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "New show" })).toHaveCount(0);
   });
+
+  test("a show card leads editors to the show edit page", async ({ page, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner, { title: "Own Show" });
+    await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "audio" }));
+
+    await loginAs(owner);
+    await page.goto("/");
+    await page.getByRole("link", { name: "Own Show" }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/show/${show.id}/edit$`));
+  });
+
+  test("a show card leads visitors to the player", async ({ page, factory }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner, { title: "Public Show", visibility: "public" });
+    await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "audio" }));
+
+    await page.goto("/");
+    await page.getByRole("link", { name: "Public Show" }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/show/${show.id}/song/\\w+`));
+  });
 });
 
 test.describe("show management", () => {

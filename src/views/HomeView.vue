@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { computed, type Ref, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { type RouteLocationRaw, useRouter } from "vue-router";
 
-import DeleteShowDialog from "@/components/DeleteShowDialog.vue";
 import HeaderBar from "@/components/HeaderBar.vue";
 import NewShowDialog from "@/components/NewShowDialog.vue";
-import ShareDialog from "@/components/ShareDialog.vue";
 import ShowCard from "@/components/ShowCard.vue";
 import { useNotify } from "@/composables/useNotify";
 import Show from "@/core/models/show";
@@ -18,26 +16,6 @@ const { notifyError } = useNotify();
 const shows = ref([]) as Ref<Show[]>;
 const loaded = ref(false);
 const newShowVisible = ref(false);
-const sharedShow = ref() as Ref<Show | undefined>;
-const deletedShow = ref() as Ref<Show | undefined>;
-
-const shareVisible = computed({
-  get: () => !!sharedShow.value,
-  set: (value) => {
-    if (!value) {
-      sharedShow.value = undefined;
-    }
-  },
-});
-
-const deleteVisible = computed({
-  get: () => !!deletedShow.value,
-  set: (value) => {
-    if (!value) {
-      deletedShow.value = undefined;
-    }
-  },
-});
 
 const sections = computed(() => {
   const userId = auth.user?.id;
@@ -79,16 +57,10 @@ async function loadShows(): Promise<void> {
 
 watch(() => auth.user, loadShows, { immediate: true });
 
-function openShow(show: Show): void {
-  router.push({ name: "show", params: { showId: show.id } });
-}
-
-function editShow(show: Show): void {
-  router.push({ name: "show-edit", params: { showId: show.id } });
-}
-
-function onShowDeleted(show: Show): void {
-  shows.value = shows.value.filter(s => s !== show);
+// Viewers cannot edit, so their cards lead straight to the player.
+function showLink(show: Show): RouteLocationRaw {
+  const name = show.getAccess(auth.user?.id).editor ? "show-edit" : "show";
+  return { name, params: { showId: show.id } };
 }
 </script>
 
@@ -122,12 +94,9 @@ function onShowDeleted(show: Show): void {
               v-for="show in section.shows"
               :key="show.id"
               :show="show"
+              :to="showLink(show)"
               :role="show.getRole(auth.user?.id)"
               :show-role="section.id === 'shared'"
-              @open="openShow(show)"
-              @edit="editShow(show)"
-              @share="sharedShow = show"
-              @delete="deletedShow = show"
             />
             <button
               v-if="section.id === 'mine' && auth.user"
@@ -144,16 +113,5 @@ function onShowDeleted(show: Show): void {
     </div>
 
     <NewShowDialog v-model="newShowVisible" />
-    <ShareDialog
-      v-if="sharedShow"
-      v-model="shareVisible"
-      :show="sharedShow"
-    />
-    <DeleteShowDialog
-      v-if="deletedShow"
-      v-model="deleteVisible"
-      :show="deletedShow"
-      @deleted="onShowDeleted(deletedShow!)"
-    />
   </div>
 </template>
