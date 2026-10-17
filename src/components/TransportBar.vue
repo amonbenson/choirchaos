@@ -87,7 +87,7 @@ const playbackSpeedPercentage = computed({
       class="relative px-4"
       :class="playback ? 'grid grid-cols-[auto_auto] lg:grid-cols-[repeat(3,auto)] lg:overflow-x-auto' : 'flex-nowrap'"
       pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-4 sm:gap-8 min-w-0 overflow-hidden"
-      pt:center="flex justify-center items-center -space-x-2 sm:space-x-0"
+      pt:center="flex justify-center items-center"
       pt:end="overflow-x-auto lg:overflow-x-visible min-w-0"
     >
       <template #start>
