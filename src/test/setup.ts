@@ -55,6 +55,20 @@ class HeadlessAudioContext extends AudioContext {
     const headlessOptions: HeadlessAudioContextOptions = { ...options, sinkId: { type: "none" } };
     super(headlessOptions);
   }
+
+  // The native statechange event arrives after close() resolves. If a test file ends in between,
+  // vitest restores Node's Event global and the late dispatch on jsdom's EventTarget throws.
+  async close(): Promise<void> {
+    const closed = new Promise<void>((resolve) => {
+      this.addEventListener("statechange", () => {
+        if (this.state === "closed") {
+          resolve();
+        }
+      });
+    });
+    await super.close();
+    await closed;
+  }
 }
 
 Object.assign(globalThis, { AudioContext: HeadlessAudioContext, OfflineAudioContext });
