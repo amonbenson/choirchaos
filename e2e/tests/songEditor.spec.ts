@@ -97,7 +97,7 @@ test.describe("measure editing", () => {
     await loginAs(owner);
     await openEditor(page, show, song);
 
-    await page.getByRole("button", { name: "Add" }).click();
+    await page.getByRole("button", { name: "Add", exact: true }).click();
     await page.getByRole("textbox", { name: "Measures", exact: true }).fill("10..12");
     await page.getByRole("button", { name: "Add 3 measures" }).click();
 
@@ -224,7 +224,7 @@ test.describe("measure detection", () => {
     await openEditor(page, show, song);
 
     const panel = page.getByTestId("measure-panel");
-    await panel.getByRole("button", { name: "Detect" }).click();
+    await panel.getByRole("button", { name: "Detect", exact: true }).click();
     await expect(panel.getByText(`Places ${expected.length} measures`)).toBeVisible({ timeout: 60_000 });
     await expect(page.locator("[data-detection-preview]")).toHaveCount(expected.length);
     expect((await storedMeasures(admin, song.id)).some(m => m.layout)).toBe(false);
