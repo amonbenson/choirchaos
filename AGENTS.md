@@ -99,6 +99,7 @@ Rehearsers (viewers) only play songs back. Editors (editors and owners) also set
 | `pi-sparkles` | Automatic measure detection |
 | `pi-trash` | Delete or remove |
 | `pi-arrow-up-left` | The score's Select tool |
+| `pi-arrows-alt` | The score's Move tool |
 | `pi-stop` | The score's Draw tool |
 
 ### Conventions

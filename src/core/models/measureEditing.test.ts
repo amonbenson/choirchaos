@@ -14,7 +14,9 @@ import {
   type MeasureEdit,
   type MeasureEditResult,
   planBeats,
+  planDeleteMeasures,
   planNewBox,
+  planRemoveBoxes,
   planRenumber,
 } from "./measureEditing";
 
@@ -230,5 +232,26 @@ describe("bulk edits", () => {
     const list = measures(["1"], ["2"], ["3", box(0, 0)], ["4"]);
 
     expect(getUnplacedRuns(list).map(run => [run.first.value, run.last.value, run.count])).toEqual([["1", "2", 2], ["4", "4", 1]]);
+  });
+
+  it("removes the boxes of measures and boxes without a number in one edit", () => {
+    const list = measures(["1", box(0, 0)], ["2", box(0.2, 0)]);
+    const unnumbered = [box(0.4, 0)];
+
+    const edit = planRemoveBoxes(list, unnumbered);
+
+    expect([...edit.layouts.entries()]).toEqual([[list[0], undefined], [list[1], undefined]]);
+    expect(edit.resolvedBoxes).toEqual(unnumbered);
+    expect(changesPlayback(edit)).toBe(false);
+  });
+
+  it("deletes measures together with boxes without a number", () => {
+    const list = measures(["1", box(0, 0)]);
+    const unnumbered = [box(0.4, 0), box(0.6, 0)];
+
+    const edit = planDeleteMeasures(list, unnumbered);
+
+    expect(edit.removals).toEqual(list);
+    expect(edit.resolvedBoxes).toEqual(unnumbered);
   });
 });

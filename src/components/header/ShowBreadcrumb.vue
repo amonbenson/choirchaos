@@ -83,14 +83,24 @@ function crumbClass(isLast: boolean): string {
         <Button
           as="a"
           :href="href"
-          :label="show.title"
           severity="secondary"
           text
-          class="min-w-12 shrink-[2] whitespace-nowrap max-sm:px-2"
-          :class="crumbClass(!song)"
-          pt:label="truncate font-semibold"
+          class="whitespace-nowrap max-sm:px-2"
+          :class="[crumbClass(!song), song ? 'flex-none sm:min-w-12 sm:shrink-[2]' : 'min-w-12 shrink-[2]']"
+          :aria-label="show.title"
+          :title="show.title"
           @click="navigate"
-        />
+        >
+          <span
+            class="truncate font-semibold"
+            :class="{ 'max-sm:hidden': song }"
+          >{{ show.title }}</span>
+          <span
+            v-if="song"
+            class="font-semibold sm:hidden"
+            aria-hidden="true"
+          >...</span>
+        </Button>
       </RouterLink>
     </template>
 

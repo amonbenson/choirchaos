@@ -4,6 +4,7 @@ import { type Ref } from "vue";
 import type PageTransform from "@/core/pdf/pageTransform";
 
 const TAP_MAX_MOVEMENT = 10;
+const LEFT_BUTTON = 0;
 const MIDDLE_BUTTON = 1;
 
 export function usePanZoom(
@@ -11,11 +12,12 @@ export function usePanZoom(
   transform: PageTransform,
   options: {
     onRedraw: () => void;
-    panZone?: Ref<HTMLElement | undefined>;
+    /** Whether a left-button or one-finger drag pans. The middle button, the wheel and pinching always do. */
+    canPan: () => boolean;
     onInteract?: () => void;
   },
 ): void {
-  const { onRedraw } = options;
+  const { onRedraw, canPan } = options;
 
   function containerPos(clientX: number, clientY: number): { x: number; y: number } {
     const rect = container.value!.getBoundingClientRect();
@@ -36,19 +38,19 @@ export function usePanZoom(
   // ── Mouse ──────────────────────────────────────────────────────────────────
 
   let lastPos: { x: number; y: number } | undefined;
+  let startPos: { x: number; y: number } | undefined;
   let movedBeyondTap = false;
 
   useEventListener(container, "pointerdown", (e: PointerEvent) => {
-    // Only pan when the click originates inside the pan zone, not on UI overlays. The middle button
-    // pans everywhere, because overlays such as the song editor's use the left button for themselves.
-    const zone = options.panZone?.value ?? container.value;
-    const isMiddleButton = e.button === MIDDLE_BUTTON;
-    if (e.pointerType !== "mouse" || !(isMiddleButton || zone?.contains(e.target as Node))) {
+    const pans = e.button === MIDDLE_BUTTON || (e.button === LEFT_BUTTON && canPan());
+    if (e.pointerType !== "mouse" || !pans) {
       return;
     }
 
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    // The pointer is captured only once it moves, since a capture retargets the click of a tap to the
+    // container, away from the box or page under the pointer.
     lastPos = { x: e.clientX, y: e.clientY };
+    startPos = lastPos;
     movedBeyondTap = false;
   });
 
@@ -68,8 +70,9 @@ export function usePanZoom(
     transform.pan.y += e.clientY - lastPos.y;
     lastPos = { x: e.clientX, y: e.clientY };
 
-    if (!movedBeyondTap && Math.hypot(e.movementX, e.movementY) > TAP_MAX_MOVEMENT) {
+    if (!movedBeyondTap && startPos && Math.hypot(e.clientX - startPos.x, e.clientY - startPos.y) > TAP_MAX_MOVEMENT) {
       movedBeyondTap = true;
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       options.onInteract?.();
     }
 
@@ -86,6 +89,7 @@ export function usePanZoom(
     }
 
     lastPos = undefined;
+    startPos = undefined;
     movedBeyondTap = false;
   });
 
@@ -95,6 +99,7 @@ export function usePanZoom(
     }
 
     lastPos = undefined;
+    startPos = undefined;
     movedBeyondTap = false;
   });
 
@@ -135,7 +140,7 @@ export function usePanZoom(
   });
 
   useEventListener(container, "touchmove", (e: TouchEvent) => {
-    if (e.touches.length === 1) {
+    if (e.touches.length === 1 && canPan()) {
       const touch = e.touches[0]!;
       const prev = activeTouches.find(p => p.id === touch.identifier);
       if (prev) {

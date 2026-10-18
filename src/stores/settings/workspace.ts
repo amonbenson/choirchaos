@@ -6,6 +6,7 @@ export class PanelVisibleSettings extends SettingsBase {
   constructor(
     public readonly markers: boolean = true,
     public readonly mixer: boolean = true,
+    public readonly warp: boolean = true,
   ) {
     super();
   }

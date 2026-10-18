@@ -87,7 +87,7 @@ const playbackSpeedPercentage = computed({
       :class="playback ? 'grid grid-cols-[auto_auto] lg:grid-cols-[repeat(3,auto)] lg:overflow-x-auto' : 'flex-nowrap'"
       pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-4 sm:gap-8 min-w-0 overflow-hidden"
       pt:center="flex justify-center items-center"
-      pt:end="overflow-x-auto lg:overflow-x-visible min-w-0"
+      :pt:end="playback ? 'overflow-x-auto lg:overflow-x-visible min-w-0' : 'flex-none'"
     >
       <template #start>
         <ShowBreadcrumb
@@ -319,7 +319,7 @@ const playbackSpeedPercentage = computed({
           </template>
 
           <!-- User menu -->
-          <UserMenuButton class="-m-1 -ml-4" />
+          <UserMenuButton class="-ml-1" />
         </div>
       </template>
     </Toolbar>

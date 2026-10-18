@@ -28,13 +28,15 @@ import { planConfirm } from "@/core/models/measureReview";
 const BEATS_SAVE_DELAY_MS = 400;
 
 const editor = injectMeasureEditor();
-const { measures, mode, selection, saving, currentReviewItem } = editor;
+const { measures, mode, selection, selectedBoxes, selectionCount, saving, currentReviewItem } = editor;
 const confirm = useConfirm();
 const { notifyError } = useNotify();
 
 const single = computed(() => selection.value.length === 1 ? selection.value[0] : undefined);
 const ordered = computed(() => getReadingOrder(selection.value));
 const commonBeats = computed(() => getCommonBeats(selection.value));
+// Boxes without a number have no number or beats to edit, so a selection with them can only be removed.
+const onlyMeasures = computed(() => selectedBoxes.value.length === 0);
 
 const number = ref("");
 const beats = ref<number | null>(null);
@@ -111,32 +113,44 @@ function onBeatsChange(value: number | null): void {
   }
 }
 
-const boxLabel = computed(() => selection.value.length === 1 ? "Remove box" : "Remove boxes");
+const boxLabel = computed(() => selectionCount.value === 1 ? "Remove box" : "Remove boxes");
 const deleteLabel = computed(() => selection.value.length === 1 ? "Delete measure" : "Delete measures");
 
 function removeBoxes(): void {
-  resolve(planRemoveBoxes(selection.value), "Could not remove the boxes");
+  resolve(planRemoveBoxes(selection.value, selectedBoxes.value), "Could not remove the boxes");
 }
 
 defineExpose({ removeBoxes });
 
+function unnumberedLabel(count: number): string {
+  return count === 1 ? "The box without a number" : `The ${count} boxes without a number`;
+}
+
 function deleteMeasures(): void {
   const targets = [...selection.value];
+  const boxes = [...selectedBoxes.value];
   const names = targets.length === 1 ? `Measure ${targets[0]!.value}` : `${targets.length} measures`;
+  const unnumbered = boxes.length === 0 ? "" : ` ${unnumberedLabel(boxes.length)} will be removed too.`;
   confirm.require({
     header: deleteLabel.value,
-    message: `${names} will be deleted from the song, together with their sync markers.`,
+    message: `${names} will be deleted from the song, together with their sync markers.${unnumbered}`,
     icon: "pi pi-exclamation-triangle",
     rejectProps: { label: "Cancel", severity: "secondary", text: true },
     acceptProps: { label: deleteLabel.value, severity: "danger" },
-    accept: () => apply(planDeleteMeasures(targets), "Could not delete the measures"),
+    accept: () => apply(planDeleteMeasures(targets, boxes), "Could not delete the measures"),
   });
 }
 </script>
 
 <template>
   <div class="flex flex-col gap-4">
+    <span
+      v-if="!onlyMeasures"
+      class="text-sm text-muted-color"
+    >{{ unnumberedLabel(selectedBoxes.length) }} can only be numbered one at a time.</span>
+
     <form
+      v-if="onlyMeasures"
       class="flex flex-col gap-2"
       @submit.prevent="renumber()"
     >
@@ -204,7 +218,10 @@ function deleteMeasures(): void {
       </div>
     </form>
 
-    <div class="flex items-center justify-between gap-4">
+    <div
+      v-if="onlyMeasures"
+      class="flex items-center justify-between gap-4"
+    >
       <label
         for="measure-beats"
         class="text-sm"
@@ -237,7 +254,7 @@ function deleteMeasures(): void {
         @click="removeBoxes"
       />
       <Button
-        v-if="mode === 'audio'"
+        v-if="mode === 'audio' && selection.length > 0"
         :label="deleteLabel"
         icon="pi pi-trash"
         severity="danger"

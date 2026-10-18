@@ -42,7 +42,7 @@ Import `test` and `expect` from `harness/fixtures.ts`, never from `@playwright/t
 - When a feature adds a cross-record or cross-field rule, add it to `DEFAULT_INVARIANTS` in `harness/state.ts`, so every test checks it.
 - Prefer asserting backend state through `admin` over asserting UI text. Many UI elements have no accessible text.
 - The app opens file dialogs from buttons without a permanent `<input type=file>`, so upload through `chooseFiles()` in `harness/page.ts`, which uses Playwright's file chooser event.
-- In the song editor, `score-page` is a score page's overlay (drag on it to draw or marquee-select) and `measure-panel` is the Measures tab. Reach tab content with `getByRole("tabpanel", { name: "Details" })`. Boxes are buttons named "Measure N" or "Box without a number", and detection preview boxes carry `data-detection-preview`.
+- In the song editor, `score-page` is a score page's overlay (the default Move tool pans on a drag, the Draw tool draws, Select or a held Shift marquee-selects) and `measure-panel` is the Measures tab. Reach tab content with `getByRole("tabpanel", { name: "Details" })`. Boxes are buttons named "Measure N" or "Box without a number", and detection preview boxes carry `data-detection-preview`.
 - To test review flows without running detection, arrange `layout.review` on measures and `unnumberedBoxes` on the song through the bundle fields.
 - `WaveformView` exposes `data-zoom-scale` (samples per pixel) and `data-sample-rate`, so tests can convert marker times to pixels on the canvas.
 - Vue reports render errors through `console.error`, not as page errors. Use `collectPageErrors()`, which listens to both, to assert that a flow is error-free.

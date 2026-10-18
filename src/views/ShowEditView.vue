@@ -280,6 +280,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
         pt:root="flex flex-col lg:min-h-0"
         pt:header="flex-none"
         pt:content-container="flex-1 lg:min-h-0 lg:overflow-y-auto"
+        pt:content-wrapper="min-w-0"
         pt:content="h-full"
       >
         <template #header>

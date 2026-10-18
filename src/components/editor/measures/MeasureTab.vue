@@ -25,15 +25,30 @@ defineProps<{
 }>();
 
 const editor = injectMeasureEditor();
-const { measures, mode, selection, pendingBox, tool, placeFrom, selectedBox, reviewItems, currentReviewItem, detection } = editor;
+const {
+  measures,
+  mode,
+  selection,
+  selectionCount,
+  pendingBox,
+  tool,
+  placeFrom,
+  selectedBox,
+  selectedBoxes,
+  unnumberedBoxes,
+  reviewItems,
+  currentReviewItem,
+  detection,
+} = editor;
 const { notifyError } = useNotify();
 
 const detecting = computed(() => !!detection.progress.value);
 
 const placedCount = computed(() => measures.value.filter(measure => measure.layout).length);
 const unplacedRuns = computed(() => getUnplacedRuns(measures.value));
+const hasBoxes = computed(() => placedCount.value > 0 || unnumberedBoxes.value.length > 0);
 const showReviewBar = computed(() => !pendingBox.value && reviewItems.value.length > 0
-  && (selection.value.length === 0 || !!currentReviewItem.value));
+  && (selectionCount.value === 0 || !!currentReviewItem.value));
 
 const summary = computed(() => {
   if (detection.running.value) {
@@ -50,6 +65,10 @@ const summary = computed(() => {
 
   if (selectedBox.value) {
     return "Box without a number";
+  }
+
+  if (selectedBoxes.value.length > 0) {
+    return `${selectionCount.value} boxes selected`;
   }
 
   if (selection.value.length === 1) {
@@ -157,6 +176,37 @@ async function addMeasures(): Promise<void> {
       aria-live="polite"
     >{{ summary }}</span>
 
+    <div
+      v-if="!detecting && !pendingBox && selectionCount === 0 && (mode === 'audio' || song?.pdfFile || hasBoxes)"
+      class="flex flex-none flex-wrap gap-2"
+    >
+      <Button
+        v-if="mode === 'audio'"
+        label="Add..."
+        icon="pi pi-plus"
+        severity="secondary"
+        size="small"
+        @click="openAddMeasures"
+      />
+      <Button
+        v-if="song?.pdfFile"
+        label="Detect..."
+        icon="pi pi-sparkles"
+        severity="secondary"
+        size="small"
+        @click="detection.start()"
+      />
+      <Button
+        v-if="hasBoxes"
+        label="Select all"
+        class="mouse:hidden"
+        severity="secondary"
+        size="small"
+        text
+        @click="editor.selectAll()"
+      />
+    </div>
+
     <MeasureDetectionForm
       v-if="detecting"
       class="min-h-0 flex-1 overflow-y-auto"
@@ -183,7 +233,7 @@ async function addMeasures(): Promise<void> {
       />
 
       <MeasureSelectionForm
-        v-else-if="selection.length > 0"
+        v-else-if="selectionCount > 0"
         ref="selectionForm"
       />
 
@@ -208,7 +258,7 @@ async function addMeasures(): Promise<void> {
         <span
           v-else
           class="text-sm text-muted-color"
-        >Select boxes on the score to edit them. Use the Draw tool to add boxes.</span>
+        >Click boxes on the score to edit them, or drag over several with the Select tool or Shift. Use the Draw tool to add boxes.</span>
 
         <div
           v-if="unplacedRuns.length > 0"
@@ -240,28 +290,6 @@ async function addMeasures(): Promise<void> {
           class="text-sm"
         >This song has no measures yet. Draw a box on the score or add them by number.</span>
       </template>
-    </div>
-
-    <div
-      v-if="!detecting && !pendingBox && !selectedBox && selection.length === 0 && (mode === 'audio' || song?.pdfFile)"
-      class="flex flex-none gap-2"
-    >
-      <Button
-        v-if="mode === 'audio'"
-        label="Add..."
-        icon="pi pi-plus"
-        severity="secondary"
-        size="small"
-        @click="openAddMeasures"
-      />
-      <Button
-        v-if="song?.pdfFile"
-        label="Detect..."
-        icon="pi pi-sparkles"
-        severity="secondary"
-        size="small"
-        @click="detection.start()"
-      />
     </div>
 
     <Popover ref="addPopover">

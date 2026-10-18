@@ -22,14 +22,21 @@ async function storedMeasures(admin: { collection: (name: string) => { getOne: (
 }
 
 // The loading overlay covers the score until the player is ready, which takes a while for MIDI songs.
-async function dragOnScore(page: Page, from: [number, number], to: [number, number]): Promise<void> {
+async function dragOnScore(page: Page, from: [number, number], to: [number, number], options: { shift?: boolean } = {}): Promise<void> {
   await expect(page.getByRole("button", { name: "Play / Pause" })).toBeEnabled({ timeout: 30_000 });
   await expect(page.getByText(/^Loading (audio data|PDF)/)).toHaveCount(0);
   const box = (await page.getByTestId("score-page").first().boundingBox())!;
+  if (options.shift) {
+    await page.keyboard.down("Shift");
+  }
+
   await page.mouse.move(box.x + box.width * from[0], box.y + box.height * from[1]);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * to[0], box.y + box.height * to[1], { steps: 5 });
   await page.mouse.up();
+  if (options.shift) {
+    await page.keyboard.up("Shift");
+  }
 }
 
 test.describe("measure editing", () => {
@@ -119,20 +126,26 @@ test.describe("measure editing", () => {
       .toEqual(["1", "2"]);
   });
 
-  test("dragging on empty space selects the boxes it touches", async ({ page, factory, loginAs }) => {
-    const owner = await factory.createUser();
-    const show = await factory.createShow(owner);
-    const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "midi" }));
-    await loginAs(owner);
-    await openEditor(page, show, song);
+  for (const { way, shift } of [{ way: "the Select tool", shift: false }, { way: "Shift held", shift: true }]) {
+    test(`dragging with ${way} selects the boxes it touches`, async ({ page, factory, loginAs }) => {
+      const owner = await factory.createUser();
+      const show = await factory.createShow(owner);
+      const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "midi" }));
+      await loginAs(owner);
+      await openEditor(page, show, song);
 
-    await dragOnScore(page, [0.01, 0.01], [0.99, 0.99]);
+      if (!shift) {
+        await page.getByRole("button", { name: "Select", exact: true }).click();
+      }
 
-    const placed = song.measures.filter((m: SongMeasure) => m.layout).length;
-    await expect(page.getByTestId("measure-panel")).toContainText(`${placed} measures selected`);
-    await expect(page.getByTestId("measure-panel")).toContainText("from the beat map");
-    await expect(page.getByRole("button", { name: "Delete measures" })).toHaveCount(0);
-  });
+      await dragOnScore(page, [-0.05, -0.05], [0.99, 0.99], { shift });
+
+      const placed = song.measures.filter((m: SongMeasure) => m.layout).length;
+      await expect(page.getByTestId("measure-panel")).toContainText(`${placed} measures selected`);
+      await expect(page.getByTestId("measure-panel")).toContainText("from the beat map");
+      await expect(page.getByRole("button", { name: "Delete measures" })).toHaveCount(0);
+    });
+  }
 });
 
 test.describe("markers", () => {

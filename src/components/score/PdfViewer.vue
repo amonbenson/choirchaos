@@ -8,9 +8,11 @@ import PageTransform, { type PageCoordinate } from "@/core/pdf/pageTransform";
 
 type P5Sketch = p5 & { canvas?: HTMLCanvasElement };
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   url: string | undefined;
-}>();
+  /** Whether dragging pans. Overlays that use drags for themselves turn it off. */
+  pannable?: boolean;
+}>(), { pannable: true });
 
 const emit = defineEmits<{
   setup: [payload: { s: p5 }];
@@ -49,7 +51,7 @@ watch(() => props.url, () => {
 
 usePanZoom(wrapper, transform.value, {
   onRedraw: redrawAll,
-  panZone: container,
+  canPan: () => props.pannable,
   onInteract: () => {
     viewUserModified.value = true;
   },
@@ -313,7 +315,7 @@ defineExpose({
     <div
       ref="container"
       class="pdf-canvas-container ansolute size-full overflow-hidden"
-      :class="isGrabbing ? 'cursor-grabbing' : 'cursor-grab'"
+      :class="pannable ? (isGrabbing ? 'cursor-grabbing' : 'cursor-grab') : ''"
       @mousedown="isGrabbing = true"
       @mouseup="isGrabbing = false"
       @mouseleave="isGrabbing = false"

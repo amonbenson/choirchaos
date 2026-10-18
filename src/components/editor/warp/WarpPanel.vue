@@ -2,22 +2,25 @@
 import Button from "primevue/button";
 import ContextMenu from "primevue/contextmenu";
 import type { MenuItem } from "primevue/menuitem";
-import Panel from "primevue/panel";
 import Popover from "primevue/popover";
 import Select from "primevue/select";
 import { computed, ref, shallowRef, useTemplateRef, watch } from "vue";
 
+import CollapsiblePanel from "@/components/base/CollapsiblePanel.vue";
 import type Song from "@/core/models/song";
 import { constrainWarpMarkerTime, getWarpMarkerCandidates } from "@/core/models/warpEditing";
 import { mixdownChunks } from "@/core/player/audio/mixdown";
 import type { Numbering } from "@/core/utils/numbering";
 import { usePlayerStore } from "@/stores/player";
+import { useSettingsStore } from "@/stores/settings";
 
 import WaveformView, { type WaveformMarker } from "./WaveformView.vue";
 
 const props = defineProps<{ song: Song | undefined }>();
 
 const player = usePlayerStore();
+const settings = useSettingsStore();
+const collapsed = computed(() => !settings.current.workspace.panelVisible.warp);
 
 const waveform = useTemplateRef<InstanceType<typeof WaveformView>>("waveform");
 const markerMenu = ref();
@@ -87,20 +90,29 @@ function constrainMarker(measure: string, time: number): number {
 </script>
 
 <template>
-  <Panel
-    pt:root="flex h-56 flex-col overflow-hidden"
-    pt:header="flex-none py-2"
+  <CollapsiblePanel
+    :collapsed="collapsed"
+    toggleable
+    toggle-label="audio synchronization"
+    :pt:root="collapsed ? 'flex flex-col overflow-hidden' : 'flex h-44 flex-col overflow-hidden lg:h-56'"
     pt:content-container="flex-1 min-h-0 overflow-hidden"
     pt:content-wrapper="h-full"
     pt:content="h-full pt-0 pb-2"
+    @update:collapsed="settings.togglePanelVisible('warp')"
   >
     <template #header>
-      <div class="flex w-full flex-wrap items-center gap-x-4 gap-y-1">
+      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1">
         <span class="font-bold">Audio Synchronization</span>
-        <span class="hidden flex-1 truncate text-sm text-muted-color md:inline">
+        <span
+          v-if="!collapsed"
+          class="hidden flex-1 truncate text-sm text-muted-color md:inline"
+        >
           Place a marker on the first beat of a measure, then drag it until it lines up with the recording. Hold Ctrl and scroll to zoom.
         </span>
-        <div class="ml-auto flex items-center gap-1">
+        <div
+          v-if="!collapsed"
+          class="ml-auto flex items-center gap-1"
+        >
           <Button
             v-tooltip.top="candidates.length === 0 ? 'Move the playhead between two markers to add one' : undefined"
             label="Add marker"
@@ -178,5 +190,5 @@ function constrainMarker(measure: string, time: number): number {
         />
       </div>
     </Popover>
-  </Panel>
+  </CollapsiblePanel>
 </template>

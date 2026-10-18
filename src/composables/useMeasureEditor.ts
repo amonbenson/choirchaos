@@ -2,7 +2,7 @@ import { computed, type ComputedRef, inject, type InjectionKey, provide, type Re
 
 import type Measure from "@/core/models/measure";
 import { isSameLayout, type MeasureLayout } from "@/core/models/measure";
-import { changesPlayback, getMeasuresBetween, type MeasureEdit, type MeasureEditMode } from "@/core/models/measureEditing";
+import { changesPlayback, getMeasuresBetween, getReadingOrder, type MeasureEdit, type MeasureEditMode } from "@/core/models/measureEditing";
 import { getAdjacentReviewItem, getReviewItemAfter, getReviewItems, isSameReviewItem, type ReviewItem } from "@/core/models/measureReview";
 import type Song from "@/core/models/song";
 import type { Numbering } from "@/core/utils/numbering";
@@ -11,7 +11,10 @@ import { usePlayerStore } from "@/stores/player";
 import { type MeasureDetection, useMeasureDetection } from "./useMeasureDetection";
 import { useNotify } from "./useNotify";
 
-export type MeasureTool = "select" | "draw";
+/** Select drags a marquee, Move pans the score and Draw adds boxes. Clicks select with all but Draw. */
+export type MeasureTool = "select" | "move" | "draw";
+
+const DEFAULT_TOOL: MeasureTool = "move";
 
 /** A request to scroll the score to a box. A new object each time, so asking twice scrolls twice. */
 export type RevealRequest = { layout: MeasureLayout };
@@ -27,7 +30,9 @@ export type MeasureEditor = {
   mode: ComputedRef<MeasureEditMode>;
   selection: ComputedRef<Measure[]>;
   unnumberedBoxes: ComputedRef<readonly MeasureLayout[]>;
+  selectedBoxes: ComputedRef<MeasureLayout[]>;
   selectedBox: ComputedRef<MeasureLayout | undefined>;
+  selectionCount: ComputedRef<number>;
   reviewItems: ComputedRef<ReviewItem[]>;
   currentReviewItem: ComputedRef<ReviewItem | undefined>;
   revealRequest: Ref<RevealRequest | undefined>;
@@ -35,11 +40,13 @@ export type MeasureEditor = {
   isSelected: (measure: Measure) => boolean;
   isBoxSelected: (box: MeasureLayout) => boolean;
   selectBox: (box: MeasureLayout) => void;
+  toggleBox: (box: MeasureLayout) => void;
   selectOnly: (measure: Measure) => void;
   toggle: (measure: Measure) => void;
   selectRange: (measure: Measure) => void;
-  addToSelection: (measures: Measure[]) => void;
-  setSelection: (measures: Measure[]) => void;
+  addToSelection: (measures: Measure[], boxes?: MeasureLayout[]) => void;
+  setSelection: (measures: Measure[], boxes?: MeasureLayout[]) => void;
+  selectAll: () => void;
   clearSelection: () => void;
   setTool: (tool: MeasureTool) => void;
   startPlacing: (value: Numbering) => void;
@@ -60,7 +67,7 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
   const player = usePlayerStore();
   const { notifyError } = useNotify();
 
-  const tool = ref<MeasureTool>("select");
+  const tool = ref<MeasureTool>(DEFAULT_TOOL);
   const selected = shallowRef(new Set<Measure>());
   const anchor = shallowRef<Measure>();
   const touchMultiSelect = ref(false);
@@ -68,7 +75,7 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
   const pendingCount = ref(4);
   const placeFrom = ref<Numbering>();
   const saving = ref(false);
-  const selectedBoxKey = shallowRef<MeasureLayout>();
+  const selectedBoxKeys = shallowRef<MeasureLayout[]>([]);
   const revealRequest = shallowRef<RevealRequest>();
   const detection = useMeasureDetection(song, error => notifyError("Could not detect measures", error));
 
@@ -76,10 +83,10 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
   const mode = computed<MeasureEditMode>(() => song.value?.playerMode === "midi" ? "midi" : "audio");
   const selection = computed(() => measures.value.filter(measure => measure.layout && selected.value.has(toRaw(measure))));
   const unnumberedBoxes = computed(() => song.value?.getUnnumberedBoxes() ?? []);
-  const selectedBox = computed(() => {
-    const key = selectedBoxKey.value;
-    return key && unnumberedBoxes.value.find(box => isSameLayout(box, key));
-  });
+  const selectedBoxes = computed(() => unnumberedBoxes.value.filter(box => isBoxSelected(box)));
+  const selectionCount = computed(() => selection.value.length + selectedBoxes.value.length);
+  // A box without a number has its own form, which only fits when it is the whole selection.
+  const selectedBox = computed(() => selection.value.length === 0 && selectedBoxes.value.length === 1 ? selectedBoxes.value[0] : undefined);
 
   const reviewItems = computed(() => getReviewItems(measures.value, unnumberedBoxes.value));
   const currentReviewItem = computed<ReviewItem | undefined>(() => {
@@ -88,13 +95,19 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
     return current && reviewItems.value.find(item => isSameReviewItem(item, current));
   });
 
-  function setSelection(next: Measure[]): void {
-    selectedBoxKey.value = undefined;
-    selected.value = new Set(next.map(measure => toRaw(measure)));
-    anchor.value = next.at(-1) && toRaw(next.at(-1));
-    if (next.length === 0) {
+  // With a single box selected the score shows its resize handles, so touch multi-select ends there
+  // and needs another long press.
+  function endTouchMultiSelectIfSingle(): void {
+    if (selected.value.size + selectedBoxKeys.value.length <= 1) {
       touchMultiSelect.value = false;
     }
+  }
+
+  function setSelection(next: Measure[], boxes: MeasureLayout[] = []): void {
+    selectedBoxKeys.value = boxes.map(box => toRaw(box));
+    selected.value = new Set(next.map(measure => toRaw(measure)));
+    anchor.value = next.at(-1) && toRaw(next.at(-1));
+    endTouchMultiSelectIfSingle();
   }
 
   function isSelected(measure: Measure): boolean {
@@ -102,12 +115,20 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
   }
 
   function isBoxSelected(box: MeasureLayout): boolean {
-    return !!selectedBoxKey.value && isSameLayout(box, selectedBoxKey.value);
+    return selectedBoxKeys.value.some(key => isSameLayout(box, key));
   }
 
   function selectBox(box: MeasureLayout): void {
-    setSelection([]);
-    selectedBoxKey.value = toRaw(box);
+    setSelection([], [box]);
+  }
+
+  function toggleBox(box: MeasureLayout): void {
+    const boxes = isBoxSelected(box)
+      ? selectedBoxes.value.filter(other => !isSameLayout(other, box))
+      : [...selectedBoxes.value, box];
+    const keptAnchor = anchor.value;
+    setSelection(selection.value, boxes);
+    anchor.value = keptAnchor;
   }
 
   function selectOnly(measure: Measure): void {
@@ -118,18 +139,27 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
     const next = isSelected(measure)
       ? selection.value.filter(other => toRaw(other) !== toRaw(measure))
       : [...selection.value, measure];
-    setSelection(next);
+    setSelection(next, selectedBoxes.value);
     anchor.value = toRaw(measure);
   }
 
   function selectRange(measure: Measure): void {
     const from = measures.value.find(other => toRaw(other) === anchor.value) ?? measure;
     const range = getMeasuresBetween(measures.value, from, measure);
+    selectedBoxKeys.value = [];
     selected.value = new Set(range.map(other => toRaw(other)));
   }
 
-  function addToSelection(added: Measure[]): void {
-    setSelection([...selection.value, ...added.filter(measure => !isSelected(measure))]);
+  function addToSelection(added: Measure[], boxes: MeasureLayout[] = []): void {
+    setSelection(
+      [...selection.value, ...added.filter(measure => !isSelected(measure))],
+      [...selectedBoxes.value, ...boxes.filter(box => !isBoxSelected(box))],
+    );
+  }
+
+  function selectAll(): void {
+    stopDrawing();
+    setSelection(getReadingOrder(measures.value.filter(measure => measure.layout)), [...unnumberedBoxes.value]);
   }
 
   function clearSelection(): void {
@@ -143,6 +173,13 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
       clearSelection();
     } else {
       placeFrom.value = undefined;
+    }
+  }
+
+  // Drawing starts from an empty selection, so selecting something ends it.
+  function stopDrawing(): void {
+    if (tool.value === "draw") {
+      setTool(DEFAULT_TOOL);
     }
   }
 
@@ -188,7 +225,7 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
   }
 
   function showReviewItem(item: ReviewItem): void {
-    setTool("select");
+    stopDrawing();
     if (item.measure) {
       selectOnly(item.measure);
     } else {
@@ -239,7 +276,7 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
   }
 
   function reset(): void {
-    setTool("select");
+    setTool(DEFAULT_TOOL);
     clearSelection();
     detection.discard();
   }
@@ -258,7 +295,9 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
     mode,
     selection,
     unnumberedBoxes,
+    selectedBoxes,
     selectedBox,
+    selectionCount,
     reviewItems,
     currentReviewItem,
     revealRequest,
@@ -266,11 +305,13 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
     isSelected,
     isBoxSelected,
     selectBox,
+    toggleBox,
     selectOnly,
     toggle,
     selectRange,
     addToSelection,
     setSelection,
+    selectAll,
     clearSelection,
     setTool,
     startPlacing,

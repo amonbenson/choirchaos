@@ -367,15 +367,17 @@ export function planBeats(selected: readonly Measure[], beats: number): MeasureE
   return edit;
 }
 
-export function planRemoveBoxes(selected: readonly Measure[]): MeasureEdit {
+export function planRemoveBoxes(selected: readonly Measure[], unnumbered: readonly MeasureLayout[] = []): MeasureEdit {
   const edit = createEmptyEdit();
   selected.forEach(measure => edit.layouts.set(measure, undefined));
+  edit.resolvedBoxes = [...unnumbered];
   return edit;
 }
 
-export function planDeleteMeasures(selected: readonly Measure[]): MeasureEdit {
+export function planDeleteMeasures(selected: readonly Measure[], unnumbered: readonly MeasureLayout[] = []): MeasureEdit {
   const edit = createEmptyEdit();
   edit.removals = [...selected];
+  edit.resolvedBoxes = [...unnumbered];
   return edit;
 }
 
