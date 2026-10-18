@@ -169,7 +169,7 @@ watch(() => [props.song, ...(props.song?.tracks ?? [])], () => {
     >
       <span class="text-sm text-muted-color">This song has no MIDI file or recordings yet.</span>
       <Button
-        label="Add playback..."
+        label="Add playback"
         icon="pi pi-file-edit"
         severity="secondary"
         size="small"

@@ -40,7 +40,7 @@ const avatarUrl = computed(() => {
 
 // Account things only. Navigating the app is the header's job.
 const menuItems = computed<MenuItem[]>(() => {
-  const preferences = { label: "Preferences...", icon: "pi pi-sliders-v", command: () => preferencesVisible.value = true };
+  const preferences = { label: "Preferences", icon: "pi pi-sliders-v", command: () => preferencesVisible.value = true };
   if (!auth.user) {
     return [preferences];
   }

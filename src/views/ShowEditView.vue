@@ -251,7 +251,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
             </div>
           </div>
           <Button
-            label="Share..."
+            label="Share"
             icon="pi pi-user-plus"
             severity="secondary"
             fluid
@@ -265,7 +265,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
         >
           <Divider />
           <Button
-            label="Delete show..."
+            label="Delete show"
             icon="pi pi-trash"
             severity="danger"
             size="small"
@@ -294,8 +294,8 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
               class="flex gap-2"
             >
               <Button
-                label="Import files..."
-                aria-label="Import files..."
+                label="Import files"
+                aria-label="Import files"
                 icon="pi pi-upload"
                 severity="secondary"
                 size="small"
@@ -303,8 +303,8 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
                 @click="fileDialog.open()"
               />
               <Button
-                label="New song..."
-                aria-label="New song..."
+                label="New song"
+                aria-label="New song"
                 icon="pi pi-plus"
                 severity="secondary"
                 size="small"
@@ -336,12 +336,12 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
             </div>
             <div class="flex flex-wrap justify-center gap-2">
               <Button
-                label="Choose files..."
+                label="Choose files"
                 icon="pi pi-folder-open"
                 @click="fileDialog.open()"
               />
               <Button
-                label="Add song manually..."
+                label="Add song manually"
                 severity="secondary"
                 text
                 @click="newSongVisible = true"

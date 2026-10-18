@@ -182,7 +182,7 @@ async function addMeasures(): Promise<void> {
     >
       <Button
         v-if="mode === 'audio'"
-        label="Add..."
+        label="Add"
         icon="pi pi-plus"
         severity="secondary"
         size="small"
@@ -190,7 +190,7 @@ async function addMeasures(): Promise<void> {
       />
       <Button
         v-if="song?.pdfFile"
-        label="Detect..."
+        label="Detect"
         icon="pi pi-sparkles"
         severity="secondary"
         size="small"

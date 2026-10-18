@@ -152,7 +152,7 @@ test.describe("show management", () => {
     await page.goto(`/show/${show.id}/edit`);
 
     await page.getByRole("button", { name: `Options for ${song.title}` }).click();
-    await expect(page.getByRole("menuitem", { name: "Details..." })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Details" })).toHaveCount(0);
     await page.getByRole("menuitem", { name: "Edit" }).click();
     await page.getByRole("tab", { name: "Details" }).click();
     const panel = page.getByRole("tabpanel", { name: "Details" });
@@ -181,7 +181,7 @@ test.describe("show management", () => {
     await loginAs(owner);
     await page.goto(`/show/${show.id}/edit`);
 
-    await page.getByRole("button", { name: "New song..." }).click();
+    await page.getByRole("button", { name: "New song" }).click();
     const dialog = page.getByRole("dialog", { name: "New song" });
     await dialog.getByLabel("Title").fill("Encore");
     await dialog.getByRole("button", { name: "Create song" }).click();
