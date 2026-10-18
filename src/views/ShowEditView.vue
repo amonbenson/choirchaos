@@ -8,7 +8,7 @@ import type { MenuItem } from "primevue/menuitem";
 import Panel from "primevue/panel";
 import ProgressSpinner from "primevue/progressspinner";
 import { useConfirm } from "primevue/useconfirm";
-import { computed, type Ref, ref, useTemplateRef, watch } from "vue";
+import { computed, ref, useTemplateRef, watch } from "vue";
 import { type RouteLocationRaw, useRouter } from "vue-router";
 
 import HeaderBar from "@/components/header/HeaderBar.vue";
@@ -20,12 +20,12 @@ import SongImportDialog from "@/components/song/SongImportDialog.vue";
 import SongSetupStatus from "@/components/song/SongSetupStatus.vue";
 import { useNotify } from "@/composables/useNotify";
 import { RECORDING_FILE_ACCEPT } from "@/core/import/songImport";
-import Show from "@/core/models/show";
 import type Song from "@/core/models/song";
 import { getSongSetup, isFileStep } from "@/core/models/songSetup";
 import { displayFilename } from "@/core/utils/file";
 import { useAuthStore } from "@/stores/auth";
 import { useSettingsStore } from "@/stores/settings";
+import { useShowStore } from "@/stores/show";
 
 const props = defineProps<{
   showId: string;
@@ -33,6 +33,7 @@ const props = defineProps<{
 
 const auth = useAuthStore();
 const settings = useSettingsStore();
+const showStore = useShowStore();
 const router = useRouter();
 const confirm = useConfirm();
 const { notifyError } = useNotify();
@@ -43,9 +44,13 @@ const VISIBILITY_SUMMARY = {
   public: { icon: "pi-globe", label: "Public" },
 };
 
-const show = ref() as Ref<Show | undefined>;
+// Viewers are sent to the player, so they must not see this page while that redirect runs.
+const show = computed(() => {
+  const current = showStore.current;
+  return current?.id === props.showId && current.getAccess(auth.user?.id).editor ? current : undefined;
+});
 const loading = ref(true);
-const title = ref("");
+const title = ref(show.value?.title ?? "");
 const shareVisible = ref(false);
 const deleteVisible = ref(false);
 const importFiles = ref<File[]>([]);
@@ -75,13 +80,12 @@ const accessSummary = computed(() => {
 async function loadShow(): Promise<void> {
   loading.value = true;
   try {
-    const loaded = await Show.get(props.showId);
+    const loaded = await showStore.load(props.showId);
     if (!loaded.getAccess(auth.user?.id).editor) {
       router.replace({ name: "show", params: { showId: props.showId } });
       return;
     }
 
-    show.value = loaded;
     title.value = loaded.title;
   } catch {
     router.replace({ name: "not-found", params: { pathMatch: ["show", props.showId, "edit"] } });

@@ -22,6 +22,7 @@ Every page starts with `HeaderBar`. Its start holds `ShowBreadcrumb`, modelled o
 | `WorkspaceView` | `show`, `song` `/show/:showId/song/:songId` | everyone | Rehearsing: transport, mixer, markers, score |
 | `WorkspaceView` | `song-edit` `/show/:showId/song/:songId/edit` | editors | Song details, markers, measures, audio sync, deleting the song |
 
+- Both views and the router guard get the show from `stores/show`, which keeps one instance while the route stays in that show and drops it when the route leaves. Never fetch the show per view, or the header loses it on every switch between the show page and a song.
 - `WorkspaceView` decides whether it edits from the route name, never from local state. The router guard sends viewers who open an edit URL to the player.
 - Songs are only created on the show page (`NewSongDialog` or importing files). `NewSongDialog` and the editor's Details tab share `SongDetailsForm`.
 - Song rows open the player. Their setup status button opens the editor on the Details tab for missing files and on the Measures tab otherwise.

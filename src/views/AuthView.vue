@@ -1,3 +1,7 @@
+<script lang="ts">
+export type AuthTab = "login" | "register";
+</script>
+
 <script setup lang="ts">
 import Button from "primevue/button";
 import Divider from "primevue/divider";
@@ -20,7 +24,7 @@ const route = useRoute();
 const redirectTarget = (): string | { name: string } =>
   (route.query.redirect as string | undefined) ?? { name: "home" };
 
-const tab = ref<"login" | "register">("login");
+const tab = ref<AuthTab>(route.query.tab === "register" ? "register" : "login");
 
 const name = ref("");
 const email = ref("");

@@ -46,7 +46,7 @@ export function usePdfPages(url: Ref<string | undefined>, options?: { onUpdate?:
   }
 
   // Load and render all pages whenever the URL changes (immediate so a URL set
-  // before mount — e.g. via pendingShow — is not missed).
+  // before mount, e.g. from an already loaded show, is not missed).
   watch(url, async () => {
     const currentUrl = url.value;
     if (!currentUrl) {

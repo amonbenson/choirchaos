@@ -58,23 +58,24 @@ function crumbClass(isLast: boolean): string {
         :href="href"
         severity="secondary"
         text
-        class="flex-none max-sm:px-2"
+        rounded
+        class="flex-none p-1"
         aria-label="Home"
         @click="navigate"
       >
         <img
           src="/favicon.svg"
           alt=""
-          class="size-6"
+          class="size-8 rounded-full"
         >
       </Button>
     </RouterLink>
 
     <template v-if="show && showRoute">
-      <span
-        class="px-0.5 text-muted-color"
+      <i
+        class="pi pi-chevron-right flex-none px-0.5 text-xs! text-muted-color opacity-70"
         aria-hidden="true"
-      >/</span>
+      />
       <RouterLink
         v-slot="{ href, navigate }"
         :to="showRoute"
@@ -85,6 +86,7 @@ function crumbClass(isLast: boolean): string {
           :href="href"
           severity="secondary"
           text
+          rounded
           class="whitespace-nowrap max-sm:px-2"
           :class="[crumbClass(!song), song ? 'flex-none sm:min-w-12 sm:shrink-[2]' : 'min-w-12 shrink-[2]']"
           :aria-label="show.title"
@@ -106,16 +108,17 @@ function crumbClass(isLast: boolean): string {
     </template>
 
     <template v-if="show && song">
-      <span
-        class="px-0.5 text-muted-color"
+      <i
+        class="pi pi-chevron-right flex-none px-0.5 text-xs! text-muted-color opacity-70"
         aria-hidden="true"
-      >/</span>
+      />
       <Button
         :label="`#${song.number} ${song.title}`"
         icon="pi pi-chevron-down"
         icon-pos="right"
         severity="secondary"
         text
+        rounded
         class="min-w-0 whitespace-nowrap max-sm:px-2"
         :class="crumbClass(true)"
         pt:label="truncate font-semibold"

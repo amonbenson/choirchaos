@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { storeToRefs } from "pinia";
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
 import Message from "primevue/message";
@@ -16,18 +17,18 @@ import VampCard from "@/components/player/VampCard.vue";
 import ScoreViewer from "@/components/score/ScoreViewer.vue";
 import { type ShortcutAction, useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
 import { provideMeasureEditor, useMeasureEditor } from "@/composables/useMeasureEditor";
-import Show from "@/core/models/show";
 import type Song from "@/core/models/song";
 import { hasUnsyncedAudio } from "@/core/models/songSetup";
 import { getAccessFlags } from "@/pocketbase/auth";
-import { consumePendingShow } from "@/router/router";
 import { useAuthStore } from "@/stores/auth";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
+import { useShowStore } from "@/stores/show";
 
 const auth = useAuthStore();
 const settings = useSettingsStore();
 const player = usePlayerStore();
+const showStore = useShowStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -36,8 +37,7 @@ const props = defineProps<{
   songId?: string;
 }>();
 
-// store show and current song data from pocketbase
-const show = ref<Show | undefined>();
+const { current: show } = storeToRefs(showStore);
 const showLoading = ref(true);
 
 const song = ref<Song | undefined>();
@@ -266,12 +266,7 @@ watch(() => props.songId, async (songId) => {
     showLoading.value = true;
     songLoading.value = true;
 
-    // Load show if not already done so
-    if (!show.value) {
-      const pending = consumePendingShow();
-      show.value = pending ?? await Show.get(props.showId);
-    }
-
+    const loadedShow = await showStore.load(props.showId);
     showLoading.value = false;
 
     // If no song id was selected, clear the current song
@@ -281,10 +276,10 @@ watch(() => props.songId, async (songId) => {
     }
 
     // Select the song
-    song.value = show.value.songs.find(s => s.id === songId);
+    song.value = loadedShow.songs.find(s => s.id === songId);
     if (!song.value) {
       console.error("Invalid song id:", songId);
-      const firstSong = show.value.songs[0];
+      const firstSong = loadedShow.songs[0];
       if (firstSong) {
         selectSong(firstSong.id);
       }

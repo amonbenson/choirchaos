@@ -1,23 +1,14 @@
 import { ClientResponseError } from "pocketbase";
-import { markRaw } from "vue";
 import { createRouter, createWebHistory, type RouteLocationNormalized } from "vue-router";
 
-import Show from "@/core/models/show";
 import { pb } from "@/pocketbase";
 import { login } from "@/pocketbase/auth";
+import { useShowStore } from "@/stores/show";
 import AuthView from "@/views/AuthView.vue";
 import HomeView from "@/views/HomeView.vue";
 import NotFoundView from "@/views/NotFoundView.vue";
 import ShowEditView from "@/views/ShowEditView.vue";
 import WorkspaceView from "@/views/WorkspaceView.vue";
-
-let pendingShow: Show | undefined;
-
-export function consumePendingShow(): Show | undefined {
-  const show = pendingShow;
-  pendingShow = undefined;
-  return show;
-}
 
 async function autoLogin(to: RouteLocationNormalized): Promise<any> {
   // Skip if we are in production
@@ -45,28 +36,10 @@ async function autoLogin(to: RouteLocationNormalized): Promise<any> {
 
 async function resolveFirstSong(to: RouteLocationNormalized): Promise<any> {
   try {
-    // Redirecting from the show to its first song enters this guard twice. Reuse the first fetch.
-    const showId = to.params.showId as string;
-    const show: Show = pendingShow?.id === showId ? pendingShow : await Show.get(showId);
-    pendingShow = show;
-
-    // mark expensive/large reference properties as raw so vue doesn't try to make them reactive.
-    // They cannot be changed anyway unless the whole show object is replaced
-    for (const song of show.songs) {
-      song.$midiSystemEvents = markRaw(song.$midiSystemEvents);
-
-      for (const track of song.tracks) {
-        track.$midiTrackEvents = markRaw(track.$midiTrackEvents);
-      }
-
-      for (const measure of song.measures.items()) {
-        measure.$beatTicks = markRaw(measure.$beatTicks);
-      }
-    }
+    const show = await useShowStore().load(to.params.showId as string);
 
     // A show without songs has nothing to play yet, so editors go straight to adding songs.
     if (show.songs.length === 0 && show.getAccess(pb.authStore.record?.id).editor) {
-      pendingShow = undefined;
       return { name: "show-edit", params: { showId: to.params.showId } };
     }
 
@@ -153,4 +126,10 @@ const routes = [
 export const router = createRouter({
   history: createWebHistory(),
   routes,
+});
+
+router.afterEach((to, _from, failure) => {
+  if (!failure) {
+    useShowStore().release(to.params.showId as string | undefined);
+  }
 });
