@@ -793,7 +793,10 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
         @update:model-value="editor.setTool($event)"
       >
         <template #option="{ option }">
-          <i :class="option.icon" />
+          <i
+            :class="option.icon"
+            aria-hidden="true"
+          />
           <span class="sr-only @sm:not-sr-only">{{ option.label }}</span>
         </template>
       </SelectButton>

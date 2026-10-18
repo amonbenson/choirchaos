@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
+import Message from "primevue/message";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
@@ -17,6 +18,7 @@ import { type ShortcutAction, useGlobalShortcuts } from "@/composables/useGlobal
 import { provideMeasureEditor, useMeasureEditor } from "@/composables/useMeasureEditor";
 import Show from "@/core/models/show";
 import type Song from "@/core/models/song";
+import { hasUnsyncedAudio } from "@/core/models/songSetup";
 import { getAccessFlags } from "@/pocketbase/auth";
 import { consumePendingShow } from "@/router/router";
 import { useAuthStore } from "@/stores/auth";
@@ -46,6 +48,8 @@ const showWarpPanel = computed(() => editMode.value && song.value?.playerMode ==
 const hasMarkers = computed(() => (song.value?.events.markers.items().length ?? 0) > 0);
 const hasStartPanel = computed(() => editMode.value || hasMarkers.value);
 const isStartPanelOpen = computed(() => hasStartPanel.value && settings.current.workspace.panelVisible.markers);
+const isWarpPanelOpen = computed(() => showWarpPanel.value && settings.current.workspace.panelVisible.warp);
+const showSyncNotice = computed(() => !!song.value && hasUnsyncedAudio(song.value) && !isWarpPanelOpen.value);
 
 provideMeasureEditor(useMeasureEditor(song, editMode));
 
@@ -395,6 +399,20 @@ const pdfLoading = ref(false);
             :edit-mode="editMode"
             @pdf-loading="pdfLoading = $event"
           />
+        </div>
+        <!-- The dark theme's message background is translucent and would wash out over the white score. -->
+        <div
+          v-if="showSyncNotice"
+          class="absolute left-1/2 w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-md bg-surface-0 dark:bg-surface-900"
+          :class="editMode ? 'top-14' : 'top-2'"
+        >
+          <Message
+            severity="warn"
+            size="small"
+            icon="pi pi-exclamation-circle"
+          >
+            Audio not synced yet, measures may not match the recording
+          </Message>
         </div>
         <div class="absolute bottom-4 left-1/2 w-[calc(100%-2rem)] -translate-x-1/2 md:w-72 lg:bottom-16">
           <VampCard

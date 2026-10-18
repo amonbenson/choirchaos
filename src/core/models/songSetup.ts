@@ -33,6 +33,18 @@ function getMeasuresAction(song: Song): string {
   return total === 0 ? "Add measures" : `Place measures (${getPlacedMeasureCount(song)} of ${total})`;
 }
 
+function isAudioSynced(song: Song): boolean {
+  return song.warpMarkers.length >= MIN_SYNC_MARKERS;
+}
+
+/**
+ * Until an audio song is synced, the measure highlighted on the score follows a guessed tempo and
+ * drifts away from the recording.
+ */
+export function hasUnsyncedAudio(song: Song): boolean {
+  return song.playerMode === "audio" && getPlacedMeasureCount(song) > 0 && !isAudioSynced(song);
+}
+
 function getReviewCount(song: Song): number {
   return countReviewItems(song.measures.items(), song.getUnnumberedBoxes());
 }
@@ -56,7 +68,7 @@ export function getSongSetup(song: Song): SongSetup {
   }
 
   if (song.playerMode === "audio") {
-    steps.push({ id: "sync", label: "Audio sync", done: song.warpMarkers.length >= MIN_SYNC_MARKERS });
+    steps.push({ id: "sync", label: "Audio sync", done: isAudioSynced(song) });
   }
 
   const actions: Record<SetupStepId, string> = {

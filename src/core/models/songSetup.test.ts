@@ -4,7 +4,7 @@ import { makeAudioSongWithVamp, makeMidiSong } from "@/test/fixtures";
 
 import Measure, { MeasureList } from "./measure";
 import Song from "./song";
-import { getSongSetup } from "./songSetup";
+import { getSongSetup, hasUnsyncedAudio } from "./songSetup";
 
 const LAYOUT = { page: 0, x: 0, y: 0, width: 0.1, height: 0.1 };
 
@@ -75,5 +75,20 @@ describe("getSongSetup", () => {
 
     const unsynced = makeSong({ pdf: true, audio: true, measures: [new Measure("1", 4, LAYOUT)] });
     expect(getSongSetup(unsynced).next).toMatchObject({ id: "sync", action: "Sync audio" });
+  });
+});
+
+describe("hasUnsyncedAudio", () => {
+  it("flags audio songs with placed measures but no sync", () => {
+    expect(hasUnsyncedAudio(makeSong({ audio: true, measures: [new Measure("1", 4, LAYOUT)] }))).toBe(true);
+  });
+
+  it("ignores audio songs without measures on the score", () => {
+    expect(hasUnsyncedAudio(makeSong({ audio: true, measures: [new Measure("1", 4)] }))).toBe(false);
+  });
+
+  it("ignores synced audio songs and MIDI songs", () => {
+    expect(hasUnsyncedAudio(makeAudioSongWithVamp())).toBe(false);
+    expect(hasUnsyncedAudio(makeMidiSong())).toBe(false);
   });
 });

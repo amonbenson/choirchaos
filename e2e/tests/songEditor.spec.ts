@@ -138,7 +138,7 @@ test.describe("measure editing", () => {
         await page.getByRole("button", { name: "Select", exact: true }).click();
       }
 
-      await dragOnScore(page, [-0.05, -0.05], [0.99, 0.99], { shift });
+      await dragOnScore(page, [0.01, 0.01], [0.99, 0.99], { shift });
 
       const placed = song.measures.filter((m: SongMeasure) => m.layout).length;
       await expect(page.getByTestId("measure-panel")).toContainText(`${placed} measures selected`);
