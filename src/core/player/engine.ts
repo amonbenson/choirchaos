@@ -350,16 +350,11 @@ export default class PlayerEngine {
   }
 
   async load(song: Song): Promise<void> {
-    // Abort any in-progress load operation before starting a new one
-    this.loadAbortController?.abort();
+    // Unloading also aborts any in-progress load operation
+    this.unload();
     const controller = new AbortController();
     this.loadAbortController = controller;
     const { signal } = controller;
-
-    // Unload any previously loaded song to clean up the state
-    if (this.status.get() !== "idle") {
-      this.unload();
-    }
 
     // If the song has no measures or no player mode, stop here
     if (song.measures.items().length === 0 || song.playerMode === "none") {
@@ -428,6 +423,9 @@ export default class PlayerEngine {
   }
 
   unload(): void {
+    this.loadAbortController?.abort();
+    this.loadAbortController = undefined;
+
     if (this.status.get() === "idle") {
       return;
     }

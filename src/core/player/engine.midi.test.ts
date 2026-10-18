@@ -71,6 +71,19 @@ describe("PlayerEngine – MIDI mode", () => {
     await ctx2.close();
   });
 
+  it("stays idle when unloaded while a load is in progress", async () => {
+    const { player: p2, ctx: ctx2 } = makePlayer();
+
+    mockAxios();
+    const loading = p2.load(makeMidiSong());
+    p2.unload();
+    await loading;
+
+    expect(p2.getStatus()).toBe("idle");
+
+    await ctx2.close();
+  });
+
   // ── seek ──────────────────────────────────────────────────────────────────
 
   it("seek to measure 2 sets currentMeasure to ['2', 0]", () => {

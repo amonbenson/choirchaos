@@ -22,7 +22,7 @@ Playback engine shared by both modes:
 
 ## Engine Invariants
 
-- `unload()` resets all `current*` Properties, `vamps`, and `mode`. Do not rely on `load()` to clear stale state.
+- `unload()` aborts an in-progress load and resets all `current*` Properties, `vamps`, and `mode`. Do not rely on `load()` to clear stale state. `WorkspaceView` unloads on unmount, since the engine is global and would keep playing on other pages.
 - In `syncStateAt`, call `backend.seek(pos)` BEFORE `backend.onTempoRestored(bpm)`.
 - `syncWarp()` (audio mode) re-resolves warp and vamp ticks and resyncs display Properties. It does NOT touch `currentSegue` and does NOT seek the backend.
 - End-of-song fires in the same step as the overshoot (`pos >= duration`).

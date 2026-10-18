@@ -2,7 +2,7 @@
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
 import Message from "primevue/message";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import KbdShortcut from "@/components/base/KbdShortcut.vue";
@@ -240,6 +240,9 @@ watch(() => [song.value, settings.current.playback.segueEnabled], () => {
 watch(() => settings.current.playback.vampsEnabled, value => player.setVampsEnabled(value));
 
 // DATA LOADING PROCEDURE
+
+// The player is global, so it would keep playing on pages without a transport.
+onUnmounted(() => player.unload());
 
 function selectSong(songId?: string, autoplay: boolean = false): void {
   // route to the correct song
