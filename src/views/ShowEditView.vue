@@ -389,17 +389,17 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
                 <th class="w-14 py-2 pl-2 font-medium">
                   No.
                 </th>
-                <th class="py-2 font-medium">
+                <th class="py-2 pr-4 font-medium">
                   Title
                 </th>
-                <th class="py-2 font-medium">
+                <th class="py-2 pr-4 font-medium">
                   Score
                 </th>
-                <th class="py-2 font-medium">
+                <th class="py-2 pr-4 font-medium">
                   Playback
                 </th>
-                <th class="py-2 font-medium">
-                  Setup
+                <th class="py-2 pr-4 font-medium">
+                  Status
                 </th>
                 <th class="w-24" />
               </tr>
@@ -415,7 +415,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
                 <td class="py-3 pl-2 font-mono text-muted-color">
                   {{ song.number }}
                 </td>
-                <td class="py-3 font-medium">
+                <td class="py-3 pr-4 font-medium">
                   <RouterLink
                     :to="songRoute(song, 'song')"
                     class="focus-visible:underline focus-visible:outline-none"
@@ -424,7 +424,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
                     {{ song.title }}
                   </RouterLink>
                 </td>
-                <td class="max-w-48 py-3 text-sm">
+                <td class="max-w-48 py-3 pr-4 text-sm">
                   <span
                     v-if="song.pdfFile"
                     class="flex items-center gap-2"
@@ -435,7 +435,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
                     class="text-muted-color italic"
                   >None</span>
                 </td>
-                <td class="py-3 text-sm whitespace-nowrap">
+                <td class="py-3 pr-4 text-sm whitespace-nowrap">
                   <span
                     v-if="playbackSummary(song)"
                     class="flex items-center gap-2"
@@ -445,7 +445,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
                     class="text-muted-color italic"
                   >None</span>
                 </td>
-                <td class="py-3">
+                <td class="py-3 pr-4">
                   <SongSetupStatus
                     :song="song"
                     @continue="continueSetup(song)"
