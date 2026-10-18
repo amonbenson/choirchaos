@@ -214,6 +214,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
         header="Show"
         pt:root="flex flex-col lg:overflow-y-auto"
         pt:content-container="flex-1"
+        pt:content-wrapper="min-w-0"
         pt:content="flex flex-col gap-5 h-full"
       >
         <div class="flex gap-4 lg:flex-col">

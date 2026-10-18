@@ -43,6 +43,7 @@ Every page starts with `HeaderBar`. Its start holds `ShowBreadcrumb`, modelled o
 - Below `lg` the song editor's panel is a bottom sheet over the score, collapsed to its tab strip until a tab is tapped or something is selected or drawn. It is a single instance moved by CSS, so its inputs never exist twice in the DOM. All tabs stay mounted, so a Details draft survives switching tabs.
 - Below `lg` the breadcrumb spans the full width and the transport wraps onto a second row. Where the row is tight, "Edit" drops its label and the crumbs truncate instead of wrapping. Below `sm` the show crumb shrinks to "..." while a song is shown, because the song title matters most.
 - The score's tool switcher keys its labels to the score's own width (a container query), since open side panels can make the score narrow on any screen.
+- PrimeVue's `Panel` lays out its content in a grid with an `auto` column, so a panel never gets narrower than its content's min-content width (nowrap and truncated text included). Panels that must shrink set `pt:content-wrapper="min-w-0"`.
 - The audio sync panel collapses to its header (`workspace.panelVisible.warp`) to leave room for the score.
 - Both collapsible panels are built on `base/CollapsiblePanel`, so their border, corners and chevron stay identical. Do not restyle one of them by hand.
 - The buttons in the start and end of the bar share one responsive gap, so new buttons there must not add their own margins.
