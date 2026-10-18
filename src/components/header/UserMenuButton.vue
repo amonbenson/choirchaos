@@ -82,11 +82,13 @@ function signIn(): void {
       aria-haspopup="menu"
       @click="menu.toggle($event)"
       @keydown.enter="menu.toggle($event)"
+      @keydown.space.prevent="menu.toggle($event)"
     />
   </div>
   <Menu
     ref="menu"
     :model="menuItems"
+    aria-label="Account"
     popup
   />
   <PreferencesDialog v-model="preferencesVisible" />

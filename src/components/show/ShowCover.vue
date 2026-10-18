@@ -35,6 +35,7 @@ const imageUrl = computed(() => {
       v-if="!imageUrl"
       class="pi pi-book text-muted-color"
       :class="iconClass"
+      aria-hidden="true"
     />
     <slot />
   </div>

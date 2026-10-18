@@ -315,6 +315,7 @@ defineExpose({
     <div
       ref="container"
       class="pdf-canvas-container ansolute size-full overflow-hidden"
+      aria-hidden="true"
       :class="pannable ? (isGrabbing ? 'cursor-grabbing' : 'cursor-grab') : ''"
       @mousedown="isGrabbing = true"
       @mouseup="isGrabbing = false"

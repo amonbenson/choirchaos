@@ -209,6 +209,7 @@ function deleteSong(): void {
           icon="pi-file-pdf"
           accept=".pdf,application/pdf"
           empty-label="No score"
+          file-kind="score"
           @select="draft.score = $event"
           @remove="draft.score = undefined"
         />
@@ -234,6 +235,7 @@ function deleteSong(): void {
             icon="pi-sliders-h"
             accept=".mid,.midi,audio/midi"
             empty-label="No MIDI file"
+            file-kind="MIDI file"
             @select="draft.midi = $event"
             @remove="draft.midi = undefined"
           />
@@ -242,6 +244,7 @@ function deleteSong(): void {
             icon="pi-map"
             accept=".json,application/json"
             empty-label="No beat map"
+            file-kind="beat map"
             description="Maps the MIDI file to measures and beats (.json)"
             @select="selectBeatMap"
             @remove="draft.beatMap = undefined"
@@ -271,7 +274,10 @@ function deleteSong(): void {
                 @keydown.up.prevent="moveTrack(i, i - 1)"
                 @keydown.down.prevent="moveTrack(i, i + 1)"
               >
-                <i class="pi pi-bars" />
+                <i
+                  class="pi pi-bars"
+                  aria-hidden="true"
+                />
               </button>
               <div class="flex min-w-0 flex-1 flex-col gap-1 @md:flex-row @md:items-center @md:gap-2">
                 <div class="flex min-w-0 flex-1 flex-col gap-0.5">

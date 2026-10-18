@@ -1,5 +1,11 @@
+import type { Locator } from "@playwright/test";
+
 import { expect, test } from "../harness/fixtures";
 import { collectPageErrors } from "../harness/page";
+
+function member(dialog: Locator, name: string): Locator {
+  return dialog.getByRole("list", { name: "People with access" }).getByRole("listitem").filter({ hasText: name });
+}
 
 // Needs the members route from choirchaos-pb's pb_hooks.
 test.describe("sharing", () => {
@@ -16,7 +22,7 @@ test.describe("sharing", () => {
     await dialog.getByLabel("Email address").fill("singer@choirchaos.test");
     await dialog.getByRole("button", { name: "Add" }).click();
 
-    await expect(dialog.getByTestId(`member-${singer.id}`)).toContainText("Singer");
+    await expect(member(dialog, "Singer")).toContainText("Singer");
     expect(await admin.collection("shows").getOne(show.id)).toMatchObject({ viewers: [singer.id], editors: [] });
 
     await dialog.getByRole("combobox", { name: "Role of Singer" }).click();
@@ -25,7 +31,7 @@ test.describe("sharing", () => {
     expect((await admin.collection("shows").getOne(show.id)).viewers).toEqual([]);
 
     await dialog.getByRole("button", { name: "Remove Singer" }).click();
-    await expect(dialog.getByTestId(`member-${singer.id}`)).toHaveCount(0);
+    await expect(member(dialog, "Singer")).toHaveCount(0);
     expect(await admin.collection("shows").getOne(show.id)).toMatchObject({ viewers: [], editors: [] });
     expect(errors).toEqual([]);
   });
@@ -68,7 +74,7 @@ test.describe("sharing", () => {
     await page.getByRole("button", { name: "Share" }).click();
     const dialog = page.getByRole("dialog");
 
-    await expect(dialog.getByTestId(`member-${owner.id}`)).toContainText("Owner");
+    await expect(member(dialog, "Owner")).toContainText("Owner");
     await expect(dialog.getByLabel("Email address")).toHaveCount(0);
     await expect(dialog.getByRole("combobox")).toHaveCount(0);
   });

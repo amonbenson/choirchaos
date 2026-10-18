@@ -239,7 +239,10 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
           <span class="text-sm font-medium text-muted-color">Access</span>
           <div class="flex items-center gap-3 rounded-md border border-(--p-content-border-color) p-3">
             <span class="flex size-9 flex-none items-center justify-center rounded-full bg-surface-100 dark:bg-surface-800">
-              <i :class="`pi ${accessSummary!.icon}`" />
+              <i
+                :class="`pi ${accessSummary!.icon}`"
+                aria-hidden="true"
+              />
             </span>
             <div class="min-w-0 flex-1">
               <div class="font-medium">
@@ -321,7 +324,10 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
           class="flex h-full items-center justify-center p-4"
         >
           <div class="flex w-full max-w-2xl flex-col items-center gap-4 rounded-lg border-2 border-dashed border-surface-300 px-4 py-12 text-center sm:px-8 dark:border-surface-700">
-            <i class="pi pi-cloud-upload text-6xl text-primary" />
+            <i
+              class="pi pi-cloud-upload text-6xl text-primary"
+              aria-hidden="true"
+            />
             <div class="text-xl font-semibold">
               Add the songs of this show
             </div>
@@ -332,7 +338,10 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
               <span>03 Swing Low.pdf</span>
               <span>03 Swing Low - Soprano.mp3</span>
               <span>03 Swing Low - Alto.mp3</span>
-              <span class="mt-1 font-sans text-color"><i class="pi pi-arrow-right mr-2 text-xs" />Song 3 "Swing Low" with its score and 2 recordings</span>
+              <span class="mt-1 font-sans text-color"><i
+                class="pi pi-arrow-right mr-2 text-xs"
+                aria-hidden="true"
+              />Song 3 "Swing Low" with its score and 2 recordings</span>
             </div>
             <div class="flex flex-wrap justify-center gap-2">
               <Button
@@ -409,7 +418,6 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
                 v-for="song in songs"
                 :key="song.id"
                 class="group cursor-pointer border-t border-(--p-content-border-color) transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/60"
-                :data-testid="`song-row-${song.number}`"
                 @click="router.push(songRoute(song, 'song'))"
               >
                 <td class="py-3 pl-2 font-mono text-muted-color">
@@ -429,7 +437,10 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
                     v-if="song.pdfFile"
                     class="flex items-center gap-2"
                     :title="displayFilename(song.pdfFile)"
-                  ><i class="pi pi-file-pdf text-muted-color" /><span class="truncate">{{ displayFilename(song.pdfFile) }}</span></span>
+                  ><i
+                    class="pi pi-file-pdf text-muted-color"
+                    aria-hidden="true"
+                  /><span class="truncate">{{ displayFilename(song.pdfFile) }}</span></span>
                   <span
                     v-else
                     class="text-muted-color italic"
@@ -439,7 +450,10 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
                   <span
                     v-if="playbackSummary(song)"
                     class="flex items-center gap-2"
-                  ><i :class="`pi ${playbackSummary(song)!.icon} text-muted-color`" />{{ playbackSummary(song)!.label }}</span>
+                  ><i
+                    :class="`pi ${playbackSummary(song)!.icon} text-muted-color`"
+                    aria-hidden="true"
+                  />{{ playbackSummary(song)!.label }}</span>
                   <span
                     v-else
                     class="text-muted-color italic"
@@ -468,7 +482,10 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
             </tbody>
           </table>
           <div class="mt-4 hidden rounded-md border border-dashed border-surface-300 p-3 text-center text-sm text-muted-color md:block dark:border-surface-700">
-            <i class="pi pi-upload mr-2" />Drop files anywhere to add songs or update existing ones
+            <i
+              class="pi pi-upload mr-2"
+              aria-hidden="true"
+            />Drop files anywhere to add songs or update existing ones
           </div>
         </template>
       </Panel>
@@ -480,7 +497,10 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
       class="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-primary/10 backdrop-blur-sm"
     >
       <div class="flex flex-col items-center gap-2 text-primary">
-        <i class="pi pi-cloud-upload text-6xl" />
+        <i
+          class="pi pi-cloud-upload text-6xl"
+          aria-hidden="true"
+        />
         <span class="text-xl font-semibold">Drop to import into "{{ show.title }}"</span>
       </div>
     </div>

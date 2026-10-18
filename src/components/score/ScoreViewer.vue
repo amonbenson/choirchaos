@@ -652,6 +652,8 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
     class="@container"
     :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
     :pannable="!editMode || activeTool === 'move'"
+    role="region"
+    aria-label="Score"
     @loading-change="emit('pdf-loading', $event)"
   >
     <template #default="{ visiblePages }">
@@ -677,7 +679,8 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
             width: `${page.width * 100}%`,
             height: `${page.height * 100}%`,
           }"
-          :data-testid="editMode ? 'score-page' : undefined"
+          role="group"
+          :aria-label="`Page ${page.pageNumber + 1}`"
           :data-page="page.pageNumber"
         >
           <div
@@ -717,7 +720,7 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
                     :ref="(el) => el && passRef(el)"
                     class="absolute flex size-5 -translate-1/2 items-center justify-center"
                     :class="[handle.position, handle.cursor]"
-                    :aria-label="`Resize ${handle.direction}`"
+                    aria-hidden="true"
                     @pointerdown.stop
                     @click.stop
                     @touchstart.stop
@@ -752,7 +755,8 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
             class="pointer-events-none absolute border-2 border-dashed"
             :class="previewClass(box)"
             :style="boxStyle(box.layout)"
-            data-detection-preview
+            role="img"
+            :aria-label="box.value === undefined ? 'Detected box without a number' : `Detected measure ${box.value}`"
           >
             <span :class="chipClass(box.layout, box.value !== undefined)">{{ box.value ?? "?" }}</span>
           </div>

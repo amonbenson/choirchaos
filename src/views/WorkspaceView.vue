@@ -341,6 +341,7 @@ const pdfLoading = ref(false);
         :key="tab.value"
         :label="tab.label"
         :severity="selectedTab === tab.value ? 'primary' : 'secondary'"
+        :aria-pressed="selectedTab === tab.value"
         fluid
         @click="settings.update({ workspace: { selectedTab: tab.value } })"
       />
@@ -379,7 +380,8 @@ const pdfLoading = ref(false);
           v-if="hasStartPanel"
           class="absolute top-2 left-full z-10 hidden transition-all lg:block"
           :class="isStartPanelOpen ? 'rounded-l-none' : ''"
-          :aria-label="editMode ? 'Show Editor Panel' : 'Show Markers Panel'"
+          :aria-label="editMode ? 'Editor panel' : 'Markers panel'"
+          :aria-expanded="isStartPanelOpen"
           :icon="`pi ${isStartPanelOpen ? 'pi-chevron-left' : 'pi-chevron-right'}`"
           severity="secondary"
           rounded
@@ -436,13 +438,17 @@ const pdfLoading = ref(false);
           v-if="show && !showLoading && songs.length === 0"
           class="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center"
         >
-          <i class="pi pi-book text-5xl text-muted-color" />
+          <i
+            class="pi pi-book text-5xl text-muted-color"
+            aria-hidden="true"
+          />
           <span class="text-xl font-semibold">No songs yet</span>
           <span class="text-muted-color">Songs appear here as soon as they are added to "{{ show.title }}".</span>
         </div>
         <div
           v-if="player.loading || pdfLoading"
           class="absolute top-0 left-0 flex size-full flex-col items-center justify-center bg-black/50 text-white select-none"
+          role="status"
         >
           <BabySvenja class="w-full max-w-lg" />
           <p class="text-xl">
@@ -471,7 +477,8 @@ const pdfLoading = ref(false);
         <Button
           class="absolute top-2 right-full z-10 hidden transition-all lg:block"
           :class="settings.current.workspace.panelVisible.mixer ? 'rounded-r-none' : ''"
-          aria-label="Show Mixer Panel"
+          aria-label="Mixer panel"
+          :aria-expanded="settings.current.workspace.panelVisible.mixer"
           :icon="`pi ${settings.current.workspace.panelVisible.mixer ? 'pi-chevron-right' : 'pi-chevron-left'}`"
           severity="secondary"
           rounded

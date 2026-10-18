@@ -65,6 +65,10 @@ const tracksByClassification = computed<Record<string, (Track | MergedTrack)[]>>
   return groups;
 });
 
+function trackName(track: Track | MergedTrack): string {
+  return track.title.replace(/^-*/, "");
+}
+
 function setTrackMute(track: Track | MergedTrack): void {
   const next = !track.mixer.mute;
   settingsStore.updateTrackMixer(track.title, { mute: next });
@@ -196,7 +200,7 @@ watch(() => [props.song, ...(props.song?.tracks ?? [])], () => {
             class="flex flex-col items-stretch justify-stretch gap-2"
           >
             <h4 v-if="trackGroup.length > 1 || classification === 'Vocal'">
-              {{ track.title.replace(/^-*/, '') }}
+              {{ trackName(track) }}
             </h4>
             <div
               class="flex items-center justify-stretch gap-4"
@@ -205,7 +209,8 @@ watch(() => [props.song, ...(props.song?.tracks ?? [])], () => {
               <ButtonGroup>
                 <Button
                   label="M"
-                  aria-label="Mute"
+                  :aria-label="`Mute ${trackName(track)}`"
+                  :aria-pressed="track.mixer.mute"
                   class="w-8"
                   :severity="track.mixer.mute ? 'primary' : 'secondary'"
                   size="small"
@@ -213,7 +218,8 @@ watch(() => [props.song, ...(props.song?.tracks ?? [])], () => {
                 />
                 <Button
                   label="S"
-                  aria-label="Solo"
+                  :aria-label="`Solo ${trackName(track)}`"
+                  :aria-pressed="track.mixer.solo"
                   class="w-8"
                   :severity="track.mixer.solo ? 'warn' : 'secondary'"
                   size="small"
@@ -221,7 +227,8 @@ watch(() => [props.song, ...(props.song?.tracks ?? [])], () => {
                 />
                 <Button
                   icon="pi pi-eye"
-                  aria-label="Highlight"
+                  :aria-label="`Highlight ${trackName(track)}`"
+                  :aria-pressed="track.mixer.highlight"
                   class="w-8"
                   :severity="track.mixer.highlight ? 'info' : 'secondary'"
                   size="small"
@@ -235,6 +242,7 @@ watch(() => [props.song, ...(props.song?.tracks ?? [])], () => {
                   :min="0"
                   :max="1"
                   :step="0.001"
+                  :aria-label="`Volume of ${trackName(track)}`"
                   :pt:range:class="!isAudioMode && trackFlashTriggered[track.mixer.index] ? 'bg-primary transition-none' : 'bg-(--p-slider-track-background) transition-colors duration-500'"
                   pt:handle="!z-[2]"
                   @update:model-value="setTrackGain(track, $event as number)"
@@ -242,6 +250,7 @@ watch(() => [props.song, ...(props.song?.tracks ?? [])], () => {
                 <div
                   v-if="isAudioMode"
                   class="pointer-events-none absolute inset-0 z-1 flex items-center"
+                  aria-hidden="true"
                 >
                   <div
                     class="h-0.75 rounded-full bg-primary/70 transition-none"

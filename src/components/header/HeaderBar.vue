@@ -78,6 +78,19 @@ const playbackSpeedPercentage = computed({
   get: () => player.playbackSpeed * 100,
   set: value => player.playbackSpeed = value / 100,
 });
+
+const tempoLabel = computed(() => {
+  if (player.mode === "midi") {
+    return player.ready ? `Tempo ${Math.round(player.playbackSpeed * writtenTempo.value)}` : "Tempo";
+  }
+
+  const percentage = Math.round(playbackSpeedPercentage.value);
+  return percentage === 100 ? "Tempo" : `Tempo ${percentage} %`;
+});
+
+const timeSignatureLabel = computed(() => player.mode === "midi"
+  ? `Time signature ${player.currentTimeSignature[0]}/${Math.pow(2, player.currentTimeSignature[1])}`
+  : "Time signature");
 </script>
 
 <template>
@@ -152,6 +165,7 @@ const playbackSpeedPercentage = computed({
             >
               <PopoverButton
                 button-class="w-12 whitespace-nowrap"
+                :aria-label="player.ready ? `Current measure ${player.currentMeasure[0]}` : 'Current measure'"
                 :label="player.ready ? player.currentMeasure[0] : '-'"
                 :disabled="!player.ready"
               >
@@ -159,6 +173,7 @@ const playbackSpeedPercentage = computed({
                   <InputText
                     :ref="setFocusTarget"
                     :model-value="player.currentMeasure[0]"
+                    aria-label="Current measure"
                     class="w-16"
                     fluid
                     @change="player.setMeasure(($event.target as HTMLInputElement).value)"
@@ -168,6 +183,7 @@ const playbackSpeedPercentage = computed({
               .
               <PopoverButton
                 button-class="w-8 whitespace-nowrap"
+                :aria-label="player.ready && player.mode === 'midi' ? `Current beat ${player.currentMeasure[1] + 1}` : 'Current beat'"
                 :label="player.ready && player.mode === 'midi' ? String(player.currentMeasure[1] + 1) : '-'"
                 :disabled="!player.ready || player.mode !== 'midi'"
               >
@@ -175,6 +191,7 @@ const playbackSpeedPercentage = computed({
                   <InputNumber
                     :ref="setFocusTarget"
                     :model-value="player.currentMeasure[1] + 1"
+                    aria-label="Current beat"
                     class="w-16"
                     fluid
                     @update:model-value="player.setBeat($event - 1)"
@@ -187,6 +204,7 @@ const playbackSpeedPercentage = computed({
             <PopoverButton
               v-if="visibleButtons.transposition"
               button-class="w-16 whitespace-nowrap"
+              :aria-label="`Transposition ${player.playbackTransposition > 0 ? '+' : ''}${player.playbackTransposition} semitones`"
               :label="`${player.playbackTransposition > 0 ? '+' : ''}${player.playbackTransposition}&nbsp;HT`"
               :active="player.playbackTransposition !== 0"
             >
@@ -199,11 +217,13 @@ const playbackSpeedPercentage = computed({
                     rounded
                     text
                     :disabled="player.playbackTransposition <= -12"
+                    aria-label="Transpose down"
                     @click="player.playbackTransposition--"
                   />
                   <InputNumber
                     :ref="setFocusTarget"
                     v-model="player.playbackTransposition"
+                    aria-label="Transposition in semitones"
                     class="w-20"
                     :min="-12"
                     :max="12"
@@ -219,6 +239,7 @@ const playbackSpeedPercentage = computed({
                     rounded
                     text
                     :disabled="player.playbackTransposition >= 12"
+                    aria-label="Transpose up"
                     @click="player.playbackTransposition++"
                   />
                 </div>
@@ -229,6 +250,7 @@ const playbackSpeedPercentage = computed({
             <PopoverButton
               v-if="visibleButtons.tempo"
               button-class="w-22 whitespace-nowrap"
+              :aria-label="tempoLabel"
               :active="Math.round(playbackSpeedPercentage) !== 100"
             >
               <template #button>
@@ -252,11 +274,13 @@ const playbackSpeedPercentage = computed({
                     rounded
                     text
                     :disabled="playbackSpeedPercentage <= 10"
+                    aria-label="Slower"
                     @click="playbackSpeedPercentage--"
                   />
                   <InputNumber
                     :ref="setFocusTarget"
                     v-model="playbackSpeedPercentage"
+                    aria-label="Playback speed in percent"
                     class="w-18"
                     :min="10"
                     :max="300"
@@ -271,6 +295,7 @@ const playbackSpeedPercentage = computed({
                     rounded
                     text
                     :disabled="playbackSpeedPercentage >= 300"
+                    aria-label="Faster"
                     @click="playbackSpeedPercentage++"
                   />
                 </div>
@@ -282,6 +307,7 @@ const playbackSpeedPercentage = computed({
               v-if="visibleButtons.timeSignature"
               class="cursor-default"
               severity="secondary"
+              :aria-label="timeSignatureLabel"
             >
               <template v-if="player.mode === 'midi'">
                 {{ player.currentTimeSignature[0] }}&nbsp;/&nbsp;{{ Math.pow(2, player.currentTimeSignature[1]) }}
@@ -348,6 +374,7 @@ const playbackSpeedPercentage = computed({
         :model-value="player.position"
         :min="0"
         :max="player.duration"
+        aria-label="Position"
         class="group w-full bg-transparent"
         pt:handle:class="scale-50 group-hover:scale-100 active:scale-100 transition-transform z-1"
         pt:range:class="h-1"

@@ -59,7 +59,10 @@ async function deleteShow(): Promise<void> {
       @submit.prevent="deleteShow"
     >
       <div class="flex gap-3">
-        <i class="pi pi-exclamation-triangle mt-0.5 text-2xl text-red-500" />
+        <i
+          class="pi pi-exclamation-triangle mt-0.5 text-2xl text-red-500"
+          aria-hidden="true"
+        />
         <span>
           "{{ show.title }}"<template v-if="songCount > 0"> and its <b>{{ songCount }} {{ songCount === 1 ? "song" : "songs" }}</b></template>
           will be deleted permanently, including all scores and recordings. Everyone you shared it with loses access.

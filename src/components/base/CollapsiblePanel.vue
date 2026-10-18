@@ -37,7 +37,10 @@ const toggleButtonProps = computed(() => ({
 
     <!-- Collapsible panels sit at the bottom of the screen, so they expand upwards. -->
     <template #toggleicon>
-      <i :class="isCollapsed ? 'pi pi-chevron-up' : 'pi pi-chevron-down'" />
+      <i
+        :class="isCollapsed ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"
+        aria-hidden="true"
+      />
     </template>
 
     <slot />

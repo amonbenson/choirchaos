@@ -177,6 +177,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                 option-label="label"
                 option-value="value"
                 :allow-empty="false"
+                aria-label="Theme"
               />
             </div>
             <div class="flex items-center justify-between gap-4">
@@ -190,6 +191,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
               </div>
               <ToggleSwitch
                 :model-value="settings.current.appearance.mergeAccompaniment"
+                aria-label="Merge accompaniment tracks"
                 @update:model-value="settings.update({ appearance: { mergeAccompaniment: $event } })"
               />
             </div>
@@ -219,6 +221,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                 option-label="label"
                 option-value="value"
                 multiple
+                aria-label="Transport bar buttons"
                 fluid
                 pt:root:class="grid grid-cols-2 @sm:grid-cols-3 @2xl:grid-cols-6"
               />
@@ -240,6 +243,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
               </div>
               <ToggleSwitch
                 :model-value="settings.current.playback.vampsEnabled"
+                aria-label="Play vamps"
                 @update:model-value="settings.update({ playback: { vampsEnabled: $event } })"
               />
             </div>
@@ -254,6 +258,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
               </div>
               <ToggleSwitch
                 :model-value="settings.current.playback.segueEnabled"
+                aria-label="Auto-advance on segue"
                 @update:model-value="settings.update({ playback: { segueEnabled: $event } })"
               />
             </div>
@@ -303,7 +308,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                   size="small"
                   text
                   rounded
-                  aria-label="Cancel"
+                  :aria-label="`Cancel binding ${ACTION_LABELS[action]}`"
                   @click="recording = null"
                 />
                 <!-- Clear binding -->
@@ -314,7 +319,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                   size="small"
                   text
                   rounded
-                  aria-label="Clear binding"
+                  :aria-label="`Clear binding of ${ACTION_LABELS[action]}`"
                   @click="clearBinding(action)"
                 />
                 <!-- Spacer to keep row height consistent when there's no button -->

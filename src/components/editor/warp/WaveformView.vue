@@ -319,17 +319,22 @@ defineExpose({ zoomIn, zoomOut, fit, getPoints: (): Point[] => peaks?.points.get
     <div
       ref="zoomview"
       class="min-h-0 flex-1"
-      data-testid="waveform"
+      role="img"
+      aria-label="Waveform"
     />
     <div
       ref="scrollbar"
       class="h-3 flex-none"
+      aria-hidden="true"
     />
     <div
       v-if="loading"
       class="absolute inset-0 flex items-center justify-center"
     >
-      <ProgressSpinner class="size-10" />
+      <ProgressSpinner
+        class="size-10"
+        aria-label="Loading waveform"
+      />
     </div>
   </div>
 </template>

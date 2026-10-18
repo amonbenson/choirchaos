@@ -166,7 +166,10 @@ async function copyLink(): Promise<void> {
       </form>
 
       <div class="flex flex-col gap-1">
-        <span class="text-sm font-medium text-muted-color">People with access</span>
+        <span
+          id="share-members-label"
+          class="text-sm font-medium text-muted-color"
+        >People with access</span>
         <Message
           v-if="membersError"
           severity="warn"
@@ -174,64 +177,72 @@ async function copyLink(): Promise<void> {
         >
           The list of people could not be loaded.
         </Message>
-        <div
-          v-for="member in members"
-          :key="member.id"
-          class="flex items-center gap-3 py-1.5"
-          :data-testid="`member-${member.id}`"
-        >
-          <Avatar
-            :image="avatarUrl(member)"
-            :label="avatarUrl(member) ? undefined : initials(member)"
-            shape="circle"
-          />
-          <div class="min-w-0 flex-1">
-            <div class="truncate font-medium">
-              {{ member.name || member.email || "Unnamed" }}<span
-                v-if="member.id === auth.user?.id"
-                class="font-normal text-muted-color"
-              > (you)</span>
-            </div>
-            <div
-              v-if="member.email && member.name"
-              class="truncate text-sm text-muted-color"
-            >
-              {{ member.email }}
-            </div>
-          </div>
-          <template v-if="isOwner && member.role !== 'owner'">
-            <Select
-              :model-value="member.role"
-              :options="ROLE_OPTIONS"
-              option-label="label"
-              option-value="value"
-              :aria-label="`Role of ${member.name}`"
-              size="small"
-              class="w-32"
-              @update:model-value="changeRole(member, $event)"
+        <ul aria-labelledby="share-members-label">
+          <li
+            v-for="member in members"
+            :key="member.id"
+            class="flex items-center gap-3 py-1.5"
+          >
+            <Avatar
+              :image="avatarUrl(member)"
+              :label="avatarUrl(member) ? undefined : initials(member)"
+              shape="circle"
+              aria-hidden="true"
             />
-            <Button
-              icon="pi pi-times"
-              severity="secondary"
-              size="small"
-              :aria-label="`Remove ${member.name}`"
-              text
-              rounded
-              @click="remove(member)"
-            />
-          </template>
-          <span
-            v-else
-            class="pr-3 text-sm text-muted-color"
-          >{{ { owner: "Owner", editor: "Can edit", viewer: "Can view" }[member.role] }}</span>
-        </div>
+            <div class="min-w-0 flex-1">
+              <div class="truncate font-medium">
+                {{ member.name || member.email || "Unnamed" }}<span
+                  v-if="member.id === auth.user?.id"
+                  class="font-normal text-muted-color"
+                > (you)</span>
+              </div>
+              <div
+                v-if="member.email && member.name"
+                class="truncate text-sm text-muted-color"
+              >
+                {{ member.email }}
+              </div>
+            </div>
+            <template v-if="isOwner && member.role !== 'owner'">
+              <Select
+                :model-value="member.role"
+                :options="ROLE_OPTIONS"
+                option-label="label"
+                option-value="value"
+                :aria-label="`Role of ${member.name}`"
+                size="small"
+                class="w-32"
+                @update:model-value="changeRole(member, $event)"
+              />
+              <Button
+                icon="pi pi-times"
+                severity="secondary"
+                size="small"
+                :aria-label="`Remove ${member.name}`"
+                text
+                rounded
+                @click="remove(member)"
+              />
+            </template>
+            <span
+              v-else
+              class="pr-3 text-sm text-muted-color"
+            >{{ { owner: "Owner", editor: "Can edit", viewer: "Can view" }[member.role] }}</span>
+          </li>
+        </ul>
       </div>
 
       <div class="flex flex-col gap-2">
-        <span class="text-sm font-medium text-muted-color">General access</span>
+        <span
+          id="share-visibility-label"
+          class="text-sm font-medium text-muted-color"
+        >General access</span>
         <div class="flex items-center gap-3">
           <span class="flex size-10 flex-none items-center justify-center rounded-full bg-primary/15 text-primary">
-            <i :class="`pi ${visibility.icon}`" />
+            <i
+              :class="`pi ${visibility.icon}`"
+              aria-hidden="true"
+            />
           </span>
           <div class="flex min-w-0 flex-1 flex-col items-start gap-1">
             <Select
@@ -240,7 +251,7 @@ async function copyLink(): Promise<void> {
               :options="VISIBILITY_OPTIONS"
               option-label="label"
               option-value="value"
-              aria-label="General access"
+              aria-labelledby="share-visibility-label"
               size="small"
               @update:model-value="setVisibility($event)"
             />

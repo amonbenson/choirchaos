@@ -112,6 +112,19 @@ Rehearsers (viewers) only play songs back. Editors (editors and owners) also set
 - Dark mode is class-based (`.dark`). Check every visual change in both modes.
 - A MIDI track's title links it to its MIDI data by name, so MIDI tracks cannot be renamed.
 
+### Accessibility
+
+Every change keeps the app usable with a screen reader and keyboard. Prefer native elements and PrimeVue components over ARIA, since no ARIA is better than wrong ARIA.
+
+- Every control has an accessible name: its visible text, a `<label for>`/`input-id`, `aria-labelledby` pointing at a visible heading, or `aria-label` when nothing visible fits. Names say what the control acts on when the same control repeats ("Remove Solo", not "Remove") and contain the visible text.
+- Decorative icons and graphics get `aria-hidden="true"` (`<i class="pi ...">`, SVGs in `icons/`, canvases). PrimeVue's own icon props are hidden globally in `main.ts`. An icon that is the only carrier of a meaning gets `role="img"` and an `aria-label` instead.
+- Never put `aria-label` on a plain `div` or `span`. Give it a role first, or label something else.
+- Pass PrimeVue labels as `aria-label`/`aria-labelledby` on the component. `Select`, `InputNumber`, `Slider`, `ToggleSwitch` and `SelectButton` forward them to the focusable element.
+- Expose state: `aria-pressed` on toggle buttons, `aria-expanded` on disclosures, `aria-current="page"` on the current breadcrumb, `aria-live` or `role="status"` on text that changes without focus moving.
+- Group repeated items as lists or tables, and name regions and lists (`aria-labelledby` on a visible title), so tests and screen readers can scope to them.
+- Use Tailwind's `sr-only` for text only screen readers need, e.g. labels hidden on narrow layouts.
+- Tests find elements the way users do (`getByRole` with a name). An element a test cannot reach that way lacks a name, so fix the app, not the test.
+
 ---
 
 ## Measure Editing

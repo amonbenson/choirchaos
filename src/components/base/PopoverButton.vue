@@ -5,6 +5,7 @@ import { ref } from "vue";
 
 defineProps<{
   label?: string;
+  ariaLabel?: string;
   active?: boolean;
   disabled?: boolean;
   buttonClass?: string;
@@ -36,6 +37,8 @@ function onShow(): void {
     :class="buttonClass"
     :severity="active ? 'primary' : 'secondary'"
     :label="label"
+    :aria-label="ariaLabel"
+    aria-haspopup="dialog"
     :disabled="disabled"
     @click="popover.toggle($event)"
   >
@@ -43,6 +46,7 @@ function onShow(): void {
   </Button>
   <Popover
     ref="popover"
+    :aria-label="ariaLabel"
     @show="onShow"
   >
     <div @keydown.enter="popover.hide()">

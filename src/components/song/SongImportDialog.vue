@@ -181,7 +181,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
       v-if="planning"
       class="flex justify-center p-8"
     >
-      <ProgressSpinner />
+      <ProgressSpinner aria-label="Reading files" />
     </div>
     <div
       v-else
@@ -249,7 +249,10 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
                     :key="i"
                     class="flex items-center gap-1 rounded bg-surface-100 px-2 py-0.5 text-xs dark:bg-surface-800"
                   >
-                    <i :class="`pi ${chip.icon} text-[0.7rem] text-muted-color`" />{{ chip.label }}
+                    <i
+                      :class="`pi ${chip.icon} text-[0.7rem] text-muted-color`"
+                      aria-hidden="true"
+                    />{{ chip.label }}
                   </span>
                 </div>
                 <div
@@ -265,6 +268,8 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
                   <i
                     v-if="row.status === 'running'"
                     class="pi pi-spin pi-spinner text-primary"
+                    role="img"
+                    aria-label="Importing"
                   />
                   <Tag
                     v-else-if="row.status === 'done'"

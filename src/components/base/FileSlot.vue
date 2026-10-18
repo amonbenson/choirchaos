@@ -9,6 +9,7 @@ const props = defineProps<{
   icon: string;
   accept: string;
   emptyLabel: string;
+  fileKind: string;
   description?: string;
 }>();
 
@@ -32,6 +33,7 @@ onChange((files) => {
     <i
       class="pi text-xl"
       :class="[icon, file ? 'text-color' : 'text-muted-color']"
+      aria-hidden="true"
     />
     <div class="min-w-0 flex-1">
       <div
@@ -49,6 +51,7 @@ onChange((files) => {
     </div>
     <Button
       :label="file ? 'Replace' : 'Choose'"
+      :aria-label="`${file ? 'Replace' : 'Choose'} ${fileKind}`"
       severity="secondary"
       size="small"
       text

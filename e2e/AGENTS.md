@@ -40,11 +40,12 @@ Import `test` and `expect` from `harness/fixtures.ts`, never from `@playwright/t
 | `page`, `baseURL` | Standard Playwright. `page.goto("/")` hits the worker's frontend. |
 
 - When a feature adds a cross-record or cross-field rule, add it to `DEFAULT_INVARIANTS` in `harness/state.ts`, so every test checks it.
-- Prefer asserting backend state through `admin` over asserting UI text. Many UI elements have no accessible text.
+- Prefer asserting backend state through `admin` over asserting UI text.
+- Locate elements by role and accessible name (`getByRole`, `getByLabel`), never by test ids or CSS. When an element has no usable name, give it one in the app (see Accessibility in the root guide) instead of adding a test hook. Song rows are `row`s named by their cells, members are `listitem`s of the "People with access" list.
 - The app opens file dialogs from buttons without a permanent `<input type=file>`, so upload through `chooseFiles()` in `harness/page.ts`, which uses Playwright's file chooser event.
-- In the song editor, `score-page` is a score page's overlay (the default Move tool pans on a drag, the Draw tool draws, Select or a held Shift marquee-selects) and `measure-panel` is the Measures tab. Reach tab content with `getByRole("tabpanel", { name: "Details" })`. Boxes are buttons named "Measure N" or "Box without a number", and detection preview boxes carry `data-detection-preview`.
+- In the song editor, each score page is a `group` named "Page N" (the default Move tool pans on a drag, the Draw tool draws, Select or a held Shift marquee-selects). Reach tab content with `getByRole("tabpanel", { name: "Measures" })`. Boxes are buttons named "Measure N" or "Box without a number", and detection preview boxes are images named "Detected measure N" or "Detected box without a number".
 - To test review flows without running detection, arrange `layout.review` on measures and `unnumberedBoxes` on the song through the bundle fields.
-- `WaveformView` exposes `data-zoom-scale` (samples per pixel) and `data-sample-rate`, so tests can convert marker times to pixels on the canvas.
+- The waveform is an image named "Waveform". `WaveformView` exposes `data-zoom-scale` (samples per pixel) and `data-sample-rate`, so tests can convert marker times to pixels on the canvas.
 - Vue reports render errors through `console.error`, not as page errors. Use `collectPageErrors()`, which listens to both, to assert that a flow is error-free.
 - `harness.spec.ts` checks the harness itself. Keep it passing when you change the harness.
 

@@ -25,10 +25,16 @@ const summary = computed(() => setup.value.steps.map(step => `${step.label}: ${s
     :class="setup.next ? 'text-orange-600 dark:text-orange-400' : 'text-muted-color'"
   >
     <template v-if="setup.next">
-      <i class="pi pi-exclamation-circle mr-1 text-xs" />{{ setup.next.action }}
+      <i
+        class="pi pi-exclamation-circle mr-1 text-xs"
+        aria-hidden="true"
+      />{{ setup.next.action }}
     </template>
     <template v-else>
-      <i class="pi pi-check mr-1 text-xs text-primary" />Ready
+      <i
+        class="pi pi-check mr-1 text-xs text-primary"
+        aria-hidden="true"
+      />Ready
     </template>
   </div>
 
@@ -63,6 +69,9 @@ const summary = computed(() => setup.value.steps.map(step => `${step.label}: ${s
     <span
       v-else
       class="text-sm whitespace-nowrap text-primary"
-    ><i class="pi pi-check mr-1 text-xs" />Ready</span>
+    ><i
+      class="pi pi-check mr-1 text-xs"
+      aria-hidden="true"
+    />Ready</span>
   </div>
 </template>

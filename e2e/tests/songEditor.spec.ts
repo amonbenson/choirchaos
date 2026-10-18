@@ -25,7 +25,7 @@ async function storedMeasures(admin: { collection: (name: string) => { getOne: (
 async function dragOnScore(page: Page, from: [number, number], to: [number, number], options: { shift?: boolean } = {}): Promise<void> {
   await expect(page.getByRole("button", { name: "Play / Pause" })).toBeEnabled({ timeout: 30_000 });
   await expect(page.getByText(/^Loading (audio data|PDF)/)).toHaveCount(0);
-  const box = (await page.getByTestId("score-page").first().boundingBox())!;
+  const box = (await page.getByRole("group", { name: "Page 1", exact: true }).boundingBox())!;
   if (options.shift) {
     await page.keyboard.down("Shift");
   }
@@ -49,7 +49,7 @@ test.describe("measure editing", () => {
     await openEditor(page, show, song);
 
     await page.getByRole("button", { name: "Measure 1", exact: true }).click();
-    const panel = page.getByTestId("measure-panel");
+    const panel = page.getByRole("tabpanel", { name: "Measures" });
     await panel.getByLabel("Number").fill("3");
     await panel.getByLabel("Number").press("Enter");
     await panel.getByRole("button", { name: "Swap with measure 3" }).click();
@@ -68,7 +68,7 @@ test.describe("measure editing", () => {
 
     await page.getByRole("button", { name: "Measure 2", exact: true }).click();
     await page.getByRole("button", { name: "Measure 3", exact: true }).click({ modifiers: ["Shift"] });
-    await expect(page.getByTestId("measure-panel")).toContainText("2 measures selected");
+    await expect(page.getByRole("tabpanel", { name: "Measures" })).toContainText("2 measures selected");
     await page.getByRole("button", { name: "Remove boxes" }).click();
 
     await expect.poll(async () => (await storedMeasures(admin, song.id)).filter(m => !m.layout).map(m => m.value)).toEqual(["2", "3"]);
@@ -83,7 +83,7 @@ test.describe("measure editing", () => {
 
     await page.getByRole("button", { name: "Measure 1", exact: true }).click();
     await page.getByRole("button", { name: "Measure 2", exact: true }).click({ modifiers: ["ControlOrMeta"] });
-    const beats = page.getByTestId("measure-panel").getByLabel("Beats");
+    const beats = page.getByRole("tabpanel", { name: "Measures" }).getByLabel("Beats");
     await beats.fill("3");
     await beats.press("Enter");
 
@@ -117,7 +117,7 @@ test.describe("measure editing", () => {
     await page.getByRole("button", { name: "Place measures 1" }).first().click();
     await dragOnScore(page, [0.1, 0.2], [0.9, 0.3]);
 
-    const panel = page.getByTestId("measure-panel");
+    const panel = page.getByRole("tabpanel", { name: "Measures" });
     await panel.getByLabel("Measures in this box").fill("2");
     await expect(panel.getByLabel("First number")).toHaveValue("1");
     await panel.getByRole("button", { name: "Place", exact: true }).click();
@@ -141,8 +141,8 @@ test.describe("measure editing", () => {
       await dragOnScore(page, [0.01, 0.01], [0.99, 0.99], { shift });
 
       const placed = song.measures.filter((m: SongMeasure) => m.layout).length;
-      await expect(page.getByTestId("measure-panel")).toContainText(`${placed} measures selected`);
-      await expect(page.getByTestId("measure-panel")).toContainText("from the beat map");
+      await expect(page.getByRole("tabpanel", { name: "Measures" })).toContainText(`${placed} measures selected`);
+      await expect(page.getByRole("tabpanel", { name: "Measures" })).toContainText("from the beat map");
       await expect(page.getByRole("button", { name: "Delete measures" })).toHaveCount(0);
     });
   }
@@ -187,7 +187,7 @@ test.describe("markers", () => {
     await page.getByRole("button", { name: "Measure 1", exact: true }).click();
 
     await expect(page.getByRole("tab", { name: "Measures" })).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByTestId("measure-panel")).toContainText("Measure 1");
+    await expect(page.getByRole("tabpanel", { name: "Measures" })).toContainText("Measure 1");
   });
 
   test("rehearsers do not see a markers panel for a song without markers", async ({ page, factory, loginAs }) => {
@@ -199,7 +199,7 @@ test.describe("markers", () => {
 
     await expect(page.getByRole("button", { name: "Play / Pause" })).toBeVisible();
     await expect(page.getByText("No markers available.")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Show Markers Panel" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Markers panel" })).toHaveCount(0);
   });
 });
 
@@ -223,13 +223,13 @@ test.describe("measure detection", () => {
     await loginAs(owner);
     await openEditor(page, show, song);
 
-    const panel = page.getByTestId("measure-panel");
+    const panel = page.getByRole("tabpanel", { name: "Measures" });
     await panel.getByRole("button", { name: "Detect", exact: true }).click();
     await expect(panel.getByText(`Places ${expected.length} measures`)).toBeVisible({ timeout: 60_000 });
-    await expect(page.locator("[data-detection-preview]")).toHaveCount(expected.length);
+    await expect(page.getByRole("img", { name: /^Detected / })).toHaveCount(expected.length);
     expect((await storedMeasures(admin, song.id)).some(m => m.layout)).toBe(false);
     await panel.getByRole("button", { name: "Apply" }).click();
-    await expect(page.locator("[data-detection-preview]")).toHaveCount(0);
+    await expect(page.getByRole("img", { name: /^Detected / })).toHaveCount(0);
 
     await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).measures.every((m: SongMeasure) => m.layout)).toBe(true);
     const stored = await admin.collection("songs").getOne(song.id);
@@ -256,7 +256,7 @@ test.describe("measure review", () => {
     await loginAs(owner);
     await openEditor(page, show, song);
 
-    const panel = page.getByTestId("measure-panel");
+    const panel = page.getByRole("tabpanel", { name: "Measures" });
     await expect(panel).toContainText("3 to review");
     await panel.getByRole("button", { name: "Review" }).click();
     await expect(panel).toContainText("1 of 3 to review");
@@ -313,7 +313,7 @@ test.describe("audio synchronization", () => {
     await loginAs(owner);
     await openEditor(page, show, song);
 
-    const waveform = page.getByTestId("waveform");
+    const waveform = page.getByRole("img", { name: "Waveform" });
     await expect(waveform.locator("canvas").first()).toBeVisible();
     const before = await waveformState(page);
     const box = (await waveform.boundingBox())!;
@@ -343,7 +343,7 @@ test.describe("audio synchronization", () => {
 
     const { scale, sampleRate } = await waveformState(page);
     const marker = song.warpMarkers[1] as { measure: string; time: number };
-    const box = (await page.getByTestId("waveform").boundingBox())!;
+    const box = (await page.getByRole("img", { name: "Waveform" }).boundingBox())!;
     const markerX = box.x + (marker.time * sampleRate) / scale;
     const dragPixels = 30;
 

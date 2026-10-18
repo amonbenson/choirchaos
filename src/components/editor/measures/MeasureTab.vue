@@ -169,7 +169,6 @@ async function addMeasures(): Promise<void> {
 <template>
   <div
     class="flex min-h-0 flex-col gap-4"
-    data-testid="measure-panel"
   >
     <span
       class="flex-none truncate text-sm font-semibold"
@@ -284,7 +283,10 @@ async function addMeasures(): Promise<void> {
         <span
           v-else-if="measures.length > 0"
           class="flex items-center gap-2 text-sm"
-        ><i class="pi pi-check text-primary" /> Every measure is on the score.</span>
+        ><i
+          class="pi pi-check text-primary"
+          aria-hidden="true"
+        /> Every measure is on the score.</span>
         <span
           v-else-if="mode === 'audio'"
           class="text-sm"

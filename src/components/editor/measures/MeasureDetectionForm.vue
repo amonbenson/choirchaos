@@ -59,6 +59,7 @@ async function apply(): Promise<void> {
       :value="progressValue"
       :mode="progressValue === undefined ? 'indeterminate' : 'determinate'"
       :show-value="false"
+      :aria-label="progressLabel"
       class="h-1"
     />
     <span class="text-xs text-muted-color">The first run downloads the detector, which takes a moment. Large scores can take a minute.</span>
