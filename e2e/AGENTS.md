@@ -39,12 +39,14 @@ Import `test` and `expect` from `harness/fixtures.ts`, never from `@playwright/t
 | `invariants` | Option. Override with `test.use({ invariants: [...] })` only for tests that deliberately create broken data. |
 | `page`, `baseURL` | Standard Playwright. `page.goto("/")` hits the worker's frontend. |
 
-- When a feature adds a cross-record or cross-field rule, add it to `DEFAULT_INVARIANTS` in `harness/state.ts`, so every test checks it.
+- When a feature adds a cross-record or cross-field rule, add it to `DEFAULT_INVARIANTS` in `harness/state.ts`, so every test checks it. It already checks every data invariant of the song layers from the root guide's Backend section, plus that a MIDI song's recording plays as many measures as its beat map has bars. The harness has its own copy of these rules and imports nothing from `src/`, so an app bug cannot hide in both.
 - Prefer asserting backend state through `admin` over asserting UI text.
 - Locate elements by role and accessible name (`getByRole`, `getByLabel`), never by test ids or CSS. When an element has no usable name, give it one in the app (see Accessibility in the root guide) instead of adding a test hook. Song rows are `row`s named by their cells, members are `listitem`s of the "People with access" list.
 - The app opens file dialogs from buttons without a permanent `<input type=file>`, so upload through `chooseFiles()` in `harness/page.ts`, which uses Playwright's file chooser event.
-- In the song editor, each score page is a `group` named "Page N" (the default Move tool pans on a drag, the Draw tool draws, Select or a held Shift marquee-selects). Reach tab content with `getByRole("tabpanel", { name: "Measures" })`. Boxes are buttons named "Measure N" or "Box without a number", and detection preview boxes are images named "Detected measure N" or "Detected box without a number".
-- To test review flows without running detection, arrange `layout.review` on measures and `unnumberedBoxes` on the song through the bundle fields.
+- In the song editor, each score page is a `group` named "Page N" (the default Move tool pans on a drag, the Draw tool draws, Select or a held Shift marquee-selects). Reach tab content with `getByRole("tabpanel", { name: "Measures" })`. Boxes are buttons named "Measure <label>" or "Box without a number", the playing one has `aria-current="location"`, and detection preview boxes are images named "Detected measure <label>" or "Detected box without a number".
+- Assert stored references by measure ID, never by label: `measureId(score, "3")` and `locationAt(score, "3", beat, occurrence)` from `generators/song.ts` build them from a bundle's or record's `score`.
+- To test review flows without running detection, arrange `layout.review` on measures and `score.unnumberedBoxes` through the bundle fields. `withoutBoxes(score)` removes every box.
+- Playback tests read the player the way a user sees it: `recordPlayback()` in `harness/playback.ts` samples the header's "Current measure" and section button ("Vamp 2/4", "Repeat 1/3"), the "Position" slider (recording milliseconds in audio mode, MIDI ticks in MIDI mode) and the highlighted box until a condition holds, and `sequenceOf()` collapses the samples into the measures or passes in playing order. Bars of a second or more keep this reliable, so playback specs use fast specs without a PDF (`withPdf: false`) unless they check boxes.
 - The waveform is an image named "Waveform". `WaveformView` exposes `data-zoom-scale` (samples per pixel) and `data-sample-rate`, so tests can convert marker times to pixels on the canvas.
 - Vue reports render errors through `console.error`, not as page errors. Use `collectPageErrors()`, which listens to both, to assert that a flow is error-free.
 - `harness.spec.ts` checks the harness itself. Keep it passing when you change the harness.
@@ -57,10 +59,11 @@ A `ScoreSpec` (`generators/score/types.ts`, presets in `presets.ts`) is expanded
 |---|---|---|
 | MusicXML, `.mscz`, PDF, measure layout | `scripts/generateScores.ts` | Needs MuseScore. Output is committed in `assets/scores/<id>/` |
 | MIDI | `toMidiFile()` | One named track per part. The player matches song tracks by MIDI track name |
-| MTI beat map JSON | `toMtiJson()` | Ends with beat 1 of a terminal bar, which gives the last bar its length |
+| Recording | `recordTimeline()` | The printed timeline played with `RecordedRepeat`s (written repeats, baked vamps). MIDI, beat map and audio are rendered from it |
+| MTI beat map JSON | `toMtiJson()` | Names repeated passes `N-k` or with `R` suffixes (`repeats[].labels`). Ends with beat 1 of a terminal bar, which gives the last bar its length |
 | MP3 stems | `renderPartStem()` + `encodeMp3()` | Additive synth, deterministic. `renderClickTrack()` for sync checks |
 | WAV | `encodeWav()` | Converted to MP3 by the backend like any other recording |
-| Song record fields and files | `buildSongBundle(spec, { mode })` | `mode`: `"midi"`, `"audio"` or `"none"`. `withPdf: false` skips the committed PDF |
+| Song record fields and files | `buildSongBundle(spec, { mode, repeats })` | `mode`: `"midi"`, `"audio"` or `"none"`. `withPdf: false` skips the committed PDF. Writes `score` (IDs `m1..mn` in score order), `recording` (spans compressed like the app's beat map import, a warp marker per recorded bar in audio mode) and `arrangement` (rehearsal marks as markers, spec vamps as vamp sections) |
 
 - MIDI, JSON and audio are generated on the fly in tests. Only PDFs are committed, because generating them needs MuseScore.
 - `layout.json` stores a hash of the MusicXML and `assets/conductor.mss`. `loadScoreAssets()` throws when a preset changed without regenerating. Run `npm run e2e:scores -- <id>` and commit the result.

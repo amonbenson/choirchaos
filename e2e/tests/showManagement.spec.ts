@@ -1,7 +1,7 @@
 import type { RecordModel } from "pocketbase";
 
 import { CONDUCTOR, MINIMAL } from "../generators/score/presets";
-import { buildSongBundle } from "../generators/song";
+import { buildSongBundle, withoutBoxes } from "../generators/song";
 import { expect, test } from "../harness/fixtures";
 import { chooseFiles, collectPageErrors, toUploadFile, type UploadFile } from "../harness/page";
 
@@ -116,7 +116,9 @@ test.describe("show management", () => {
     expect(midiSong.midiFile).not.toBe("");
     expect(midiSong.jsonFile).not.toBe("");
     expect(midiSong.tracks.map((t: { title: string }) => t.title)).toEqual(CONDUCTOR.parts.map(part => part.name));
-    expect(midiSong.measures.length).toBeGreaterThan(0);
+    const expected = (await buildSongBundle(CONDUCTOR, { mode: "midi", withPdf: false })).fields;
+    expect(withoutBoxes(midiSong.score)).toEqual(expected.score);
+    expect(midiSong.recording).toEqual(expected.recording);
 
     await expect(page.getByRole("row", { name: "Minimal" })).toContainText("2 recordings");
     await expect(page.getByRole("row", { name: "Conductor" })).toContainText("MIDI");
@@ -261,7 +263,7 @@ test.describe("navigation", () => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const bundle = await buildSongBundle(MINIMAL, { mode: "audio" });
-    bundle.fields.measures = bundle.fields.measures.map(({ value, beats }) => ({ value, beats }));
+    bundle.fields.score = withoutBoxes(bundle.fields.score);
     const song = await factory.createSong(owner, show, bundle);
     await loginAs(owner);
     await page.goto(`/show/${show.id}/edit`);
