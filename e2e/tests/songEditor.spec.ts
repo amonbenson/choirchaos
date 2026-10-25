@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 import type { RecordModel } from "pocketbase";
 
 import { MINIMAL } from "../generators/score/presets";
-import { buildSongBundle, type SongMeasure } from "../generators/song";
+import { buildSongBundle, measureId, type SongMeasure, type SongWarpMarker, withoutBoxes } from "../generators/song";
 import { expect, test } from "../harness/fixtures";
 import { collectPageErrors } from "../harness/page";
 
@@ -13,12 +13,12 @@ async function openEditor(page: Page, show: RecordModel, song: RecordModel): Pro
   await page.getByRole("tab", { name: "Measures" }).click();
 }
 
-function layoutOf(song: RecordModel, value: string): SongMeasure["layout"] {
-  return song.measures.find((m: SongMeasure) => m.value === value)?.layout;
+function layoutOf(song: RecordModel, label: string): SongMeasure["layout"] {
+  return song.score.measures.find((m: SongMeasure) => m.label === label)?.layout;
 }
 
 async function storedMeasures(admin: { collection: (name: string) => { getOne: (id: string) => Promise<RecordModel> } }, id: string): Promise<SongMeasure[]> {
-  return (await admin.collection("songs").getOne(id)).measures;
+  return (await admin.collection("songs").getOne(id)).score.measures;
 }
 
 // The loading overlay covers the score until the player is ready, which takes a while for MIDI songs.
@@ -71,7 +71,7 @@ test.describe("measure editing", () => {
     await expect(page.getByRole("tabpanel", { name: "Measures" })).toContainText("2 measures selected");
     await page.getByRole("button", { name: "Remove boxes" }).click();
 
-    await expect.poll(async () => (await storedMeasures(admin, song.id)).filter(m => !m.layout).map(m => m.value)).toEqual(["2", "3"]);
+    await expect.poll(async () => (await storedMeasures(admin, song.id)).filter(m => !m.layout).map(m => m.label)).toEqual(["2", "3"]);
   });
 
   test("beats of several measures are changed with one save", async ({ page, admin, factory, loginAs }) => {
@@ -87,7 +87,7 @@ test.describe("measure editing", () => {
     await beats.fill("3");
     await beats.press("Enter");
 
-    await expect.poll(async () => (await storedMeasures(admin, song.id)).filter(m => m.beats === 3).map(m => m.value)).toEqual(["1", "2"]);
+    await expect.poll(async () => (await storedMeasures(admin, song.id)).filter(m => m.beats === 3).map(m => m.label)).toEqual(["1", "2"]);
   });
 
   test("measures are added as a range", async ({ page, admin, factory, loginAs }) => {
@@ -101,7 +101,7 @@ test.describe("measure editing", () => {
     await page.getByRole("textbox", { name: "Measures", exact: true }).fill("10..12");
     await page.getByRole("button", { name: "Add 3 measures" }).click();
 
-    await expect.poll(async () => (await storedMeasures(admin, song.id)).map(m => m.value))
+    await expect.poll(async () => (await storedMeasures(admin, song.id)).map(m => m.label))
       .toEqual(expect.arrayContaining(["10", "11", "12"]));
   });
 
@@ -109,7 +109,7 @@ test.describe("measure editing", () => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const bundle = await buildSongBundle(MINIMAL, { mode: "audio" });
-    bundle.fields.measures = bundle.fields.measures.map(({ value, beats }) => ({ value, beats }));
+    bundle.fields.score = withoutBoxes(bundle.fields.score);
     const song = await factory.createSong(owner, show, bundle);
     await loginAs(owner);
     await openEditor(page, show, song);
@@ -122,7 +122,7 @@ test.describe("measure editing", () => {
     await expect(panel.getByLabel("First number")).toHaveValue("1");
     await panel.getByRole("button", { name: "Place", exact: true }).click();
 
-    await expect.poll(async () => (await storedMeasures(admin, song.id)).filter(m => m.layout).map(m => m.value))
+    await expect.poll(async () => (await storedMeasures(admin, song.id)).filter(m => m.layout).map(m => m.label))
       .toEqual(["1", "2"]);
   });
 
@@ -140,7 +140,7 @@ test.describe("measure editing", () => {
 
       await dragOnScore(page, [0.01, 0.01], [0.99, 0.99], { shift });
 
-      const placed = song.measures.filter((m: SongMeasure) => m.layout).length;
+      const placed = song.score.measures.filter((m: SongMeasure) => m.layout).length;
       await expect(page.getByRole("tabpanel", { name: "Measures" })).toContainText(`${placed} measures selected`);
       await expect(page.getByRole("tabpanel", { name: "Measures" })).toContainText("from the beat map");
       await expect(page.getByRole("button", { name: "Delete measures" })).toHaveCount(0);
@@ -164,15 +164,15 @@ test.describe("markers", () => {
     await expect(name).toBeFocused();
     await name.fill("Chorus");
     await name.press("Enter");
-    await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).events.markers)
-      .toEqual([{ type: "marker", start: ["1", 0], marker: "Chorus" }]);
+    await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).arrangement.markers)
+      .toEqual([{ at: { measure: measureId(song.score, "1"), beat: 0 }, text: "Chorus" }]);
 
     await panel.getByLabel("Measure of marker Chorus").fill("3");
     await panel.getByLabel("Measure of marker Chorus").press("Enter");
-    await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).events.markers[0].start).toEqual(["3", 0]);
+    await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).arrangement.markers[0].at).toEqual({ measure: measureId(song.score, "3"), beat: 0 });
 
     await panel.getByRole("button", { name: "Delete marker Chorus" }).click();
-    await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).events.markers).toEqual([]);
+    await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).arrangement.markers).toEqual([]);
     expect(errors).toEqual([]);
   });
 
@@ -216,8 +216,8 @@ test.describe("measure detection", () => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const bundle = await buildSongBundle(MINIMAL, { mode: "audio" });
-    const expected = bundle.fields.measures;
-    bundle.fields.measures = expected.map(({ value, beats }) => ({ value, beats }));
+    const expected = bundle.fields.score.measures;
+    bundle.fields.score = withoutBoxes(bundle.fields.score);
     const song = await factory.createSong(owner, show, bundle);
     const errors = collectPageErrors(page);
     await loginAs(owner);
@@ -231,10 +231,10 @@ test.describe("measure detection", () => {
     await panel.getByRole("button", { name: "Apply" }).click();
     await expect(page.getByRole("img", { name: /^Detected / })).toHaveCount(0);
 
-    await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).measures.every((m: SongMeasure) => m.layout)).toBe(true);
+    await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).score.measures.every((m: SongMeasure) => m.layout)).toBe(true);
     const stored = await admin.collection("songs").getOne(song.id);
     for (const measure of expected) {
-      expect(containsCenter(measure.layout!, layoutOf(stored, measure.value)!), `measure ${measure.value}`).toBe(true);
+      expect(containsCenter(measure.layout!, layoutOf(stored, measure.label)!), `measure ${measure.label}`).toBe(true);
     }
 
     expect(errors).toEqual([]);
@@ -246,11 +246,11 @@ test.describe("measure review", () => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const bundle = await buildSongBundle(MINIMAL, { mode: "audio" });
-    const original = bundle.fields.measures;
-    const third = original.find(m => m.value === "3")!.layout!;
+    const original = bundle.fields.score.measures;
+    const third = original.find(m => m.label === "3")!.layout!;
     const stray = { page: 0, x: 0.02, y: 0.9, width: 0.05, height: 0.05 };
-    bundle.fields.measures = original.map(m => m.value === "2" ? { ...m, layout: { ...m.layout!, review: true } } : m.value === "3" ? { value: m.value, beats: m.beats } : m);
-    bundle.fields.unnumberedBoxes = [third, stray];
+    const measures = original.map(m => m.label === "2" ? { ...m, layout: { ...m.layout!, review: true } } : m.label === "3" ? { id: m.id, label: m.label, beats: m.beats } : m);
+    bundle.fields.score = { measures, unnumberedBoxes: [third, stray] };
     const song = await factory.createSong(owner, show, bundle);
     const errors = collectPageErrors(page);
     await loginAs(owner);
@@ -264,7 +264,7 @@ test.describe("measure review", () => {
 
     await page.keyboard.press("Enter");
     await expect(panel).toContainText("1 of 2 to review");
-    expect((await storedMeasures(admin, song.id)).find(m => m.value === "2")!.layout).toEqual(original.find(m => m.value === "2")!.layout);
+    expect((await storedMeasures(admin, song.id)).find(m => m.label === "2")!.layout).toEqual(original.find(m => m.label === "2")!.layout);
 
     await page.keyboard.press("3");
     await expect(panel.getByLabel("Number")).toHaveValue("3");
@@ -275,9 +275,9 @@ test.describe("measure review", () => {
     await expect(panel).not.toContainText("to review");
 
     const stored = await admin.collection("songs").getOne(song.id);
-    expect(stored.unnumberedBoxes).toEqual([]);
+    expect(stored.score.unnumberedBoxes).toEqual([]);
     expect(layoutOf(stored, "3")).toEqual(third);
-    expect(stored.measures.some((m: SongMeasure) => m.layout?.review)).toBe(false);
+    expect(stored.score.measures.some((m: SongMeasure) => m.layout?.review)).toBe(false);
     expect(errors).toEqual([]);
   });
 
@@ -285,7 +285,7 @@ test.describe("measure review", () => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const bundle = await buildSongBundle(MINIMAL, { mode: "midi" });
-    bundle.fields.unnumberedBoxes = [{ page: 0, x: 0.02, y: 0.9, width: 0.05, height: 0.05 }];
+    bundle.fields.score.unnumberedBoxes = [{ page: 0, x: 0.02, y: 0.9, width: 0.05, height: 0.05 }];
     const song = await factory.createSong(owner, show, bundle);
     await loginAs(owner);
     await page.goto(`/show/${show.id}/edit`);
@@ -342,7 +342,7 @@ test.describe("audio synchronization", () => {
     await openEditor(page, show, song);
 
     const { scale, sampleRate } = await waveformState(page);
-    const marker = song.warpMarkers[1] as { measure: string; time: number };
+    const marker = song.recording.warpMarkers[1] as SongWarpMarker;
     const box = (await page.getByRole("img", { name: "Waveform" }).boundingBox())!;
     const markerX = box.x + (marker.time * sampleRate) / scale;
     const dragPixels = 30;
@@ -354,7 +354,7 @@ test.describe("audio synchronization", () => {
 
     await expect.poll(async () => {
       const stored = await admin.collection("songs").getOne(song.id);
-      return stored.warpMarkers.find((m: { measure: string }) => m.measure === marker.measure).time;
+      return stored.recording.warpMarkers.find((m: SongWarpMarker) => m.measure === marker.measure && m.occurrence === marker.occurrence).time;
     }).toBeCloseTo(marker.time + (dragPixels * scale) / sampleRate, 1);
   });
 });

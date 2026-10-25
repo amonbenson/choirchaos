@@ -38,10 +38,9 @@ export type Factory = {
 /** Empty values for the song JSON fields, in the shape the frontend expects. */
 export const EMPTY_SONG_FIELDS: Omit<SongFields, "number" | "title"> = Object.freeze({
   tracks: [],
-  measures: [],
-  events: { markers: [], vamps: [], segue: false },
-  warpMarkers: [],
-  unnumberedBoxes: [],
+  score: { measures: [], unnumberedBoxes: [] },
+  recording: { spans: [], warpMarkers: [] },
+  arrangement: { markers: [], sections: [], segue: false },
 });
 
 function toFormData(fields: Record<string, unknown>, files: Record<string, File | File[] | undefined>): FormData {

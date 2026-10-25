@@ -76,7 +76,7 @@ export default class Show {
       visibility,
     };
     const songRecords: PbRecord[] = expand?.songs_via_show ?? [];
-    const hasFullSongs = songRecords.every(record => record.measures !== undefined);
+    const hasFullSongs = songRecords.every(record => record.score !== undefined);
 
     return new Show(
       id,

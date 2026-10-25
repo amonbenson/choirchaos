@@ -9,8 +9,9 @@ const MICROSECONDS_PER_MINUTE = 60_000_000;
 /**
  * The beat map that accompanies a MIDI file in MIDI mode. It ends with beat 1 of a terminal bar
  * after the last real bar, which is how the player learns the length of the last bar.
+ * `beatMapLabels` names each bar of the timeline, e.g. "12-2" or "12R" for a repeated pass.
  */
-export function toMtiJson(timeline: Timeline): MTIMidiJson {
+export function toMtiJson(timeline: Timeline, beatMapLabels: readonly string[] = timeline.measures.map(m => m.number)): MTIMidiJson {
   const events: MtiEvent[] = [];
   let previousSignature = "";
 
@@ -38,7 +39,7 @@ export function toMtiJson(timeline: Timeline): MTIMidiJson {
       events.push({
         tickcount: measure.startTick + beat * measure.ticksPerBeat,
         type: "BEAT",
-        value: { meas: measure.number, beat: beat + 1, tick: 0 },
+        value: { meas: beatMapLabels[measure.index]!, beat: beat + 1, tick: 0 },
       });
     }
   }
