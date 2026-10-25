@@ -1,6 +1,6 @@
 import { SettingsBase } from "./base";
 
-export type EditorTab = "details" | "markers" | "measures";
+export type EditorTab = "details" | "markers" | "measures" | "sections";
 
 export class PanelVisibleSettings extends SettingsBase {
   constructor(

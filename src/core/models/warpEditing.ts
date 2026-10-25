@@ -7,23 +7,6 @@ export type PositionedWarpMarker = StoredWarpMarker & { position: number };
 
 type Edge = { position: number; time: number };
 
-const ORDINAL_SUFFIXES: Record<string, string> = { one: "st", two: "nd", few: "rd", other: "th" };
-const ordinalRules = new Intl.PluralRules("en", { type: "ordinal" });
-
-export function formatOrdinal(value: number): string {
-  return `${value}${ORDINAL_SUFFIXES[ordinalRules.select(value)]}`;
-}
-
-/** The measure label with the occurrence when the measure has already played before, e.g. "12, 2nd time". */
-export function formatOccurrence(label: string, occurrence: number): string {
-  return occurrence > 1 ? `${label}, ${formatOrdinal(occurrence)} time` : label;
-}
-
-/** The short form for the marker chip on the waveform, e.g. "12 (2nd)". */
-export function formatOccurrenceShort(label: string, occurrence: number): string {
-  return occurrence > 1 ? `${label} (${formatOrdinal(occurrence)})` : label;
-}
-
 /** A string that identifies a marker by its measure and occurrence, for views that need string IDs. */
 export function getOccurrenceKey({ measure, occurrence }: Occurrence): string {
   return `${measure}#${occurrence}`;

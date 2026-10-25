@@ -8,7 +8,7 @@ import type { Marker } from "@/core/models/markers";
 import type Song from "@/core/models/song";
 import { locationOf, makeMidiSong, makeMidiSongWithRepeat } from "@/test/fixtures";
 
-import MarkerRow, { formatLocation, formatOccurrence } from "./MarkerRow.vue";
+import MarkerRow from "./MarkerRow.vue";
 
 // PrimeVue's Select queries media features, which jsdom does not implement.
 vi.stubGlobal("matchMedia", (query: string) => ({
@@ -35,20 +35,6 @@ async function typeMeasure(wrapper: VueWrapper, label: string): Promise<void> {
   await input.setValue(label);
   await input.trigger("keydown", { key: "Enter" });
 }
-
-describe("formatLocation", () => {
-  it("names the occurrence only for measures the recording plays more than once", () => {
-    const song = makeMidiSongWithRepeat();
-    expect(formatLocation(song, locationOf(song, "1"))).toBe("1");
-    expect(formatLocation(song, locationOf(song, "2", 0, 2))).toBe("2, 2nd time");
-  });
-
-  it("uses English ordinals", () => {
-    expect([1, 2, 3, 4, 11, 12, 13, 21, 22].map(formatOccurrence)).toEqual([
-      "1st time", "2nd time", "3rd time", "4th time", "11th time", "12th time", "13th time", "21st time", "22nd time",
-    ]);
-  });
-});
 
 describe("MarkerRow", () => {
   it("offers the occurrence only for a measure that plays more than once", async () => {

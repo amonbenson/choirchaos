@@ -2,13 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { idOf, makeAudioSong, makeAudioSongWithBakedVamp } from "@/test/fixtures";
 
+import { formatOccurrenceShort } from "./locationFormat";
 import type { StoredWarpMarker, TimelineEntry } from "./recording";
 import type Song from "./song";
 import {
   constrainWarpMarkerTime,
-  formatOccurrence,
-  formatOccurrenceShort,
-  formatOrdinal,
   getOccurrenceKey,
   getPositionedWarpMarkers,
   getWarpMarkerCandidates,
@@ -24,18 +22,6 @@ function marker(song: Song, label: string, occurrence: number, time: number): St
 function describeEntries(song: Song, entries: TimelineEntry[]): string[] {
   return entries.map(entry => formatOccurrenceShort(song.findMeasure(entry.measure)!.label, entry.occurrence));
 }
-
-describe("formatOccurrence", () => {
-  it("names the occurrence only when the measure has played before", () => {
-    expect(formatOccurrence("12", 1)).toBe("12");
-    expect(formatOccurrence("12", 2)).toBe("12, 2nd time");
-    expect(formatOccurrenceShort("12", 3)).toBe("12 (3rd)");
-  });
-
-  it("uses English ordinals", () => {
-    expect([1, 2, 3, 4, 11, 12, 13, 21, 22].map(formatOrdinal)).toEqual(["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd"]);
-  });
-});
 
 describe("getOccurrenceKey", () => {
   it("differs between occurrences of one measure", () => {

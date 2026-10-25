@@ -3,7 +3,7 @@ import Button from "primevue/button";
 import Panel from "primevue/panel";
 import { computed } from "vue";
 
-import { formatLocation } from "@/components/editor/MarkerRow.vue";
+import { formatLocation } from "@/core/models/locationFormat";
 import type { Marker } from "@/core/models/markers";
 import type Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
