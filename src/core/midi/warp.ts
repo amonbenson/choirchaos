@@ -1,145 +1,152 @@
-export const DEFAULT_SECONDS_PER_MEASURE = 2;
+export const DEFAULT_SECONDS_PER_POSITION = 2;
 
+/** Anchors a timeline position to a time in the recording, in seconds. */
 export type WarpMarker = {
-  measure: number; // integer measure index
+  position: number;
   time: number;
 };
 
 export type WarpSegment = {
-  measureStart: number;
-  measureEnd: number;
+  positionStart: number;
+  positionEnd: number;
   timeStart: number;
   timeEnd: number;
-  secondsPerMeasure: number;
+  secondsPerPosition: number;
 };
 
+function createDefaultSegment(anchor: WarpMarker): WarpSegment {
+  return {
+    positionStart: anchor.position,
+    positionEnd: anchor.position,
+    timeStart: anchor.time,
+    timeEnd: anchor.time,
+    secondsPerPosition: DEFAULT_SECONDS_PER_POSITION,
+  };
+}
+
+/** Maps timeline positions to recording times, linear between markers and extrapolated beyond them. */
 export default class WarpMap {
-  private _markers: WarpMarker[] = [];
-  private _segments: WarpSegment[];
+  private markers: WarpMarker[] = [];
+  private segments: WarpSegment[] = [createDefaultSegment({ position: 0, time: 0 })];
 
-  constructor() {
-    this._segments = [{ measureStart: 0, measureEnd: 0, timeStart: 0, timeEnd: 0, secondsPerMeasure: DEFAULT_SECONDS_PER_MEASURE }];
-  }
-
-  get markers(): readonly WarpMarker[] {
-    return this._markers;
+  getMarkers(): readonly WarpMarker[] {
+    return this.markers;
   }
 
   addMarker(marker: WarpMarker): void {
-    if (!Number.isInteger(marker.measure)) {
-      throw new Error("Marker measure must be an integer");
+    if (!Number.isInteger(marker.position)) {
+      throw new Error("Marker position must be an integer");
     }
 
-    const i = this._markers.findIndex(m => m.measure >= marker.measure);
+    const i = this.markers.findIndex(m => m.position >= marker.position);
     if (i === -1) {
-      this._markers.push(marker);
-    } else {
-      if (this._markers[i].measure === marker.measure) {
-        throw new Error("Duplicate measure");
-      }
-
-      const prev = this._markers[i - 1];
-      const next = this._markers[i];
-      if (prev && marker.time <= prev.time) {
-        throw new Error("Marker time crosses previous marker");
-      }
-
-      if (next && marker.time >= next.time) {
-        throw new Error("Marker time crosses next marker");
-      }
-
-      this._markers.splice(i, 0, marker);
+      this.markers.push(marker);
+      this.buildSegments();
+      return;
     }
 
-    this._buildSegments();
+    if (this.markers[i]!.position === marker.position) {
+      throw new Error("Duplicate position");
+    }
+
+    const prev = this.markers[i - 1];
+    const next = this.markers[i]!;
+    if (prev && marker.time <= prev.time) {
+      throw new Error("Marker time crosses previous marker");
+    }
+
+    if (marker.time >= next.time) {
+      throw new Error("Marker time crosses next marker");
+    }
+
+    this.markers.splice(i, 0, marker);
+    this.buildSegments();
   }
 
   setMarkers(markers: WarpMarker[]): void {
-    const sorted = [...markers].sort((a, b) => a.measure - b.measure);
+    const sorted = [...markers].sort((a, b) => a.position - b.position);
     for (let i = 0; i < sorted.length; i++) {
-      if (!Number.isInteger(sorted[i].measure)) {
-        throw new Error("Marker measure must be an integer");
+      if (!Number.isInteger(sorted[i]!.position)) {
+        throw new Error("Marker position must be an integer");
       }
 
-      if (i > 0) {
-        if (sorted[i].measure === sorted[i - 1].measure) {
-          throw new Error("Duplicate measure");
-        }
+      if (i === 0) {
+        continue;
+      }
 
-        if (sorted[i].time <= sorted[i - 1].time) {
-          throw new Error("Marker times must be strictly increasing");
-        }
+      if (sorted[i]!.position === sorted[i - 1]!.position) {
+        throw new Error("Duplicate position");
+      }
+
+      if (sorted[i]!.time <= sorted[i - 1]!.time) {
+        throw new Error("Marker times must be strictly increasing");
       }
     }
 
-    this._markers = sorted;
-    this._buildSegments();
+    this.markers = sorted;
+    this.buildSegments();
   }
 
-  removeMarker(measure: number): void {
-    const i = this._markers.findIndex(m => m.measure === measure);
+  removeMarker(position: number): void {
+    const i = this.markers.findIndex(m => m.position === position);
     if (i === -1) {
       throw new Error("Marker not found");
     }
 
-    this._markers.splice(i, 1);
-    this._buildSegments();
+    this.markers.splice(i, 1);
+    this.buildSegments();
   }
 
-  measureToTime(measure: number): number {
-    const seg = this._segmentForMeasure(measure);
-    return seg.timeStart + (measure - seg.measureStart) * seg.secondsPerMeasure;
+  positionToTime(position: number): number {
+    const seg = this.findSegmentByPosition(position);
+    return seg.timeStart + (position - seg.positionStart) * seg.secondsPerPosition;
   }
 
-  timeToMeasure(time: number): number {
-    const seg = this._segmentForTime(time);
-    return seg.measureStart + (time - seg.timeStart) / seg.secondsPerMeasure;
+  timeToPosition(time: number): number {
+    const seg = this.findSegmentByTime(time);
+    return seg.positionStart + (time - seg.timeStart) / seg.secondsPerPosition;
   }
 
-  private _buildSegments(): void {
-    const ms = this._markers;
+  private buildSegments(): void {
+    const ms = this.markers;
     if (ms.length < 2) {
-      const anchor = ms[0] ?? { measure: 0, time: 0 };
-      this._segments = [{ measureStart: anchor.measure, measureEnd: anchor.measure, timeStart: anchor.time, timeEnd: anchor.time, secondsPerMeasure: DEFAULT_SECONDS_PER_MEASURE }];
+      this.segments = [createDefaultSegment(ms[0] ?? { position: 0, time: 0 })];
       return;
     }
 
-    const segs: WarpSegment[] = [];
-    for (let i = 0; i < ms.length - 1; i++) {
-      const spm = (ms[i + 1].time - ms[i].time) / (ms[i + 1].measure - ms[i].measure);
-      segs.push({ measureStart: ms[i].measure, measureEnd: ms[i + 1].measure, timeStart: ms[i].time, timeEnd: ms[i + 1].time, secondsPerMeasure: spm });
-    }
-
-    this._segments = segs;
+    this.segments = ms.slice(0, -1).map((start, i) => {
+      const end = ms[i + 1]!;
+      return {
+        positionStart: start.position,
+        positionEnd: end.position,
+        timeStart: start.time,
+        timeEnd: end.time,
+        secondsPerPosition: (end.time - start.time) / (end.position - start.position),
+      };
+    });
   }
 
-  private _segmentForMeasure(measure: number): WarpSegment {
-    const segs = this._segments;
-    let lo = 0, hi = segs.length - 1;
+  private findLastSegment(startsBefore: (segment: WarpSegment) => boolean): WarpSegment {
+    const segs = this.segments;
+    let lo = 0;
+    let hi = segs.length - 1;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
-      if (segs[mid].measureStart <= measure) {
+      if (startsBefore(segs[mid]!)) {
         lo = mid;
       } else {
         hi = mid - 1;
       }
     }
 
-    return segs[lo];
+    return segs[lo]!;
   }
 
-  private _segmentForTime(time: number): WarpSegment {
-    const segs = this._segments;
-    let lo = 0, hi = segs.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (segs[mid].timeStart <= time) {
-        lo = mid;
-      } else {
-        hi = mid - 1;
-      }
-    }
+  private findSegmentByPosition(position: number): WarpSegment {
+    return this.findLastSegment(segment => segment.positionStart <= position);
+  }
 
-    return segs[lo];
+  private findSegmentByTime(time: number): WarpSegment {
+    return this.findLastSegment(segment => segment.timeStart <= time);
   }
 }

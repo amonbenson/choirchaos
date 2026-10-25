@@ -1,14 +1,13 @@
 import axios from "axios";
 import { parseArrayBuffer as parseMidiBuffer } from "midi-json-parser";
 
-import { MeasureEvent, MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "../../midi/events";
+import { MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "../../midi/events";
 import type { Tick } from "../../midi/types";
-import type Measure from "../../models/measure";
-import type { MeasureReference } from "../../models/measure";
 import type Song from "../../models/song";
 import type { MTIMidiJson } from "../../scripts/jsonTypes/mti";
 import { resolveUrl } from "../../utils/file";
 import { type BackendCallbacks, type LoadResult, PlayerBackend, type StepResult } from "../backend";
+import { findPositionAt, resolveMidiTimeline, type TimelinePosition } from "../timeline";
 import type { SystemEvents, TrackEvents } from "../types";
 
 const AUDIO_CLOCK_OFFSET = 0.1;
@@ -31,6 +30,10 @@ export default class MidiBackend extends PlayerBackend {
   private player: any = undefined;
   private instruments: { [key: number]: any } = {};
   private noteEvents: TrackEvents[] = [];
+  private activeTrackIndices: Set<number>[] = [];
+  // Notes just before a step limit. They sound only if the engine continues without a jump there.
+  private heldNotes: NoteEvent[] = [];
+  private heldLimit: Tick = 0;
   private currentSong: Song | undefined = undefined;
 
   constructor(
@@ -48,6 +51,11 @@ export default class MidiBackend extends PlayerBackend {
 
   getNoteEvents(): TrackEvents[] {
     return this.noteEvents;
+  }
+
+  /** The indices of the tracks that start a note in each timeline position. */
+  getActiveTrackIndices(): readonly ReadonlySet<number>[] {
+    return this.activeTrackIndices;
   }
 
   private resetAudioClockReference(): void {
@@ -85,57 +93,19 @@ export default class MidiBackend extends PlayerBackend {
 
     signal.throwIfAborted();
 
-    this.systemEvents.measure = new MidiEventList();
+    const midiJson: MTIMidiJson = jsonRes.data;
+    const timeline = resolveMidiTimeline(song.getTimeline(), midiJson);
+
     this.systemEvents.tempo = new MidiEventList();
     this.systemEvents.timeSignature = new MidiEventList();
     this.noteEvents = [];
-
-    // Fill in all system events from the json data
-    let prevMeasure: Measure | undefined = undefined;
-    const midiJson: MTIMidiJson = jsonRes.data;
+    this.activeTrackIndices = timeline.map(() => new Set<number>());
 
     for (const event of midiJson.score.events) {
-      const { type, tickcount, value } = event;
-
-      switch (type) {
-        case "BEAT": {
-          this.systemEvents.measure.insert(new MeasureEvent(tickcount, [value.meas, value.beat - 1]));
-
-          const songMeasure = song.measures.search({ value: value.meas } as Measure);
-          if (songMeasure?.value === value.meas) {
-            if (songMeasure.$beatTicks.length === 0) {
-              while (songMeasure.$beatTicks.length < songMeasure.beats) {
-                songMeasure.$beatTicks.push(tickcount);
-              }
-            } else {
-              songMeasure.$beatTicks[value.beat - 1] = tickcount;
-            }
-
-            if (songMeasure !== prevMeasure) {
-              if (songMeasure.$beatTicks[0] !== undefined && prevMeasure?.$beatTicks[0] !== undefined) {
-                prevMeasure.$tickLength = songMeasure.$beatTicks[0] - prevMeasure.$beatTicks[0];
-              }
-
-              prevMeasure = songMeasure;
-            }
-          } else {
-            console.warn(`Midi measure ${value.meas} does not exist in the song data.`);
-          }
-
-          break;
-        }
-
-        case "TEMPO":
-          this.systemEvents.tempo.insert(new TempoEvent(tickcount, value.bpm));
-          break;
-
-        case "TIMESIG":
-          this.systemEvents.timeSignature.insert(new TimeSignatureEvent(tickcount, [value.numerator, value.denominator]));
-          break;
-
-        default:
-          console.warn(`Unknown midi event type '${type}'`);
-          break;
+      if (event.type === "TEMPO") {
+        this.systemEvents.tempo.insert(new TempoEvent(event.tickcount, event.value.bpm));
+      } else if (event.type === "TIMESIG") {
+        this.systemEvents.timeSignature.insert(new TimeSignatureEvent(event.tickcount, [event.value.numerator, event.value.denominator]));
       }
     }
 
@@ -183,13 +153,7 @@ export default class MidiBackend extends PlayerBackend {
             ));
             noteOnIndices[midiEvent.noteOff.noteNumber] = -1;
 
-            // Mark the measure as active for this track so the UI can highlight it.
-            const measure = song.findMeasureByTick(noteOnEvent.$tick);
-            if (measure) {
-              measure.$activeTrackIndices.add(t);
-            } else {
-              console.warn(`Could not find measure for tick ${noteOnEvent.$tick}.`);
-            }
+            this.markTrackActive(timeline, noteOnEvent.$tick, t);
           }
         }
       }
@@ -200,30 +164,6 @@ export default class MidiBackend extends PlayerBackend {
 
     this.ppqn = midiJson.score.ppqn;
     this.currentSong = song;
-
-    // Find the last measure with a valid layout and use it to calculate the final measure and duration, since MIDI files might omit measures after the end of the song.
-    let lastWrittenMeasure: Measure | undefined = undefined;
-    let l = song.measures.items().length;
-    while (l--) {
-      const m = song.measures.items()[l]!;
-      if (m.layout) {
-        lastWrittenMeasure = m;
-        break;
-      }
-    }
-
-    let duration: Tick;
-    let finalMeasure: MeasureReference;
-
-    // If there is a valid last measure with beat ticks, calculate duration and final measure from it. Otherwise, fall back to using the last measure event in the MIDI data, or default to 1 tick and measure 1 if there are no events.
-    if (lastWrittenMeasure && lastWrittenMeasure.$beatTicks.length > 0 && lastWrittenMeasure.$tickLength !== undefined) {
-      duration = lastWrittenMeasure.$beatTicks[0]! + lastWrittenMeasure.$tickLength;
-      finalMeasure = lastWrittenMeasure.reference(lastWrittenMeasure.$beatTicks.length - 1);
-    } else {
-      const lastMeasureEvent = this.systemEvents.measure.last();
-      duration = lastMeasureEvent?.tick ?? 1;
-      finalMeasure = lastMeasureEvent?.measure ?? ["1", 0];
-    }
 
     // Initialize the WebAudioFont player and load the instruments for each track.
     this.player = new window.WebAudioFontPlayer();
@@ -236,26 +176,36 @@ export default class MidiBackend extends PlayerBackend {
 
     await new Promise(resolve => this.player.loader.waitLoad(resolve));
 
-    return { duration, finalMeasure };
+    return { duration: timeline.at(-1)!.endTick, timeline };
+  }
+
+  private markTrackActive(timeline: readonly TimelinePosition[], tick: Tick, trackIndex: number): void {
+    const position = findPositionAt(timeline, tick);
+    if (position) {
+      this.activeTrackIndices[position.position]!.add(trackIndex);
+    }
   }
 
   play(currentPosition: Tick): void {
     // Note: The actual playback happens in step()
+    this.heldNotes = [];
     this.lastKnownPosition = currentPosition;
     this.resetAudioClockReference();
   }
 
   pause(currentPosition: Tick): void {
+    this.heldNotes = [];
     this.lastKnownPosition = currentPosition;
     this.resetAudioClockReference();
   }
 
   seek(position: Tick): void {
+    this.heldNotes = [];
     this.lastKnownPosition = position;
     this.resetAudioClockReference();
   }
 
-  step(currentPosition: Tick, deltaTime: number, limit?: Tick, _muteVocals?: boolean): StepResult {
+  step(currentPosition: Tick, deltaTime: number, limit?: Tick, muteVocals = false): StepResult {
     const p0 = currentPosition;
     let p1 = p0 + deltaTime / this.tickDuration;
 
@@ -274,14 +224,12 @@ export default class MidiBackend extends PlayerBackend {
     // stays accurate even when step() is called at irregular intervals.
     const timeSinceReference = this.context.currentTime - this.audioClockReference.seconds;
     this.audioClockTickPosition = this.audioClockReference.ticks + timeSinceReference / this.tickDuration;
+    this.releaseHeldNotes(currentPosition, limit);
 
     // Dispatch all events within the consumed tick range in chronological order
     const k0 = { tick: p0 };
     const k1 = { tick: p1 };
 
-    this.systemEvents.measure
-      .searchRange(k0 as MeasureEvent, k1 as MeasureEvent)
-      .forEach(e => this.handleMeasureEvent(e));
     this.systemEvents.tempo
       .searchRange(k0 as TempoEvent, k1 as TempoEvent)
       .forEach(e => this.handleTempoEvent(e));
@@ -292,14 +240,10 @@ export default class MidiBackend extends PlayerBackend {
     this.noteEvents.forEach((trackEvents) => {
       trackEvents.note
         .searchRange(k0 as NoteEvent, k1 as NoteEvent)
-        .forEach(e => this.handleNoteEvent(e, limit));
+        .forEach(e => this.handleNoteEvent(e, limit, muteVocals));
     });
 
     return { p0, p1, deltaTimeConsumed };
-  }
-
-  private handleMeasureEvent(event: MeasureEvent): void {
-    this.callbacks.onMeasureChanged(event.measure);
   }
 
   private handleTempoEvent(event: TempoEvent): void {
@@ -315,7 +259,7 @@ export default class MidiBackend extends PlayerBackend {
     this.callbacks.onTimeSignatureChanged(event.signature);
   }
 
-  private handleNoteEvent(event: NoteEvent, limit?: Tick): void {
+  private handleNoteEvent(event: NoteEvent, limit: Tick | undefined, muteVocals: boolean): void {
     // Notify the engine (always, for visual feedback)
     this.callbacks.onNote(event);
 
@@ -329,43 +273,60 @@ export default class MidiBackend extends PlayerBackend {
       return;
     }
 
-    // Schedule a note if the track is audible
-    if (track.mixer.effectiveGain > 0) {
-      const start = (event.tick - this.audioClockTickPosition) * this.tickDuration + AUDIO_CLOCK_OFFSET;
-      const duration = Math.min(event.duration * this.tickDuration, 5);
-      const instrument = this.instruments[track.program === 9 ? 116 : 0];
-      const pitch = event.pitch + (track.program === 9 ? 0 : this.playbackTransposition);
-      const volume = event.velocity / 127.0 * track.mixer.effectiveGain;
+    const muted = muteVocals && track.classification === "Vocal";
+    if (track.mixer.effectiveGain <= 0 || muted) {
+      return;
+    }
 
-      if (start < 0) {
-        console.warn(`Clock offset too small! Event scheduled ${-start}s in the past.`);
-      }
+    // Notes within AUDIO_CLOCK_OFFSET of the limit are scheduled 100ms in the
+    // future. If the engine jumps at the limit, they would bleed into the
+    // material after the jump, so they wait for the next step.
+    if (limit !== undefined && event.tick > limit - AUDIO_CLOCK_OFFSET / this.tickDuration) {
+      this.heldNotes.push(event);
+      this.heldLimit = limit;
+      return;
+    }
 
-      // Skip scheduling if this note would play after the vamp boundary. Notes
-      // within AUDIO_CLOCK_OFFSET of the limit are scheduled 100ms in the future
-      // but the vamp jump fires within one step, so they would bleed into the
-      // next iteration.
-      if (limit !== undefined && event.tick > limit - AUDIO_CLOCK_OFFSET / this.tickDuration) {
-        return;
-      }
+    this.queueNote(event);
+  }
 
-      this.player.queueWaveTable(
-        this.context,
-        this.masterInput,
-        window[instrument],
-        this.context.currentTime + start,
-        pitch,
-        duration,
-        volume,
-        [],
-      );
+  private releaseHeldNotes(position: Tick, limit: Tick | undefined): void {
+    const isBeforeSameLimit = position < this.heldLimit && limit === this.heldLimit;
+    if (!isBeforeSameLimit) {
+      this.heldNotes.splice(0).forEach(e => this.queueNote(e));
     }
   }
 
-  onPositionJump(offset: Tick, _newPosition: Tick): void {
+  private queueNote(event: NoteEvent): void {
+    const track = this.currentSong!.tracks[event.trackIndex]!;
+    const start = (event.tick - this.audioClockTickPosition) * this.tickDuration + AUDIO_CLOCK_OFFSET;
+    const duration = Math.min(event.duration * this.tickDuration, 5);
+    const instrument = this.instruments[track.program === 9 ? 116 : 0];
+    const pitch = event.pitch + (track.program === 9 ? 0 : this.playbackTransposition);
+    const volume = event.velocity / 127.0 * track.mixer.effectiveGain;
+
+    if (start < 0) {
+      console.warn(`Clock offset too small! Event scheduled ${-start}s in the past.`);
+    }
+
+    this.player.queueWaveTable(
+      this.context,
+      this.masterInput,
+      window[instrument],
+      this.context.currentTime + start,
+      pitch,
+      duration,
+      volume,
+      [],
+    );
+  }
+
+  onPositionJump(offset: Tick, newPosition: Tick): void {
     // Adjust tick reference only. Keeps already-scheduled notes valid and
     // avoids the audio click that a full reference reset would cause.
     this.audioClockReference.ticks += offset;
+    this.lastKnownPosition = newPosition;
+    this.heldNotes = [];
   }
 
   onTempoRestored(bpm: number): void {
@@ -382,6 +343,8 @@ export default class MidiBackend extends PlayerBackend {
   dispose(): void {
     this.player = undefined;
     this.noteEvents = [];
+    this.activeTrackIndices = [];
+    this.heldNotes = [];
     this.currentSong = undefined;
   }
 }

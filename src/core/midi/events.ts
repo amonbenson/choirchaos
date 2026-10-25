@@ -1,4 +1,3 @@
-import type { MeasureReference } from "../models/measure";
 import { BinarySortedList } from "../utils/binarySearch";
 import type { Tick, TimeSignature } from "./types";
 
@@ -12,8 +11,9 @@ export class NoteEvent extends MidiEvent {
   }
 }
 
-export class MeasureEvent extends MidiEvent {
-  constructor(public tick: Tick, public measure: MeasureReference) {
+/** A 0-based beat of the timeline position that plays at `tick`. */
+export class BeatEvent extends MidiEvent {
+  constructor(public tick: Tick, public position: number, public beat: number) {
     super(tick);
   }
 }

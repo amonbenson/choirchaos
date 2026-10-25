@@ -1,0 +1,185 @@
+import { BeatEvent, MidiEventList } from "../midi/events";
+import type { Tick } from "../midi/types";
+import type { WarpMarker } from "../midi/warp";
+import type WarpMap from "../midi/warp";
+import type Measure from "../models/measure";
+import type { MeasureId } from "../models/measure";
+import { findPosition, type Occurrence, type StoredWarpMarker, type Timeline, type TimelineEntry } from "../models/recording";
+import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
+import type { PlayerLocation } from "./types";
+
+const MILLISECONDS_PER_SECOND = 1000;
+
+/** A timeline position with its timing. `beatTicks` holds the start of every beat, `endTick` where the next position starts. */
+export type TimelinePosition = TimelineEntry & {
+  beats: number;
+  beatTicks: readonly Tick[];
+  endTick: Tick;
+};
+
+export type ResolvedTimeline = readonly TimelinePosition[];
+
+type BeatMapEvent = MTIMidiJson["score"]["events"][number];
+type BeatMapBeat = Extract<BeatMapEvent, { type: "BEAT" }>;
+type BeatMapBar = { label: string; beatTicks: Tick[] };
+
+function isBeat(event: BeatMapEvent): event is BeatMapBeat {
+  return event.type === "BEAT";
+}
+
+function fillMissingBeats(beatTicks: (Tick | undefined)[]): Tick[] {
+  let previous = beatTicks.find(tick => tick !== undefined) ?? 0;
+  return Array.from(beatTicks, (tick) => {
+    previous = tick ?? previous;
+    return previous;
+  });
+}
+
+/** The beat map's bars in tick order, including the terminal bar. A bar starts whenever the label changes. */
+function readBeatMapBars(beatMap: MTIMidiJson): BeatMapBar[] {
+  const beats = beatMap.score.events.filter(isBeat).sort((a, b) => a.tickcount - b.tickcount);
+  const bars: { label: string; beatTicks: (Tick | undefined)[] }[] = [];
+
+  for (const { tickcount, value } of beats) {
+    let bar = bars.at(-1);
+    if (bar?.label !== value.meas) {
+      bar = { label: value.meas, beatTicks: [] };
+      bars.push(bar);
+    }
+
+    bar.beatTicks[value.beat - 1] = tickcount;
+  }
+
+  return bars.map(({ label, beatTicks }) => ({ label, beatTicks: fillMissingBeats(beatTicks) }));
+}
+
+/**
+ * Times a MIDI song's timeline with its beat map, whose k-th bar is timeline position k. Each position
+ * takes its beats from its own bar, which can have more beats than the measure's first occurrence.
+ */
+export function resolveMidiTimeline(timeline: Timeline, beatMap: MTIMidiJson): TimelinePosition[] {
+  const bars = readBeatMapBars(beatMap);
+  const playedBars = bars.length - 1;
+  if (playedBars !== timeline.length) {
+    throw new Error(`The beat map has ${Math.max(0, playedBars)} measures, but the recording plays ${timeline.length}.`);
+  }
+
+  return timeline.map((entry, position) => ({
+    ...entry,
+    beats: bars[position]!.beatTicks.length,
+    beatTicks: bars[position]!.beatTicks,
+    endTick: bars[position + 1]!.beatTicks[0]!,
+  }));
+}
+
+/** Resolves warp markers to timeline positions. Markers whose occurrence the recording no longer plays are dropped. */
+export function resolveWarpMarkers(timeline: Timeline, warpMarkers: readonly StoredWarpMarker[]): WarpMarker[] {
+  return warpMarkers.flatMap((marker) => {
+    const position = findPosition(timeline, marker);
+    return position === undefined ? [] : [{ position, time: marker.time }];
+  });
+}
+
+/** Times an audio song's timeline in milliseconds of the recording, with beats evenly spread over each position. */
+export function resolveAudioTimeline(
+  timeline: Timeline,
+  measures: readonly Measure[],
+  warpMarkers: readonly StoredWarpMarker[],
+  warpMap: WarpMap,
+): TimelinePosition[] {
+  warpMap.setMarkers(resolveWarpMarkers(timeline, warpMarkers));
+  const beatsById = new Map(measures.map(measure => [measure.id, measure.beats]));
+
+  return timeline.map((entry) => {
+    const start = warpMap.positionToTime(entry.position) * MILLISECONDS_PER_SECOND;
+    const end = warpMap.positionToTime(entry.position + 1) * MILLISECONDS_PER_SECOND;
+    const beats = beatsById.get(entry.measure) ?? 1;
+    const beatLength = (end - start) / beats;
+    return {
+      ...entry,
+      beats,
+      beatTicks: Array.from({ length: beats }, (_, beat) => start + beat * beatLength),
+      endTick: end,
+    };
+  });
+}
+
+export function getStartTick(position: TimelinePosition): Tick {
+  return position.beatTicks[0]!;
+}
+
+/** The start of a 0-based beat. The beat after the last one starts at `endTick`. */
+export function getBeatTick(position: TimelinePosition, beat: number): Tick {
+  return beat < position.beats ? position.beatTicks[beat]! : position.endTick;
+}
+
+/** The position playing at `tick`. Ticks before the first or after the last position clamp to it. */
+export function findPositionAt(timeline: ResolvedTimeline, tick: Tick): TimelinePosition | undefined {
+  let lo = 0;
+  let hi = timeline.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (getStartTick(timeline[mid]!) <= tick) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  return timeline[lo];
+}
+
+/** The 0-based beat of `position` playing at `tick`. */
+export function findBeatAt(position: TimelinePosition, tick: Tick): number {
+  let beat = 0;
+  while (beat + 1 < position.beats && position.beatTicks[beat + 1]! <= tick) {
+    beat++;
+  }
+
+  return beat;
+}
+
+export function findLocationAt(timeline: ResolvedTimeline, tick: Tick): PlayerLocation | undefined {
+  const position = findPositionAt(timeline, tick);
+  if (!position) {
+    return undefined;
+  }
+
+  return { position: position.position, measure: position.measure, occurrence: position.occurrence, beat: findBeatAt(position, tick) };
+}
+
+/** The tick of a beat at a timeline position. Beats past the position's bar clamp to its last beat. */
+export function getPositionTick(timeline: ResolvedTimeline, position: number, beat = 0): Tick | undefined {
+  const entry = timeline[position];
+  if (!entry) {
+    return undefined;
+  }
+
+  return entry.beatTicks[Math.max(0, Math.min(beat, entry.beats - 1))];
+}
+
+/** The tick of a beat at a measure occurrence, or undefined when the recording does not play it. */
+export function getLocationTick(timeline: ResolvedTimeline, location: Occurrence & { beat: number }): Tick | undefined {
+  const position = findPosition(timeline, location);
+  return position === undefined ? undefined : getPositionTick(timeline, position, location.beat);
+}
+
+export function isSamePlayerLocation(a: PlayerLocation | undefined, b: PlayerLocation | undefined): boolean {
+  return a?.position === b?.position && a?.beat === b?.beat && a?.measure === b?.measure && a?.occurrence === b?.occurrence;
+}
+
+export function buildBeatEvents(timeline: ResolvedTimeline): MidiEventList<BeatEvent> {
+  return new MidiEventList(timeline.flatMap(position =>
+    position.beatTicks.map((tick, beat) => new BeatEvent(tick, position.position, beat)),
+  ));
+}
+
+/** The positions of each measure, so callers can combine per-position data into per-measure data. */
+export function groupPositionsByMeasure(timeline: ResolvedTimeline): Map<MeasureId, number[]> {
+  const groups = new Map<MeasureId, number[]>();
+  for (const { measure, position } of timeline) {
+    groups.set(measure, [...groups.get(measure) ?? [], position]);
+  }
+
+  return groups;
+}
