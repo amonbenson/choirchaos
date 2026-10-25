@@ -1,31 +1,67 @@
-import type { Numbering } from "../utils/numbering";
-import type Song from "./song";
+import { findPosition, type Occurrence, type StoredWarpMarker, type Timeline, type TimelineEntry } from "./recording";
 
 // Keeps neighbouring markers apart, so the warp map never contains two markers at the same time.
 export const MIN_WARP_MARKER_GAP = 0.01;
 
-type Edge = { index: number; time: number };
+export type PositionedWarpMarker = StoredWarpMarker & { position: number };
 
-function getEdges(song: Song, duration: number): Edge[] {
-  const measures = song.measures.items();
-  const markers = song.warpMarkers
-    .map(marker => ({ index: measures.findIndex(m => m.value === marker.measure), time: marker.time }))
-    .filter(edge => edge.index !== -1)
-    .sort((a, b) => a.time - b.time);
+type Edge = { position: number; time: number };
 
-  return [{ index: -1, time: 0 }, ...markers, { index: measures.length, time: duration }];
+const ORDINAL_SUFFIXES: Record<string, string> = { one: "st", two: "nd", few: "rd", other: "th" };
+const ordinalRules = new Intl.PluralRules("en", { type: "ordinal" });
+
+export function formatOrdinal(value: number): string {
+  return `${value}${ORDINAL_SUFFIXES[ordinalRules.select(value)]}`;
+}
+
+/** The measure label with the occurrence when the measure has already played before, e.g. "12, 2nd time". */
+export function formatOccurrence(label: string, occurrence: number): string {
+  return occurrence > 1 ? `${label}, ${formatOrdinal(occurrence)} time` : label;
+}
+
+/** The short form for the marker chip on the waveform, e.g. "12 (2nd)". */
+export function formatOccurrenceShort(label: string, occurrence: number): string {
+  return occurrence > 1 ? `${label} (${formatOrdinal(occurrence)})` : label;
+}
+
+/** A string that identifies a marker by its measure and occurrence, for views that need string IDs. */
+export function getOccurrenceKey({ measure, occurrence }: Occurrence): string {
+  return `${measure}#${occurrence}`;
+}
+
+/** The warp markers that resolve on the timeline, in timeline order. */
+export function getPositionedWarpMarkers(timeline: Timeline, warpMarkers: readonly StoredWarpMarker[]): PositionedWarpMarker[] {
+  return warpMarkers
+    .flatMap((marker) => {
+      const position = findPosition(timeline, marker);
+      return position === undefined ? [] : [{ ...marker, position }];
+    })
+    .sort((a, b) => a.position - b.position);
+}
+
+function getEdges(timeline: Timeline, warpMarkers: readonly StoredWarpMarker[], duration: number): Edge[] {
+  return [
+    { position: -1, time: 0 },
+    ...getPositionedWarpMarkers(timeline, warpMarkers),
+    { position: timeline.length, time: duration },
+  ];
 }
 
 /**
- * Measures that may receive a marker at the given time: those between the markers left and right
- * of it, so markers always stay in measure order.
+ * Timeline positions that may receive a marker at the given time: those between the markers left and
+ * right of it, so markers always stay in timeline order.
  */
-export function getWarpMarkerCandidates(song: Song, time: number, duration: number): Numbering[] {
+export function getWarpMarkerCandidates(
+  timeline: Timeline,
+  warpMarkers: readonly StoredWarpMarker[],
+  time: number,
+  duration: number,
+): TimelineEntry[] {
   if (time <= 0 || time >= duration) {
     return [];
   }
 
-  const edges = getEdges(song, duration);
+  const edges = getEdges(timeline, warpMarkers, duration);
   const rightIndex = edges.findIndex(edge => edge.time > time);
   const left = edges[rightIndex - 1];
   const right = edges[rightIndex];
@@ -34,15 +70,28 @@ export function getWarpMarkerCandidates(song: Song, time: number, duration: numb
     return [];
   }
 
-  return song.measures.items().slice(left.index + 1, right.index).map(measure => measure.value);
+  return timeline.slice(left.position + 1, right.position);
 }
 
-/** Clamps a dragged marker between its neighbours. */
-export function constrainWarpMarkerTime(song: Song, measure: Numbering, time: number, duration: number): number {
-  const others = song.warpMarkers.filter(marker => marker.measure !== measure).map(marker => marker.time);
-  const original = song.warpMarkers.find(marker => marker.measure === measure)?.time ?? time;
-  const lower = Math.max(0, ...others.filter(t => t < original)) + MIN_WARP_MARKER_GAP;
-  const upper = Math.min(duration, ...others.filter(t => t > original)) - MIN_WARP_MARKER_GAP;
+/** Clamps a dragged marker between its neighbours in timeline order. */
+export function constrainWarpMarkerTime(
+  timeline: Timeline,
+  warpMarkers: readonly StoredWarpMarker[],
+  marker: Occurrence,
+  time: number,
+  duration: number,
+): number {
+  const position = findPosition(timeline, marker);
+  if (position === undefined) {
+    return time;
+  }
+
+  const edges = getEdges(timeline, warpMarkers, duration);
+  const previous = edges.filter(edge => edge.position < position).at(-1)!;
+  const next = edges.find(edge => edge.position > position)!;
+  // The first position may sit exactly at the start of the recording.
+  const lower = previous.position < 0 ? 0 : previous.time + MIN_WARP_MARKER_GAP;
+  const upper = next.time - MIN_WARP_MARKER_GAP;
 
   return Math.min(upper, Math.max(lower, time));
 }
