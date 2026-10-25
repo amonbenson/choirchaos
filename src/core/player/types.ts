@@ -1,12 +1,10 @@
-import type { MeasureEvent, MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "../midi/events";
+import type { BeatEvent, MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "../midi/events";
 import type { MeasureId } from "../models/measure";
 import type { SectionKind, VampOut, VampVocals } from "../models/sections";
 
 export type { VampOut, VampVocals };
 
 export type PlayerStatus = "idle" | "loading" | "ready";
-
-export type VampPhase = "entering" | "repeating" | "exiting";
 
 export type PlayerMode = "none" | "midi" | "audio";
 
@@ -25,25 +23,13 @@ export type PlayerSectionState = {
   released: boolean;
 };
 
-export type PlayerVamp = {
-  start: number;
-  end: number;
-  iterations: number;
-  out: VampOut;
-  vocals: VampVocals;
-};
-
-export type PlayerVampState = PlayerVamp & {
-  currentIteration: number;
-  manualExit: boolean;
-};
-
 export type PlayerSegueState = {
   enabled: boolean;
 };
 
 export type SystemEvents = {
-  measure: MidiEventList<MeasureEvent>;
+  /** One event per beat of every timeline position, in tick order. */
+  beat: MidiEventList<BeatEvent>;
   tempo: MidiEventList<TempoEvent>;
   timeSignature: MidiEventList<TimeSignatureEvent>;
 };

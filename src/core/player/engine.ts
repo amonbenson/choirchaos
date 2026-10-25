@@ -1,7 +1,7 @@
 import type { NoteEvent } from "../midi/events";
-import { MeasureEvent, MidiEventList, TempoEvent, TimeSignatureEvent } from "../midi/events";
+import { BeatEvent, MidiEventList, TempoEvent, TimeSignatureEvent } from "../midi/events";
 import type { Tick, TimeSignature } from "../midi/types";
-import type { MeasureReference } from "../models/measure";
+import type { Occurrence } from "../models/recording";
 import type Song from "../models/song";
 import { Emitter, type Emitters, Property } from "../utils/events";
 import { SetIntervalUpdater, type UpdateCallback, type Updater } from "../utils/updater";
@@ -9,28 +9,54 @@ import AudioBackend from "./audio/backend";
 import type { AudioChunk } from "./audio/chunkDetector";
 import { PlayerBackend } from "./backend";
 import MidiBackend from "./midi/backend";
+import Route, { type RouteJump, type RouteState } from "./route";
 import {
+  buildBeatEvents,
+  findLocationAt,
+  getLocationTick,
+  getPositionTick,
+  isSamePlayerLocation,
+  type ResolvedTimeline,
+  type TimelinePosition,
+} from "./timeline";
+import {
+  type PlayerLocation,
   type PlayerMode,
+  type PlayerSectionState,
   type PlayerSegueState,
   type PlayerStatus,
-  type PlayerVamp,
-  type PlayerVampState,
   type SystemEvents,
   type TrackEvents,
   type VampOut,
-  type VampPhase,
   type VampVocals,
 } from "./types";
 
 const STEP_DURATION = 1 / 50;
-const DEFAULT_MEASURE: MeasureReference = ["1", 0];
 const DEFAULT_TEMPO = 120;
 const DEFAULT_TIME_SIGNATURE: TimeSignature = [4, 2];
+const MAX_JUMPS_PER_STEP = 4;
+const MAX_ROUNDS_PER_STEP = 16;
+// Passes that follow each other without a jump only change the state. A step covers a few of them at most.
+const MAX_TRANSITIONS_PER_PLAN = 8;
 
-export type { PlayerMode, PlayerSegueState, PlayerStatus, PlayerVampState, VampOut, VampPhase, VampVocals };
+export type { PlayerLocation, PlayerMode, PlayerSectionState, PlayerSegueState, PlayerStatus, TimelinePosition, VampOut, VampVocals };
 export type PlayerEvents = { system: SystemEvents; track: TrackEvents[] };
 
-type VampAction = "repeat" | "exitAtEnd" | "exitEarly";
+/** The state changes up to the next real jump, and where the backend must stop stepping. */
+type StepPlan = { transitions: RouteJump[]; jump?: RouteJump; limit?: Tick };
+
+function createSystemEvents(): SystemEvents {
+  return {
+    beat: new MidiEventList<BeatEvent>(),
+    tempo: new MidiEventList<TempoEvent>(),
+    timeSignature: new MidiEventList<TimeSignatureEvent>(),
+  };
+}
+
+function isSameSectionState(a: PlayerSectionState | undefined, b: PlayerSectionState | undefined): boolean {
+  return a?.section === b?.section && a?.kind === b?.kind && a?.pass === b?.pass && a?.passes === b?.passes
+    && a?.recordedPasses === b?.recordedPasses && a?.released === b?.released;
+}
 
 export default class PlayerEngine {
   private readonly status = new Property<PlayerStatus>("idle");
@@ -38,15 +64,17 @@ export default class PlayerEngine {
 
   private readonly playing = new Property(false);
   private readonly duration = new Property<Tick>(0);
-  private readonly finalMeasure = new Property<MeasureReference>(DEFAULT_MEASURE);
+  private readonly timeline = new Property<ResolvedTimeline>([]);
+  private readonly activeTrackIndices = new Property<readonly ReadonlySet<number>[]>([]);
+  private readonly finalLocation = new Property<PlayerLocation | undefined>(undefined);
   private readonly playbackSpeed = new Property(1.0);
   private readonly playbackTransposition = new Property(0);
 
   private readonly position = new Property<Tick>(0);
-  private readonly currentMeasure = new Property<MeasureReference>(DEFAULT_MEASURE);
+  private readonly currentLocation = new Property<PlayerLocation | undefined>(undefined);
   private readonly currentTempo = new Property(DEFAULT_TEMPO);
   private readonly currentTimeSignature = new Property<TimeSignature>(DEFAULT_TIME_SIGNATURE);
-  private readonly currentVamp = new Property<PlayerVampState | undefined>(undefined);
+  private readonly currentSection = new Property<PlayerSectionState | undefined>(undefined);
   private readonly currentSegue = new Property<PlayerSegueState | undefined>(undefined);
 
   readonly onStatusChange = this.status.onChange;
@@ -54,15 +82,17 @@ export default class PlayerEngine {
 
   readonly onPlayingChange = this.playing.onChange;
   readonly onDurationChange = this.duration.onChange;
-  readonly onFinalMeasureChange = this.finalMeasure.onChange;
+  readonly onTimelineChange = this.timeline.onChange;
+  readonly onActiveTrackIndicesChange = this.activeTrackIndices.onChange;
+  readonly onFinalLocationChange = this.finalLocation.onChange;
   readonly onPlaybackSpeedChange = this.playbackSpeed.onChange;
   readonly onPlaybackTranspositionChange = this.playbackTransposition.onChange;
 
   readonly onPositionChange = this.position.onChange;
-  readonly onCurrentMeasureChange = this.currentMeasure.onChange;
+  readonly onCurrentLocationChange = this.currentLocation.onChange;
   readonly onCurrentTempoChange = this.currentTempo.onChange;
   readonly onCurrentTimeSignatureChange = this.currentTimeSignature.onChange;
-  readonly onCurrentVampChange = this.currentVamp.onChange;
+  readonly onCurrentSectionChange = this.currentSection.onChange;
   readonly onCurrentSegueChange = this.currentSegue.onChange;
 
   private readonly emitters = {
@@ -78,8 +108,9 @@ export default class PlayerEngine {
   readonly onAudioContextZombie = this.emitters.audioContextZombie.event;
 
   private currentSong?: Song;
-  private vamps: PlayerVamp[] = [];
   private vampsEnabled = true;
+  private route = new Route([], [], { vampsEnabled: true });
+  private routeState: RouteState | undefined = undefined;
 
   private updater: Updater;
   private audioContext: AudioContext;
@@ -88,11 +119,7 @@ export default class PlayerEngine {
   private backend?: PlayerBackend;
   private loadAbortController?: AbortController;
 
-  private systemEvents: SystemEvents = {
-    measure: new MidiEventList<MeasureEvent>(),
-    tempo: new MidiEventList<TempoEvent>(),
-    timeSignature: new MidiEventList<TimeSignatureEvent>(),
-  };
+  private systemEvents: SystemEvents = createSystemEvents();
 
   constructor(audioContext?: AudioContext, updaterFactory?: (callback: UpdateCallback) => Updater) {
     this.audioContext = audioContext ?? new AudioContext({ latencyHint: "playback" });
@@ -126,8 +153,22 @@ export default class PlayerEngine {
     return this.duration.get();
   }
 
-  getCurrentMeasure(): MeasureReference {
-    return this.currentMeasure.get();
+  /** The recording's measure order with the ticks of every position. Empty until a song is loaded. */
+  getTimeline(): ResolvedTimeline {
+    return this.timeline.get();
+  }
+
+  /** The tracks that start a note in each timeline position, indexed by position. Empty in audio mode. */
+  getActiveTrackIndices(): readonly ReadonlySet<number>[] {
+    return this.activeTrackIndices.get();
+  }
+
+  getCurrentLocation(): PlayerLocation | undefined {
+    return this.currentLocation.get();
+  }
+
+  getFinalLocation(): PlayerLocation | undefined {
+    return this.finalLocation.get();
   }
 
   getCurrentTempo(): number {
@@ -138,12 +179,8 @@ export default class PlayerEngine {
     return this.currentTimeSignature.get();
   }
 
-  getFinalMeasure(): MeasureReference {
-    return this.finalMeasure.get();
-  }
-
-  getCurrentVamp(): PlayerVampState | undefined {
-    return this.currentVamp.get();
+  getCurrentSection(): PlayerSectionState | undefined {
+    return this.currentSection.get();
   }
 
   getCurrentSegue(): PlayerSegueState | undefined {
@@ -152,6 +189,16 @@ export default class PlayerEngine {
 
   getCurrentSong(): Song | undefined {
     return this.currentSong;
+  }
+
+  /** The tick of a beat at a measure occurrence, or undefined when the recording does not play it. */
+  getLocationTick(location: Occurrence & { beat: number }): Tick | undefined {
+    return getLocationTick(this.timeline.get(), location);
+  }
+
+  /** The tick of a beat at a timeline position, or undefined when there is no such position. */
+  getPositionTick(position: number, beat = 0): Tick | undefined {
+    return getPositionTick(this.timeline.get(), position, beat);
   }
 
   getTrackChunks(): AudioChunk[][] {
@@ -272,12 +319,6 @@ export default class PlayerEngine {
   stop(): void {
     this.pause();
     this.seek(0);
-
-    // Reset iteration count so a vamp at position 0 restarts from the beginning.
-    const vamp = this.currentVamp.get();
-    if (vamp) {
-      this.currentVamp.set({ ...vamp, currentIteration: 0 });
-    }
   }
 
   seek(position: Tick): void {
@@ -289,53 +330,55 @@ export default class PlayerEngine {
     const wasPlaying = this.playing.get();
     this.pause();
 
-    // Update the position first, so that syncStateAt and vampAt operate based on the new position
     this.position.set(Math.max(0, Math.min(this.duration.get(), position)));
-
     this.syncStateAt(this.position.get());
 
-    const newVamp = this.vampAt(this.position.get());
-    if (newVamp?.start !== this.currentVamp.get()?.start) {
-      this.currentVamp.set(newVamp);
-    }
+    // A seek is a fresh visit, so the section state follows from the position alone.
+    this.routeState = this.route.stateAt(this.position.get());
+    this.syncSection();
 
     if (wasPlaying) {
       this.play();
     }
   }
 
-  exitVamp(): void {
-    const vamp = this.currentVamp.get();
-    if (vamp) {
-      this.currentVamp.set({ ...vamp, manualExit: true });
+  /** Makes the current vamp pass the last one. */
+  releaseVamp(): void {
+    const state = this.routeState;
+    if (!state || state.released || this.currentSection.get()?.kind !== "vamp") {
+      return;
     }
+
+    this.routeState = { ...state, released: true };
+    this.syncSection();
   }
 
+  /** Takes back a release and counts the vamp's passes from the current recorded pass again. */
   resetVamp(): void {
-    const vamp = this.currentVamp.get();
-    if (vamp) {
-      this.currentVamp.set({ ...vamp, manualExit: false, currentIteration: 0 });
+    if (this.currentSection.get()?.kind !== "vamp") {
+      return;
     }
+
+    this.routeState = this.route.stateAt(this.position.get());
+    this.syncSection();
   }
 
   toggleVamp(): void {
-    if (this.currentVamp.get()?.manualExit) {
+    if (this.currentSection.get()?.released) {
       this.resetVamp();
     } else {
-      this.exitVamp();
+      this.releaseVamp();
     }
   }
 
+  /** Disabled vamps play as recorded. */
   setVampsEnabled(enabled: boolean): void {
-    this.vampsEnabled = enabled;
-
-    // Exit any ongoing vamp immediately
-    if (!enabled) {
-      const vamp = this.currentVamp.get();
-      if (vamp && !vamp.manualExit) {
-        this.currentVamp.set({ ...vamp, manualExit: true });
-      }
+    if (this.vampsEnabled === enabled) {
+      return;
     }
+
+    this.vampsEnabled = enabled;
+    this.rebuildRoute();
   }
 
   setSegueEnabled(enabled: boolean): void {
@@ -356,8 +399,8 @@ export default class PlayerEngine {
     this.loadAbortController = controller;
     const { signal } = controller;
 
-    // If the song has no measures or no player mode, stop here
-    if (song.measures.items().length === 0 || song.playerMode === "none") {
+    // If the song has nothing to play or no player mode, stop here
+    if (song.getTimeline().length === 0 || song.playerMode === "none") {
       return;
     }
 
@@ -368,14 +411,9 @@ export default class PlayerEngine {
     this.resumeAudioContext();
     this.setupMasterChain();
 
-    this.systemEvents = {
-      measure: new MidiEventList<MeasureEvent>(),
-      tempo: new MidiEventList<TempoEvent>(),
-      timeSignature: new MidiEventList<TimeSignatureEvent>(),
-    };
+    this.systemEvents = createSystemEvents();
 
     const callbacks = {
-      onMeasureChanged: (m: MeasureReference) => this.currentMeasure.set(m),
       onTempoChanged: (bpm: number) => this.currentTempo.set(bpm),
       onTimeSignatureChanged: (sig: TimeSignature) => this.currentTimeSignature.set(sig),
       onNote: (e: NoteEvent) => this.emitters.note.fire(e),
@@ -392,7 +430,7 @@ export default class PlayerEngine {
     this.backend.onPlaybackTranspositionChanged(this.playbackTransposition.get());
 
     // Try to load the song. If it fails, cleanup the state by unloading and re-throw the error
-    let loadResult: { duration: Tick; finalMeasure: MeasureReference };
+    let loadResult: { duration: Tick; timeline: TimelinePosition[] };
     try {
       loadResult = await this.backend.load(song, signal);
     } catch (err) {
@@ -409,16 +447,19 @@ export default class PlayerEngine {
       return;
     }
 
-    // Initialize the rest of the state based on the loaded song and enter ready state
     this.duration.set(loadResult.duration);
-    this.finalMeasure.set(loadResult.finalMeasure);
-    this.resolveEventTicks(song);
+    this.applyTimeline(loadResult.timeline);
+    if (this.backend instanceof MidiBackend) {
+      this.activeTrackIndices.set(this.backend.getActiveTrackIndices());
+    }
+
+    this.route = this.createRoute();
     this.status.set("ready");
 
     // Setup segue only once at the start of the song
-    this.currentSegue.set(song.events.segue ? { enabled: true } : undefined);
+    this.currentSegue.set(song.hasSegue() ? { enabled: true } : undefined);
 
-    // This will set the position and perform an initial sync for the current vamp, measure, tempo, etc.
+    // This will set the position and perform an initial sync for the current section, location, tempo, etc.
     this.seek(0);
   }
 
@@ -437,164 +478,134 @@ export default class PlayerEngine {
 
     this.mode.set("none");
     this.currentSong = undefined;
-    this.vamps = [];
+    this.route = new Route([], [], { vampsEnabled: this.vampsEnabled });
+    this.routeState = undefined;
     this.duration.set(0);
-    this.finalMeasure.set(DEFAULT_MEASURE);
+    this.timeline.set([]);
+    this.activeTrackIndices.set([]);
+    this.finalLocation.set(undefined);
 
     this.position.set(0);
-    this.currentMeasure.set(DEFAULT_MEASURE);
+    this.currentLocation.set(undefined);
     this.currentTempo.set(DEFAULT_TEMPO);
     this.currentTimeSignature.set(DEFAULT_TIME_SIGNATURE);
-    this.currentVamp.set(undefined);
+    this.currentSection.set(undefined);
     this.currentSegue.set(undefined);
 
     this.status.set("idle");
   }
 
+  /**
+   * Re-resolves the timeline after warp marker edits and the sections after section edits. It keeps the
+   * position, the segue and the pass count of the section being played, and does not seek the backend.
+   */
   syncWarp(): void {
-    if (!(this.backend instanceof AudioBackend) || !this.currentSong) {
+    if (this.status.get() !== "ready" || !this.currentSong) {
       return;
     }
 
-    this.backend.syncWarp();
-
-    const song = this.currentSong;
-
-    for (const e of song.events.markers.items()) {
-      e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
-      e.$endTick = song.findMeasure(e.end[0])?.$beatTicks[0];
+    if (this.backend instanceof AudioBackend) {
+      this.applyTimeline(this.backend.syncWarp());
     }
 
-    // currentSegue is intentionally left untouched — it is independent of the warp map.
-    this.vamps = [];
-    this.currentVamp.set(undefined);
-    for (const e of song.events.vamps.items()) {
-      e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
-      e.$endTick = song.findMeasure(e.end[0])?.$beatTicks[0];
-      if (e.$startTick !== undefined && e.$endTick !== undefined) {
-        this.vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations, out: e.out ?? "onEnd", vocals: e.vocals ?? "all" });
-      } else {
-        console.error("Could not resolve location of Vamp:", e);
+    this.rebuildRoute();
+    this.syncLocation(this.position.get());
+  }
+
+  private createRoute(): Route {
+    return new Route(this.timeline.get(), this.currentSong?.getSections() ?? [], { vampsEnabled: this.vampsEnabled });
+  }
+
+  private rebuildRoute(): void {
+    const previous = this.routeState;
+    this.route = this.createRoute();
+
+    const fresh = this.route.stateAt(this.position.get());
+    const isSameSection = previous && fresh && previous.section === fresh.section
+      && this.route.getSectionState(fresh)?.kind === this.currentSection.get()?.kind;
+    this.routeState = isSameSection ? { ...fresh, pass: previous.pass, released: previous.released } : fresh;
+    this.syncSection();
+  }
+
+  private applyTimeline(timeline: TimelinePosition[]): void {
+    this.systemEvents.beat = buildBeatEvents(timeline);
+    this.timeline.set(timeline);
+
+    const lastTick = Math.max(0, this.duration.get() - 1);
+    const final = findLocationAt(timeline, lastTick);
+    if (!isSamePlayerLocation(final, this.finalLocation.get())) {
+      this.finalLocation.set(final);
+    }
+  }
+
+  /**
+   * Collects the state changes up to the next real jump. The backend stops at the jump, and also where
+   * muting vocals changes, so notes on a pass boundary get the new pass's vocals.
+   */
+  private planStep(position: Tick): StepPlan {
+    const transitions: RouteJump[] = [];
+    let state = this.routeState;
+    let tick = position;
+    const muted = this.route.muteVocals(state, tick);
+
+    for (let i = 0; i < MAX_TRANSITIONS_PER_PLAN; i++) {
+      const next = this.route.nextJump(state, tick);
+      const muteChange = this.route.findMuteChange(state, tick);
+      if (muteChange !== undefined && (!next || muteChange < next.at)) {
+        return { transitions, limit: muteChange };
       }
-    }
 
-    const measures = song.measures.items();
-    const audioDuration = this.duration.get();
-    const finalMeasure = [...measures].reverse().find(m => (m.$beatTicks[0] ?? Infinity) <= audioDuration) ?? measures[0]!;
-    this.finalMeasure.set(finalMeasure.reference(0));
-
-    this.syncDisplayAt(this.position.get());
-  }
-
-  private vampPhaseAt(vamp: PlayerVampState, pos: Tick): VampPhase {
-    const midpoint = vamp.start + (vamp.end - vamp.start) / 2;
-    const isLastIteration = vamp.iterations > 0 && vamp.currentIteration >= vamp.iterations;
-    if (vamp.manualExit || (isLastIteration && pos >= midpoint)) {
-      return "exiting";
-    }
-
-    if (vamp.currentIteration === 0 && pos < midpoint) {
-      return "entering";
-    }
-
-    return "repeating";
-  }
-
-  private vampAt(tick: Tick): PlayerVampState | undefined {
-    // If vamps are disabled, treat all measures as regular measures
-    if (!this.vampsEnabled) {
-      return undefined;
-    }
-
-    // As a typical song has comparatively few vamps, a simple linear search is sufficient here.
-    const v = this.vamps.find(v => tick >= v.start && tick < v.end);
-    return v ? { ...v, currentIteration: 0, manualExit: false } : undefined;
-  }
-
-  private barlineBetween(after: Tick, before: Tick): Tick | undefined {
-    return this.systemEvents.measure.items()
-      .find(e => e.tick > after && e.tick < before && e.measure[1] === 0)?.tick;
-  }
-
-  private beatlineBetween(after: Tick, before: Tick): Tick | undefined {
-    return this.systemEvents.measure.items()
-      .find(e => e.tick > after && e.tick < before)?.tick;
-  }
-
-  private vampAction(p0: Tick): { action: VampAction | undefined; limit?: Tick } {
-    const vamp = this.currentVamp.get();
-    if (!vamp) {
-      return { action: undefined };
-    }
-
-    const shouldExit = vamp.manualExit || (vamp.iterations > 0 && vamp.currentIteration >= vamp.iterations);
-    if (!shouldExit) {
-      return { action: "repeat", limit: vamp.end };
-    }
-
-    if (vamp.out === "anyBeat") {
-      const beatline = this.beatlineBetween(p0, vamp.end);
-      if (beatline !== undefined) {
-        return { action: "exitEarly", limit: beatline };
+      if (!next) {
+        return { transitions };
       }
-    } else if (vamp.out === "anyBar") {
-      const barline = this.barlineBetween(p0, vamp.end);
-      if (barline !== undefined) {
-        return { action: "exitEarly", limit: barline };
+
+      if (next.to !== next.at) {
+        return { transitions, jump: next, limit: next.at };
       }
+
+      transitions.push(next);
+      if (this.route.muteVocals(next.next, next.at) !== muted) {
+        return { transitions, limit: next.at };
+      }
+
+      state = next.next;
+      tick = next.at;
     }
 
-    return { action: "exitAtEnd", limit: vamp.end };
+    return { transitions, limit: tick };
   }
 
-  private currentVampPhase(pos: Tick): VampPhase | undefined {
-    const vamp = this.currentVamp.get();
-    return vamp ? this.vampPhaseAt(vamp, pos) : undefined;
+  private applyTransitions(transitions: RouteJump[], position: Tick): void {
+    for (const transition of transitions) {
+      if (transition.at > position) {
+        return;
+      }
+
+      this.routeState = transition.next;
+    }
   }
 
-  private vocalsAreMuted(pos: Tick): boolean {
-    const phase = this.currentVampPhase(pos);
-    if (!phase) {
+  private jump(jump: RouteJump): Tick {
+    this.routeState = jump.next;
+    this.backend!.onPositionJump(jump.to - jump.at, jump.to);
+    this.restoreTempoAt(jump.to);
+    return jump.to;
+  }
+
+  /** Ends playback when the song is over. Returns whether it did. */
+  private finishIfEnded(position: Tick): boolean {
+    if (position < this.duration.get()) {
       return false;
     }
 
-    const vocals: VampVocals = this.currentVamp.get()?.vocals ?? "all";
-    switch (vocals) {
-      case "all": return false;
-      case "first": return phase !== "entering";
-      case "last": return phase !== "exiting";
-      case "split": return phase === "repeating";
-    }
-  }
-
-  private applyVampAction(p1: Tick, action: VampAction, remainingTime: number): Tick {
-    const vamp = this.currentVamp.get()!;
-    let jumpOffset = 0;
-    let nextLimit: Tick | undefined;
-
-    if (action === "exitEarly") {
-      jumpOffset = vamp.end - p1;
-      this.currentVamp.set(undefined);
-    } else if (action === "exitAtEnd") {
-      this.currentVamp.set(undefined);
-    } else {
-      jumpOffset = -(vamp.end - vamp.start);
-      this.currentVamp.set({ ...vamp, currentIteration: vamp.currentIteration + 1 });
-      nextLimit = vamp.end;
+    this.position.set(this.duration.get());
+    this.syncLocation(this.duration.get());
+    this.pause();
+    if (this.currentSegue.get()?.enabled) {
+      this.emitters.segue.fire(undefined);
     }
 
-    let pos = p1;
-    if (jumpOffset !== 0) {
-      pos += jumpOffset;
-      this.backend!.onPositionJump(jumpOffset, pos);
-    }
-
-    if (remainingTime > 0) {
-      const { p1: p1b } = this.backend!.step(pos, remainingTime, nextLimit, this.vocalsAreMuted(pos));
-      pos = p1b;
-    }
-
-    return pos;
+    return true;
   }
 
   private handleStep(deltaTime: number): void {
@@ -603,49 +614,71 @@ export default class PlayerEngine {
     }
 
     let pos = this.position.get();
+    let remaining = deltaTime;
+    let jumps = 0;
 
-    // Enter a vamp if the current position crosses into one for the first time
-    if (!this.currentVamp.get()) {
-      const v = this.vampAt(pos);
-      if (v) {
-        this.currentVamp.set(v);
+    // Each round steps the backend up to the next jump or stop. MIDI consumes the time exactly, so it
+    // continues after a stop, while audio always reports the whole step as consumed.
+    for (let round = 0; round < MAX_ROUNDS_PER_STEP; round++) {
+      const plan = this.planStep(pos);
+      const jumpsNow = plan.jump !== undefined && plan.jump.at <= pos;
+
+      if (!jumpsNow) {
+        if (round > 0 && remaining <= 0) {
+          break;
+        }
+
+        const muteVocals = this.route.muteVocals(this.routeState, pos);
+        const { p1, deltaTimeConsumed } = this.backend.step(pos, remaining, plan.limit, muteVocals);
+        remaining -= deltaTimeConsumed;
+        pos = p1;
+      }
+
+      this.applyTransitions(plan.transitions, pos);
+      if (this.finishIfEnded(pos)) {
+        return;
+      }
+
+      if (plan.jump && pos >= plan.jump.at && jumps < MAX_JUMPS_PER_STEP) {
+        pos = this.jump(plan.jump);
+        jumps++;
+        if (this.finishIfEnded(pos)) {
+          return;
+        }
+
+        continue;
+      }
+
+      const reachedStop = !plan.jump && plan.limit !== undefined && pos >= plan.limit;
+      if (!reachedStop) {
+        break;
       }
     }
 
-    // Advance position via the backend, capped at the vamp boundary (if any) so jump targets are exact
-    const { action, limit } = this.vampAction(pos);
-    const { p1, deltaTimeConsumed } = this.backend.step(pos, deltaTime, limit, this.vocalsAreMuted(pos));
-    pos = p1;
+    this.position.set(Math.max(0, Math.min(this.duration.get(), pos)));
+    this.syncLocation(pos);
+    this.syncSection();
+  }
 
-    // Clamp to the song duration and stop when the end is reached
-    if (pos >= this.duration.get()) {
-      this.position.set(this.duration.get());
-      this.pause();
-      if (this.currentSegue.get()?.enabled) {
-        this.emitters.segue.fire(undefined);
-      }
-
-      return;
+  private syncLocation(pos: Tick): void {
+    const location = findLocationAt(this.timeline.get(), pos);
+    if (!isSamePlayerLocation(location, this.currentLocation.get())) {
+      this.currentLocation.set(location);
     }
+  }
 
-    // Apply the vamp action (repeat jump or early exit) if the boundary was reached
-    if (action && this.currentVamp.get() && limit !== undefined && p1 >= limit) {
-      pos = this.applyVampAction(pos, action, deltaTime - deltaTimeConsumed);
+  private syncSection(): void {
+    const section = this.route.getSectionState(this.routeState);
+    if (!isSameSectionState(section, this.currentSection.get())) {
+      this.currentSection.set(section);
     }
-
-    const finalPos = Math.max(0, Math.min(this.duration.get(), pos));
-
-    this.position.set(finalPos);
   }
 
   private syncDisplayAt(pos: Tick): TempoEvent | undefined {
     const opts = { direction: "backward" as const, inclusive: true, extend: true };
-    const measureEvent = this.systemEvents.measure.search({ tick: pos } as MeasureEvent, opts);
     const tempoEvent = this.systemEvents.tempo.search({ tick: pos } as TempoEvent, opts);
     const timeSigEvent = this.systemEvents.timeSignature.search({ tick: pos } as TimeSignatureEvent, opts);
-    if (measureEvent) {
-      this.currentMeasure.set(measureEvent.measure);
-    }
+    this.syncLocation(pos);
 
     if (tempoEvent) {
       this.currentTempo.set(tempoEvent.bpm);
@@ -658,34 +691,21 @@ export default class PlayerEngine {
     return tempoEvent;
   }
 
+  /** A jump can cross tempo changes, so the backend's clock follows the tempo at the target. */
+  private restoreTempoAt(pos: Tick): void {
+    const previousTempo = this.currentTempo.get();
+    const tempoEvent = this.syncDisplayAt(pos);
+    if (tempoEvent && tempoEvent.bpm !== previousTempo) {
+      this.backend?.onTempoRestored(tempoEvent.bpm);
+    }
+  }
+
   private syncStateAt(pos: Tick): void {
     const tempoEvent = this.syncDisplayAt(pos);
     // seek must precede onTempoRestored so lastKnownPosition is anchored first
     this.backend?.seek(pos);
     if (tempoEvent) {
       this.backend?.onTempoRestored(tempoEvent.bpm);
-    }
-  }
-
-  private resolveEventTicks(song: Song): void {
-    this.vamps = [];
-    this.currentVamp.set(undefined);
-    this.currentSegue.set(undefined);
-
-    // Resolve the tick positions of all measure-based events by looking up the associated measure's beat ticks.
-    for (const e of song.events.markers.items()) {
-      e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
-      e.$endTick = song.findMeasure(e.end[0])?.$beatTicks[0];
-    }
-
-    for (const e of song.events.vamps.items()) {
-      e.$startTick = song.findMeasure(e.start[0])?.$beatTicks[0];
-      e.$endTick = song.findMeasure(e.end[0])?.$beatTicks[0];
-      if (e.$startTick !== undefined && e.$endTick !== undefined) {
-        this.vamps.push({ start: e.$startTick, end: e.$endTick, iterations: e.iterations, out: e.out ?? "onEnd", vocals: e.vocals ?? "all" });
-      } else {
-        console.error("Could not resolve location of Vamp:", e);
-      }
     }
   }
 }

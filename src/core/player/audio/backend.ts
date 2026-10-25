@@ -1,18 +1,20 @@
 import axios from "axios";
 
-import { MeasureEvent, MidiEventList, TempoEvent, TimeSignatureEvent } from "../../midi/events";
+import { MidiEventList, TempoEvent, TimeSignatureEvent } from "../../midi/events";
 import type { Tick } from "../../midi/types";
 import WarpMap from "../../midi/warp";
-import type { MeasureReference } from "../../models/measure";
 import type Song from "../../models/song";
 import { resolveUrl } from "../../utils/file";
 import { type BackendCallbacks, type LoadResult, PlayerBackend, type StepResult } from "../backend";
+import { resolveAudioTimeline, type TimelinePosition } from "../timeline";
 import type { SystemEvents } from "../types";
 import { type AudioChunk, detectChunks } from "./chunkDetector";
 import AudioDriver from "./driver";
 
 const MAX_CONCURRENT_DECODE_BYTES = 750 * 1024 * 1024;
 const DECODED_BYTES_PER_COMPRESSED_BYTE = 128; // Rough estimate for spares MP3s with VBR and stereo channels
+const MILLISECONDS_PER_SECOND = 1000;
+const AUDIO_TEMPO = 125;
 
 function medianRatio(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -25,7 +27,6 @@ export default class AudioBackend extends PlayerBackend {
   private trackChunks: AudioChunk[][] = [];
   private warpMap = new WarpMap();
   private currentSong: Song | undefined = undefined;
-  private lastMeasure: MeasureReference | undefined = undefined;
 
   constructor(
     context: AudioContext,
@@ -40,8 +41,9 @@ export default class AudioBackend extends PlayerBackend {
     return this.trackChunks;
   }
 
-  syncWarp(): void {
-    this.buildWarpEvents();
+  /** Re-times the timeline after warp marker edits. */
+  syncWarp(): TimelinePosition[] {
+    return this.buildTimeline();
   }
 
   async load(song: Song, signal: AbortSignal): Promise<LoadResult> {
@@ -114,7 +116,7 @@ export default class AudioBackend extends PlayerBackend {
     });
 
     this.currentSong = song;
-    this.buildWarpEvents();
+    const timeline = this.buildTimeline();
 
     // Setup the underlying audio player
     this.audioDriver?.dispose();
@@ -133,16 +135,7 @@ export default class AudioBackend extends PlayerBackend {
     signal.throwIfAborted();
     this.audioDriver!.connect(this.masterInput);
 
-    const audioDuration = Math.min(...fileDurations) * 1000;
-    const measures = song.measures.items();
-    const finalMeasure
-      = [...measures].reverse().find(m => (m.$beatTicks[0] ?? Infinity) <= audioDuration)
-        ?? measures[0]!;
-
-    return {
-      duration: audioDuration,
-      finalMeasure: finalMeasure.reference(0),
-    };
+    return { duration: Math.min(...fileDurations) * MILLISECONDS_PER_SECOND, timeline };
   }
 
   play(_currentPosition: Tick): void {
@@ -154,11 +147,11 @@ export default class AudioBackend extends PlayerBackend {
   }
 
   seek(position: Tick): void {
-    this.audioDriver?.seek(position / 1000);
+    this.audioDriver?.seek(position / MILLISECONDS_PER_SECOND);
   }
 
   step(currentPosition: Tick, deltaTime: number, limit?: Tick, muteVocals?: boolean): StepResult {
-    const driverPosition = (this.audioDriver?.getPosition() ?? 0) * 1000;
+    const driverPosition = (this.audioDriver?.getPosition() ?? 0) * MILLISECONDS_PER_SECOND;
     const p1 = limit !== undefined ? Math.min(driverPosition, limit) : driverPosition;
 
     const tracks = this.currentSong?.tracks ?? [];
@@ -171,26 +164,11 @@ export default class AudioBackend extends PlayerBackend {
     this.audioDriver?.setTempo(this.playbackSpeed);
     this.audioDriver?.setPitch(this.playbackTransposition);
 
-    if (this.systemEvents.measure.items().length > 0 && (limit === undefined || driverPosition < limit)) {
-      const measureEvent = this.systemEvents.measure.search(
-        { tick: driverPosition } as MeasureEvent,
-        { direction: "backward", inclusive: true, extend: true },
-      );
-      if (
-        measureEvent
-        && (measureEvent.measure[0] !== this.lastMeasure?.[0]
-          || measureEvent.measure[1] !== this.lastMeasure?.[1])
-      ) {
-        this.lastMeasure = measureEvent.measure;
-        this.callbacks.onMeasureChanged(measureEvent.measure);
-      }
-    }
-
     return { p0: currentPosition, p1, deltaTimeConsumed: deltaTime };
   }
 
   onPositionJump(_offset: Tick, newPosition: Tick): void {
-    this.audioDriver?.scheduleSeek(newPosition / 1000, 0);
+    this.audioDriver?.scheduleSeek(newPosition / MILLISECONDS_PER_SECOND, 0);
   }
 
   onTempoRestored(_bpm: number): void {}
@@ -210,39 +188,15 @@ export default class AudioBackend extends PlayerBackend {
     this.audioDriver = undefined;
     this.trackChunks = [];
     this.currentSong = undefined;
-    this.lastMeasure = undefined;
   }
 
-  private buildWarpEvents(): void {
-    const measures = this.currentSong!.measures.items();
+  private buildTimeline(): TimelinePosition[] {
+    const song = this.currentSong!;
+    const timeline = resolveAudioTimeline(song.getTimeline(), song.getMeasures(), song.getWarpMarkers(), this.warpMap);
 
-    this.warpMap.setMarkers(
-      this.currentSong!.warpMarkers
-        .map(m => ({ measure: measures.findIndex(m2 => m2.value === m.measure), time: m.time }))
-        .filter(m => m.measure !== -1),
-    );
+    this.systemEvents.tempo = new MidiEventList([new TempoEvent(0, AUDIO_TEMPO)]);
+    this.systemEvents.timeSignature = new MidiEventList([new TimeSignatureEvent(0, [4, 2])]);
 
-    this.systemEvents.measure = new MidiEventList();
-    this.systemEvents.tempo = new MidiEventList();
-    this.systemEvents.timeSignature = new MidiEventList();
-
-    for (let i = 0; i < measures.length; i++) {
-      const measure = measures[i]!;
-      const startMs = this.warpMap.measureToTime(i) * 1000;
-      const endMs = this.warpMap.measureToTime(i + 1) * 1000;
-      const beatDurationMs = (endMs - startMs) / measure.beats;
-
-      measure.$beatTicks = Array.from({ length: measure.beats }, (_, b) => startMs + b * beatDurationMs);
-      measure.$tickLength = endMs - startMs;
-
-      for (let b = 0; b < measure.beats; b++) {
-        this.systemEvents.measure.insert(new MeasureEvent(measure.$beatTicks[b]!, measure.reference(b)));
-      }
-    }
-
-    this.systemEvents.tempo.insert(new TempoEvent(0, 125));
-    this.systemEvents.timeSignature.insert(new TimeSignatureEvent(0, [4, 2]));
-
-    this.lastMeasure = undefined;
+    return timeline;
   }
 }

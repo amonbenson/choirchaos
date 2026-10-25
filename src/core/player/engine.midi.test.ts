@@ -1,7 +1,22 @@
 import axios from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { makeMidiBuffer, makeMidiSong, makeMidiSongWithVamp, makeMtiJson, TICKS, TRACK_NAMES } from "@/test/fixtures";
+import type { VampVocals } from "@/core/models/sections";
+import type Song from "@/core/models/song";
+import {
+  BEAT_MAP_LABELS,
+  idOf,
+  makeMidiBuffer,
+  makeMidiSong,
+  makeMidiSongWithBakedVamp,
+  makeMidiSongWithCut,
+  makeMidiSongWithRepeat,
+  makeMidiSongWithVamp,
+  makeMtiJson,
+  positionTick,
+  TICKS,
+  TRACK_NAMES,
+} from "@/test/fixtures";
 import { ManualUpdater, stepPast, stepUntil } from "@/test/updater";
 
 import type { NoteEvent } from "../midi/events";
@@ -9,7 +24,7 @@ import PlayerEngine from "./engine";
 
 vi.mock("axios");
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+type BeatMapLabels = readonly string[];
 
 function makePlayer(): { player: PlayerEngine; updater: ManualUpdater; ctx: AudioContext } {
   const ctx = new AudioContext();
@@ -21,23 +36,41 @@ function makePlayer(): { player: PlayerEngine; updater: ManualUpdater; ctx: Audi
   return { player, updater, ctx };
 }
 
-function mockAxios(): void {
+function mockAxios(labels: BeatMapLabels = BEAT_MAP_LABELS.plain): void {
   vi.mocked(axios.get)
     .mockResolvedValueOnce({ data: makeMidiBuffer() })
-    .mockResolvedValueOnce({ data: makeMtiJson() });
+    .mockResolvedValueOnce({ data: makeMtiJson(labels) });
 }
 
-// ── tests ─────────────────────────────────────────────────────────────────────
+/** Records every timeline position the player shows, in order. */
+function recordPositions(player: PlayerEngine): number[] {
+  const positions = [player.getCurrentLocation()?.position ?? -1];
+  player.onCurrentLocationChange((location) => {
+    if (location && positions.at(-1) !== location.position) {
+      positions.push(location.position);
+    }
+  });
+  return positions;
+}
+
+function queuedPitches(): number[] {
+  const wafPlayer = new (window as any).WebAudioFontPlayer();
+  return (wafPlayer.queueWaveTable as ReturnType<typeof vi.fn>).mock.calls.map((args: unknown[]) => args[4] as number);
+}
 
 describe("PlayerEngine – MIDI mode", () => {
   let player: PlayerEngine;
   let updater: ManualUpdater;
   let ctx: AudioContext;
 
+  async function reload(song: Song, labels?: BeatMapLabels): Promise<void> {
+    mockAxios(labels);
+    await player.load(song);
+  }
+
   beforeEach(async () => {
     ({ player, updater, ctx } = makePlayer());
-    mockAxios();
-    await player.load(makeMidiSong());
+    await reload(makeMidiSong());
   });
 
   afterEach(async () => {
@@ -52,9 +85,11 @@ describe("PlayerEngine – MIDI mode", () => {
     expect(player.getStatus()).toBe("ready");
   });
 
-  it("returns to idle after unload", () => {
+  it("returns to idle after unload and clears the timeline", () => {
     player.unload();
     expect(player.getStatus()).toBe("idle");
+    expect(player.getTimeline()).toEqual([]);
+    expect(player.getCurrentLocation()).toBeUndefined();
   });
 
   it("emits statusChanged events during load", async () => {
@@ -84,11 +119,35 @@ describe("PlayerEngine – MIDI mode", () => {
     await ctx2.close();
   });
 
+  it("fails to load when the beat map does not fit the recording", async () => {
+    mockAxios(BEAT_MAP_LABELS.plain);
+    await expect(player.load(makeMidiSongWithBakedVamp())).rejects.toThrow("The beat map has 5 measures, but the recording plays 8.");
+    expect(player.getStatus()).toBe("idle");
+  });
+
+  // ── timeline ──────────────────────────────────────────────────────────────
+
+  it("exposes the timed timeline and the final location", () => {
+    const song = player.getCurrentSong()!;
+    expect(player.getTimeline().map(p => p.beatTicks[0])).toEqual([0, 480, 2400, 4320, 6240]);
+    expect(player.getFinalLocation()).toEqual({ position: 4, measure: idOf(song, "4"), occurrence: 1, beat: 3 });
+  });
+
+  it("collects the tracks that play in each position", () => {
+    expect(player.getActiveTrackIndices().map(indices => [...indices])).toEqual([[], [0], [0], [1], []]);
+  });
+
+  it("finds the tick of a location", () => {
+    const song = player.getCurrentSong()!;
+    expect(player.getLocationTick({ measure: idOf(song, "2"), occurrence: 1, beat: 2 })).toBe(TICKS.measure2 + 960);
+    expect(player.getPositionTick(3)).toBe(TICKS.measure3);
+  });
+
   // ── seek ──────────────────────────────────────────────────────────────────
 
-  it("seek to measure 2 sets currentMeasure to ['2', 0]", () => {
-    player.seek(TICKS.measure2);
-    expect(player.getCurrentMeasure()).toEqual(["2", 0]);
+  it("seek to measure 2 sets the current location", () => {
+    player.seek(TICKS.measure2 + 500);
+    expect(player.getCurrentLocation()).toEqual({ position: 2, measure: idOf(player.getCurrentSong()!, "2"), occurrence: 1, beat: 1 });
   });
 
   it("seek past the tempo change sets currentTempo to 140", () => {
@@ -102,9 +161,7 @@ describe("PlayerEngine – MIDI mode", () => {
     expect(player.getPosition()).toBe(0);
   });
 
-  // ── duration ─────────────────────────────────────────────────────────────
-
-  it("duration equals last-measure start + tickLength (8160)", () => {
+  it("duration ends where the terminal measure starts", () => {
     expect(player.getDuration()).toBe(TICKS.duration);
   });
 
@@ -176,86 +233,99 @@ describe("PlayerEngine – MIDI mode", () => {
     expect(player.getPosition()).toBe(TICKS.duration);
   });
 
-  // ── vamp ─────────────────────────────────────────────────────────────────
-
-  it("enters a vamp when position first crosses its start tick", async () => {
-    const { player: vp, updater: vu, ctx: vc } = makePlayer();
-    mockAxios();
-    await vp.load(makeMidiSongWithVamp());
-
-    vp.play();
-    stepPast(vu, vp, TICKS.measure2 + 10);
-
-    expect(vp.getCurrentVamp()).toBeDefined();
-    vp.unload();
-    await vc.close();
+  it("plays every position of a plain recording once", () => {
+    const positions = recordPositions(player);
+    player.play();
+    stepPast(updater, player, TICKS.duration);
+    expect(positions).toEqual([0, 1, 2, 3, 4]);
   });
 
-  it("wraps position back after crossing vamp end (first loop)", async () => {
-    const { player: vp, updater: vu, ctx: vc } = makePlayer();
-    mockAxios();
-    await vp.load(makeMidiSongWithVamp());
+  // ── vamp recorded once ────────────────────────────────────────────────────
 
-    vp.play();
-    stepUntil(vu, () => (vp.getCurrentVamp()?.currentIteration ?? 0) > 0);
+  describe("vamp recorded once", () => {
+    beforeEach(async () => {
+      await reload(makeMidiSongWithVamp());
+    });
 
-    expect(vp.getCurrentVamp()).toBeDefined();
-    expect(vp.getCurrentVamp()!.currentIteration).toBeGreaterThan(0);
-    expect(vp.getPosition()).toBeLessThan(TICKS.measure3);
+    it("enters the vamp when the position first crosses its start", () => {
+      player.play();
+      stepPast(updater, player, TICKS.measure2 + 10);
 
-    vp.unload();
-    await vc.close();
+      expect(player.getCurrentSection()).toEqual({ section: 0, kind: "vamp", pass: 1, passes: 2, recordedPasses: 1, released: false });
+    });
+
+    it("jumps back at the vamp end for the second pass", () => {
+      player.play();
+      stepUntil(updater, () => (player.getCurrentSection()?.pass ?? 0) > 1);
+
+      expect(player.getCurrentSection()?.pass).toBe(2);
+      expect(player.getPosition()).toBeLessThan(TICKS.measure3);
+    });
+
+    it("leaves the vamp after the last pass", () => {
+      const positions = recordPositions(player);
+      player.play();
+      stepUntil(updater, () => player.getCurrentSection() !== undefined);
+      stepUntil(updater, () => player.getCurrentSection() === undefined);
+
+      expect(player.getPosition()).toBeGreaterThanOrEqual(TICKS.measure3);
+      expect(positions).toEqual([0, 1, 2, 3]);
+    });
+
+    it("does not emit notes at or beyond the vamp end during the first pass", () => {
+      const allNotes: NoteEvent[] = [];
+      player.onNote(e => allNotes.push(e));
+
+      player.play();
+      stepUntil(updater, () => (player.getCurrentSection()?.pass ?? 0) >= 2);
+
+      expect(player.getPosition()).toBeLessThan(TICKS.measure3);
+      expect(allNotes.filter(n => n.tick >= TICKS.measure3)).toHaveLength(0);
+    });
+
+    it("emits notes at the vamp end after the vamp exits", () => {
+      const allNotes: NoteEvent[] = [];
+      player.onNote(e => allNotes.push(e));
+
+      player.play();
+      stepUntil(updater, () => player.getCurrentSection() !== undefined);
+      stepUntil(updater, () => player.getCurrentSection() === undefined);
+      stepPast(updater, player, TICKS.measure3 + 10);
+
+      expect(allNotes.filter(n => n.pitch === 67 && n.trackIndex === 1).length).toBeGreaterThan(0);
+    });
+
+    it("does not show a position beyond the vamp end before the last pass", () => {
+      const positions = recordPositions(player);
+      player.play();
+      stepUntil(updater, () => (player.getCurrentSection()?.pass ?? 0) >= 2);
+
+      expect(positions).not.toContain(3);
+    });
+
+    it("leaves at the end of the current pass once released", () => {
+      player.play();
+      stepPast(updater, player, TICKS.measure2 + 10);
+      player.releaseVamp();
+
+      expect(player.getCurrentSection()).toMatchObject({ pass: 1, passes: 1, released: true });
+      stepUntil(updater, () => player.getCurrentSection() === undefined);
+      expect(player.getPosition()).toBeGreaterThanOrEqual(TICKS.measure3);
+    });
+
+    it("toggles between released and vamping", () => {
+      player.seek(TICKS.measure2 + 10);
+      player.toggleVamp();
+      expect(player.getCurrentSection()?.released).toBe(true);
+      player.toggleVamp();
+      expect(player.getCurrentSection()?.released).toBe(false);
+    });
   });
 
-  it("exits vamp after reaching max iterations", async () => {
-    const { player: vp, updater: vu, ctx: vc } = makePlayer();
-    mockAxios();
-    await vp.load(makeMidiSongWithVamp()); // 2 iterations
-
-    vp.play();
-    stepUntil(vu, () => vp.getCurrentVamp() !== undefined);
-
-    stepUntil(vu, () => vp.getCurrentVamp() === undefined);
-
-    expect(vp.getCurrentVamp()).toBeUndefined();
-    expect(vp.getPosition()).toBeGreaterThanOrEqual(TICKS.measure3);
-
-    vp.unload();
-    await vc.close();
-  });
-
-  it("does not emit notes at or beyond vamp end tick during repeat iterations", async () => {
-    const { player: vp, updater: vu, ctx: vc } = makePlayer();
-    mockAxios();
-    await vp.load(makeMidiSongWithVamp()); // vamp: [2400, 4320), 2 iterations
-
-    const allNotes: NoteEvent[] = [];
-    vp.onNote(e => allNotes.push(e));
-
-    vp.play();
-
-    // Step until the first iteration completes (currentIteration becomes 1)
-    stepUntil(vu, () => (vp.getCurrentVamp()?.currentIteration ?? 0) >= 1);
-
-    expect(vp.getCurrentVamp()?.currentIteration).toBe(1);
-    expect(vp.getPosition()).toBeLessThan(TICKS.measure3);
-
-    // Notes at ticks >= vamp.end (measure 3) must not have fired during a repeat
-    const notesAtOrBeyondVampEnd = allNotes.filter(n => n.tick >= TICKS.measure3);
-    expect(notesAtOrBeyondVampEnd).toHaveLength(0);
-
-    vp.unload();
-    await vc.close();
-  });
-
-  it("does not schedule audio for notes in the danger zone near vamp end during iterations", async () => {
-    // Danger zone: notes within AUDIO_CLOCK_OFFSET (100ms = 96 ticks at 120 BPM) before
-    // vamp.end are scheduled 100ms in the future by queueWaveTable. Without the fix, these
-    // play during the next iteration after the vamp jump fires. The visual onNote callback
-    // must still fire (so the UI stays correct), but queueWaveTable must be suppressed.
-    const { player: vp, updater: vu, ctx: vc } = makePlayer();
-
-    // Inject a note at tick 4280 — inside danger zone [4224, 4320) with vamp.end=4320
+  it("does not schedule audio for notes in the danger zone before a jump", async () => {
+    // Notes within AUDIO_CLOCK_OFFSET (100ms = 160 ticks at 120 BPM) before a jump are scheduled
+    // 100ms in the future by queueWaveTable and would sound after it. The visual onNote callback
+    // must still fire, but queueWaveTable must be suppressed.
     const { parseArrayBuffer } = await import("midi-json-parser");
     vi.mocked(parseArrayBuffer).mockResolvedValueOnce({
       tracks: [
@@ -267,100 +337,205 @@ describe("PlayerEngine – MIDI mode", () => {
         ],
         [
           { delta: 0, trackName: TRACK_NAMES.vocals },
-          { delta: 4280, noteOn: { noteNumber: 65, velocity: 80 } } as any, // F4 at tick 4280, in danger zone
+          { delta: 4280, noteOn: { noteNumber: 65, velocity: 80 } } as any,
           { delta: 480, noteOff: { noteNumber: 65, velocity: 0 } } as any,
         ],
       ],
     } as any);
-    mockAxios();
-    await vp.load(makeMidiSongWithVamp());
-
-    const wafPlayer = new (window as any).WebAudioFontPlayer();
-    (wafPlayer.queueWaveTable as ReturnType<typeof vi.fn>).mockClear();
+    await reload(makeMidiSongWithVamp());
+    (new (window as any).WebAudioFontPlayer().queueWaveTable as ReturnType<typeof vi.fn>).mockClear();
 
     const allNotes: NoteEvent[] = [];
-    vp.onNote(e => allNotes.push(e));
+    player.onNote(e => allNotes.push(e));
 
-    vp.play();
+    player.play();
+    stepUntil(updater, () => (player.getCurrentSection()?.pass ?? 0) >= 2);
 
-    // Step until first iteration completes (currentIteration becomes 1)
-    stepUntil(vu, () => (vp.getCurrentVamp()?.currentIteration ?? 0) >= 1);
-
-    expect(vp.getCurrentVamp()?.currentIteration).toBe(1);
-
-    // Visual callback must fire for the danger-zone note (UI needs it)
-    const dangerZoneNotes = allNotes.filter(n => n.pitch === 65);
-    expect(dangerZoneNotes.length).toBeGreaterThan(0);
-
-    // But queueWaveTable must NOT have been called with pitch 65 during the iteration
-    const scheduledPitches = (wafPlayer.queueWaveTable as ReturnType<typeof vi.fn>).mock.calls
-      .map((args: unknown[]) => args[4]);
-    expect(scheduledPitches).not.toContain(65);
-
-    vp.unload();
-    await vc.close();
+    expect(allNotes.filter(n => n.pitch === 65).length).toBeGreaterThan(0);
+    expect(queuedPitches()).not.toContain(65);
   });
 
-  it("emits notes at vamp end after the vamp fully exits", async () => {
-    const { player: vp, updater: vu, ctx: vc } = makePlayer();
-    mockAxios();
-    await vp.load(makeMidiSongWithVamp());
+  // ── baked vamp ────────────────────────────────────────────────────────────
 
-    const allNotes: NoteEvent[] = [];
-    vp.onNote(e => allNotes.push(e));
+  describe("baked vamp", () => {
+    // Measure "2" is recorded four times, at positions 2 to 5.
 
-    vp.play();
+    it("plays the first and the last recorded pass for 2 passes", async () => {
+      await reload(makeMidiSongWithBakedVamp({ passes: 2 }), BEAT_MAP_LABELS.bakedVamp);
+      const positions = recordPositions(player);
+      const passes: number[] = [];
+      player.onCurrentSectionChange(section => section && passes.push(section.pass));
 
-    // Wait for the vamp to exit entirely, then step past the vocal note at tick 4320
-    stepUntil(vu, () => vp.getCurrentVamp() === undefined);
+      player.play();
+      stepPast(updater, player, player.getDuration());
 
-    stepPast(vu, vp, TICKS.measure3 + 10);
+      expect(positions).toEqual([0, 1, 2, 5, 6, 7]);
+      expect(passes).toEqual([1, 2]);
+    });
 
-    expect(vp.getCurrentVamp()).toBeUndefined();
-    const vocalG4 = allNotes.filter(n => n.pitch === 67 && n.trackIndex === 1);
-    expect(vocalG4.length).toBeGreaterThan(0);
+    it("plays the recording unchanged when the passes match", async () => {
+      await reload(makeMidiSongWithBakedVamp({ passes: 4 }), BEAT_MAP_LABELS.bakedVamp);
+      const positions = recordPositions(player);
 
-    vp.unload();
-    await vc.close();
+      player.play();
+      stepPast(updater, player, player.getDuration());
+
+      expect(positions).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    });
+
+    it("plays a disabled vamp as recorded", async () => {
+      await reload(makeMidiSongWithBakedVamp({ passes: 2 }), BEAT_MAP_LABELS.bakedVamp);
+      player.setVampsEnabled(false);
+      const positions = recordPositions(player);
+
+      player.play();
+      stepPast(updater, player, player.getDuration());
+
+      expect(positions).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+      expect(player.getCurrentSection()).toBeUndefined();
+    });
+
+    it("restores the tempo at the jump target", async () => {
+      // The tempo changes to 140 BPM at position 3, which the jump from position 2 to 5 skips.
+      await reload(makeMidiSongWithBakedVamp({ passes: 2 }), BEAT_MAP_LABELS.bakedVamp);
+      player.play();
+      stepUntil(updater, () => player.getCurrentLocation()?.position === 5);
+
+      expect(player.getCurrentTempo()).toBe(140);
+    });
+
+    it("finishes the pass after a release past its first barline and then plays the last recorded pass", async () => {
+      await reload(makeMidiSongWithBakedVamp({ passes: 0 }), BEAT_MAP_LABELS.bakedVamp);
+      const positions = recordPositions(player);
+
+      player.play();
+      stepUntil(updater, () => player.getCurrentLocation()?.position === 3);
+      player.releaseVamp();
+      stepPast(updater, player, player.getDuration());
+
+      expect(positions).toEqual([0, 1, 2, 3, 5, 6, 7]);
+    });
+
+    it("mutes vocal notes while repeating when only the first pass has vocals", async () => {
+      await reload(makeMidiSongWithBakedVamp({ passes: 4, vocals: "first" }), BEAT_MAP_LABELS.bakedVamp);
+      const notes: NoteEvent[] = [];
+      player.onNote(e => notes.push(e));
+
+      player.play();
+      stepPast(updater, player, positionTick(4));
+
+      // The vocal notes lie in position 3, the second recorded pass.
+      expect(notes.filter(n => n.trackIndex === 1)).toHaveLength(2);
+      expect(queuedPitches()).toContain(60);
+      expect(queuedPitches()).not.toContain(67);
+    });
+
+    it("still plays notes just before a pass boundary that needs no jump", async () => {
+      // The step stops at position 3, where the vocals mute, and continues there without a jump.
+      const { parseArrayBuffer } = await import("midi-json-parser");
+      vi.mocked(parseArrayBuffer).mockResolvedValueOnce({
+        tracks: [
+          [],
+          [
+            { delta: 0, trackName: TRACK_NAMES.instrument },
+            { delta: positionTick(3) - 40, noteOn: { noteNumber: 62, velocity: 80 } } as any,
+            { delta: 240, noteOff: { noteNumber: 62, velocity: 0 } } as any,
+          ],
+          [{ delta: 0, trackName: TRACK_NAMES.vocals }],
+        ],
+      } as any);
+      await reload(makeMidiSongWithBakedVamp({ passes: 4, vocals: "first" }), BEAT_MAP_LABELS.bakedVamp);
+
+      player.play();
+      stepPast(updater, player, positionTick(4));
+
+      expect(queuedPitches()).toContain(62);
+    });
+
+    it("uses the whole step when it stops at a pass boundary without a jump", async () => {
+      const positionAfterStep = async (vocals: VampVocals): Promise<number> => {
+        await reload(makeMidiSongWithBakedVamp({ passes: 4, vocals }), BEAT_MAP_LABELS.bakedVamp);
+        player.seek(positionTick(3) - 10);
+        player.play();
+        updater.step(0.02);
+        return player.getPosition();
+      };
+
+      // Only "first" mutes from position 3 on, so only it stops there.
+      expect(await positionAfterStep("first")).toBeCloseTo(await positionAfterStep("all"), 6);
+    });
+
+    it("keeps vocal notes when every pass has vocals", async () => {
+      await reload(makeMidiSongWithBakedVamp({ passes: 4, vocals: "all" }), BEAT_MAP_LABELS.bakedVamp);
+
+      player.play();
+      stepPast(updater, player, positionTick(4));
+
+      expect(queuedPitches()).toContain(67);
+    });
   });
 
-  it("does not show a measure beyond the vamp end during repeat iterations", async () => {
-    const { player: vp, updater: vu, ctx: vc } = makePlayer();
-    mockAxios();
-    await vp.load(makeMidiSongWithVamp());
+  // ── repeat and cut ────────────────────────────────────────────────────────
 
-    const measuresShown: string[] = [];
-    vp.onCurrentMeasureChange(m => measuresShown.push(m[0]));
+  describe("repeat", () => {
+    // Measures "2" and "3" are recorded three times, at positions 2 to 7.
 
-    vp.play();
+    it("plays all recorded passes when the passes match", async () => {
+      await reload(makeMidiSongWithRepeat(3), BEAT_MAP_LABELS.repeat);
+      const positions = recordPositions(player);
+      const passes: number[] = [];
+      player.onCurrentSectionChange(section => section && passes.push(section.pass));
 
-    stepUntil(vu, () => (vp.getCurrentVamp()?.currentIteration ?? 0) >= 1);
+      player.play();
+      stepPast(updater, player, player.getDuration());
 
-    expect(vp.getCurrentVamp()?.currentIteration).toBe(1);
-    // Measure "3" must never appear while still repeating
-    expect(measuresShown.filter(m => m === "3")).toHaveLength(0);
+      expect(positions).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+      expect(passes).toEqual([1, 2, 3]);
+    });
 
-    vp.unload();
-    await vc.close();
+    it("skips to the last recorded pass for fewer passes", async () => {
+      await reload(makeMidiSongWithRepeat(2), BEAT_MAP_LABELS.repeat);
+      const positions = recordPositions(player);
+
+      player.play();
+      stepPast(updater, player, player.getDuration());
+
+      expect(positions).toEqual([0, 1, 2, 3, 6, 7, 8]);
+    });
+
+    it("shows the same measure for every pass", async () => {
+      await reload(makeMidiSongWithRepeat(3), BEAT_MAP_LABELS.repeat);
+      const song = player.getCurrentSong()!;
+      player.seek(positionTick(6));
+
+      expect(player.getCurrentLocation()).toEqual({ position: 6, measure: idOf(song, "2"), occurrence: 3, beat: 0 });
+      expect(player.getCurrentSection()).toMatchObject({ kind: "repeat", pass: 3, passes: 3, recordedPasses: 3 });
+    });
+  });
+
+  it("skips a cut", async () => {
+    await reload(makeMidiSongWithCut());
+    const positions = recordPositions(player);
+
+    player.play();
+    stepPast(updater, player, player.getDuration());
+
+    expect(positions).toEqual([0, 1, 4]);
   });
 
   // ── segue ─────────────────────────────────────────────────────────────────
 
   it("emits segue when reaching the end with segue enabled", async () => {
-    const { player: sp, updater: su, ctx: sc } = makePlayer();
-    const segueEmitted = vi.fn();
-    sp.onSegue(segueEmitted);
-
     const song = makeMidiSong();
-    song.events.segue = true;
-    mockAxios();
-    await sp.load(song);
+    vi.spyOn(song, "hasSegue").mockReturnValue(true);
+    await reload(song);
 
-    sp.play();
-    stepPast(su, sp, TICKS.duration);
+    const segueEmitted = vi.fn();
+    player.onSegue(segueEmitted);
+
+    player.play();
+    stepPast(updater, player, TICKS.duration);
 
     expect(segueEmitted).toHaveBeenCalledOnce();
-    sp.unload();
-    await sc.close();
   });
 });
