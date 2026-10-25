@@ -10,15 +10,15 @@ import { computed, ref, watch } from "vue";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
 import type Measure from "@/core/models/measure";
+import { isEmptyMeasureEdit } from "@/core/models/measure";
 import {
   type ConflictResolution,
   getCommonBeats,
   getReadingOrder,
-  isEmptyEdit,
-  type MeasureEdit,
   type MeasureEditResult,
   planBeats,
   planDeleteMeasures,
+  type PlannedEdit,
   planRemoveBoxes,
   planRenumber,
 } from "@/core/models/measureEditing";
@@ -28,7 +28,7 @@ import { planConfirm } from "@/core/models/measureReview";
 const BEATS_SAVE_DELAY_MS = 400;
 
 const editor = injectMeasureEditor();
-const { measures, mode, selection, selectedBoxes, selectionCount, saving, currentReviewItem } = editor;
+const { measures, mode, selection, selectedBoxes, unnumberedBoxes, selectionCount, saving, currentReviewItem } = editor;
 const confirm = useConfirm();
 const { notifyError } = useNotify();
 
@@ -42,33 +42,33 @@ const number = ref("");
 const beats = ref<number | null>(null);
 const outcome = ref<Exclude<MeasureEditResult, { status: "ok" }>>();
 
-const selectionKey = computed(() => selection.value.map(measure => `${measure.value}:${measure.beats}`).join(","));
+const selectionKey = computed(() => selection.value.map(measure => `${measure.id}:${measure.label}:${measure.beats}`).join(","));
 
 watch(selectionKey, () => {
-  number.value = single.value?.value ?? ordered.value[0]?.value ?? "";
+  number.value = single.value?.label ?? ordered.value[0]?.label ?? "";
   beats.value = commonBeats.value ?? null;
   outcome.value = undefined;
 }, { immediate: true });
 
-const unchangedNumber = computed(() => !!single.value && number.value.trim() === single.value.value);
+const unchangedNumber = computed(() => !!single.value && number.value.trim() === single.value.label);
 
-async function apply(edit: MeasureEdit, failure: string): Promise<void> {
+async function apply(planned: PlannedEdit, failure: string): Promise<void> {
   try {
-    await editor.apply(edit);
+    await editor.apply(planned);
   } catch (error) {
     notifyError(failure, error);
   }
 }
 
 // Inside the review queue, fixing a box moves on to the next one to check.
-async function resolve(edit: MeasureEdit, failure: string): Promise<void> {
+async function resolve(planned: PlannedEdit, failure: string): Promise<void> {
   if (!currentReviewItem.value) {
-    await apply(edit, failure);
+    await apply(planned, failure);
     return;
   }
 
   try {
-    await editor.resolveReview(edit);
+    await editor.resolveReview(planned);
   } catch (error) {
     notifyError(failure, error);
   }
@@ -97,8 +97,8 @@ async function renumber(resolution?: ConflictResolution): Promise<void> {
   }
 
   outcome.value = undefined;
-  if (!isEmptyEdit(result.edit)) {
-    await resolve(result.edit, "Could not renumber");
+  if (!isEmptyMeasureEdit(result.edit)) {
+    await resolve(result, "Could not renumber");
   }
 }
 
@@ -117,7 +117,7 @@ const boxLabel = computed(() => selectionCount.value === 1 ? "Remove box" : "Rem
 const deleteLabel = computed(() => selection.value.length === 1 ? "Delete measure" : "Delete measures");
 
 function removeBoxes(): void {
-  resolve(planRemoveBoxes(selection.value, selectedBoxes.value), "Could not remove the boxes");
+  resolve(planRemoveBoxes(selection.value, selectedBoxes.value, unnumberedBoxes.value), "Could not remove the boxes");
 }
 
 defineExpose({ removeBoxes });
@@ -129,15 +129,15 @@ function unnumberedLabel(count: number): string {
 function deleteMeasures(): void {
   const targets = [...selection.value];
   const boxes = [...selectedBoxes.value];
-  const names = targets.length === 1 ? `Measure ${targets[0]!.value}` : `${targets.length} measures`;
+  const names = targets.length === 1 ? `Measure ${targets[0]!.label}` : `${targets.length} measures`;
   const unnumbered = boxes.length === 0 ? "" : ` ${unnumberedLabel(boxes.length)} will be removed too.`;
   confirm.require({
     header: deleteLabel.value,
-    message: `${names} will be deleted from the song, together with their sync markers.${unnumbered}`,
+    message: `${names} will be deleted from the song, together with their sync markers, markers and sections.${unnumbered}`,
     icon: "pi pi-exclamation-triangle",
     rejectProps: { label: "Cancel", severity: "secondary", text: true },
     acceptProps: { label: deleteLabel.value, severity: "danger" },
-    accept: () => apply(planDeleteMeasures(targets, boxes), "Could not delete the measures"),
+    accept: () => apply(planDeleteMeasures(targets, boxes, unnumberedBoxes.value), "Could not delete the measures"),
   });
 }
 </script>
@@ -196,19 +196,19 @@ function deleteMeasures(): void {
           size="small"
           variant="simple"
         >
-          Measure {{ outcome.conflict.value }} already has a box.
+          Measure {{ outcome.conflict.label }} already has a box.
         </Message>
         <div class="flex flex-wrap gap-2">
           <Button
             v-if="single"
-            :label="`Swap with measure ${outcome.conflict.value}`"
+            :label="`Swap with measure ${outcome.conflict.label}`"
             severity="secondary"
             size="small"
             :disabled="saving"
             @click="renumber('swap')"
           />
           <Button
-            :label="`Shift ${outcome.conflict.value} and later by +${selection.length}`"
+            :label="`Shift ${outcome.conflict.label} and later by +${selection.length}`"
             severity="secondary"
             size="small"
             :disabled="saving"

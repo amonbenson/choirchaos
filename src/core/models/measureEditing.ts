@@ -1,28 +1,33 @@
-import { compareNumberings, isNumbering, type Numbering } from "../utils/numbering";
-import Measure, { type MeasureLayout, withoutReview } from "./measure";
+import Measure, {
+  createEmptyMeasureEdit,
+  isSameLayout,
+  type MeasureEdit,
+  type MeasureId,
+  type MeasureLayout,
+  needsReview,
+  withoutReview,
+} from "./measure";
+import { type ParsedLabel, parseLabel, suggestLabel } from "./measureLabel";
 
 /**
  * In MIDI songs the beat map fixes the measures, so editing only moves boxes between them. Audio
- * songs own their measures, so editing may also create and rename them.
+ * songs own their measures, so editing may also create and relabel them.
  */
 export type MeasureEditMode = "midi" | "audio";
 
-export type MeasureEdit = {
-  layouts: Map<Measure, MeasureLayout | undefined>;
-  beats: Map<Measure, number>;
-  renames: Map<Measure, Numbering>;
-  additions: Measure[];
-  removals: Measure[];
-  /** Boxes without a number that this edit numbers or removes. */
-  resolvedBoxes: MeasureLayout[];
-  /** The measures holding the edited boxes afterwards, so a selection can follow its boxes. */
-  boxes: Measure[];
+/** A measure that holds an edited box afterwards: an existing one, or the n-th addition of the edit. */
+export type BoxTarget = { measure: MeasureId } | { addition: number };
+
+/** An edit together with the boxes it places, so a selection can follow its boxes. */
+export type PlannedEdit = {
+  edit: MeasureEdit;
+  boxes: BoxTarget[];
 };
 
 export type ConflictResolution = "swap" | "shift";
 
 export type MeasureEditResult
-  = | { status: "ok"; edit: MeasureEdit }
+  = | ({ status: "ok" } & PlannedEdit)
     | { status: "conflict"; conflict: Measure }
     | { status: "invalid"; reason: string };
 
@@ -37,29 +42,37 @@ type Box = {
   source?: Measure;
 };
 
-type PendingCreation = {
-  value: Numbering;
+/** A measure the placement wants to create. Its ID is unknown until the song saves it. */
+type Creation = {
+  measure: Measure;
   box: Box;
 };
 
 const DEFAULT_BEATS = 4;
-const NUMBERING_LEADING_DIGITS = /^\d+/;
+const PLANNED_ID = "";
 
-export function createEmptyEdit(): MeasureEdit {
-  return { layouts: new Map(), beats: new Map(), renames: new Map(), additions: [], removals: [], resolvedBoxes: [], boxes: [] };
+export function createPlannedEdit(edit: MeasureEdit = createEmptyMeasureEdit(), boxes: BoxTarget[] = []): PlannedEdit {
+  return { edit, boxes };
 }
 
-export function isEmptyEdit(edit: MeasureEdit): boolean {
-  return edit.layouts.size === 0 && edit.beats.size === 0 && edit.renames.size === 0
-    && edit.additions.length === 0 && edit.removals.length === 0 && edit.resolvedBoxes.length === 0;
+/** The boxes of `all` that are not in `removed`, compared by position. */
+export function withoutBoxes(all: readonly MeasureLayout[], removed: readonly MeasureLayout[]): MeasureLayout[] {
+  return all.filter(box => !removed.some(other => isSameLayout(box, other)));
 }
 
-/** Layout-only edits keep every measure's timing, so the player does not need to reload. */
-export function changesPlayback(edit: MeasureEdit): boolean {
-  return edit.beats.size > 0 || edit.renames.size > 0 || edit.additions.length > 0 || edit.removals.length > 0;
+function isSameBox(a: MeasureLayout | undefined, b: MeasureLayout | undefined): boolean {
+  if (!a || !b) {
+    return a === b;
+  }
+
+  return isSameLayout(a, b) && needsReview(a) === needsReview(b);
 }
 
-// ── Reading order ─────────────────────────────────────────────────────────────
+function findByLabel(measures: readonly Measure[], label: string): Measure | undefined {
+  return measures.find(measure => measure.label === label);
+}
+
+// Reading order
 
 function centerY(layout: MeasureLayout): number {
   return layout.y + layout.height / 2;
@@ -108,10 +121,10 @@ export function getReadingOrder(measures: readonly Measure[]): Measure[] {
 }
 
 /** All placed measures from one to the other in reading order, both included. */
-export function getMeasuresBetween(measures: readonly Measure[], from: Measure, to: Measure): Measure[] {
+export function getMeasuresBetween(measures: readonly Measure[], from: MeasureId, to: MeasureId): Measure[] {
   const ordered = getReadingOrder(measures);
-  const a = ordered.indexOf(from);
-  const b = ordered.indexOf(to);
+  const a = ordered.findIndex(measure => measure.id === from);
+  const b = ordered.findIndex(measure => measure.id === to);
   if (a === -1 || b === -1) {
     return [];
   }
@@ -119,50 +132,44 @@ export function getMeasuresBetween(measures: readonly Measure[], from: Measure, 
   return ordered.slice(Math.min(a, b), Math.max(a, b) + 1);
 }
 
+function getNeighbours(
+  measures: readonly Measure[],
+  layout: MeasureLayout,
+  layoutOf: (measure: Measure) => MeasureLayout | undefined,
+): { before?: Measure; after?: Measure } {
+  const probe = new Measure(PLANNED_ID, "", DEFAULT_BEATS, layout);
+  const ordered = sortInReadingOrder([...measures, probe], measure => measure === probe ? layout : layoutOf(measure));
+  const index = ordered.indexOf(probe);
+  return { before: ordered[index - 1], after: ordered[index + 1] };
+}
+
 /** The placed measure that comes right before a box in reading order. */
 export function getMeasureBefore(measures: readonly Measure[], layout: MeasureLayout): Measure | undefined {
-  const probe = new Measure("0", 1, layout);
-  const ordered = getReadingOrder([...measures, probe]);
-  return ordered[ordered.indexOf(probe) - 1];
-}
-
-// ── Numbering ─────────────────────────────────────────────────────────────────
-
-function incrementWholeNumber(value: Numbering): Numbering {
-  const digits = value.match(NUMBERING_LEADING_DIGITS)?.[0] ?? "0";
-  return String(parseInt(digits, 10) + 1);
-}
-
-function findMeasure(measures: readonly Measure[], value: Numbering): Measure | undefined {
-  return measures.find(measure => measure.value === value);
-}
-
-function findMeasureAfter(measures: readonly Measure[], value: Numbering): Measure | undefined {
-  return measures.find(measure => compareNumberings(measure.value, value) > 0);
+  return getNeighbours(measures, layout, measure => measure.layout).before;
 }
 
 /**
- * The measure that follows a number. MIDI songs only know the measures of their beat map. Audio
- * songs continue with the next whole number, unless an existing measure such as "4a" comes first.
+ * Where a new measure with this box goes in the score: right after the measure before it in reading
+ * order, else right before the one after it, else at the end.
  */
-export function getNextNumber(measures: readonly Measure[], value: Numbering, mode: MeasureEditMode): Numbering | undefined {
-  const following = findMeasureAfter(measures, value)?.value;
-  if (mode === "midi") {
-    return following;
+export function findScoreIndexForBox(
+  measures: readonly Measure[],
+  layout: MeasureLayout,
+  layoutOf: (measure: Measure) => MeasureLayout | undefined = measure => measure.layout,
+): number {
+  const { before, after } = getNeighbours(measures, layout, layoutOf);
+  if (before) {
+    return measures.indexOf(before) + 1;
   }
 
-  const nextWhole = incrementWholeNumber(value);
-  return following && compareNumberings(following, nextWhole) < 0 ? following : nextWhole;
+  return after ? measures.indexOf(after) : measures.length;
 }
 
-function firstNumber(measures: readonly Measure[], mode: MeasureEditMode): Numbering | undefined {
-  return measures[0]?.value ?? (mode === "audio" ? "1" : undefined);
-}
+// Labels
 
-/** The number a new box starts with: the measure after the box before it in reading order. */
-export function getDefaultFirstNumber(measures: readonly Measure[], layout: MeasureLayout, mode: MeasureEditMode): Numbering | undefined {
-  const before = getMeasureBefore(measures, layout);
-  return before ? getNextNumber(measures, before.value, mode) : firstNumber(measures, mode);
+/** The label a new box starts with: the one after the box before it in reading order. */
+export function getDefaultLabel(measures: readonly Measure[], layout: MeasureLayout, mode: MeasureEditMode): string | undefined {
+  return suggestLabel(measures, getMeasureBefore(measures, layout), mode);
 }
 
 /** A new box gets the beats of the measure before it, since time signatures rarely change. */
@@ -176,7 +183,7 @@ export function getCommonBeats(measures: readonly Measure[]): number | undefined
   return beats.size === 1 ? [...beats][0] : undefined;
 }
 
-/** Runs of consecutive measures without a box, in the order of the measure list. */
+/** Runs of consecutive measures without a box, in score order. */
 export function getUnplacedRuns(measures: readonly Measure[]): MeasureRun[] {
   const runs: MeasureRun[] = [];
   let current: MeasureRun | undefined;
@@ -196,23 +203,139 @@ export function getUnplacedRuns(measures: readonly Measure[]): MeasureRun[] {
   return runs;
 }
 
-// ── Placing boxes ─────────────────────────────────────────────────────────────
+/** The labels the planned boxes end up with, in the order of `planned.boxes`. */
+export function getPlannedLabels(measures: readonly Measure[], { edit, boxes }: PlannedEdit): string[] {
+  return boxes.map((target) => {
+    if ("addition" in target) {
+      return edit.additions[target.addition]!.label;
+    }
 
-function validateStart(measures: readonly Measure[], start: Numbering, mode: MeasureEditMode): string | undefined {
-  if (!isNumbering(start)) {
-    return `"${start}" is not a measure number.`;
+    const measure = measures.find(candidate => candidate.id === target.measure);
+    return edit.relabels.get(target.measure) ?? measure?.label ?? "";
+  });
+}
+
+// Placing boxes
+
+function validateStart(measures: readonly Measure[], start: string, mode: MeasureEditMode): string | undefined {
+  if (!start) {
+    return "Enter a measure number.";
   }
 
-  if (mode === "midi" && !findMeasure(measures, start)) {
+  if (mode === "midi" && !findByLabel(measures, start)) {
     return `Measure ${start} is not in the beat map.`;
   }
 
   return undefined;
 }
 
-function takeOccupant(measures: readonly Measure[], slot: Numbering, sources: Set<Measure>): Measure | undefined {
-  const existing = findMeasure(measures, slot);
-  return existing?.layout && !sources.has(existing) ? existing : undefined;
+/**
+ * The label after `previous` in the planned score. Audio labels that do not parse continue with the
+ * next measure of the score.
+ */
+function getNextLabel(score: readonly Measure[], previous: Measure, mode: MeasureEditMode): string | undefined {
+  return suggestLabel(score, previous, mode) ?? score[score.indexOf(previous) + 1]?.label;
+}
+
+/** Collects one placement on a copy of the score, where planned measures sit at their future index. */
+class Placement {
+  public readonly edit = createEmptyMeasureEdit();
+  private readonly score: Measure[];
+  private readonly creations: Creation[] = [];
+  private readonly targets: Measure[] = [];
+  private readonly sources: Set<MeasureId>;
+
+  constructor(
+    private readonly measures: readonly Measure[],
+    private readonly boxes: readonly Box[],
+    private readonly beats: number | undefined,
+  ) {
+    this.score = [...measures];
+    this.sources = new Set(boxes.flatMap(box => box.source ? [box.source.id] : []));
+    this.sources.forEach(id => this.edit.layouts.set(id, undefined));
+  }
+
+  public findOccupant(label: string): Measure | undefined {
+    const existing = findByLabel(this.measures, label);
+    return existing?.layout && !this.sources.has(existing.id) ? existing : undefined;
+  }
+
+  public place(label: string, box: Box): Measure {
+    const existing = findByLabel(this.measures, label);
+    if (existing) {
+      this.edit.layouts.set(existing.id, box.layout);
+      this.targets.push(existing);
+      return existing;
+    }
+
+    const measure = new Measure(PLANNED_ID, label, this.beats ?? box.source?.beats ?? DEFAULT_BEATS, box.layout);
+    this.score.splice(this.findCreationIndex(box.layout), 0, measure);
+    this.creations.push({ measure, box });
+    this.targets.push(measure);
+    return measure;
+  }
+
+  public getScore(): readonly Measure[] {
+    return this.score;
+  }
+
+  /** Follows the previous target, or the box's reading order position for the first one. */
+  private findCreationIndex(layout: MeasureLayout): number {
+    const previous = this.targets.at(-1);
+    if (previous) {
+      return this.score.indexOf(previous) + 1;
+    }
+
+    return findScoreIndexForBox(this.score, layout, measure => this.sources.has(measure.id) ? undefined : measure.layout);
+  }
+
+  public finish(): PlannedEdit {
+    const relabeled = new Map(this.creations.map(creation => [creation.measure, this.relabelSource(creation)]));
+    const remaining = this.score.filter(measure => !relabeled.get(measure));
+    const additions = this.creations.filter(creation => !relabeled.get(creation.measure)).map(creation => creation.measure);
+
+    for (const measure of additions) {
+      this.edit.additions.push({ label: measure.label, beats: measure.beats, layout: measure.layout, index: remaining.indexOf(measure) });
+    }
+
+    this.dropUnchangedLayouts();
+    const boxes = this.targets.slice(0, this.boxes.length).map((target): BoxTarget => {
+      const source = relabeled.get(target);
+      if (source) {
+        return { measure: source.id };
+      }
+
+      const addition = additions.indexOf(target);
+      return addition === -1 ? { measure: target.id } : { addition };
+    });
+
+    return { edit: this.edit, boxes };
+  }
+
+  /**
+   * A label nobody has yet (audio songs only). When the box left a measure that keeps no other box,
+   * that measure is relabeled instead, so renumbering does not leave empty measures behind.
+   */
+  private relabelSource({ measure, box }: Creation): Measure | undefined {
+    const source = box.source;
+    const isFree = source && this.edit.layouts.get(source.id) === undefined && !this.edit.relabels.has(source.id);
+    if (!isFree) {
+      return undefined;
+    }
+
+    this.edit.layouts.set(source.id, box.layout);
+    this.edit.relabels.set(source.id, measure.label);
+    return source;
+  }
+
+  private dropUnchangedLayouts(): void {
+    for (const [id, layout] of this.edit.layouts) {
+      const measure = this.measures.find(candidate => candidate.id === id);
+      if (measure && isSameBox(measure.layout, layout) && !this.edit.relabels.has(id)) {
+        this.edit.layouts.delete(id);
+      }
+    }
+  }
 }
 
 /**
@@ -223,7 +346,7 @@ function takeOccupant(measures: readonly Measure[], slot: Numbering, sources: Se
 function planPlacement(
   measures: readonly Measure[],
   boxes: Box[],
-  start: Numbering,
+  start: string,
   mode: MeasureEditMode,
   { shift, beats }: { shift: boolean; beats?: number },
 ): MeasureEditResult {
@@ -232,21 +355,19 @@ function planPlacement(
     return { status: "invalid", reason: invalid };
   }
 
-  const edit = createEmptyEdit();
-  const sources = new Set(boxes.flatMap(box => box.source ? [box.source] : []));
-  sources.forEach(source => edit.layouts.set(source, undefined));
-
+  const placement = new Placement(measures, boxes, beats);
   const queue = [...boxes];
-  const creations: PendingCreation[] = [];
-  const targets: (Measure | PendingCreation)[] = [];
-  let slot: Numbering | undefined = start;
+  const visited = new Set<string>();
+  let label: string | undefined = start;
 
   while (queue.length > 0) {
-    if (slot === undefined) {
-      return { status: "invalid", reason: "The beat map has no more measures for these boxes." };
+    if (label === undefined || visited.has(label)) {
+      const reason = mode === "midi" ? "The beat map has no more measures for these boxes." : "No measure number follows the last one.";
+      return { status: "invalid", reason };
     }
 
-    const occupant = takeOccupant(measures, slot, sources);
+    visited.add(label);
+    const occupant = placement.findOccupant(label);
     if (occupant && !shift) {
       return { status: "conflict", conflict: occupant };
     }
@@ -255,75 +376,33 @@ function planPlacement(
       queue.push({ layout: occupant.layout!, source: occupant });
     }
 
-    const box = queue.shift()!;
-    const existing = findMeasure(measures, slot);
-    if (existing) {
-      edit.layouts.set(existing, box.layout);
-      targets.push(existing);
-    } else {
-      const creation = { value: slot, box };
-      creations.push(creation);
-      targets.push(creation);
-    }
-
-    slot = getNextNumber(measures, slot, mode);
+    const target = placement.place(label, queue.shift()!);
+    label = getNextLabel(placement.getScore(), target, mode);
   }
 
-  const created = new Map(creations.map(creation => [creation, resolveCreation(edit, creation, beats)]));
-  edit.boxes = targets.slice(0, boxes.length).map(target => target instanceof Measure ? target : created.get(target)!);
-  return { status: "ok", edit: withoutUnchangedLayouts(edit) };
+  return { status: "ok", ...placement.finish() };
 }
 
-/**
- * A measure number that does not exist yet (audio songs only). When the box left a measure that
- * keeps no other box, that measure is renamed instead, so renumbering does not leave empty
- * measures behind.
- */
-function resolveCreation(edit: MeasureEdit, { value, box }: PendingCreation, beats: number | undefined): Measure {
-  const source = box.source;
-  const sourceIsFree = source && edit.layouts.get(source) === undefined && !edit.renames.has(source);
-  if (sourceIsFree) {
-    edit.layouts.set(source, box.layout);
-    edit.renames.set(source, value);
-    return source;
-  }
-
-  const measure = new Measure(value, beats ?? source?.beats ?? DEFAULT_BEATS, box.layout);
-  edit.additions.push(measure);
-  return measure;
-}
-
-function withoutUnchangedLayouts(edit: MeasureEdit): MeasureEdit {
-  for (const [measure, layout] of edit.layouts) {
-    if (measure.layout === layout && !edit.renames.has(measure)) {
-      edit.layouts.delete(measure);
-    }
-  }
-
-  return edit;
-}
-
-function planSwap(measures: readonly Measure[], measure: Measure, target: Numbering): MeasureEditResult {
-  const other = findMeasure(measures, target);
+function planSwap(measures: readonly Measure[], measure: Measure, label: string): MeasureEditResult {
+  const other = findByLabel(measures, label);
   if (!other) {
-    return { status: "invalid", reason: `Measure ${target} does not exist.` };
+    return { status: "invalid", reason: `Measure ${label} does not exist.` };
   }
 
-  const edit = createEmptyEdit();
-  edit.layouts.set(measure, other.layout);
-  edit.layouts.set(other, measure.layout && withoutReview(measure.layout));
-  edit.boxes = [other];
-  return { status: "ok", edit };
+  const edit = createEmptyMeasureEdit();
+  edit.layouts.set(measure.id, other.layout);
+  edit.layouts.set(other.id, measure.layout && withoutReview(measure.layout));
+  return { status: "ok", edit, boxes: [{ measure: other.id }] };
 }
 
 /**
- * Gives the selected boxes consecutive numbers from `start` on, in reading order. Swapping is only
+ * Gives the selected boxes consecutive labels from `start` on, in reading order. Swapping is only
  * possible for a single box. Renumbering a box counts as checking it, so it loses its review flag.
  */
 export function planRenumber(
   measures: readonly Measure[],
   selected: readonly Measure[],
-  start: Numbering,
+  start: string,
   mode: MeasureEditMode,
   resolution?: ConflictResolution,
 ): MeasureEditResult {
@@ -350,7 +429,7 @@ export function splitLayout(layout: MeasureLayout, count: number): MeasureLayout
 export function planNewBox(
   measures: readonly Measure[],
   layout: MeasureLayout,
-  { count, start, beats }: { count: number; start: Numbering; beats: number },
+  { count, start, beats }: { count: number; start: string; beats: number },
   mode: MeasureEditMode,
   resolution?: "shift",
 ): MeasureEditResult {
@@ -358,27 +437,93 @@ export function planNewBox(
   return planPlacement(measures, boxes, start, mode, { shift: resolution === "shift", beats });
 }
 
-// ── Bulk edits ────────────────────────────────────────────────────────────────
+// Adding measures without boxes
 
-export function planBeats(selected: readonly Measure[], beats: number): MeasureEdit {
-  const edit = createEmptyEdit();
-  selected.filter(measure => measure.beats !== beats).forEach(measure => edit.beats.set(measure, beats));
-  edit.boxes = [...selected];
-  return edit;
+function compareParsedLabels(a: ParsedLabel, b: ParsedLabel): number {
+  return a.number !== b.number ? a.number - b.number : a.letter.localeCompare(b.letter);
 }
 
-export function planRemoveBoxes(selected: readonly Measure[], unnumbered: readonly MeasureLayout[] = []): MeasureEdit {
-  const edit = createEmptyEdit();
-  selected.forEach(measure => edit.layouts.set(measure, undefined));
-  edit.resolvedBoxes = [...unnumbered];
-  return edit;
+/** Before the first measure whose label comes after it, so "4a" lands between "4" and "5". Others go last. */
+function findScoreIndexForLabel(score: readonly Measure[], label: string): number {
+  const parsed = parseLabel(label);
+  if (!parsed) {
+    return score.length;
+  }
+
+  const index = score.findIndex((measure) => {
+    const other = parseLabel(measure.label);
+    return other !== undefined && compareParsedLabels(other, parsed) > 0;
+  });
+  return index === -1 ? score.length : index;
 }
 
-export function planDeleteMeasures(selected: readonly Measure[], unnumbered: readonly MeasureLayout[] = []): MeasureEdit {
-  const edit = createEmptyEdit();
-  edit.removals = [...selected];
-  edit.resolvedBoxes = [...unnumbered];
-  return edit;
+/** Labels of the list that the song already has. */
+export function findExistingLabels(measures: readonly Measure[], labels: readonly string[]): string[] {
+  return labels.filter(label => findByLabel(measures, label));
+}
+
+/** Adds measures without boxes (audio songs only), placed among the measures by their labels. */
+export function planAddMeasures(measures: readonly Measure[], labels: readonly string[], beats: number): PlannedEdit {
+  const score = [...measures];
+  const added: Measure[] = [];
+  for (const label of new Set(labels)) {
+    const measure = new Measure(PLANNED_ID, label, beats);
+    score.splice(findScoreIndexForLabel(score, label), 0, measure);
+    added.push(measure);
+  }
+
+  const edit = createEmptyMeasureEdit();
+  edit.additions = added.map(measure => ({ label: measure.label, beats, index: score.indexOf(measure) }));
+  return createPlannedEdit(edit);
+}
+
+// Bulk edits
+
+function toTargets(measures: readonly Measure[]): BoxTarget[] {
+  return measures.map(measure => ({ measure: measure.id }));
+}
+
+export function planBeats(selected: readonly Measure[], beats: number): PlannedEdit {
+  const edit = createEmptyMeasureEdit();
+  selected.filter(measure => measure.beats !== beats).forEach(measure => edit.beats.set(measure.id, beats));
+  return createPlannedEdit(edit, toTargets(selected));
+}
+
+/** Moves boxes to other positions, e.g. after resizing them on the score. */
+export function planLayouts(changes: readonly [Measure, MeasureLayout][]): PlannedEdit {
+  const edit = createEmptyMeasureEdit();
+  changes.forEach(([measure, layout]) => edit.layouts.set(measure.id, layout));
+  return createPlannedEdit(edit, toTargets(changes.map(([measure]) => measure)));
+}
+
+function resolveBoxes(edit: MeasureEdit, all: readonly MeasureLayout[], resolved: readonly MeasureLayout[]): void {
+  if (resolved.length > 0) {
+    edit.unnumberedBoxes = withoutBoxes(all, resolved);
+  }
+}
+
+/** Takes the boxes off the selected measures and removes the selected boxes without a number. */
+export function planRemoveBoxes(
+  selected: readonly Measure[],
+  selectedUnnumbered: readonly MeasureLayout[] = [],
+  allUnnumbered: readonly MeasureLayout[] = selectedUnnumbered,
+): PlannedEdit {
+  const edit = createEmptyMeasureEdit();
+  selected.forEach(measure => edit.layouts.set(measure.id, undefined));
+  resolveBoxes(edit, allUnnumbered, selectedUnnumbered);
+  return createPlannedEdit(edit);
+}
+
+/** Deletes the selected measures (audio songs only), together with the selected boxes without a number. */
+export function planDeleteMeasures(
+  selected: readonly Measure[],
+  selectedUnnumbered: readonly MeasureLayout[] = [],
+  allUnnumbered: readonly MeasureLayout[] = selectedUnnumbered,
+): PlannedEdit {
+  const edit = createEmptyMeasureEdit();
+  edit.removals = selected.map(measure => measure.id);
+  resolveBoxes(edit, allUnnumbered, selectedUnnumbered);
+  return createPlannedEdit(edit);
 }
 
 /** Normalizes a box drawn in any direction to a positive width and height. */

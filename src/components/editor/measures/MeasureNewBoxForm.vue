@@ -8,7 +8,7 @@ import { computed, ref, watch } from "vue";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
 import type { MeasureLayout } from "@/core/models/measure";
-import { getDefaultBeats, getDefaultFirstNumber, type MeasureEditResult, planNewBox } from "@/core/models/measureEditing";
+import { getDefaultBeats, getDefaultLabel, getPlannedLabels, type MeasureEditResult, planNewBox } from "@/core/models/measureEditing";
 
 const props = defineProps<{
   layout: MeasureLayout;
@@ -22,7 +22,7 @@ const start = ref("");
 const beats = ref(4);
 
 watch(() => props.layout, (layout) => {
-  start.value = placeFrom.value ?? getDefaultFirstNumber(measures.value, layout, mode.value) ?? "";
+  start.value = placeFrom.value ?? getDefaultLabel(measures.value, layout, mode.value) ?? "";
   beats.value = getDefaultBeats(measures.value, layout);
 }, { immediate: true });
 
@@ -40,8 +40,8 @@ const placedRange = computed(() => {
     return undefined;
   }
 
-  const values = target.edit.boxes.map(measure => target.edit.renames.get(measure) ?? measure.value);
-  return values.length > 1 ? `measures ${values[0]} to ${values.at(-1)}` : `measure ${values[0]}`;
+  const labels = getPlannedLabels(measures.value, target);
+  return labels.length > 1 ? `measures ${labels[0]} to ${labels.at(-1)}` : `measure ${labels[0]}`;
 });
 
 async function place(resolution?: "shift"): Promise<void> {
@@ -51,7 +51,7 @@ async function place(resolution?: "shift"): Promise<void> {
   }
 
   try {
-    await editor.apply(planned.edit);
+    await editor.apply(planned);
     editor.clearSelection();
     editor.pendingBox.value = undefined;
     placeFrom.value = undefined;
@@ -137,10 +137,10 @@ function cancel(): void {
         size="small"
         variant="simple"
       >
-        Measure {{ result.conflict.value }} already has a box.
+        Measure {{ result.conflict.label }} already has a box.
       </Message>
       <Button
-        :label="`Shift ${result.conflict.value} and later by +${pendingCount}`"
+        :label="`Shift ${result.conflict.label} and later by +${pendingCount}`"
         severity="secondary"
         size="small"
         :disabled="shiftResult?.status !== 'ok' || saving"
