@@ -12,10 +12,6 @@ function markReferencesRaw(show: Show): void {
     for (const track of song.tracks) {
       track.$midiTrackEvents = markRaw(track.$midiTrackEvents);
     }
-
-    for (const measure of song.measures.items()) {
-      measure.$beatTicks = markRaw(measure.$beatTicks);
-    }
   }
 }
 

@@ -1,4 +1,5 @@
 import Measure from "../models/measure";
+import type { RecordingSpan } from "../models/recording";
 import Track from "../models/track";
 import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
 import { inferTrackClassification } from "../utils/trackInference";
@@ -16,8 +17,13 @@ export async function isBeatMapFile(file: File): Promise<boolean> {
   }
 }
 
-export function measuresFromBeatMap(beatMap: MTIMidiJson): Measure[] {
-  const beatsByMeasure = new Map<string, number>();
+export type BeatMapScore = {
+  measures: Measure[];
+  recording: RecordingSpan[];
+};
+
+export function scoreFromBeatMap(beatMap: MTIMidiJson): BeatMapScore {
+  const beatsByLabel = new Map<string, number>();
 
   for (const event of beatMap.score.events) {
     if (event.type !== "BEAT") {
@@ -25,10 +31,13 @@ export function measuresFromBeatMap(beatMap: MTIMidiJson): Measure[] {
     }
 
     const { meas, beat } = event.value;
-    beatsByMeasure.set(meas, Math.max(beatsByMeasure.get(meas) ?? 0, beat));
+    beatsByLabel.set(meas, Math.max(beatsByLabel.get(meas) ?? 0, beat));
   }
 
-  return Array.from(beatsByMeasure, ([value, beats]) => new Measure(value, beats));
+  const measures = Array.from(beatsByLabel, ([label, beats], i) => new Measure(`m${i + 1}`, label, beats));
+  const first = measures[0];
+  const last = measures.at(-1);
+  return { measures, recording: first && last ? [{ from: first.id, to: last.id }] : [] };
 }
 
 // The MIDI backend looks up note data by track name, so tracks must carry the exact MIDI names.

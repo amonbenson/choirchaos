@@ -64,7 +64,13 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 ## Core Conventions
 
 - Reactive state uses `Property<T>` (fires `on*Change`, `Property<void>` fires with `fire(undefined)`). Fire-and-forget events use `Emitter<T>`. Both live in `src/core/utils/events.ts` and return a `Disposable` on subscription.
-- Measures are identified by `Numbering` strings like `"1"` or `"2a"`, never by array indices, which change when measures are reordered.
+- A song has three layers, each referencing the one below only by measure ID:
+  - **Score:** the printed measures in written order and where each box is on the PDF.
+  - **Recording:** the order the backing track plays score measures in, as inclusive measure ID spans, plus audio warp markers.
+  - **Arrangement:** markers, cut, repeat and vamp sections, and the segue.
+- Measures are identified by their stable `id` (`"m1"`, `"m2"`, ...), never by label or array index. The `label` is the printed number, free text and display only, so relabeling never touches a reference. `measureLabel.ts` parses labels only to suggest a new box's label.
+- A location is `{ measure, beat, occurrence }`: a 0-based beat of the `occurrence`-th time the measure plays. `Song.getTimeline()` expands the recording into one entry per measure played, and its index is the timeline position.
+- `Numbering` (`src/core/utils/numbering.ts`) is only for song numbers within a show.
 
 ---
 
@@ -155,6 +161,9 @@ PocketBase lives in a separate repository (`choirchaos-pb`). The app reads its U
 - `pb_hooks/audio.pb.js` converts every uploaded recording to MP3, so stored names keep the upload's base name but always end in `.mp3`. Never match stored files to uploads by extension: `Song.uploadAudioFiles()` maps them by upload order. A file that cannot be decoded fails the whole request.
 - Users can only read their own user record, so member names and email lookups go through `pb_hooks/members.pb.js` (`Show.getMembers()`/`addMember()`). Role changes and removals use the regular show update, which only the owner may do.
 - A MIDI song is only playable together with its beat map (`jsonFile`). Never store one without the other.
+- A song stores its layers in the JSON fields `score`, `recording` and `arrangement`. Each is always read and written whole, through one serializer per layer in `Song`, and the app has no handling for older formats. A change that touches several layers (removing measures, replacing the beat map) sends them in one request, which PocketBase applies atomically.
+- A song with measures always has recording spans. A MIDI song's score and recording come from its beat map, which stays its timing source, and it never has warp markers.
+- Every mutation removes the references it leaves unresolved (markers, sections, warp markers), since the e2e invariants reject them.
 
 ---
 
