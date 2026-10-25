@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { onLongPress, useEventListener } from "@vueuse/core";
 import SelectButton from "primevue/selectbutton";
-import { computed, type ComputedRef, type Ref, ref, shallowRef, watch } from "vue";
+import { computed, type ComputedRef, ref, shallowRef, watch } from "vue";
 
 import Draggable from "@/components/base/Draggable.vue";
 import { injectMeasureEditor, type MeasureTool } from "@/composables/useMeasureEditor";
-import Measure, { type MeasureLayout, needsReview } from "@/core/models/measure";
-import { getReadingOrder, intersects, normalizeLayout, splitLayout } from "@/core/models/measureEditing";
+import { useNotify } from "@/composables/useNotify";
+import Measure, { type MeasureId, type MeasureLayout, needsReview } from "@/core/models/measure";
+import { getReadingOrder, intersects, normalizeLayout, planLayouts, splitLayout } from "@/core/models/measureEditing";
 import Song from "@/core/models/song";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
@@ -15,6 +16,7 @@ import { usePlayerStore } from "@/stores/player";
 import PdfViewer from "./PdfViewer.vue";
 
 const player = usePlayerStore();
+const { notifyError } = useNotify();
 const editor = injectMeasureEditor();
 const { tool, pendingBox, pendingCount, touchMultiSelect, detection, revealRequest } = editor;
 
@@ -38,9 +40,10 @@ const measuresByPage = computed<{ [key: number]: Measure[] }>(() => {
   }
 
   const groups: { [key: number]: Measure[] } = {};
-  for (const measure of props.song.measures.items()) {
-    if (measure.layout) {
-      const p = measure.layout.page;
+  for (const measure of props.song.getMeasures()) {
+    const layout = layoutOf(measure);
+    if (layout) {
+      const p = layout.page;
       if (!Array.isArray(groups[p])) {
         groups[p] = [];
       }
@@ -55,7 +58,7 @@ const measuresByPage = computed<{ [key: number]: Measure[] }>(() => {
 // ── Detection preview and review marks ───────────────────────────────────────
 
 type PreviewBox = {
-  value?: string;
+  label?: string;
   layout: MeasureLayout;
 };
 
@@ -68,14 +71,14 @@ const previewByPage = computed(() => {
   }
 
   const boxes: PreviewBox[] = [
-    ...plan.placements.map(({ measure, layout }) => ({ value: measure.value, layout })),
-    ...plan.additions.map(measure => ({ value: measure.value, layout: measure.layout! })),
+    ...plan.placements.map(({ measure, layout }) => ({ label: measure.label, layout })),
+    ...plan.additions.map(addition => ({ label: addition.label, layout: addition.layout! })),
     ...plan.unnumbered.map(layout => ({ layout })),
   ];
   return groupByPage(boxes, box => box.layout);
 });
 
-const replacedMeasures = computed(() => new Set(detection.plan.value?.placements.map(placement => placement.measure.value)));
+const replacedMeasures = computed(() => new Set(detection.plan.value?.placements.map(placement => placement.measure.id)));
 
 const unnumberedByPage = computed(() => props.editMode ? groupByPage(editor.unnumberedBoxes.value, box => box) : {});
 
@@ -91,7 +94,7 @@ function groupByPage<T>(items: readonly T[], layoutOf: (item: T) => MeasureLayou
 
 function visibleMeasures(page: number): Measure[] {
   const measures = measuresByPage.value[page] ?? [];
-  return previewing.value ? measures.filter(measure => !replacedMeasures.value.has(measure.value)) : measures;
+  return previewing.value ? measures.filter(measure => !replacedMeasures.value.has(measure.id)) : measures;
 }
 
 const CHIP_CLASS = "pointer-events-none absolute top-0 left-0 rounded-br-sm px-1 text-[0.625rem] leading-4 font-semibold";
@@ -105,7 +108,7 @@ function chipClass(layout: MeasureLayout | undefined, numbered: boolean): string
 }
 
 function previewClass(box: PreviewBox): string {
-  if (box.value === undefined) {
+  if (box.label === undefined) {
     return "border-red-500 bg-red-500/10";
   }
 
@@ -125,7 +128,7 @@ const highlightedTracks: ComputedRef<Set<number>> = computed(
 );
 
 function isMeasureHighlighted(measure: Measure): boolean {
-  for (const i of measure.$activeTrackIndices) {
+  for (const i of player.measureTrackIndices.get(measure.id) ?? []) {
     if (highlightedTracks.value.has(i)) {
       return true;
     }
@@ -168,12 +171,22 @@ function hasHandles(measure: Measure): boolean {
 
 // ── Playback sync ─────────────────────────────────────────────────────────────
 
-const currentPlayingMeasure: Ref<Measure | undefined> = ref();
-const currentWrittenMeasure: Ref<Measure | undefined> = ref();
+const currentMeasureId = computed(() => player.currentLocation?.measure);
+
+/** How far the current timeline position has played. Every pass of a measure moves the same box's playbar. */
+const currentPositionProgress = computed(() => {
+  const location = player.currentLocation;
+  const position = location ? player.timeline[location.position] : undefined;
+  if (!position) {
+    return 0;
+  }
+
+  const start = position.beatTicks[0] ?? 0;
+  const length = position.endTick - start;
+  return length > 0 ? Math.max(0, Math.min(1, (player.position - start) / length)) : 0;
+});
 
 watch(() => player.position, () => {
-  currentPlayingMeasure.value = props.song?.findMeasure(player.currentMeasure[0]);
-  currentWrittenMeasure.value = props.song?.findMeasure(player.currentMeasure[0], true);
   pdfViewer.value?.redrawOverlay();
 });
 
@@ -181,19 +194,7 @@ watch(() => props.song, () => {
   if (props.song) {
     pdfViewer.value?.zoomToPage(0);
     pdfViewer.value?.redrawAll();
-    currentPlayingMeasure.value = props.song?.measures.first();
-    currentWrittenMeasure.value = props.song?.measures.first();
   }
-});
-
-const currentPlayingMeasureProgress = computed(() => {
-  if (!currentPlayingMeasure.value) {
-    return 0;
-  }
-
-  const mStart = currentPlayingMeasure.value.$beatTicks[0] ?? 0;
-  const mLength = currentPlayingMeasure.value.$tickLength ?? 960;
-  return Math.max(0, Math.min(1, (player.position - mStart) / mLength));
 });
 
 watch(highlightedTracks, () => {
@@ -202,8 +203,8 @@ watch(highlightedTracks, () => {
 
 // ── Auto-scroll to current measure ───────────────────────────────────────────
 
-watch(currentWrittenMeasure, () => {
-  const layout = currentWrittenMeasure.value?.layout;
+watch(currentMeasureId, (id) => {
+  const layout = id === undefined ? undefined : props.song?.findMeasure(id)?.layout;
   if (layout) {
     scrollToLayout(layout);
   }
@@ -317,7 +318,7 @@ function rememberPointerType(event: PointerEvent): void {
 
 function onBoxClick(event: MouseEvent, measure: Measure): void {
   if (!props.editMode) {
-    player.setMeasure(measure.value);
+    seekNearestOccurrence(measure.id);
     return;
   }
 
@@ -338,6 +339,18 @@ function onBoxClick(event: MouseEvent, measure: Measure): void {
     editor.toggle(measure);
   } else {
     editor.selectOnly(measure);
+  }
+}
+
+/** A measure that plays more than once is entered at the occurrence closest to the playback, so a click stays in the current pass. */
+function seekNearestOccurrence(id: MeasureId): void {
+  const current = player.currentLocation?.position ?? 0;
+  const distance = (position: number): number => Math.abs(position - current);
+  const nearest = player.timeline
+    .filter(position => position.measure === id)
+    .reduce<number | undefined>((best, { position }) => best === undefined || distance(position) < distance(best) ? position : best, undefined);
+  if (nearest !== undefined) {
+    player.seekPosition(nearest);
   }
 }
 
@@ -366,7 +379,7 @@ function isOnBox(target: EventTarget | null): boolean {
 
 function findMeasureAt(target: EventTarget | null): Measure | undefined {
   const value = (target as Element | null)?.closest<HTMLElement>("[data-measure]")?.dataset.measure;
-  return value === undefined ? undefined : editor.measures.value.find(measure => measure.value === value);
+  return value === undefined ? undefined : editor.measures.value.find(measure => measure.id === value);
 }
 
 function findUnnumberedBoxAt(target: EventTarget | null): MeasureLayout | undefined {
@@ -535,7 +548,7 @@ function findMarqueeHits(current: Gesture): { measures: Measure[]; boxes: Measur
   for (const page of pageDivRefs.keys()) {
     const rect = dragOnPage(current, page);
     if (rect) {
-      measures.push(...visibleMeasures(page).filter(measure => intersects(measure.layout!, rect)));
+      measures.push(...visibleMeasures(page).filter(measure => intersects(layoutOf(measure)!, rect)));
       boxes.push(...(unnumberedByPage.value[page] ?? []).filter(box => intersects(box, rect)));
     }
   }
@@ -587,23 +600,32 @@ function setPageDivRef(el: Element | null, pageNumber: number): void {
   }
 }
 
+/** Layouts of a running resize drag, shown until the drag ends and the edit is saved. */
+const resizePreview = shallowRef(new Map<MeasureId, MeasureLayout>());
+
+function layoutOf(measure: Measure): MeasureLayout | undefined {
+  return resizePreview.value.get(measure.id) ?? measure.layout;
+}
+
 function isSimilar(a: number, b: number): boolean {
   return Math.abs(a - b) < 0.01;
 }
 
 function sameStaff(measure: Measure): Measure[] {
-  return (measuresByPage.value[measure.layout!.page] ?? []).filter(other =>
-    isSimilar(other.layout!.y, measure.layout!.y)
-    && isSimilar(other.layout!.y + other.layout!.height, measure.layout!.y + measure.layout!.height),
-  );
+  const layout = layoutOf(measure)!;
+  return (measuresByPage.value[layout.page] ?? []).filter((other) => {
+    const otherLayout = layoutOf(other)!;
+    return isSimilar(otherLayout.y, layout.y) && isSimilar(otherLayout.y + otherLayout.height, layout.y + layout.height);
+  });
+}
+
+function resize(measure: Measure, change: (layout: MeasureLayout) => Partial<MeasureLayout>): void {
+  const layout = layoutOf(measure)!;
+  resizePreview.value = new Map(resizePreview.value).set(measure.id, { ...layout, ...change(layout) });
 }
 
 function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): void {
-  if (!props.song) {
-    return;
-  }
-
-  const pageEl = pageDivRefs.get(measure.layout!.page);
+  const pageEl = pageDivRefs.get(layoutOf(measure)!.page);
   if (!pageEl) {
     return;
   }
@@ -614,34 +636,49 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
 
   switch (handle) {
     case "top":
-      staff.forEach((m) => {
-        props.song!.applyMeasureLayout(m, { ...m.layout!, y: m.layout!.y + dy, height: m.layout!.height - dy });
-      });
+      staff.forEach(other => resize(other, layout => ({ y: layout.y + dy, height: layout.height - dy })));
       break;
     case "bottom":
-      staff.forEach((m) => {
-        props.song!.applyMeasureLayout(m, { ...m.layout!, height: m.layout!.height + dy });
-      });
+      staff.forEach(other => resize(other, layout => ({ height: layout.height + dy })));
       break;
     case "left": {
       const left = staff[staff.indexOf(measure) - 1];
       if (left) {
-        props.song.applyMeasureLayout(left, { ...left.layout!, width: left.layout!.width + dx });
+        resize(left, layout => ({ width: layout.width + dx }));
       }
 
-      props.song.applyMeasureLayout(measure, { ...measure.layout!, x: measure.layout!.x + dx, width: measure.layout!.width - dx });
+      resize(measure, layout => ({ x: layout.x + dx, width: layout.width - dx }));
       break;
     }
 
     case "right": {
       const right = staff[staff.indexOf(measure) + 1];
-      props.song.applyMeasureLayout(measure, { ...measure.layout!, width: measure.layout!.width + dx });
+      resize(measure, layout => ({ width: layout.width + dx }));
       if (right) {
-        props.song.applyMeasureLayout(right, { ...right.layout!, x: right.layout!.x + dx, width: right.layout!.width - dx });
+        resize(right, layout => ({ x: layout.x + dx, width: layout.width - dx }));
       }
 
       break;
     }
+  }
+}
+
+/** Saves the drag as one edit. The neighbours it moved stay unselected, so the handles stay on the dragged box. */
+async function onHandleDragEnd(measure: Measure): Promise<void> {
+  const changes = editor.measures.value.flatMap((measure) => {
+    const layout = resizePreview.value.get(measure.id);
+    return layout ? [[measure, layout] as [Measure, MeasureLayout]] : [];
+  });
+
+  try {
+    if (changes.length > 0) {
+      await editor.apply(planLayouts(changes));
+      editor.selectOnly(measure);
+    }
+  } catch (error) {
+    notifyError("Could not save the measure boxes", error);
+  } finally {
+    resizePreview.value = new Map();
   }
 }
 </script>
@@ -685,27 +722,28 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
         >
           <div
             v-for="measure of visibleMeasures(page.pageNumber)"
-            :key="measure.value"
+            :key="measure.id"
             class="pointer-events-auto absolute transition-colors select-none"
             :class="boxClass(measure)"
-            :style="boxStyle(measure.layout!)"
+            :style="boxStyle(layoutOf(measure)!)"
             role="button"
-            :aria-label="`Measure ${measure.value}`"
+            :aria-label="`Measure ${measure.label}`"
             :aria-pressed="editMode ? editor.isSelected(measure) : undefined"
-            :data-measure="measure.value"
+            :aria-current="currentMeasureId === measure.id ? 'location' : undefined"
+            :data-measure="measure.id"
             @contextmenu.stop.prevent
             @click="onBoxClick($event, measure)"
           >
             <span
               v-if="editMode"
               :class="chipClass(measure.layout, true)"
-            >{{ measure.value }}</span>
+            >{{ measure.label }}</span>
 
             <!-- Playbar -->
             <div
-              v-if="currentWrittenMeasure?.value === measure.value && currentPlayingMeasure"
+              v-if="currentMeasureId === measure.id"
               class="pointer-events-none absolute top-0 h-full w-1 -translate-x-1/2 rounded-full bg-primary"
-              :style="{ left: `${currentPlayingMeasureProgress * 100}%` }"
+              :style="{ left: `${currentPositionProgress * 100}%` }"
             />
 
             <template v-if="editMode && hasHandles(measure)">
@@ -713,7 +751,7 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
                 v-for="handle in HANDLES"
                 :key="handle.direction"
                 @drag="onHandleDrag($event, measure, handle.direction)"
-                @dragend="song?.saveMeasures()"
+                @dragend="onHandleDragEnd(measure)"
               >
                 <template #default="{ passRef }">
                   <div
@@ -756,9 +794,9 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
             :class="previewClass(box)"
             :style="boxStyle(box.layout)"
             role="img"
-            :aria-label="box.value === undefined ? 'Detected box without a number' : `Detected measure ${box.value}`"
+            :aria-label="box.label === undefined ? 'Detected box without a number' : `Detected measure ${box.label}`"
           >
-            <span :class="chipClass(box.layout, box.value !== undefined)">{{ box.value ?? "?" }}</span>
+            <span :class="chipClass(box.layout, box.label !== undefined)">{{ box.label ?? "?" }}</span>
           </div>
 
           <!-- Box waiting for the panel to say what it holds -->
