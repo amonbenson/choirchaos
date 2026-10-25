@@ -3,7 +3,8 @@ import Button from "primevue/button";
 import Panel from "primevue/panel";
 import { computed } from "vue";
 
-import type { MarkerEvent } from "@/core/models/measureEvent";
+import { formatLocation } from "@/components/editor/MarkerRow.vue";
+import type { Marker } from "@/core/models/markers";
 import type Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
 
@@ -13,10 +14,16 @@ const props = defineProps<{
   song: Song | undefined;
 }>();
 
-const markers = computed(() => props.song?.events.markers.items() ?? []);
+const markers = computed(() => props.song?.getMarkers() ?? []);
 
-function isMarkerActive(marker: MarkerEvent): boolean {
-  return player.currentMeasure[0] === marker.start[0];
+function isMarkerActive({ at }: Marker): boolean {
+  const location = player.currentLocation;
+  return location?.measure === at.measure && location.occurrence === at.occurrence;
+}
+
+function getMarkerProgress({ at }: Marker): number {
+  const tick = player.getLocationTick(at);
+  return tick === undefined || player.duration <= 0 ? 0 : tick / player.duration;
 }
 </script>
 
@@ -29,38 +36,34 @@ function isMarkerActive(marker: MarkerEvent): boolean {
     pt:content-wrapper="flex-1 min-h-0 flex flex-col"
     pt:content="flex-1 min-h-0 overflow-y-scroll mb-2"
   >
-    <!-- Markers list -->
-    <div
-      v-if="markers.length > 0"
+    <ul
+      v-if="song && markers.length > 0"
       class="flex flex-col items-stretch justify-stretch gap-4"
+      aria-label="Markers"
     >
-      <div
-        v-for="marker, m in markers"
+      <li
+        v-for="(marker, m) in markers"
         :key="m"
         class="relative"
       >
         <Button
-          class="relative flex items-center justify-between"
+          class="relative flex items-center justify-between gap-2 text-left"
           :severity="isMarkerActive(marker) ? 'primary' : 'secondary'"
+          :aria-label="`${marker.text}, marker at ${formatLocation(song, marker.at)}`"
           fluid
-          @click="player.setMeasure(marker.start[0]); player.setBeat(marker.start[1])"
+          @click="player.seekLocation(marker.at)"
         >
-          <div class="font-bold">
-            T{{ marker.start[0] }}
-          </div>
-          <div>
-            {{ marker.marker }}
-          </div>
+          <span class="font-bold">{{ formatLocation(song, marker.at) }}</span>
+          <span class="min-w-0 truncate">{{ marker.text }}</span>
         </Button>
         <div
           class="absolute bottom-0 left-1 h-0.5 translate-y-1/2 rounded-full bg-primary transition-opacity"
           :class="isMarkerActive(marker) ? 'opacity-0': 'opacity-50'"
-          :style="{
-            width: `calc(${marker.$startTick! / player.duration * 100}% - 0.5rem)`
-          }"
+          :style="{ width: `calc(${getMarkerProgress(marker) * 100}% - 0.5rem)` }"
+          aria-hidden="true"
         />
-      </div>
-    </div>
+      </li>
+    </ul>
 
     <div
       v-else

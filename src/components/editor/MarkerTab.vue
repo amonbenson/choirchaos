@@ -3,7 +3,8 @@ import Button from "primevue/button";
 import { computed, ref } from "vue";
 
 import { useNotify } from "@/composables/useNotify";
-import type { MarkerEvent } from "@/core/models/measureEvent";
+import type { Marker } from "@/core/models/markers";
+import type { Location } from "@/core/models/recording";
 import type Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
@@ -20,15 +21,15 @@ const { notifyError } = useNotify();
 
 const REHEARSAL_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-const markers = computed(() => props.song?.events.markers.items() ?? []);
-const hasMeasures = computed(() => (props.song?.measures.items().length ?? 0) > 0);
-const addedMarker = ref<MarkerEvent>();
+const markers = computed(() => props.song?.getMarkers() ?? []);
+const hasMeasures = computed(() => (props.song?.getTimeline().length ?? 0) > 0);
+const addedMarker = ref<Marker>();
 
 // Rows keep their identity while a marker is renamed or moved, so the focus stays in the edited field.
-const markerKeys = new WeakMap<MarkerEvent, number>();
+const markerKeys = new WeakMap<Marker, number>();
 let nextMarkerKey = 0;
 
-function getMarkerKey(marker: MarkerEvent): number {
+function getMarkerKey(marker: Marker): number {
   if (!markerKeys.has(marker)) {
     markerKeys.set(marker, nextMarkerKey++);
   }
@@ -36,18 +37,26 @@ function getMarkerKey(marker: MarkerEvent): number {
   return markerKeys.get(marker)!;
 }
 
-function isMarkerActive(marker: MarkerEvent): boolean {
-  return player.currentMeasure[0] === marker.start[0];
+function isMarkerActive({ at }: Marker): boolean {
+  const location = player.currentLocation;
+  return location?.measure === at.measure && location.occurrence === at.occurrence;
 }
 
 // Rehearsal marks are usually letters in score order, so the next unused letter is the likeliest name.
 function getNextMarkerName(): string {
-  const used = new Set(markers.value.map(marker => marker.marker));
+  const used = new Set(markers.value.map(marker => marker.text));
   return [...REHEARSAL_LETTERS].find(letter => !used.has(letter)) ?? `Marker ${markers.value.length + 1}`;
 }
 
-function getInsertMeasure(song: Song): string {
-  return song.findMeasure(player.currentMeasure[0])?.value ?? song.measures.items()[0]!.value;
+// A new marker goes where playback is, so a rehearser can stop at a section and mark it.
+function getInsertLocation(song: Song): Location {
+  const current = player.currentLocation;
+  if (current && song.findMeasure(current.measure)) {
+    return { measure: current.measure, occurrence: current.occurrence, beat: 0 };
+  }
+
+  const first = song.getTimeline()[0]!;
+  return { measure: first.measure, occurrence: first.occurrence, beat: 0 };
 }
 
 async function addMarker(): Promise<void> {
@@ -57,21 +66,21 @@ async function addMarker(): Promise<void> {
   }
 
   try {
-    addedMarker.value = await song.addMarker([getInsertMeasure(song), 0], getNextMarkerName());
+    addedMarker.value = await song.addMarker(getInsertLocation(song), getNextMarkerName());
   } catch (error) {
     notifyError("Could not add the marker", error);
   }
 }
 
-async function updateMarker(marker: MarkerEvent, measure: string, name: string): Promise<void> {
+async function updateMarker(marker: Marker, at: Location, text: string): Promise<void> {
   try {
-    await props.song?.updateMarker(marker, [measure, measure === marker.start[0] ? marker.start[1] : 0], name);
+    await props.song?.updateMarker(marker, at, text);
   } catch (error) {
     notifyError("Could not save the marker", error);
   }
 }
 
-async function removeMarker(marker: MarkerEvent): Promise<void> {
+async function removeMarker(marker: Marker): Promise<void> {
   try {
     await props.song?.removeMarker(marker);
   } catch (error) {
@@ -91,7 +100,7 @@ async function removeMarker(marker: MarkerEvent): Promise<void> {
           :marker="marker"
           :active="isMarkerActive(marker)"
           :autofocus="marker === addedMarker"
-          @update="(measure, name) => updateMarker(marker, measure, name)"
+          @update="(at, text) => updateMarker(marker, at, text)"
           @remove="removeMarker(marker)"
         />
       </template>

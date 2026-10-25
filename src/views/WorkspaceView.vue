@@ -45,7 +45,7 @@ const songLoading = ref(true);
 const editMode = computed(() => route.name === "song-edit");
 const canEdit = computed(() => !!show.value && getAccessFlags(show.value.permissions, auth.user?.id).editor);
 const showWarpPanel = computed(() => editMode.value && song.value?.playerMode === "audio");
-const hasMarkers = computed(() => (song.value?.events.markers.items().length ?? 0) > 0);
+const hasMarkers = computed(() => (song.value?.getMarkers().length ?? 0) > 0);
 const hasStartPanel = computed(() => editMode.value || hasMarkers.value);
 const isStartPanelOpen = computed(() => hasStartPanel.value && settings.current.workspace.panelVisible.markers);
 const isWarpPanelOpen = computed(() => showWarpPanel.value && settings.current.workspace.panelVisible.warp);
@@ -76,9 +76,9 @@ watch(songIndex, (index) => {
 
 const vampCardType = computed(() => {
   if (player.playing) {
-    if (player.currentVamp && !player.currentVamp.manualExit) {
+    if (player.currentSection?.kind === "vamp" && !player.currentSection.released) {
       return "vamp";
-    } else if (player.currentSegue?.enabled && player.currentMeasure[0] === player.finalMeasure[0]) {
+    } else if (player.currentSegue?.enabled && player.currentLocation?.position === player.finalLocation?.position) {
       return "segue";
     }
   }
@@ -108,30 +108,20 @@ function playPause(): void {
   }
 }
 
-function previousMeasure(): void {
-  if (!player.ready || !song.value) {
-    return;
-  }
-
-  const measures = song.value.measures.items();
-  const i = song.value.findMeasureIndex(player.currentMeasure[0]);
-  const prev = measures[i - 1];
-  if (prev) {
-    player.seek(prev.$beatTicks[0] ?? 0);
+// Stepping follows the recording, so a repeated measure is visited once per pass.
+function stepMeasure(direction: 1 | -1): void {
+  const location = player.ready ? player.currentLocation : undefined;
+  if (location) {
+    player.seekPosition(location.position + direction);
   }
 }
 
-function nextMeasure(): void {
-  if (!player.ready || !song.value) {
-    return;
-  }
+function previousMeasure(): void {
+  stepMeasure(-1);
+}
 
-  const measures = song.value.measures.items();
-  const i = song.value.findMeasureIndex(player.currentMeasure[0]);
-  const next = measures[i + 1];
-  if (next) {
-    player.seek(next.$beatTicks[0] ?? 0);
-  }
+function nextMeasure(): void {
+  stepMeasure(1);
 }
 
 function rewind(): void {
@@ -418,7 +408,7 @@ const pdfLoading = ref(false);
           <VampCard
             v-if="vampCardType === 'vamp'"
             class="size-full cursor-pointer"
-            :title="`Vamping (x${(player.currentVamp?.currentIteration ?? 0) + 1})`"
+            :title="`Vamping (x${player.currentSection?.pass ?? 1})`"
             @click="toggleVamp()"
           >
             <span class="touch:hidden">Press <KbdShortcut action="playPause" /> to exit</span>

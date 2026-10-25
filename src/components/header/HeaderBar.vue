@@ -12,6 +12,7 @@ import DottedQuarterNoteIcon from "@/components/icons/DottedQuarterNoteIcon.vue"
 import HalfNoteIcon from "@/components/icons/HalfNoteIcon.vue";
 import QuarterNoteIcon from "@/components/icons/QuarterNoteIcon.vue";
 import type Show from "@/core/models/show";
+import type { PlayerSectionState } from "@/core/player/types";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -63,7 +64,36 @@ const settingsStore = useSettingsStore();
 
 const visibleButtons = computed(() => settingsStore.current.appearance.transportButtonVisible);
 
-const vampState = computed(() => player.ready && player.currentVamp ? (player.currentVamp.manualExit ? "exiting" : "vamping") : "none");
+const currentSong = computed(() => songs.value.find(song => song.id === props.songId));
+
+const measureLabel = computed(() => {
+  const location = player.ready ? player.currentLocation : undefined;
+  return location ? currentSong.value?.findMeasure(location.measure)?.label : undefined;
+});
+
+const beatLabel = computed(() => player.ready && player.mode === "midi" && player.currentLocation
+  ? String(player.currentLocation.beat + 1)
+  : undefined);
+
+const section = computed(() => player.ready ? player.currentSection : undefined);
+const vamping = computed(() => section.value?.kind === "vamp" && !section.value.released);
+
+function formatPasses({ pass, passes }: PlayerSectionState): string {
+  return passes === undefined ? String(pass) : `${pass}/${passes}`;
+}
+
+const sectionLabel = computed(() => {
+  const current = section.value;
+  if (!current || current.kind === "cut") {
+    return "Vamp";
+  }
+
+  if (current.kind === "repeat") {
+    return `Repeat ${formatPasses(current)}`;
+  }
+
+  return current.released ? "Exiting" : `Vamp ${formatPasses(current)}`;
+});
 
 const tempoNoteValue: ComputedRef<NoteValue> = computed(() => {
   if (player.currentTimeSignature[0] % 3 === 0) {
@@ -165,14 +195,14 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
             >
               <PopoverButton
                 button-class="w-12 whitespace-nowrap"
-                :aria-label="player.ready ? `Current measure ${player.currentMeasure[0]}` : 'Current measure'"
-                :label="player.ready ? player.currentMeasure[0] : '-'"
+                :aria-label="measureLabel === undefined ? 'Current measure' : `Current measure ${measureLabel}`"
+                :label="measureLabel ?? '-'"
                 :disabled="!player.ready"
               >
                 <template #default="{ setFocusTarget }">
                   <InputText
                     :ref="setFocusTarget"
-                    :model-value="player.currentMeasure[0]"
+                    :model-value="measureLabel"
                     aria-label="Current measure"
                     class="w-16"
                     fluid
@@ -183,14 +213,14 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
               .
               <PopoverButton
                 button-class="w-8 whitespace-nowrap"
-                :aria-label="player.ready && player.mode === 'midi' ? `Current beat ${player.currentMeasure[1] + 1}` : 'Current beat'"
-                :label="player.ready && player.mode === 'midi' ? String(player.currentMeasure[1] + 1) : '-'"
+                :aria-label="beatLabel === undefined ? 'Current beat' : `Current beat ${beatLabel}`"
+                :label="beatLabel ?? '-'"
                 :disabled="!player.ready || player.mode !== 'midi'"
               >
                 <template #default="{ setFocusTarget }">
                   <InputNumber
                     :ref="setFocusTarget"
-                    :model-value="player.currentMeasure[1] + 1"
+                    :model-value="(player.currentLocation?.beat ?? 0) + 1"
                     aria-label="Current beat"
                     class="w-16"
                     fluid
@@ -317,19 +347,13 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
               </template>
             </Button>
 
-            <!-- Vamp -->
+            <!-- Section: releases or resets a vamp, and shows the pass of a repeat -->
             <Button
               v-if="visibleButtons.vamp"
-              class="w-24 whitespace-nowrap"
-              :disabled="vampState === 'none'"
-              :label="{
-                'none': 'Vamp',
-                'vamping': player.currentVamp?.iterations
-                  ? `Vamp ${(player.currentVamp?.currentIteration ?? 0) + 1}/${player.currentVamp?.iterations}`
-                  : `Vamp ${(player.currentVamp?.currentIteration ?? 0) + 1}`,
-                'exiting': 'Exiting...'
-              }[vampState]"
-              :severity="vampState === 'vamping' ? 'primary': 'secondary'"
+              class="w-28 whitespace-nowrap"
+              :disabled="section?.kind !== 'vamp'"
+              :label="sectionLabel"
+              :severity="vamping ? 'primary': 'secondary'"
               @click="emit('toggleVamp')"
             />
 
