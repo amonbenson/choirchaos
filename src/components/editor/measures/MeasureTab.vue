@@ -9,10 +9,9 @@ import { computed, ref } from "vue";
 
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
-import Measure from "@/core/models/measure";
-import { getUnplacedRuns, type MeasureRun } from "@/core/models/measureEditing";
+import { findExistingLabels, getUnplacedRuns, type MeasureRun, planAddMeasures } from "@/core/models/measureEditing";
+import { parseLabelList } from "@/core/models/measureLabel";
 import type Song from "@/core/models/song";
-import { parseMeasureList } from "@/core/utils/numbering";
 
 import MeasureDetectionForm from "./MeasureDetectionForm.vue";
 import MeasureNewBoxForm from "./MeasureNewBoxForm.vue";
@@ -72,7 +71,7 @@ const summary = computed(() => {
   }
 
   if (selection.value.length === 1) {
-    return `Measure ${selection.value[0]!.value}`;
+    return `Measure ${selection.value[0]!.label}`;
   }
 
   if (selection.value.length > 1) {
@@ -84,17 +83,14 @@ const summary = computed(() => {
 });
 
 function runLabel(run: MeasureRun): string {
-  return run.count === 1 ? `Measure ${run.first.value}` : `Measures ${run.first.value} to ${run.last.value}`;
+  return run.count === 1 ? `Measure ${run.first.label}` : `Measures ${run.first.label} to ${run.last.label}`;
 }
 
 const addPopover = ref();
 const newMeasures = ref("");
 const newMeasureBeats = ref(4);
-const parsedNewMeasures = computed(() => parseMeasureList(newMeasures.value));
-const duplicateMeasures = computed(() => {
-  const existing = new Set(measures.value.map(measure => measure.value));
-  return (parsedNewMeasures.value ?? []).filter(value => existing.has(value));
-});
+const parsedNewMeasures = computed(() => parseLabelList(newMeasures.value));
+const duplicateMeasures = computed(() => findExistingLabels(measures.value, parsedNewMeasures.value ?? []));
 
 function openAddMeasures(event: Event): void {
   newMeasures.value = "";
@@ -152,14 +148,14 @@ useEventListener("keydown", (event: KeyboardEvent) => {
 });
 
 async function addMeasures(): Promise<void> {
-  const values = parsedNewMeasures.value;
-  if (!values || duplicateMeasures.value.length > 0) {
+  const labels = parsedNewMeasures.value;
+  if (!labels || duplicateMeasures.value.length > 0) {
     return;
   }
 
   addPopover.value.hide();
   try {
-    await editor.addMeasures(values.map(value => new Measure(value, newMeasureBeats.value)));
+    await editor.apply(planAddMeasures(measures.value, labels, newMeasureBeats.value));
   } catch (error) {
     notifyError("Could not add the measures", error);
   }
@@ -266,7 +262,7 @@ async function addMeasures(): Promise<void> {
           <span class="mb-1 text-sm font-semibold">Not on the score</span>
           <div
             v-for="run in unplacedRuns"
-            :key="run.first.value"
+            :key="run.first.id"
             class="flex items-center justify-between gap-2 rounded py-0.5 pl-2 hover:bg-surface-100 dark:hover:bg-surface-800"
           >
             <span class="text-sm">{{ runLabel(run) }}</span>
@@ -276,7 +272,7 @@ async function addMeasures(): Promise<void> {
               severity="secondary"
               text
               :aria-label="`Place ${runLabel(run).toLowerCase()}`"
-              @click="editor.startPlacing(run.first.value)"
+              @click="editor.startPlacing(run.first.label)"
             />
           </div>
         </div>

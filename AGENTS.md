@@ -135,11 +135,13 @@ Every change keeps the app usable with a screen reader and keyboard. Prefer nati
 
 ## Measure Editing
 
-- A box is a measure's layout on the score, and its number says which measure it shows. MIDI songs only have the measures of their beat map. Audio songs own their measures, so placing a box on a missing number creates the measure, or renames the box's old measure if that one would be left without a box.
-- `measureEditing.ts` plans every action of the Measures tab as one `MeasureEdit`, and `Song.applyMeasureEdit()` saves it once. The player reloads only when `changesPlayback()`. Renames and deletions update warp markers, markers and vamps in the same save, since the e2e invariants reject references to missing measures.
+- A box is a measure's layout on the score, and the label typed for it says which measure it shows. MIDI songs only have the measures of their beat map, so editing them only moves boxes. Audio songs own their measures: placing a box on a label nobody has creates the measure at the box's reading-order position, or relabels the box's old measure (keeping its ID and references) if that one would be left without a box.
+- `measureEditing.ts` plans every action of the Measures tab as a `PlannedEdit`: one `MeasureEdit` for `Song.applyMeasureEdit()`, plus the boxes it places as `BoxTarget`s (an existing ID or the index of an addition, since new measures get their ID only when saved). `useMeasureEditor.apply()` saves it, selects those boxes and reloads the player only when `changesPlayback()`. Removal cleanup and recording span maintenance happen in `Song`, never in planning.
+- An addition's `index` is its score index after the edit. Planning builds the planned score with placeholder measures and reads the indices from it.
+- Consecutive labels follow `suggestLabel()`: the next measure of the score in MIDI songs, the next whole number in audio songs.
 - A box in the way is a conflict the user resolves (swap, or shift the following boxes). Planning never resolves one on its own.
-- Reading order (page, row, left to right) decides range selection, renumbering and the default number of a new box. Boxes share a row when one's vertical center lies inside the other.
-- The song hands out reactive proxies, but measures created by an edit are plain, so `useMeasureEditor` compares measures with `toRaw()`. Unnumbered boxes are compared by position (`isSameLayout()`).
+- Reading order (page, row, left to right) decides range selection, renumbering, the default label of a new box and where a new measure goes in the score. Boxes share a row when one's vertical center lies inside the other.
+- Measures are selected and compared by ID. Unnumbered boxes are compared by position (`isSameLayout()`), and an edit that resolves some sends the whole remaining list.
 
 ## Measure Detection
 
@@ -147,7 +149,7 @@ Every change keeps the app usable with a screen reader and keyboard. Prefer nati
 - The package, its ONNX models and the onnxruntime WASM binaries are tens of megabytes. Keep every import of them behind the dynamic import in `measureDetector.ts`.
 - `vite.config.ts` excludes `measure-detection` and `onnxruntime-web` from dependency pre-bundling, which would break their relative worker and WASM loading in the dev server.
 - `pdfjs-dist` must satisfy the `measure-detection` peer range, since the app passes its own `PDFDocumentProxy` in.
-- Detection never writes directly. `planMeasureDetection()` builds a plan that is previewed until the user applies or discards it. In MIDI mode it never adds measures.
+- Detection never writes directly. `planMeasureDetection()` builds a plan that is previewed until the user applies or discards it, and `toMeasureEdit()` turns it into one `MeasureEdit`. Detected numbers are matched to labels without regard to case. Only text that parses as a measure number creates a measure, at its box's reading-order position, and in MIDI mode it never adds measures.
 - Applying keeps what detection was unsure about: low-confidence boxes get `review: true` in their layout, and boxes without a usable number go into the song's `unnumberedBoxes`. Leftovers on top of an existing box are dropped, so detecting twice does not pile them up.
 - Confirming or renumbering a box clears its review flag (boxes only shifted out of the way keep it), and numbering an unnumbered box makes it that measure's layout. While any review item is open, `songSetup` does not report the song as ready.
 

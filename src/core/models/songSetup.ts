@@ -17,24 +17,17 @@ export type SongSetup = {
 // Audio sync needs at least a start and an end anchor before measures line up with the recording.
 const MIN_SYNC_MARKERS = 2;
 
-// A MIDI beat map ends on a terminal bar that only marks the length of the last real bar and is
-// never drawn on the score, so it does not count as a measure to place.
-function getPlaceableMeasureCount(song: Song): number {
-  const count = song.measures.items().length;
-  return song.playerMode === "midi" ? Math.max(0, count - 1) : count;
-}
-
 function getPlacedMeasureCount(song: Song): number {
-  return song.measures.items().slice(0, getPlaceableMeasureCount(song)).filter(m => m.layout).length;
+  return song.getMeasures().filter(measure => measure.layout).length;
 }
 
 function getMeasuresAction(song: Song): string {
-  const total = getPlaceableMeasureCount(song);
+  const total = song.getMeasures().length;
   return total === 0 ? "Add measures" : `Place measures (${getPlacedMeasureCount(song)} of ${total})`;
 }
 
 function isAudioSynced(song: Song): boolean {
-  return song.warpMarkers.length >= MIN_SYNC_MARKERS;
+  return song.getWarpMarkers().length >= MIN_SYNC_MARKERS;
 }
 
 /**
@@ -46,7 +39,7 @@ export function hasUnsyncedAudio(song: Song): boolean {
 }
 
 function getReviewCount(song: Song): number {
-  return countReviewItems(song.measures.items(), song.getUnnumberedBoxes());
+  return countReviewItems(song.getMeasures(), song.getUnnumberedBoxes());
 }
 
 /**
@@ -54,7 +47,7 @@ function getReviewCount(song: Song): number {
  * would naturally do it. The first open step is offered as the next action.
  */
 export function getSongSetup(song: Song): SongSetup {
-  const placeable = getPlaceableMeasureCount(song);
+  const placeable = song.getMeasures().length;
   const steps: SetupStep[] = [
     { id: "score", label: "Score", done: !!song.pdfFile },
     { id: "playback", label: "Playback", done: song.playerMode !== "none" },
