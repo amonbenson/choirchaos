@@ -7,10 +7,17 @@ import Select from "primevue/select";
 import { computed, ref, shallowRef, useTemplateRef, watch } from "vue";
 
 import CollapsiblePanel from "@/components/base/CollapsiblePanel.vue";
+import type { Occurrence } from "@/core/models/recording";
 import type Song from "@/core/models/song";
-import { constrainWarpMarkerTime, getWarpMarkerCandidates } from "@/core/models/warpEditing";
+import {
+  constrainWarpMarkerTime,
+  formatOccurrence,
+  formatOccurrenceShort,
+  getOccurrenceKey,
+  getPositionedWarpMarkers,
+  getWarpMarkerCandidates,
+} from "@/core/models/warpEditing";
 import { mixdownChunks } from "@/core/player/audio/mixdown";
-import type { Numbering } from "@/core/utils/numbering";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -32,13 +39,31 @@ const audioBuffer = shallowRef<AudioBuffer>();
 const currentTime = computed(() => player.position / 1000);
 const duration = computed(() => player.duration / 1000);
 
-const markers = computed<WaveformMarker[]>(() => (props.song?.warpMarkers ?? []).map(marker => ({
-  id: marker.measure,
+const positionedMarkers = computed(() => getPositionedWarpMarkers(player.timeline, props.song?.getWarpMarkers() ?? []));
+const markersByKey = computed(() => new Map(positionedMarkers.value.map(marker => [getOccurrenceKey(marker), marker])));
+
+const markers = computed<WaveformMarker[]>(() => positionedMarkers.value.map(marker => ({
+  id: getOccurrenceKey(marker),
   time: marker.time,
-  label: marker.measure,
+  label: formatOccurrenceShort(getLabel(marker), marker.occurrence),
 })));
 
-const candidates = computed(() => props.song ? getWarpMarkerCandidates(props.song, currentTime.value, duration.value) : []);
+const candidates = computed(() => props.song
+  ? getWarpMarkerCandidates(player.timeline, props.song.getWarpMarkers(), currentTime.value, duration.value)
+  : []);
+
+const candidateOptions = computed(() => candidates.value.map(candidate => ({
+  label: formatOccurrence(getLabel(candidate), candidate.occurrence),
+  value: getOccurrenceKey(candidate),
+})));
+
+function getLabel({ measure }: Occurrence): string {
+  return props.song?.findMeasure(measure)?.label ?? measure;
+}
+
+function describeMarker(occurrence: Occurrence): string {
+  return `Measure ${formatOccurrence(getLabel(occurrence), occurrence.occurrence)}`;
+}
 
 watch(() => [player.status, props.song] as const, ([status, song]) => {
   audioBuffer.value = status === "ready" && song?.playerMode === "audio"
@@ -46,46 +71,61 @@ watch(() => [player.status, props.song] as const, ([status, song]) => {
     : undefined;
 }, { immediate: true });
 
-function reloadWarp(): void {
-  const position = player.position;
+async function moveMarker(key: string, time: number): Promise<void> {
+  const marker = markersByKey.value.get(key);
+  if (!marker) {
+    return;
+  }
+
+  await props.song?.moveWarpMarker(marker, time);
   player.syncWarp();
-  player.seek(position);
 }
 
-async function moveMarker(measure: Numbering, time: number): Promise<void> {
-  await props.song?.setWarpMarker(measure, time);
-  reloadWarp();
+async function deleteMarker(occurrence: Occurrence): Promise<void> {
+  await props.song?.removeWarpMarker(occurrence);
+  player.syncWarp();
 }
 
-async function deleteMarker(measure: Numbering): Promise<void> {
-  await props.song?.removeWarpMarker(measure);
-  reloadWarp();
-}
-
-async function addMarker(measure: Numbering): Promise<void> {
+async function addMarker(key: string): Promise<void> {
   addPopover.value?.hide();
-  await props.song?.addWarpMarker({ measure, time: currentTime.value });
-  reloadWarp();
+  const candidate = candidates.value.find(entry => getOccurrenceKey(entry) === key);
+  if (!candidate) {
+    return;
+  }
+
+  await props.song?.addWarpMarker({ measure: candidate.measure, occurrence: candidate.occurrence, time: currentTime.value });
+  player.syncWarp();
 }
 
 function onAddClick(event: Event): void {
-  if (candidates.value.length === 1) {
-    addMarker(candidates.value[0]!);
+  const [only, ...others] = candidates.value;
+  if (only && others.length === 0) {
+    addMarker(getOccurrenceKey(only));
   } else {
     addPopover.value.toggle(event);
   }
 }
 
-function openMarkerMenu(measure: Numbering, event: MouseEvent): void {
+function openMarkerMenu(key: string, event: MouseEvent): void {
+  const marker = markersByKey.value.get(key);
+  if (!marker) {
+    return;
+  }
+
   markerMenuItems.value = [
-    { label: `Measure ${measure}`, disabled: true },
-    { label: "Delete marker", icon: "pi pi-trash", command: () => deleteMarker(measure) },
+    { label: describeMarker(marker), disabled: true },
+    { label: "Delete marker", icon: "pi pi-trash", command: () => deleteMarker(marker) },
   ];
   markerMenu.value.show(event);
 }
 
-function constrainMarker(measure: string, time: number): number {
-  return props.song ? constrainWarpMarkerTime(props.song, measure, time, duration.value) : time;
+function constrainMarker(key: string, time: number): number {
+  const marker = markersByKey.value.get(key);
+  if (!props.song || !marker) {
+    return time;
+  }
+
+  return constrainWarpMarkerTime(player.timeline, props.song.getWarpMarkers(), marker, time, duration.value);
 }
 </script>
 
@@ -180,7 +220,9 @@ function constrainMarker(measure: string, time: number): number {
           class="text-sm font-medium"
         >Which measure starts here?</label>
         <Select
-          :options="candidates"
+          :options="candidateOptions"
+          option-label="label"
+          option-value="value"
           aria-labelledby="warp-marker-measure"
           placeholder="Choose a measure"
           size="small"
