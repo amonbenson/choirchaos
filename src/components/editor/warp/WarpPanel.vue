@@ -7,12 +7,11 @@ import Select from "primevue/select";
 import { computed, ref, shallowRef, useTemplateRef, watch } from "vue";
 
 import CollapsiblePanel from "@/components/base/CollapsiblePanel.vue";
+import { formatOccurrence, formatOccurrenceShort } from "@/core/models/locationFormat";
 import type { Occurrence } from "@/core/models/recording";
 import type Song from "@/core/models/song";
 import {
   constrainWarpMarkerTime,
-  formatOccurrence,
-  formatOccurrenceShort,
   getOccurrenceKey,
   getPositionedWarpMarkers,
   getWarpMarkerCandidates,

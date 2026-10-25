@@ -17,6 +17,7 @@ import { useSettingsStore } from "@/stores/settings";
 import type { EditorTab } from "@/stores/settings/workspace";
 
 import MarkerTab from "./MarkerTab.vue";
+import SectionTab from "./SectionTab.vue";
 
 defineProps<{
   show: Show | undefined;
@@ -32,6 +33,7 @@ const TABS: { value: EditorTab; label: string }[] = [
   { value: "details", label: "Details" },
   { value: "markers", label: "Markers" },
   { value: "measures", label: "Measures" },
+  { value: "sections", label: "Sections" },
 ];
 
 const settings = useSettingsStore();
@@ -129,6 +131,15 @@ watch(isWorkingOnMeasures, (working) => {
           class="flex min-h-0 flex-1 flex-col"
         >
           <MeasureTab
+            class="flex-1"
+            :song="song"
+          />
+        </TabPanel>
+        <TabPanel
+          value="sections"
+          class="flex min-h-0 flex-1 flex-col"
+        >
+          <SectionTab
             class="flex-1"
             :song="song"
           />
