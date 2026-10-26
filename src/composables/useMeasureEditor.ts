@@ -5,6 +5,7 @@ import { changesPlayback, isSameLayout, type MeasureId, type MeasureLayout } fro
 import { toMeasureEdit } from "@/core/models/measureDetection";
 import { type BoxTarget, getMeasuresBetween, getReadingOrder, type MeasureEditMode, type PlannedEdit } from "@/core/models/measureEditing";
 import { getAdjacentReviewItem, getReviewItemAfter, getReviewItems, isSameReviewItem, type ReviewItem } from "@/core/models/measureReview";
+import { findSectionsAt, findSelectedRuns, getSectionRun, pickRun, type SectionMatch, type SelectedRun } from "@/core/models/measureSelection";
 import type Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
 
@@ -36,6 +37,10 @@ export type MeasureEditor = {
   reviewItems: ComputedRef<ReviewItem[]>;
   currentReviewItem: ComputedRef<ReviewItem | undefined>;
   revealRequest: Ref<RevealRequest | undefined>;
+  selectedRuns: ComputedRef<SelectedRun[]>;
+  selectedRun: ComputedRef<SelectedRun | undefined>;
+  sectionMatches: ComputedRef<SectionMatch[]>;
+  selectedSection: ComputedRef<SectionMatch | undefined>;
   detection: MeasureDetection;
   isSelected: (measure: Measure) => boolean;
   isBoxSelected: (box: MeasureLayout) => boolean;
@@ -47,7 +52,10 @@ export type MeasureEditor = {
   addToSelection: (measures: Measure[], boxes?: MeasureLayout[]) => void;
   setSelection: (measures: Measure[], boxes?: MeasureLayout[]) => void;
   selectAll: () => void;
+  selectSection: (index: number) => void;
   clearSelection: () => void;
+  seekMeasure: (measure: Measure) => void;
+  seekRun: (run: SelectedRun) => void;
   setTool: (tool: MeasureTool) => void;
   startPlacing: (label: string) => void;
   apply: (planned: PlannedEdit) => Promise<void>;
@@ -58,8 +66,9 @@ export type MeasureEditor = {
 };
 
 /**
- * Selection, tool and pending box of the song editor, shared by the score and the Measures panel.
- * Measures are selected by ID, boxes without a number by position.
+ * Selection, tool and pending box of the song editor, shared by the score and the inspector.
+ * Measures are selected by ID, boxes without a number by position. The selection has no occurrence of
+ * its own: the selected run is where the selected measures play at or nearest to the playhead.
  */
 export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<boolean>): MeasureEditor {
   const player = usePlayerStore();
@@ -85,6 +94,20 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
   const selectionCount = computed(() => selection.value.length + selectedBoxes.value.length);
   // A box without a number has its own form, which only fits when it is the whole selection.
   const selectedBox = computed(() => selection.value.length === 0 && selectedBoxes.value.length === 1 ? selectedBoxes.value[0] : undefined);
+
+  const timeline = computed(() => song.value?.getTimeline() ?? []);
+  const selectedRuns = computed(() => selectedBoxes.value.length > 0
+    ? []
+    : findSelectedRuns(measures.value, timeline.value, new Set(selection.value.map(measure => measure.id))));
+  const selectedRun = computed(() => pickRun(selectedRuns.value, player.currentLocation?.position));
+  const sectionMatches = computed(() => selectedRun.value
+    ? findSectionsAt(timeline.value, song.value?.getSections() ?? [], selectedRun.value)
+    : []);
+  // Only a section that holds the whole run is edited through it. Partial overlaps are offered to be replaced.
+  const selectedSection = computed(() => {
+    const [match, ...others] = sectionMatches.value;
+    return match && others.length === 0 && match.relation !== "overlaps" ? match : undefined;
+  });
 
   const reviewItems = computed(() => getReviewItems(measures.value, unnumberedBoxes.value));
   const currentReviewItem = computed<ReviewItem | undefined>(() => {
@@ -161,6 +184,36 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
 
   function clearSelection(): void {
     setSelection([]);
+  }
+
+  /** A measure that plays more than once is entered at the occurrence closest to the playback, so a click stays in the current pass. */
+  function seekMeasure(measure: Measure): void {
+    const current = player.currentLocation?.position ?? 0;
+    const distance = (position: number): number => Math.abs(position - current);
+    const nearest = timeline.value
+      .filter(entry => entry.measure === measure.id)
+      .reduce<number | undefined>((best, { position }) => best === undefined || distance(position) < distance(best) ? position : best, undefined);
+    if (nearest !== undefined) {
+      player.seekPosition(nearest);
+    }
+  }
+
+  function seekRun(run: SelectedRun): void {
+    player.seekPosition(run.first);
+  }
+
+  /** Selects the measures of a section's first pass and moves the playhead there, so the section is the selected run. */
+  function selectSection(index: number): void {
+    const section = song.value?.getSections()[index];
+    const run = section && getSectionRun(timeline.value, section);
+    if (!run) {
+      return;
+    }
+
+    const ids = new Set(timeline.value.slice(run.first, run.last + 1).map(entry => entry.measure));
+    stopDrawing();
+    setSelection(measures.value.filter(measure => measure.layout && ids.has(measure.id)));
+    seekRun(run);
   }
 
   function setTool(next: MeasureTool): void {
@@ -293,6 +346,10 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
     reviewItems,
     currentReviewItem,
     revealRequest,
+    selectedRuns,
+    selectedRun,
+    sectionMatches,
+    selectedSection,
     detection,
     isSelected,
     isBoxSelected,
@@ -304,7 +361,10 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
     addToSelection,
     setSelection,
     selectAll,
+    selectSection,
     clearSelection,
+    seekMeasure,
+    seekRun,
     setTool,
     startPlacing,
     apply,

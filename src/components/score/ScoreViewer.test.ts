@@ -11,7 +11,7 @@ import Song from "@/core/models/song";
 import type { TimelinePosition } from "@/core/player/timeline";
 import type { PlayerLocation, PlayerSectionState } from "@/core/player/types";
 import { usePlayerStore } from "@/stores/player";
-import { idOf, makeAudioSong, makeMidiSongWithCut, makeMidiSongWithRepeat } from "@/test/fixtures";
+import { idOf, locationOf, makeAudioSong, makeMidiSongWithCut, makeMidiSongWithRepeat, makeMidiSongWithVamp } from "@/test/fixtures";
 
 import ScoreViewer from "./ScoreViewer.vue";
 
@@ -25,6 +25,7 @@ const player = vi.hoisted(() => ({
   currentSection: undefined as PlayerSectionState | undefined,
   measureTrackIndices: new Map<MeasureId, Set<number>>(),
   seekPosition: vi.fn(),
+  syncWarp: vi.fn(),
   load: vi.fn(),
 }));
 
@@ -199,6 +200,75 @@ describe("ScoreViewer", () => {
       const { wrapper } = mountViewer(song, true);
 
       expect(box(wrapper, "2").textContent?.trim()).toBe("2");
+    });
+
+    it("selects a clicked measure and moves the playhead to its nearest occurrence", async () => {
+      const song = makeMidiSongWithRepeat();
+      const { wrapper, editor } = mountViewer(song, true);
+      playAt(7);
+      await flushPromises();
+
+      (box(wrapper, "2") as HTMLElement).click();
+
+      expect(editor.selection.value.map(measure => measure.label)).toEqual(["2"]);
+      expect(fakePlayer().seekPosition).toHaveBeenCalledWith(6);
+    });
+
+    it("does not move the playhead when a ctrl-click takes a measure out of the selection", async () => {
+      const song = makeMidiSongWithRepeat();
+      const { wrapper, editor } = mountViewer(song, true);
+      editor.setSelection([song.findMeasure(idOf(song, "1"))!, song.findMeasure(idOf(song, "2"))!]);
+      await flushPromises();
+
+      box(wrapper, "2").dispatchEvent(new MouseEvent("click", { ctrlKey: true, bubbles: true }));
+
+      expect(editor.selection.value.map(measure => measure.label)).toEqual(["1"]);
+      expect(fakePlayer().seekPosition).not.toHaveBeenCalled();
+    });
+
+    describe("section range handles", () => {
+      function handle(wrapper: VueWrapper, name: string): VueWrapper["element"] {
+        return wrapper.find(`[role='slider'][aria-label='${name}']`).element;
+      }
+
+      it("appear on the section the selection belongs to and name its ends", async () => {
+        const song = makeMidiSongWithRepeat();
+        const { wrapper, editor } = mountViewer(song, true);
+        playAt(5);
+        editor.selectOnly(song.findMeasure(idOf(song, "3"))!);
+        await flushPromises();
+
+        const last = handle(wrapper, "Last measure of repeat 2 to 3");
+        expect(last.getAttribute("aria-valuetext")).toBe("3, 1st time");
+        expect(last.getAttribute("aria-valuenow")).toBe("4");
+        expect(handle(wrapper, "First measure of repeat 2 to 3").getAttribute("aria-valuetext")).toBe("2, 1st time");
+      });
+
+      it("move the section by one measure with the arrow keys", async () => {
+        const song = makeMidiSongWithVamp();
+        const { wrapper, editor } = mountViewer(song, true);
+        editor.selectSection(0);
+        await flushPromises();
+
+        handle(wrapper, "Last measure of vamp 2").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+        await flushPromises();
+        expect(song.getSections()[0]).toMatchObject({ from: locationOf(song, "2"), to: locationOf(song, "3", 3) });
+
+        handle(wrapper, "First measure of vamp 2 to 3").dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+        await flushPromises();
+        expect(song.getSections()[0]).toMatchObject({ from: locationOf(song, "0"), to: locationOf(song, "3", 3) });
+        expect(fakePlayer().syncWarp).toHaveBeenCalledTimes(2);
+        expect(editor.selection.value.map(measure => measure.label)).toEqual(["0", "1", "2", "3"]);
+      });
+
+      it("are not shown without a section to edit", async () => {
+        const song = makeMidiSongWithVamp();
+        const { wrapper, editor } = mountViewer(song, true);
+        editor.selectOnly(song.findMeasure(idOf(song, "1"))!);
+        await flushPromises();
+
+        expect(wrapper.find("[role='slider']").exists()).toBe(false);
+      });
     });
 
     it("previews detected boxes in place of the measures they replace", async () => {

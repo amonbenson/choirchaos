@@ -1,6 +1,4 @@
-import { SettingsBase } from "./base";
-
-export type EditorTab = "details" | "markers" | "measures" | "sections";
+import { type DataOf, SettingsBase } from "./base";
 
 export class PanelVisibleSettings extends SettingsBase {
   constructor(
@@ -12,11 +10,26 @@ export class PanelVisibleSettings extends SettingsBase {
   }
 }
 
+/** Which groups of the song editor's inspector the user collapsed. */
+export class InspectorCollapsedSettings extends SettingsBase {
+  constructor(
+    public readonly rehearsal: boolean = false,
+    public readonly marker: boolean = false,
+    public readonly recording: boolean = false,
+    public readonly sync: boolean = false,
+    public readonly boxes: boolean = false,
+  ) {
+    super();
+  }
+}
+
+export type InspectorGroupId = keyof DataOf<InspectorCollapsedSettings>;
+
 export class WorkspaceSettings extends SettingsBase {
   constructor(
     public readonly selectedTab: "markers" | "pdf" | "mixer" = "pdf",
-    public readonly editorTab: EditorTab = "details",
     public readonly panelVisible: PanelVisibleSettings = new PanelVisibleSettings(),
+    public readonly inspectorCollapsed: InspectorCollapsedSettings = new InspectorCollapsedSettings(),
   ) {
     super();
   }
