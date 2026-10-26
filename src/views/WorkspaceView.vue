@@ -15,6 +15,7 @@ import MarkerPanel from "@/components/player/MarkerPanel.vue";
 import MixerPanel from "@/components/player/MixerPanel.vue";
 import VampCard from "@/components/player/VampCard.vue";
 import ScoreViewer from "@/components/score/ScoreViewer.vue";
+import SongDetailsDialog from "@/components/song/SongDetailsDialog.vue";
 import { type ShortcutAction, useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
 import { provideMeasureEditor, useMeasureEditor } from "@/composables/useMeasureEditor";
 import type Song from "@/core/models/song";
@@ -183,8 +184,17 @@ function toggleEditMode(): void {
 
 // SONG MANAGEMENT
 
+// The open dialog is part of the URL, so reloading keeps it open and the show page can link to it.
+const detailsVisible = computed({
+  get: () => editMode.value && route.query.details !== undefined,
+  set: (visible: boolean) => {
+    const { details: _, ...query } = route.query;
+    router.replace({ ...route, query: visible ? { ...query, details: "1" } : query });
+  },
+});
+
 function openSongDetails(): void {
-  settings.update({ workspace: { editorTab: "details", selectedTab: "pdf", panelVisible: { markers: true } } });
+  detailsVisible.value = true;
 }
 
 async function onSongSaved(saved: Song, { playbackChanged }: { playbackChanged: boolean }): Promise<void> {
@@ -322,7 +332,21 @@ const pdfLoading = ref(false);
       @toggle-vamp="toggleVamp"
       @toggle-segue="toggleSegue"
       @toggle-edit-mode="toggleEditMode"
-    />
+    >
+      <template #actions>
+        <Button
+          v-if="editMode && song"
+          label="Details"
+          icon="pi pi-file-edit"
+          severity="secondary"
+          aria-label="Details"
+          aria-haspopup="dialog"
+          class="flex-none"
+          pt:label="hidden sm:inline lg:hidden 2xl:inline"
+          @click="openSongDetails"
+        />
+      </template>
+    </HeaderBar>
     <ButtonGroup class="w-full lg:hidden">
       <Button
         v-for="tab in tabs"
@@ -353,10 +377,8 @@ const pdfLoading = ref(false);
           v-if="editMode"
           class="pointer-events-auto absolute inset-x-0 bottom-0 max-h-[70%] min-h-0 lg:inset-0 lg:max-h-none"
           :class="isStartPanelOpen ? 'lg:opacity-100' : 'lg:pointer-events-none lg:opacity-0'"
-          :show="show"
           :song="song"
-          @saved="onSongSaved"
-          @deleted="onSongDeleted"
+          @open-details="openSongDetails"
         />
         <MarkerPanel
           v-else-if="hasMarkers"
@@ -474,6 +496,15 @@ const pdfLoading = ref(false);
         />
       </div>
     </div>
+
+    <SongDetailsDialog
+      v-if="show && song"
+      v-model="detailsVisible"
+      :show="show"
+      :song="song"
+      @saved="onSongSaved"
+      @deleted="onSongDeleted"
+    />
 
     <!-- Warp Panel (audio mode) -->
     <WarpPanel

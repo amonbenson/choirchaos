@@ -9,7 +9,7 @@ import Panel from "primevue/panel";
 import ProgressSpinner from "primevue/progressspinner";
 import { useConfirm } from "primevue/useconfirm";
 import { computed, ref, useTemplateRef, watch } from "vue";
-import { type RouteLocationRaw, useRouter } from "vue-router";
+import { type RouteLocationNamedRaw, useRouter } from "vue-router";
 
 import HeaderBar from "@/components/header/HeaderBar.vue";
 import CoverPicker from "@/components/show/CoverPicker.vue";
@@ -24,7 +24,6 @@ import type Song from "@/core/models/song";
 import { getSongSetup, isFileStep } from "@/core/models/songSetup";
 import { displayFilename } from "@/core/utils/file";
 import { useAuthStore } from "@/stores/auth";
-import { useSettingsStore } from "@/stores/settings";
 import { useShowStore } from "@/stores/show";
 
 const props = defineProps<{
@@ -32,7 +31,6 @@ const props = defineProps<{
 }>();
 
 const auth = useAuthStore();
-const settings = useSettingsStore();
 const showStore = useShowStore();
 const router = useRouter();
 const confirm = useConfirm();
@@ -138,14 +136,13 @@ const { isOverDropZone } = useDropZone(dropZone, {
 const fileDialog = useFileDialog({ multiple: true, reset: true, accept: `.pdf,.mid,.midi,.json,application/pdf,audio/midi,application/json,${RECORDING_FILE_ACCEPT}` });
 fileDialog.onChange(files => startImport(Array.from(files ?? [])));
 
-function songRoute(song: Song, name: "song" | "song-edit"): RouteLocationRaw {
+function songRoute(song: Song, name: "song" | "song-edit"): RouteLocationNamedRaw {
   return { name, params: { showId: props.showId, songId: song.id } };
 }
 
 function continueSetup(song: Song): void {
   const next = getSongSetup(song).next;
-  settings.update({ workspace: { editorTab: next && isFileStep(next.id) ? "details" : "measures" } });
-  router.push(songRoute(song, "song-edit"));
+  router.push({ ...songRoute(song, "song-edit"), query: next && isFileStep(next.id) ? { details: "1" } : {} });
 }
 
 function confirmDeleteSong(song: Song): void {

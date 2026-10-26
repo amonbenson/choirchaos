@@ -1,27 +1,29 @@
+import type { Page } from "@playwright/test";
 import type PocketBase from "pocketbase";
 
 import { MINIMAL } from "../generators/score/presets";
-import type { ScoreSpec } from "../generators/score/types";
-import { buildSongBundle, locationAt, recordedBarTimes, type SongSection } from "../generators/song";
+import { buildSongBundle, locationAt, type SongSection } from "../generators/song";
 import { expect, test } from "../harness/fixtures";
 import { collectPageErrors } from "../harness/page";
 import { recordPlayback, sequenceOf, waitForPlayer } from "../harness/playback";
-
-/** Eight one-second bars, room for three sections of two bars each. */
-const EIGHT_BARS: ScoreSpec = { ...MINIMAL, id: "eight-bars", title: "Eight Bars", seed: 102, tempo: 240, sections: [{ measures: 8 }] };
-
-const MS_PER_SECOND = 1000;
 
 async function storedSections(admin: PocketBase, id: string): Promise<SongSection[]> {
   return (await admin.collection("songs").getOne(id)).arrangement.sections;
 }
 
+async function select(page: Page, first: string, last?: string): Promise<void> {
+  await page.getByRole("button", { name: `Measure ${first}`, exact: true }).click();
+  if (last) {
+    await page.getByRole("button", { name: `Measure ${last}`, exact: true }).click({ modifiers: ["Shift"] });
+  }
+}
+
 test.describe("sections", () => {
-  test("an editor adds, edits and removes sections, and playback follows", async ({ page, admin, factory, loginAs }) => {
+  test("an editor repeats, cuts and vamps selected measures, and playback follows", async ({ page, admin, factory, loginAs }) => {
     const owner = await factory.createUser();
     const editor = await factory.createUser();
     const show = await factory.createShow(owner, { editors: [editor] });
-    const bundle = await buildSongBundle(EIGHT_BARS, { mode: "audio", withPdf: false });
+    const bundle = await buildSongBundle(MINIMAL, { mode: "audio" });
     const song = await factory.createSong(owner, show, bundle);
     const { score } = bundle.fields;
     const errors = collectPageErrors(page);
@@ -29,50 +31,55 @@ test.describe("sections", () => {
 
     await page.goto(`/show/${show.id}/song/${song.id}/edit`);
     await waitForPlayer(page);
-    await page.getByRole("tab", { name: "Sections" }).click();
-    const panel = page.getByRole("tabpanel", { name: "Sections" });
-    const list = panel.getByRole("list", { name: "Sections" });
+    const rehearsal = page.getByRole("region", { name: "Editor panel" }).getByRole("region", { name: "Rehearsal" });
 
-    for (const kind of ["Vamp", "Repeat", "Cut"]) {
-      await panel.getByRole("button", { name: "Add section" }).click();
-      await page.getByRole("menuitem", { name: kind }).click();
-    }
+    await select(page, "1", "2");
+    await rehearsal.getByRole("button", { name: "Repeat", exact: true }).click();
+    const repeat: SongSection = { kind: "repeat", from: locationAt(score, "1"), to: locationAt(score, "2", 3), passes: 2 };
+    await expect.poll(() => storedSections(admin, song.id)).toEqual([repeat]);
+    await rehearsal.getByLabel("Passes").fill("3");
+    await rehearsal.getByLabel("Passes").press("Enter");
+    await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }]);
 
-    await expect(list.getByRole("listitem")).toHaveCount(3);
-    await expect(list.getByRole("group", { name: "Vamp from 1 to 2" })).toBeVisible();
-    await expect(list.getByRole("group", { name: "Repeat from 3 to 4" })).toContainText("Recorded once");
-    await expect(list.getByRole("group", { name: "Cut from 5 to 6" })).toBeVisible();
-    const vamp: SongSection = { kind: "vamp", from: locationAt(score, "1"), to: locationAt(score, "2", 3), passes: 0, out: "onEnd", vocals: "all" };
-    const repeat: SongSection = { kind: "repeat", from: locationAt(score, "3"), to: locationAt(score, "4", 3), passes: 2 };
-    const cut: SongSection = { kind: "cut", from: locationAt(score, "5"), to: locationAt(score, "6", 3) };
-    await expect.poll(() => storedSections(admin, song.id)).toEqual([vamp, repeat, cut]);
-
-    const passes = panel.getByLabel("Passes of repeat from 3 to 4");
-    await passes.fill("3");
-    await passes.press("Enter");
-    await expect.poll(() => storedSections(admin, song.id)).toEqual([vamp, { ...repeat, passes: 3 }, cut]);
-
-    const cutStart = panel.getByLabel("Measure of start of cut from 5 to 6");
-    await cutStart.fill("4");
-    await cutStart.press("Enter");
-    await expect(cutStart).toHaveAttribute("aria-invalid", "true");
-    await expect(cutStart).toHaveAccessibleDescription("Sections must not overlap.");
-    expect(await storedSections(admin, song.id)).toEqual([vamp, { ...repeat, passes: 3 }, cut]);
-    await cutStart.press("Escape");
-    await expect(cutStart).toHaveValue("5");
-
-    await panel.getByRole("button", { name: "Delete vamp from 1 to 2" }).click();
-    await page.getByRole("button", { name: "Delete section" }).click();
-    await expect(list.getByRole("listitem")).toHaveCount(2);
+    await select(page, "3");
+    await rehearsal.getByRole("button", { name: "Cut", exact: true }).click();
+    const cut: SongSection = { kind: "cut", from: locationAt(score, "3"), to: locationAt(score, "3", 3) };
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut]);
 
-    await page.getByRole("button", { name: "Play / Pause" }).click();
-    const samples = await recordPlayback(page, sample => sample.measure === "7");
-    const times = recordedBarTimes(bundle).map(seconds => seconds * MS_PER_SECOND);
+    await select(page, "4");
+    await rehearsal.getByRole("button", { name: "Vamp", exact: true }).click();
+    const vamp: SongSection = { kind: "vamp", from: locationAt(score, "4"), to: locationAt(score, "4", 3), passes: 0, out: "onEnd", vocals: "all" };
+    await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut, vamp]);
+    await rehearsal.getByLabel("Until released").uncheck();
+    await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut, { ...vamp, passes: 1 }]);
 
-    expect(sequenceOf(samples, "measure")).toEqual(["1", "2", "3", "4", "3", "4", "3", "4", "7"]);
-    expect(sequenceOf(samples, "section")).toEqual(["Vamp", "Repeat 1/3", "Repeat 2/3", "Repeat 3/3", "Vamp"]);
-    expect(samples.filter(sample => sample.position >= times[4]! && sample.position < times[6]!)).toEqual([]);
+    await select(page, "2", "3");
+    await expect(rehearsal).toContainText("These measures overlap Repeat 1 to 2 and Cut 3.");
+    await rehearsal.getByRole("button", { name: "Vamp", exact: true }).click();
+    await rehearsal.getByRole("button", { name: "Cancel" }).click();
+    await expect(rehearsal.getByRole("button", { name: "Replace with vamp" })).toHaveCount(0);
+
+    await select(page, "4");
+    await rehearsal.getByRole("button", { name: "As recorded" }).click();
+    await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut]);
+
+    await select(page, "1");
+    await expect(rehearsal).toContainText("Part of Repeat 1 to 2");
+    const last = page.getByRole("slider", { name: "Last measure of repeat 1 to 2" });
+    await last.focus();
+    await last.press("ArrowLeft");
+    await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, to: locationAt(score, "1", 3), passes: 3 }, cut]);
+    await page.getByRole("slider", { name: "Last measure of repeat 1" }).press("ArrowRight");
+    await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut]);
+
+    // The kind buttons share their names with the header's section button that the playback samples read.
+    await select(page, "1");
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Play / Pause" }).click();
+    const samples = await recordPlayback(page, sample => sample.measure === "4");
+
+    expect(sequenceOf(samples, "measure")).toEqual(["1", "2", "1", "2", "1", "2", "4"]);
+    expect(sequenceOf(samples, "section").filter(section => section.startsWith("Repeat"))).toEqual(["Repeat 1/3", "Repeat 2/3", "Repeat 3/3"]);
     expect(errors).toEqual([]);
   });
 });

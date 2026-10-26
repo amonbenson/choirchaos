@@ -44,7 +44,7 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 |---|---|
 | `src/views/` | Routed pages. See `src/views/AGENTS.md` |
 | `src/components/` | UI components in the folder of the area they appear in (`header/`, `show/`, `song/`, `player/`, `editor/`, `score/`), plus generic `base/` and `icons/` |
-| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useMeasureEditor` holds the song editor's selection and tool |
+| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useMeasureEditor` holds the song editor's selection, the selected run and the tool |
 | `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
 | `src/router/` | Routes and navigation guards |
 | `src/core/models/` | Domain models (Show, Song, Track, Measure, markers, sections) and the pure logic around them: the recording timeline, location formatting, song dialog drafts, setup status, measure editing, detection, review and warp editing |
@@ -81,12 +81,12 @@ Rehearsers (viewers) only play songs back. Editors (editors and owners) also set
 ### Design Principles
 
 1. **Rehearsers never see editing.** No edit control, hint or empty state that asks for editing is shown to someone who cannot edit.
-2. **Each element type has one kind of job.** Links, list rows and breadcrumb items navigate. Pickers choose what the current page shows and keep the page. Buttons run an action or open a dialog or popover. Their labels never end with "...", which only adds noise next to other buttons. Segmented controls and toggle buttons switch a tool, option or mode and look pressed while active. Never make a navigation look like a mode switch or the other way round.
+2. **Each element type has one kind of job.** Links, list rows and breadcrumb items navigate. Pickers choose what the current page shows and keep the page. Buttons run an action or open a dialog or popover. Their labels never end with "...", which only adds noise next to other buttons. Segmented controls and toggle buttons switch a tool, option or mode and look pressed while active. Never make a navigation look like a mode switch or the other way round. A click on the score always moves the playhead, and in the editor it also selects.
 3. **One meaning per icon, app-wide** (see the table below). Icon-only buttons are reserved for universally known controls (transport, close, overflow). Everything else carries a text label where the layout has room, and always an `aria-label`.
 4. **State that matters lives in the URL.** Reloading or going back keeps the user where they were. Editing a song is a route, not a flag.
 5. **Every action has one home.** Secondary entry points open the same dialog or page and keep its label. Only empty states and status hints may name the step instead, e.g. "Add playback".
 6. **Do not duplicate information.** A canvas (the score, the waveform) is the list of its objects. Side panels show the selection's properties or what the canvas cannot show.
-7. **Select, then act.** The panel next to a canvas edits the whole selection at once and shows mixed values as empty.
+7. **Select, then act.** The panel next to a canvas edits the whole selection at once and shows mixed values as empty. The selected occurrence is the one at the playhead.
 8. **Automation proposes, the user decides, leftovers stay visible.** Automatic results are previewed where they will appear, and anything still to check stays marked on the object until resolved.
 9. **Empty states and status hints name the next step** and contain the control that does it.
 10. **The top bar always says where you are.** Every page starts with `HeaderBar`, whose breadcrumb leads to every parent, so no page needs a back button. Dialogs have one obvious exit ("Cancel"). Destructive actions are confirmed, everything else saves without asking.
@@ -140,7 +140,7 @@ Every change keeps the app usable with a screen reader and keyboard. Prefer nati
 ## Measure Editing
 
 - A box is a measure's layout on the score, and the label typed for it says which measure it shows. MIDI songs only have the measures of their beat map, so editing them only moves boxes. Audio songs own their measures: placing a box on a label nobody has creates the measure at the box's reading-order position, or relabels the box's old measure (keeping its ID and references) if that one would be left without a box.
-- `measureEditing.ts` plans every action of the Measures tab as a `PlannedEdit`: one `MeasureEdit` for `Song.applyMeasureEdit()`, plus the boxes it places as `BoxTarget`s (an existing ID or the index of an addition, since new measures get their ID only when saved). `useMeasureEditor.apply()` saves it, selects those boxes and reloads the player only when `changesPlayback()`. Removal cleanup and recording span maintenance happen in `Song`, never in planning.
+- `measureEditing.ts` plans every box action of the inspector as a `PlannedEdit`: one `MeasureEdit` for `Song.applyMeasureEdit()`, plus the boxes it places as `BoxTarget`s (an existing ID or the index of an addition, since new measures get their ID only when saved). `useMeasureEditor.apply()` saves it, selects those boxes and reloads the player only when `changesPlayback()`. Removal cleanup and recording span maintenance happen in `Song`, never in planning.
 - An addition's `index` is its score index after the edit. Planning builds the planned score with placeholder measures and reads the indices from it.
 - Consecutive labels follow `suggestLabel()`: the next measure of the score in MIDI songs, the next whole number in audio songs.
 - A box in the way is a conflict the user resolves (swap, or shift the following boxes). Planning never resolves one on its own.

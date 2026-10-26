@@ -30,16 +30,20 @@ function isMpegAudio(bytes: Uint8Array): boolean {
 
 async function openSongDetails(page: Page, show: RecordModel, song: RecordModel): Promise<Locator> {
   await page.goto(`/show/${show.id}/song/${song.id}/edit`);
-  await page.getByRole("tab", { name: "Details" }).click();
-  return page.getByRole("tabpanel", { name: "Details" });
+  return reopenSongDetails(page);
 }
 
-// After saving, the panel starts over from the stored song, so there is nothing left to save.
+async function reopenSongDetails(page: Page): Promise<Locator> {
+  await page.getByRole("button", { name: "Details", exact: true }).click();
+  return page.getByRole("dialog", { name: "Song details" });
+}
+
+// The dialog closes once the upload is saved.
 async function addRecordings(panel: Locator, files: UploadFile[]): Promise<void> {
   await panel.getByRole("button", { name: "Recordings", exact: true }).click();
   await chooseFiles(panel.page(), panel.getByRole("button", { name: "Add recordings" }), files);
   await panel.getByRole("button", { name: "Save" }).click();
-  await expect(panel.getByRole("button", { name: "Save" })).toBeDisabled({ timeout: 30_000 });
+  await expect(panel).toBeHidden({ timeout: 30_000 });
 }
 
 async function waitForTracks(admin: PocketBase, songId: string, count: number): Promise<RecordModel> {
@@ -160,12 +164,13 @@ test.describe("audio upload", () => {
     await addRecordings(panel, [await buildStem("solo", "solo.mp3")]);
     await waitForTracks(admin, song.id, 1);
 
-    await panel.getByRole("button", { name: "Remove Solo" }).click();
-    await panel.getByRole("button", { name: "Save" }).click();
+    const reopened = await reopenSongDetails(page);
+    await reopened.getByRole("button", { name: "Remove Solo" }).click();
+    await reopened.getByRole("button", { name: "Save" }).click();
 
     const stored = await waitForTracks(admin, song.id, 0);
     expect(stored.audioFiles).toEqual([]);
-    await expect(page.getByRole("button", { name: "Add playback" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add playback" }).first()).toBeVisible();
     expect(errors).toEqual([]);
   });
 });

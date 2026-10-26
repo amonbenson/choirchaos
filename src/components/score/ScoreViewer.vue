@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { onLongPress, useEventListener } from "@vueuse/core";
 import SelectButton from "primevue/selectbutton";
-import { computed, type ComputedRef, ref, shallowRef, useId, watch } from "vue";
+import { computed, type ComputedRef, nextTick, ref, shallowRef, useId, watch } from "vue";
 
 import Draggable from "@/components/base/Draggable.vue";
 import { injectMeasureEditor, type MeasureTool } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
-import { formatTimes } from "@/core/models/locationFormat";
+import { formatLocation, formatTimes } from "@/core/models/locationFormat";
 import Measure, { type MeasureId, type MeasureLayout, needsReview } from "@/core/models/measure";
 import { getReadingOrder, intersects, normalizeLayout, planLayouts, splitLayout } from "@/core/models/measureEditing";
+import { findNearestPosition, formatSectionName, getSectionRun, type SelectedRun, withRun } from "@/core/models/measureSelection";
 import { countOccurrences } from "@/core/models/recording";
 import {
   describeOverlays,
@@ -19,7 +20,7 @@ import {
   getSectionOverlays,
   type OverlayRun,
 } from "@/core/models/scoreOverlays";
-import type { SectionKind } from "@/core/models/sections";
+import { type SectionKind, validateSections } from "@/core/models/sections";
 import Song from "@/core/models/song";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
@@ -438,9 +439,10 @@ function rememberPointerType(event: PointerEvent): void {
   lastPointerType = event.pointerType;
 }
 
+/** A click always moves the playhead. In edit mode it also selects, so the selected occurrence is the playing one. */
 function onBoxClick(event: MouseEvent, measure: Measure): void {
   if (!props.editMode) {
-    seekNearestOccurrence(measure.id);
+    editor.seekMeasure(measure);
     return;
   }
 
@@ -462,17 +464,9 @@ function onBoxClick(event: MouseEvent, measure: Measure): void {
   } else {
     editor.selectOnly(measure);
   }
-}
 
-/** A measure that plays more than once is entered at the occurrence closest to the playback, so a click stays in the current pass. */
-function seekNearestOccurrence(id: MeasureId): void {
-  const current = player.currentLocation?.position ?? 0;
-  const distance = (position: number): number => Math.abs(position - current);
-  const nearest = player.timeline
-    .filter(position => position.measure === id)
-    .reduce<number | undefined>((best, { position }) => best === undefined || distance(position) < distance(best) ? position : best, undefined);
-  if (nearest !== undefined) {
-    player.seekPosition(nearest);
+  if (editor.isSelected(measure)) {
+    editor.seekMeasure(measure);
   }
 }
 
@@ -803,6 +797,172 @@ async function onHandleDragEnd(measure: Measure): Promise<void> {
     resizePreview.value = new Map();
   }
 }
+// ── Section range handles ────────────────────────────────────────────────────
+
+type RangeEnd = "first" | "last";
+
+type RangeHandle = { end: RangeEnd; position: number; layout: MeasureLayout; name: string; valueText: string };
+
+const RANGE_STEP_KEYS: Record<string, number> = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 };
+
+/** The run a handle is being dragged to, shown on the score until it is dropped. */
+const handleDrag = shallowRef<{ end: RangeEnd; run: SelectedRun }>();
+
+/** The section the inspector edits gets handles at both ends, unless the score is busy with another tool. */
+const handleTarget = computed(() => {
+  const match = props.editMode && activeTool.value !== "draw" && !previewing.value ? editor.selectedSection.value : undefined;
+  const run = match && props.song ? getSectionRun(props.song.getTimeline(), match.section) : undefined;
+  return match && run ? { ...match, run } : undefined;
+});
+
+const handleLane = computed(() => sectionOverlays.value.find(overlay => overlay.index === handleTarget.value?.index)?.lane ?? 0);
+
+const rangeHandles = computed<RangeHandle[]>(() => {
+  const target = handleTarget.value;
+  const run = handleDrag.value?.run ?? target?.run;
+  const song = props.song;
+  if (!target || !run || !song) {
+    return [];
+  }
+
+  const name = formatSectionName(song.getMeasures(), target.section);
+  const subject = name.charAt(0).toLowerCase() + name.slice(1);
+  return (["first", "last"] as const).flatMap((end) => {
+    const position = end === "first" ? run.first : run.last;
+    const entry = song.getTimeline()[position];
+    const layout = entry && song.findMeasure(entry.measure)?.layout;
+    const label = end === "first" ? "First" : "Last";
+    return entry && layout ? [{ end, position, layout, name: `${label} measure of ${subject}`, valueText: formatLocation(song, entry) }] : [];
+  });
+});
+
+const handlePreviewBoxes = computed(() => {
+  const run = handleDrag.value?.run;
+  const song = props.song;
+  if (!run || !song) {
+    return [];
+  }
+
+  const ids = new Set(song.getTimeline().slice(run.first, run.last + 1).map(entry => entry.measure));
+  return [...ids].flatMap(id => song.findMeasure(id)?.layout ?? []);
+});
+
+function rangeHandleStyle({ end, layout }: RangeHandle): Record<string, string> {
+  const x = end === "first" ? layout.x : layout.x + layout.width;
+  return { left: `${x * 100}%`, top: `calc(${layout.y * 100}% - ${BAR_OFFSET_PX + handleLane.value * LANE_HEIGHT_PX}px)` };
+}
+
+function movedRun(run: SelectedRun, end: RangeEnd, position: number): SelectedRun {
+  return end === "first" ? { first: position, last: run.last } : { first: run.first, last: position };
+}
+
+function measureUnder(event: PointerEvent): MeasureId | undefined {
+  return document.elementsFromPoint(event.clientX, event.clientY)
+    .map(element => (element as HTMLElement).dataset?.measure)
+    .find(id => id !== undefined);
+}
+
+function onHandlePointerDown(event: PointerEvent, end: RangeEnd): void {
+  const run = handleTarget.value?.run;
+  if (!run || event.button !== 0) {
+    return;
+  }
+
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  handleDrag.value = { end, run };
+}
+
+/** The handle snaps to the box under the pointer, at the occurrence closest to where it started. */
+function onHandlePointerMove(event: PointerEvent): void {
+  const drag = handleDrag.value;
+  const base = handleTarget.value?.run;
+  const measure = drag && measureUnder(event);
+  if (!drag || !base || !props.song || !measure) {
+    return;
+  }
+
+  const timeline = props.song.getTimeline();
+  const position = drag.end === "first"
+    ? findNearestPosition(timeline, measure, base.first, 0, base.last)
+    : findNearestPosition(timeline, measure, base.last, base.first, timeline.length - 1);
+  if (position !== undefined) {
+    handleDrag.value = { ...drag, run: movedRun(base, drag.end, position) };
+  }
+}
+
+async function onHandlePointerUp(): Promise<void> {
+  const drag = handleDrag.value;
+  handleDrag.value = undefined;
+  if (drag) {
+    await moveSection(drag.run, drag.end);
+  }
+}
+
+function getKeyTarget(key: string, current: number, min: number, max: number): number | undefined {
+  const step = RANGE_STEP_KEYS[key];
+  if (step !== undefined) {
+    return current + step;
+  }
+
+  if (key === "Home") {
+    return min;
+  }
+
+  return key === "End" ? max : undefined;
+}
+
+function onHandleKeydown(event: KeyboardEvent, end: RangeEnd): void {
+  const base = handleTarget.value?.run;
+  if (!base) {
+    return;
+  }
+
+  const [min, max] = end === "first" ? [0, base.last] : [base.first, (props.song?.getTimeline().length ?? 0) - 1];
+  const current = end === "first" ? base.first : base.last;
+  const target = getKeyTarget(event.key, current, min, max);
+  if (target === undefined) {
+    return;
+  }
+
+  // Arrow keys also step the playhead, which must not happen while a handle moves.
+  event.preventDefault();
+  event.stopPropagation();
+  const position = Math.max(min, Math.min(max, target));
+  if (position !== current) {
+    moveSection(movedRun(base, end, position), end);
+  }
+}
+
+/** Saves the section over whole measures of the new run and keeps it selected, so its handles stay. */
+async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
+  const target = handleTarget.value;
+  const song = props.song;
+  if (!target || !song || (run.first === target.run.first && run.last === target.run.last)) {
+    return;
+  }
+
+  const measures = song.getMeasures();
+  const timeline = song.getTimeline();
+  const moved = withRun(measures, timeline, target.section, run);
+  const [issue] = validateSections(measures, timeline, song.getSections().map((section, i) => i === target.index ? moved : section));
+  if (issue) {
+    notifyError("Could not move the section", new Error(issue.reason));
+    return;
+  }
+
+  const hadFocus = !!document.activeElement?.closest(`[data-range-handle="${end}"]`);
+  try {
+    await song.updateSection(target.index, moved);
+    player.syncWarp();
+    editor.selectSection(song.getSections().findIndex(section => getSectionRun(timeline, section)?.first === run.first));
+    if (hadFocus) {
+      await nextTick();
+      overlayRoot.value?.querySelector<HTMLElement>(`[data-range-handle="${end}"]`)?.focus();
+    }
+  } catch (error) {
+    notifyError("Could not move the section", error);
+  }
+}
 </script>
 
 <template>
@@ -1013,6 +1173,43 @@ async function onHandleDragEnd(measure: Measure): Promise<void> {
             </svg>
             <span aria-hidden="true">{{ glyph.text }}</span>
           </span>
+
+          <div
+            v-for="(layout, i) of onPage(handlePreviewBoxes, page.pageNumber, box => box.page)"
+            :key="`handle-preview-${i}`"
+            class="pointer-events-none absolute border-2 border-dashed"
+            :class="handleTarget && SECTION_COLORS[handleTarget.section.kind].border"
+            :style="boxStyle(layout)"
+          />
+
+          <div
+            v-for="handle of onPage(rangeHandles, page.pageNumber, item => item.layout.page)"
+            :key="`range-handle-${handle.end}`"
+            class="pointer-events-auto absolute z-10 flex h-6 w-5 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize touch-none items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:outline-primary"
+            :style="rangeHandleStyle(handle)"
+            role="slider"
+            tabindex="0"
+            :aria-label="handle.name"
+            aria-orientation="horizontal"
+            :aria-valuemin="1"
+            :aria-valuemax="song?.getTimeline().length"
+            :aria-valuenow="handle.position + 1"
+            :aria-valuetext="handle.valueText"
+            :data-range-handle="handle.end"
+            @pointerdown.stop="onHandlePointerDown($event, handle.end)"
+            @pointermove="onHandlePointerMove"
+            @pointerup="onHandlePointerUp"
+            @pointercancel="handleDrag = undefined"
+            @click.stop
+            @touchstart.stop
+            @touchmove.stop
+            @keydown="onHandleKeydown($event, handle.end)"
+          >
+            <span
+              class="pointer-events-none h-4 w-2 rounded-sm ring-2 ring-surface-0 dark:ring-surface-900"
+              :class="handleTarget && SECTION_COLORS[handleTarget.section.kind].background"
+            />
+          </div>
 
           <span
             v-for="marker of onPage(markerChips, page.pageNumber, item => item.layout.page)"

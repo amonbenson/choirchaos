@@ -394,19 +394,10 @@ function deleteSong(): void {
       />
       <div class="ml-auto flex gap-2">
         <Button
-          v-if="isNew"
           label="Cancel"
           severity="secondary"
           text
           @click="emit('cancel')"
-        />
-        <Button
-          v-else
-          label="Revert"
-          severity="secondary"
-          text
-          :disabled="!hasChanges || saving"
-          @click="resetDraft"
         />
         <Button
           type="submit"

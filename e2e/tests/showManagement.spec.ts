@@ -156,8 +156,8 @@ test.describe("show management", () => {
     await page.getByRole("button", { name: `Options for ${song.title}` }).click();
     await expect(page.getByRole("menuitem", { name: "Details", exact: true })).toHaveCount(0);
     await page.getByRole("menuitem", { name: "Edit" }).click();
-    await page.getByRole("tab", { name: "Details" }).click();
-    const panel = page.getByRole("tabpanel", { name: "Details" });
+    await page.getByRole("button", { name: "Details", exact: true }).click();
+    const panel = page.getByRole("dialog", { name: "Song details" });
 
     await panel.getByLabel("No.").fill(CONDUCTOR.number);
     await panel.getByRole("button", { name: "Save" }).click();
@@ -166,10 +166,11 @@ test.describe("show management", () => {
     await panel.getByLabel("No.").fill("12a");
     await panel.getByLabel("Title").fill("Renamed");
     await panel.getByRole("button", { name: "Save" }).click();
-    await expect(panel.getByRole("button", { name: "Save" })).toBeDisabled();
+    await expect(panel).toBeHidden();
     await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).title).toBe("Renamed");
     expect((await admin.collection("songs").getOne(song.id)).number).toBe("12a");
 
+    await page.getByRole("button", { name: "Details", exact: true }).click();
     await panel.getByRole("button", { name: "Delete song" }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: "Delete song" }).click();
     await expect(page).toHaveURL(new RegExp(`/song/${other.id}/edit$`));
@@ -322,7 +323,7 @@ test.describe("navigation", () => {
     await page.goto(`/show/${show.id}/song/${song.id}/edit`);
 
     await expect(page).toHaveURL(new RegExp(`/show/${show.id}/song/${song.id}$`));
-    await expect(page.getByRole("tab", { name: "Details" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Details", exact: true })).toHaveCount(0);
   });
 });
 
