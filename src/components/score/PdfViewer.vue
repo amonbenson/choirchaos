@@ -8,11 +8,15 @@ import PageTransform, { type PageCoordinate } from "@/core/pdf/pageTransform";
 
 type P5Sketch = p5 & { canvas?: HTMLCanvasElement };
 
+export type ViewInsets = { top: number; bottom: number };
+
 const props = withDefaults(defineProps<{
   url: string | undefined;
   /** Whether dragging pans. Overlays that use drags for themselves turn it off. */
   pannable?: boolean;
-}>(), { pannable: true });
+  /** Pixels at the top and bottom that controls cover, so locations there count as hidden. */
+  insets?: ViewInsets;
+}>(), { pannable: true, insets: () => ({ top: 0, bottom: 0 }) });
 
 const emit = defineEmits<{
   setup: [payload: { s: p5 }];
@@ -237,6 +241,13 @@ onBeforeUnmount(() => {
   p5Instance.value?.remove();
 });
 
+/** The vertical band between the insets, or the whole height when the insets leave no room. */
+function getUncoveredBand(h: number): { top: number; height: number } {
+  const { top, bottom } = props.insets;
+  const height = h - top - bottom;
+  return height > 0 ? { top, height } : { top: 0, height: h };
+}
+
 function isLocationVisible(pc: PageCoordinate): boolean {
   const w = container.value?.clientWidth ?? 0;
   const h = container.value?.clientHeight ?? 0;
@@ -244,7 +255,8 @@ function isLocationVisible(pc: PageCoordinate): boolean {
     return false;
   }
 
-  return transform.value.contains(pc, w, h);
+  const band = getUncoveredBand(h);
+  return transform.value.contains(pc, { x: 0, y: band.top, width: w, height: band.height });
 }
 
 export type MoveToLocationOptions = Partial<{
@@ -271,7 +283,8 @@ function moveToLocation(target: PageCoordinate, options: MoveToLocationOptions =
   }
 
   if (["both", "vertical"].includes(axis)) {
-    transform.value.pan.y = -vc.y * transform.value.zoom + h * offsetY;
+    const band = getUncoveredBand(h);
+    transform.value.pan.y = -vc.y * transform.value.zoom + band.top + band.height * offsetY;
   }
 }
 
