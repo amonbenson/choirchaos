@@ -91,7 +91,7 @@ Rehearsers (viewers) only play songs back. Editors (editors and owners) also set
 9. **Empty states and status hints name the next step** and contain the control that does it.
 10. **The top bar always says where you are.** Every page starts with `HeaderBar`, whose breadcrumb leads to every parent, so no page needs a back button. Dialogs have one obvious exit ("Cancel"). Destructive actions are confirmed, everything else saves without asking.
 11. **The account menu is for the account only** (preferences, signing out).
-12. **Keep the canvas readable.** Score overlays are small, and handles appear only where the user is working.
+12. **Keep the canvas readable.** Score overlays are small, and handles appear only where the user is working. Every object of the arrangement is visible where it lives (section bars and chips, recorded repeats, markers), never only in a list. Color is never the only carrier: a chip or the box description always names the kind.
 
 | Icon | Meaning |
 |---|---|
@@ -103,6 +103,7 @@ Rehearsers (viewers) only play songs back. Editors (editors and owners) also set
 | `pi-sliders-v` | Personal preferences |
 | `pi-ellipsis-v` | More actions for this item |
 | `pi-sparkles` | Automatic measure detection |
+| `pi-bookmark` | A marker |
 | `pi-trash` | Delete or remove |
 | `pi-arrow-up-left` | The score's Select tool |
 | `pi-arrows-alt` | The score's Move tool |
@@ -116,6 +117,8 @@ Rehearsers (viewers) only play songs back. Editors (editors and owners) also set
 - No `prompt()`/`confirm()`. Destructive confirmations use PrimeVue's `useConfirm()`, errors use `useNotify()` toasts.
 - Canvas components cannot use CSS variables. Resolve theme colors at runtime and rebuild when the `.dark` class changes (see `WaveformView`).
 - Dark mode is class-based (`.dark`). Check every visual change in both modes.
+- Section kinds have one color each, defined once as theme tokens (`--color-section-repeat`, `-vamp`, `-cut` and `--color-section-contrast` for text on them) in `src/main.css` with `.dark` overrides. Components get the classes and variable names from `score/sectionColors.ts` and never spell out a section color.
+- Score overlays are drawn by `ScoreViewer` from the pure geometry in `core/models/scoreOverlays.ts`. They take no pointer events. Each box's `aria-describedby` names its overlays, so only a section's first chip and the recorded repeat glyph are images of their own.
 - A MIDI track's title links it to its MIDI data by name, so MIDI tracks cannot be renamed.
 - Locations are shown through `locationFormat.ts`. Markers and location inputs name every occurrence of a measure that plays more than once ("12, 1st time"), while warp markers and section names only add it from the second time on, since there the first occurrence is the obvious one.
 

@@ -9,9 +9,9 @@ import { type MeasureEditor, provideMeasureEditor, useMeasureEditor } from "@/co
 import type { MeasureId } from "@/core/models/measure";
 import Song from "@/core/models/song";
 import type { TimelinePosition } from "@/core/player/timeline";
-import type { PlayerLocation } from "@/core/player/types";
+import type { PlayerLocation, PlayerSectionState } from "@/core/player/types";
 import { usePlayerStore } from "@/stores/player";
-import { idOf, makeAudioSong, makeMidiSongWithRepeat } from "@/test/fixtures";
+import { idOf, makeAudioSong, makeMidiSongWithCut, makeMidiSongWithRepeat } from "@/test/fixtures";
 
 import ScoreViewer from "./ScoreViewer.vue";
 
@@ -20,7 +20,9 @@ const TICKS_PER_POSITION = 400;
 const player = vi.hoisted(() => ({
   position: 0,
   timeline: [] as TimelinePosition[],
+  ready: true,
   currentLocation: undefined as PlayerLocation | undefined,
+  currentSection: undefined as PlayerSectionState | undefined,
   measureTrackIndices: new Map<MeasureId, Set<number>>(),
   seekPosition: vi.fn(),
   load: vi.fn(),
@@ -104,6 +106,7 @@ describe("ScoreViewer", () => {
     vi.clearAllMocks();
     const state = fakePlayer();
     state.currentLocation = undefined;
+    state.currentSection = undefined;
     state.position = 0;
     state.measureTrackIndices = new Map();
   });
@@ -152,6 +155,41 @@ describe("ScoreViewer", () => {
 
       expect(box(wrapper, "3").className).toContain("bg-sky-400/25");
       expect(box(wrapper, "2").className).not.toContain("bg-sky-400/25");
+    });
+  });
+
+  describe("arrangement overlays", () => {
+    function description(wrapper: VueWrapper, label: string): string | undefined {
+      const id = box(wrapper, label).getAttribute("aria-describedby");
+      return id ? wrapper.find(`[id='${id}']`).text() : undefined;
+    }
+
+    it("describes the sections and recorded repeats on each box", () => {
+      const { wrapper } = mountViewer(makeMidiSongWithRepeat());
+
+      expect(description(wrapper, "2")).toBe("Repeat 2 to 3, 3 times. Recorded 3 times.");
+      expect(description(wrapper, "1")).toBeUndefined();
+      expect(wrapper.find("[role='img'][aria-label='Repeat 2 to 3, 3 times']").text()).toBe("Repeat 3×");
+      expect(wrapper.find("[role='img'][aria-label='Measures 2 to 3 recorded 3 times']").text()).toBe("×3");
+    });
+
+    it("shows the pass of the playing section and the occurrence of the playing box", async () => {
+      const { wrapper } = mountViewer(makeMidiSongWithRepeat());
+      playAt(4);
+      fakePlayer().currentSection = { section: 0, kind: "repeat", pass: 2, passes: 3, recordedPasses: 3, released: false };
+      await flushPromises();
+
+      expect(wrapper.find("[role='img'][aria-label='Repeat 2 to 3, pass 2 of 3']").text()).toBe("Repeat 2/3");
+      expect(box(wrapper, "2").textContent).toContain("2nd time");
+      expect(description(wrapper, "2")).toBe("Repeat 2 to 3, pass 2 of 3. Recorded 3 times.");
+    });
+
+    it("hatches the boxes of a cut", () => {
+      const song = makeMidiSongWithCut();
+      const { wrapper } = mountViewer(song);
+
+      expect(wrapper.findAll(".hatch-section-cut").length).toBeGreaterThan(0);
+      expect(wrapper.find("[role='img'][aria-label^='Cut']").text()).toBe("Cut");
     });
   });
 

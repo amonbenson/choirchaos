@@ -11,7 +11,12 @@ import DottedHalfNoteIcon from "@/components/icons/DottedHalfNoteIcon.vue";
 import DottedQuarterNoteIcon from "@/components/icons/DottedQuarterNoteIcon.vue";
 import HalfNoteIcon from "@/components/icons/HalfNoteIcon.vue";
 import QuarterNoteIcon from "@/components/icons/QuarterNoteIcon.vue";
+import { SECTION_COLORS } from "@/components/score/sectionColors";
+import { formatLocation } from "@/core/models/locationFormat";
+import { findRecordedPasses } from "@/core/models/recording";
+import { formatPlayingSection } from "@/core/models/scoreOverlays";
 import type Show from "@/core/models/show";
+import { getBeatTick } from "@/core/player/timeline";
 import type { PlayerSectionState } from "@/core/player/types";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
@@ -93,6 +98,41 @@ const sectionLabel = computed(() => {
   }
 
   return current.released ? "Exiting" : `Vamp ${formatPasses(current)}`;
+});
+
+/** Where each section's recorded passes lie on the playbar, as fractions of the song. */
+const sectionRanges = computed(() => {
+  const song = currentSong.value;
+  const { timeline, duration } = player;
+  if (!player.ready || !song || duration <= 0) {
+    return [];
+  }
+
+  return song.getSections().flatMap((section, index) => {
+    const passes = findRecordedPasses(timeline, section);
+    const first = passes[0] && timeline[passes[0].first];
+    const last = passes.at(-1) && timeline[passes.at(-1)!.last];
+    if (!first || !last) {
+      return [];
+    }
+
+    const start = getBeatTick(first, section.from.beat);
+    const end = getBeatTick(last, section.to.beat + 1);
+    return [{ key: index, kind: section.kind, left: start / duration, width: (end - start) / duration }];
+  });
+});
+
+/** The measure and section the playbar is at, e.g. "19, 2nd time, Vamp pass 2". */
+const positionText = computed(() => {
+  const location = player.ready ? player.currentLocation : undefined;
+  const song = currentSong.value;
+  if (!location || !song) {
+    return undefined;
+  }
+
+  const current = section.value;
+  const measure = formatLocation(song, location);
+  return current && current.kind !== "cut" ? `${measure}, ${formatPlayingSection(current.kind, current)}` : measure;
 });
 
 const tempoNoteValue: ComputedRef<NoteValue> = computed(() => {
@@ -401,9 +441,23 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
         aria-label="Position"
         class="group w-full bg-transparent"
         pt:handle:class="scale-50 group-hover:scale-100 active:scale-100 transition-transform z-1"
+        :pt:handle:aria-valuetext="positionText"
         pt:range:class="h-1"
         @update:model-value="player.seek($event as number)"
       />
+      <!-- Drawn over the played range, so the sections stay visible, and under the handle -->
+      <div
+        class="pointer-events-none absolute inset-0"
+        aria-hidden="true"
+      >
+        <div
+          v-for="range of sectionRanges"
+          :key="range.key"
+          class="absolute inset-y-0"
+          :class="SECTION_COLORS[range.kind].background"
+          :style="{ left: `${range.left * 100}%`, width: `${range.width * 100}%` }"
+        />
+      </div>
     </div>
   </div>
 </template>
