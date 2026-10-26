@@ -12,9 +12,12 @@ import { getReadingOrder, intersects, normalizeLayout, planLayouts, splitLayout 
 import { findNearestPosition, formatSectionName, getSectionRun, type SelectedRun, withRun } from "@/core/models/measureSelection";
 import { countOccurrences } from "@/core/models/recording";
 import {
+  describeJump,
   describeOverlays,
   describeSection,
   findRecordedRepeats,
+  findRecordingJumps,
+  formatJumpChip,
   formatSectionChip,
   getMarkerOverlays,
   getSectionOverlays,
@@ -258,6 +261,29 @@ const recordedGlyphs = computed<OverlayBox[]>(() => recordedRepeats.value.flatMa
   return layout ? [{ key: `recorded-${i}`, layout, text: `×${times}`, name: `${range} recorded ${times} times` }] : [];
 }));
 
+const recordingJumps = computed(() => props.song ? findRecordingJumps(props.song.getMeasures(), props.song.getTimeline()) : []);
+
+/** One chip per jump at the barline it leaves from. Jumps after the same box stack upwards by `index`. */
+const jumpChips = computed<(OverlayBox & { index: number })[]>(() => {
+  const song = props.song;
+  if (!song) {
+    return [];
+  }
+
+  const counts = new Map<MeasureId, number>();
+  return recordingJumps.value.flatMap((jump) => {
+    const layout = song.findMeasure(jump.after.measure)?.layout;
+    if (!layout) {
+      return [];
+    }
+
+    const index = counts.get(jump.after.measure) ?? 0;
+    counts.set(jump.after.measure, index + 1);
+    const name = describeJump(song.getMeasures(), song.getTimeline(), jump);
+    return [{ key: `jump-${jump.position}`, layout, index, text: formatJumpChip(song.getMeasures(), jump), name }];
+  });
+});
+
 /** The highest lane of the sections drawn on each measure, so marker chips go above their chips. */
 const topLanes = computed(() => {
   const lanes = new Map<MeasureId, number>();
@@ -282,6 +308,7 @@ const overlayDescriptions = computed(() => props.song
       sections: sectionOverlays.value,
       repeats: recordedRepeats.value,
       markers: props.song.getMarkers(),
+      jumps: recordingJumps.value,
       playing: playingSection.value,
     })
   : new Map<MeasureId, string>());
@@ -311,6 +338,15 @@ function markerChipStyle({ layout, lane }: OverlayBox & { lane?: number }): Reco
 
 function recordedGlyphStyle({ layout }: OverlayBox): Record<string, string> {
   return { left: `calc(${(layout.x + layout.width) * 100}% - 2px)`, top: `calc(${layout.y * 100}% + 2px)` };
+}
+
+const JUMP_CHIP_STEP_PX = 18;
+
+function jumpChipStyle({ layout, index }: OverlayBox & { index: number }): Record<string, string> {
+  return {
+    left: `calc(${(layout.x + layout.width) * 100}% - 2px)`,
+    top: `calc(${(layout.y + layout.height) * 100}% - ${2 + (index + 1) * JUMP_CHIP_STEP_PX}px)`,
+  };
 }
 
 watch(() => props.song, () => {
@@ -1173,6 +1209,15 @@ async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
             </svg>
             <span aria-hidden="true">{{ glyph.text }}</span>
           </span>
+
+          <span
+            v-for="chip of onPage(jumpChips, page.pageNumber, item => item.layout.page)"
+            :key="chip.key"
+            class="pointer-events-none absolute -translate-x-full rounded-sm border border-slate-700 bg-white/95 px-1 text-[0.625rem] leading-4 font-bold whitespace-nowrap text-slate-800 shadow-sm"
+            :style="jumpChipStyle(chip)"
+            role="img"
+            :aria-label="chip.name"
+          >{{ chip.text }}</span>
 
           <div
             v-for="(layout, i) of onPage(handlePreviewBoxes, page.pageNumber, box => box.page)"

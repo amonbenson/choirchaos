@@ -185,6 +185,16 @@ describe("ScoreViewer", () => {
       expect(description(wrapper, "2")).toBe("Repeat 2 to 3, pass 2 of 3. Recorded 3 times.");
     });
 
+    it("shows a chip where the recording jumps", async () => {
+      const song = makeAudioSong();
+      await song.setRecordingSpans([{ from: idOf(song, "1"), to: idOf(song, "3") }, { from: idOf(song, "1"), to: idOf(song, "2") }, { from: idOf(song, "4"), to: idOf(song, "4") }]);
+      const { wrapper } = mountViewer(song);
+
+      expect(wrapper.find("[role='img'][aria-label='After 3, the recording continues at 1, 2nd time']").text()).toBe("to 1, 2nd time");
+      expect(wrapper.find("[role='img'][aria-label='After 2, 2nd time, the recording continues at 4']").text()).toBe("to 4");
+      expect(description(wrapper, "2")).toBe("After 2, 2nd time, the recording continues at 4.");
+    });
+
     it("hatches the boxes of a cut", () => {
       const song = makeMidiSongWithCut();
       const { wrapper } = mountViewer(song);
