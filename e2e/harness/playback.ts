@@ -20,16 +20,29 @@ export async function waitForPlayer(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: CURRENT_MEASURE })).toBeEnabled({ timeout: 30_000 });
 }
 
+/**
+ * Reads every field in one evaluation, so a sample never mixes two moments of playback. The player updates
+ * them together, but separate reads can straddle a pass boundary under load.
+ */
 export async function readPlayback(page: Page): Promise<PlaybackSample> {
-  const measureName = await page.getByRole("button", { name: CURRENT_MEASURE }).getAttribute("aria-label");
-  const section = (await page.getByRole("button", { name: SECTION_BUTTON }).textContent())?.trim() ?? "";
-  const position = Number(await page.getByRole("slider", { name: "Position" }).getAttribute("aria-valuenow"));
-  const box = await page.getByRole("button", { name: /^Measure / }).evaluateAll(boxes => boxes
-    .find(box => box.getAttribute("aria-current") === "location")
-    ?.getAttribute("aria-label")
-    ?.replace(/^Measure /, ""));
+  const raw = await page.evaluate(({ currentMeasure, sectionButton }) => {
+    const buttons = Array.from(document.querySelectorAll("button"));
+    const measure = buttons.find(button => new RegExp(currentMeasure).test(button.getAttribute("aria-label") ?? ""));
+    const section = buttons.find(button => new RegExp(sectionButton).test(button.textContent?.trim() ?? ""));
+    return {
+      measure: measure?.getAttribute("aria-label") ?? undefined,
+      section: section?.textContent?.trim() ?? "",
+      position: document.querySelector("[role='slider'][aria-label='Position']")?.getAttribute("aria-valuenow"),
+      box: document.querySelector("[aria-current='location'][aria-label^='Measure ']")?.getAttribute("aria-label") ?? undefined,
+    };
+  }, { currentMeasure: CURRENT_MEASURE.source, sectionButton: SECTION_BUTTON.source });
 
-  return { measure: measureName?.replace(CURRENT_MEASURE, "").trim() || undefined, section, position, box };
+  return {
+    measure: raw.measure?.replace(CURRENT_MEASURE, "").trim() || undefined,
+    section: raw.section,
+    position: Number(raw.position),
+    box: raw.box?.replace(/^Measure /, ""),
+  };
 }
 
 /**

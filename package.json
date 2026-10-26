@@ -16,7 +16,6 @@
     "typecheck": "vue-tsc --build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "bundlemti": "vite-node ./scripts/bundlemti.ts",
     "e2e:scores": "vite-node e2e/scripts/generateScores.ts",
     "e2e:serve": "vite-node e2e/scripts/serve.ts"
   },

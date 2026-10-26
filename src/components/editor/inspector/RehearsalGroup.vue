@@ -6,6 +6,7 @@ import InputNumber from "primevue/inputnumber";
 import Message from "primevue/message";
 import Select from "primevue/select";
 import SelectButton from "primevue/selectbutton";
+import { useConfirm } from "primevue/useconfirm";
 import { computed, ref, useId, watch } from "vue";
 
 import { SECTION_COLORS } from "@/components/score/sectionColors";
@@ -62,6 +63,7 @@ const props = defineProps<{
 const editor = injectMeasureEditor();
 const player = usePlayerStore();
 const { notifyError } = useNotify();
+const confirm = useConfirm();
 const ids = { passes: useId(), untilReleased: useId(), out: useId(), vocals: useId(), error: useId() };
 
 const measures = computed(() => props.song.getMeasures());
@@ -132,13 +134,26 @@ function snapped(next: Section): Section {
   return withRun(measures.value, timeline.value, next, run ?? props.run);
 }
 
+function confirmRemoval(): void {
+  const name = targetName.value;
+  if (!name) {
+    return;
+  }
+
+  confirm.require({
+    header: "Remove section",
+    message: `Remove ${lowerFirst(name)}? These measures will play as recorded.`,
+    icon: "pi pi-exclamation-triangle",
+    rejectProps: { label: "Cancel", severity: "secondary", text: true },
+    acceptProps: { label: "Remove", severity: "danger" },
+    accept: () => replaceTarget(undefined),
+  });
+}
+
 async function selectKind(choice: Choice): Promise<void> {
   pending.value = undefined;
   if (choice === "recorded") {
-    if (target.value) {
-      await replaceTarget(undefined);
-    }
-
+    confirmRemoval();
     return;
   }
 

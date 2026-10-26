@@ -266,6 +266,11 @@ export function formatPlayingSection(kind: Section["kind"], playing: PlayingSect
   return `${KIND_NAMES[kind]} ${formatPlayingPass(playing)}`;
 }
 
+/** The short text of the section being played and its pass, e.g. "Vamp 2/4" or "Vamp 3" until released. */
+export function formatSectionPass(kind: Section["kind"], { pass, passes }: PlayingSection): string {
+  return passes === undefined ? `${KIND_NAMES[kind]} ${pass}` : `${KIND_NAMES[kind]} ${pass}/${passes}`;
+}
+
 /** The section and what it plays, e.g. "Vamp 19 to 20, until released" or, while it plays, "Repeat 14 to 15, pass 2 of 3". */
 export function describeSection(measures: readonly Measure[], section: Section, playing?: PlayingSection): string {
   const passes = playing ? formatPlayingPass(playing) : formatPlannedPasses(section);
@@ -286,7 +291,7 @@ export function formatSectionChip(section: Section, playing?: PlayingSection): s
       return `${kind}, exiting`;
     }
 
-    return playing.passes === undefined ? `${kind} ${playing.pass}` : `${kind} ${playing.pass}/${playing.passes}`;
+    return formatSectionPass(section.kind, playing);
   }
 
   const passes = section.kind === "vamp" && section.passes === 0 ? ", until released" : ` ${section.passes}×`;

@@ -19,7 +19,7 @@ Playback engine shared by both modes:
 | `audio/driver.ts` | `AudioDriver`: Web Audio graph, chunk scheduling, crossfade seeks |
 | `audio/chunkDetector.ts` | `detectChunks()` strips silence, `AudioChunk` type |
 | `../midi/warp.ts` | `WarpMap`: timeline position to recording time |
-| `audio/mixdown.ts` | Sums all tracks into one mono buffer for the warp panel waveform |
+| `audio/mixdown.ts` | Sums all tracks into one mono buffer for the timeline's waveform |
 | `src/stores/player.ts` | Pinia wrapper exposing engine state through `useEvent()` |
 
 ## Timeline
