@@ -61,6 +61,7 @@ test.describe("sections", () => {
 
     await select(page, "4");
     await rehearsal.getByRole("button", { name: "As recorded" }).click();
+    await page.getByRole("alertdialog", { name: "Remove section" }).getByRole("button", { name: "Remove" }).click();
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut]);
 
     await select(page, "1");

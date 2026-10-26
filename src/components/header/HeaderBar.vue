@@ -14,10 +14,9 @@ import QuarterNoteIcon from "@/components/icons/QuarterNoteIcon.vue";
 import { SECTION_COLORS } from "@/components/score/sectionColors";
 import { formatLocation } from "@/core/models/locationFormat";
 import { findRecordedPasses } from "@/core/models/recording";
-import { formatPlayingSection } from "@/core/models/scoreOverlays";
+import { formatPlayingSection, formatSectionPass } from "@/core/models/scoreOverlays";
 import type Show from "@/core/models/show";
 import { getBeatTick } from "@/core/player/timeline";
-import type { PlayerSectionState } from "@/core/player/types";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -83,21 +82,13 @@ const beatLabel = computed(() => player.ready && player.mode === "midi" && playe
 const section = computed(() => player.ready ? player.currentSection : undefined);
 const vamping = computed(() => section.value?.kind === "vamp" && !section.value.released);
 
-function formatPasses({ pass, passes }: PlayerSectionState): string {
-  return passes === undefined ? String(pass) : `${pass}/${passes}`;
-}
-
 const sectionLabel = computed(() => {
   const current = section.value;
   if (!current || current.kind === "cut") {
     return "Vamp";
   }
 
-  if (current.kind === "repeat") {
-    return `Repeat ${formatPasses(current)}`;
-  }
-
-  return current.released ? "Exiting" : `Vamp ${formatPasses(current)}`;
+  return current.kind === "vamp" && current.released ? "Exiting" : formatSectionPass(current.kind, current);
 });
 
 /** Where each section's recorded passes lie on the playbar, as fractions of the song. */

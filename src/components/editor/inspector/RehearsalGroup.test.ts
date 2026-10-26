@@ -37,6 +37,10 @@ vi.stubGlobal("matchMedia", (query: string) => ({
   removeEventListener: vi.fn(),
 }));
 
+const confirmation = vi.hoisted(() => ({ accept: true, require: (() => {}) as (options: { message: string; accept: () => void }) => void }));
+
+vi.mock("primevue/useconfirm", () => ({ useConfirm: () => confirmation }));
+
 const selectSection = vi.fn();
 
 function mountGroup(song: Song, run: SelectedRun): VueWrapper {
@@ -72,6 +76,8 @@ describe("RehearsalGroup", () => {
     localStorage.clear();
     setActivePinia(createPinia());
     player.syncWarp = vi.fn();
+    confirmation.require = vi.fn(options => confirmation.accept && options.accept());
+    confirmation.accept = true;
   });
 
   afterEach(() => {
@@ -152,14 +158,26 @@ describe("RehearsalGroup", () => {
     expect(song.getSections()).toEqual([{ kind: "repeat", from: locationOf(song, "2"), to: locationOf(song, "2", 3), passes: 2 }]);
   });
 
-  it("plays the measures as recorded again", async () => {
+  it("plays the measures as recorded again after a confirmation", async () => {
     const song = makeMidiSongWithVamp();
     const wrapper = mountGroup(song, { first: 2, last: 2 });
 
     await choose(wrapper, "As recorded");
 
+    expect(confirmation.require).toHaveBeenCalledWith(expect.objectContaining({ message: "Remove vamp 2? These measures will play as recorded." }));
     expect(song.getSections()).toEqual([]);
     expect(player.syncWarp).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the section when the removal is cancelled", async () => {
+    const song = makeMidiSongWithVamp();
+    confirmation.accept = false;
+    const wrapper = mountGroup(song, { first: 2, last: 2 });
+
+    await choose(wrapper, "As recorded");
+
+    expect(song.getSections()).toMatchObject([{ kind: "vamp" }]);
+    expect(player.syncWarp).not.toHaveBeenCalled();
   });
 
   it("names an overlapped section and replaces it only when asked", async () => {

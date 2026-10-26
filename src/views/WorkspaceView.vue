@@ -18,6 +18,7 @@ import ScoreViewer from "@/components/score/ScoreViewer.vue";
 import SongDetailsDialog from "@/components/song/SongDetailsDialog.vue";
 import { type ShortcutAction, useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
 import { provideMeasureEditor, useMeasureEditor } from "@/composables/useMeasureEditor";
+import { formatSectionPass } from "@/core/models/scoreOverlays";
 import type Song from "@/core/models/song";
 import { hasUnsyncedAudio } from "@/core/models/songSetup";
 import { getAccessFlags } from "@/pocketbase/auth";
@@ -76,6 +77,8 @@ watch(songIndex, (index) => {
     lastSongIndex.value = index;
   }
 });
+
+const vampTitle = computed(() => player.currentSection ? formatSectionPass("vamp", player.currentSection) : "Vamp");
 
 const vampCardType = computed(() => {
   if (player.playing) {
@@ -430,7 +433,7 @@ const pdfLoading = ref(false);
           <VampCard
             v-if="vampCardType === 'vamp'"
             class="size-full cursor-pointer"
-            :title="`Vamping (x${player.currentSection?.pass ?? 1})`"
+            :title="vampTitle"
             @click="toggleVamp()"
           >
             <span class="touch:hidden">Press <KbdShortcut action="playPause" /> to exit</span>

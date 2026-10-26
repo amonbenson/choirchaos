@@ -11,6 +11,7 @@ import {
   formatJumpChip,
   formatPlayingSection,
   formatSectionChip,
+  formatSectionPass,
   getMarkerOverlays,
   getSectionOverlays,
   splitIntoRuns,
@@ -183,6 +184,12 @@ describe("section texts", () => {
     expect(describeSection(measures, repeat, { section: 0, pass: 2, passes: 3, released: false })).toBe("Repeat 14 to 15, pass 2 of 3");
     expect(formatPlayingSection("vamp", { section: 0, pass: 2, passes: 4, released: false })).toBe("Vamp pass 2 of 4");
     expect(formatPlayingSection("vamp", { section: 0, pass: 4, released: true })).toBe("Vamp exiting");
+  });
+
+  it("names the playing pass in short like the header", () => {
+    expect(formatSectionPass("vamp", { section: 0, pass: 1, passes: 2, released: false })).toBe("Vamp 1/2");
+    expect(formatSectionPass("vamp", { section: 0, pass: 3, released: false })).toBe("Vamp 3");
+    expect(formatSectionPass("repeat", { section: 0, pass: 2, passes: 3, released: false })).toBe("Repeat 2/3");
   });
 });
 

@@ -281,7 +281,7 @@ test.describe("measure review", () => {
   });
 });
 
-test.describe("audio synchronization", () => {
+test.describe("timeline waveform", () => {
   async function waveformState(page: Page): Promise<{ scale: number; sampleRate: number }> {
     const root = page.locator("[data-zoom-scale]");
     await expect(root).not.toHaveAttribute("data-zoom-scale", "0");
@@ -320,7 +320,7 @@ test.describe("audio synchronization", () => {
     expect(errors).toEqual([]);
   });
 
-  test("dragging a marker moves it in time", async ({ page, admin, factory, loginAs }) => {
+  test("dragging a sync point moves it in time", async ({ page, admin, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "audio" }));
@@ -328,19 +328,19 @@ test.describe("audio synchronization", () => {
     await openEditor(page, show, song);
 
     const { scale, sampleRate } = await waveformState(page);
-    const marker = song.recording.warpMarkers[1] as SongWarpMarker;
+    const syncPoint = song.recording.warpMarkers[1] as SongWarpMarker;
     const box = (await page.getByRole("img", { name: "Waveform" }).boundingBox())!;
-    const markerX = box.x + (marker.time * sampleRate) / scale;
+    const syncPointX = box.x + (syncPoint.time * sampleRate) / scale;
     const dragPixels = 30;
 
-    await page.mouse.move(markerX, box.y + 8);
+    await page.mouse.move(syncPointX, box.y + 8);
     await page.mouse.down();
-    await page.mouse.move(markerX + dragPixels, box.y + 8, { steps: 5 });
+    await page.mouse.move(syncPointX + dragPixels, box.y + 8, { steps: 5 });
     await page.mouse.up();
 
     await expect.poll(async () => {
       const stored = await admin.collection("songs").getOne(song.id);
-      return stored.recording.warpMarkers.find((m: SongWarpMarker) => m.measure === marker.measure && m.occurrence === marker.occurrence).time;
-    }).toBeCloseTo(marker.time + (dragPixels * scale) / sampleRate, 1);
+      return stored.recording.warpMarkers.find((m: SongWarpMarker) => m.measure === syncPoint.measure && m.occurrence === syncPoint.occurrence).time;
+    }).toBeCloseTo(syncPoint.time + (dragPixels * scale) / sampleRate, 1);
   });
 });
