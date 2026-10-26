@@ -140,6 +140,7 @@ export default class Song {
     this.markers = layers.markers ?? [];
     this.sections = layers.sections ?? [];
     this.segue = layers.segue ?? false;
+    this.sortArrangement();
 
     this.trackList.forEach((track, i) => track.mixer.index = i);
     this.syncPlayerMode();
@@ -672,6 +673,13 @@ export default class Song {
     if (reason) {
       throw new Error(reason);
     }
+  }
+
+  // Stored data may come in any order (the backend migration writes sections in old event order), while the panels list both in timeline order.
+  private sortArrangement(): void {
+    const timeline = this.getTimeline();
+    this.markers.sort((a, b) => compareLocations(timeline, a.at, b.at));
+    this.sections.sort((a, b) => compareSections(timeline, a, b));
   }
 
   private compareMarkers(a: Marker, b: Marker): number {

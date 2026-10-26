@@ -255,6 +255,23 @@ describe("Song layers", () => {
     expect(song.getUnnumberedBoxes()).toEqual([BOX]);
   });
 
+  it("orders stored markers and sections in timeline order", () => {
+    const song = Song.deserialize({
+      ...record,
+      arrangement: {
+        markers: [{ at: { measure: "m2", beat: 0, occurrence: 2 }, text: "Late" }, { at: { measure: "m1", beat: 0 }, text: "Early" }],
+        sections: [
+          { kind: "repeat", from: { measure: "m2", beat: 0, occurrence: 2 }, to: { measure: "m2", beat: 2, occurrence: 2 }, passes: 2 },
+          { kind: "cut", from: { measure: "m1", beat: 0 }, to: { measure: "m1", beat: 3 } },
+        ],
+        segue: false,
+      },
+    });
+
+    expect(song.getMarkers().map(marker => marker.text)).toEqual(["Early", "Late"]);
+    expect(song.getSections().map(section => section.kind)).toEqual(["cut", "repeat"]);
+  });
+
   it("caches the timeline until the measures or the recording change", async () => {
     const song = Song.deserialize(record);
     const timeline = song.getTimeline();

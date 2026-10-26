@@ -3,6 +3,7 @@ import type { RecordingSpan } from "../models/recording";
 import Track from "../models/track";
 import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
 import { inferTrackClassification } from "../utils/trackInference";
+import type { Tick } from "./types";
 
 export function isBeatMap(value: unknown): value is MTIMidiJson {
   const score = (value as MTIMidiJson | undefined)?.score;
@@ -24,8 +25,6 @@ export type BeatMapScore = {
 
 type BeatEvent = Extract<MTIMidiJson["score"]["events"][number], { type: "BEAT" }>;
 
-type BeatMapBar = { label: string; beats: number };
-
 const REPEATED_PASS = /^(.+)-\d+$/;
 const REPEAT_MARK = /^(\d+)R+$/;
 
@@ -39,21 +38,39 @@ function isBeatEvent(event: MTIMidiJson["score"]["events"][number]): event is Be
   return event.type === "BEAT";
 }
 
-/** The bars in playing order, without the terminal bar that only marks where the last one ends. */
+/** A played bar. `beatTicks` holds the start of every beat, `endTick` where the following bar starts. */
+export type BeatMapBar = { label: string; beats: number; beatTicks: Tick[]; endTick: Tick };
+
+function fillMissingBeats(beatTicks: (Tick | undefined)[]): Tick[] {
+  let previous = beatTicks.find(tick => tick !== undefined) ?? 0;
+  return Array.from(beatTicks, (tick) => {
+    previous = tick ?? previous;
+    return previous;
+  });
+}
+
+/**
+ * The bars in playing order, without the terminal bar that only marks where the last one ends. A bar starts
+ * whenever the label changes, and its beat count is its highest beat.
+ */
 export function readBeatMapBars(beatMap: MTIMidiJson): BeatMapBar[] {
   const beatEvents = beatMap.score.events.filter(isBeatEvent).sort((a, b) => a.tickcount - b.tickcount);
-  const bars: BeatMapBar[] = [];
+  const bars: { label: string; beatTicks: (Tick | undefined)[] }[] = [];
 
-  for (const { value } of beatEvents) {
-    const current = bars.at(-1);
-    if (current?.label === value.meas) {
-      current.beats = Math.max(current.beats, value.beat);
-    } else {
-      bars.push({ label: value.meas, beats: value.beat });
+  for (const { tickcount, value } of beatEvents) {
+    let bar = bars.at(-1);
+    if (bar?.label !== value.meas) {
+      bar = { label: value.meas, beatTicks: [] };
+      bars.push(bar);
     }
+
+    bar.beatTicks[value.beat - 1] = tickcount;
   }
 
-  return bars.slice(0, -1);
+  return bars.slice(0, -1).map(({ label, beatTicks }, index) => {
+    const filled = fillMissingBeats(beatTicks);
+    return { label, beats: filled.length, beatTicks: filled, endTick: fillMissingBeats(bars[index + 1]!.beatTicks)[0]! };
+  });
 }
 
 function compressToSpans(measures: Measure[], scoreIndices: number[]): RecordingSpan[] {
