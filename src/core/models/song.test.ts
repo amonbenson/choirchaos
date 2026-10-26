@@ -5,8 +5,9 @@ import { idOf, locationOf, makeAudioSongWithRepeat, makeMidiSong, makeMtiJson, T
 
 import { scoreFromBeatMap } from "../midi/beatMap";
 import Measure, { createEmptyMeasureEdit, type MeasureEdit } from "./measure";
-import type { StoredRecording } from "./recording";
-import type { Section } from "./sections";
+import { findDuplicateRuns } from "./measureReview";
+import { findPosition, formatRecording, setRecordedCount, type StoredRecording, validateLocation } from "./recording";
+import { type Section, validateSections } from "./sections";
 import Song, { type SongLayers, type StoredArrangement, type StoredScore } from "./song";
 import Track from "./track";
 
@@ -502,6 +503,208 @@ describe("Song recording", () => {
     const song = makeAudioSongWithRepeat();
 
     await expect(song.setRecordingSpans([{ from: idOf(song, "3"), to: idOf(song, "1") }])).rejects.toThrow(RangeError);
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  // Measures "1" to "4", the recording plays 1 2 3 4 2 3 4. The change below leaves out the first 3.
+  function makeDalSegnoSong(): Song {
+    return makeSong(["a.mp3"], [], {
+      measures: [new Measure("m1", "1", 4), new Measure("m2", "2", 4), new Measure("m3", "3", 4), new Measure("m4", "4", 4)],
+      spans: [{ from: "m1", to: "m4" }, { from: "m2", to: "m4" }],
+      warpMarkers: [
+        { measure: "m1", occurrence: 1, time: 0 },
+        { measure: "m3", occurrence: 1, time: 1 },
+        { measure: "m2", occurrence: 2, time: 2 },
+        { measure: "m4", occurrence: 2, time: 3 },
+      ],
+      markers: [{ at: { measure: "m3", beat: 0, occurrence: 1 }, text: "A" }, { at: { measure: "m3", beat: 1, occurrence: 2 }, text: "B" }],
+      sections: [{ kind: "repeat", from: { measure: "m2", beat: 0, occurrence: 2 }, to: { measure: "m3", beat: 3, occurrence: 2 }, passes: 2 }],
+    });
+  }
+
+  const WITHOUT_FIRST_THREE = [{ from: "m1", to: "m2" }, { from: "m4", to: "m4" }, { from: "m2", to: "m4" }];
+
+  it("moves warp markers, markers and sections with their timeline position and keeps warp marker times", async () => {
+    const song = makeDalSegnoSong();
+
+    await song.setRecordingSpans(WITHOUT_FIRST_THREE);
+
+    expect(song.getTimeline().map(e => e.measure)).toEqual(["m1", "m2", "m4", "m2", "m3", "m4"]);
+    expect(song.getWarpMarkers()).toEqual([
+      { measure: "m1", occurrence: 1, time: 0 },
+      { measure: "m2", occurrence: 2, time: 2 },
+      { measure: "m4", occurrence: 2, time: 3 },
+    ]);
+    expect(song.getMarkers()).toEqual([{ at: { measure: "m3", beat: 1, occurrence: 1 }, text: "B" }]);
+    expect(song.getSections()).toEqual([{ kind: "repeat", from: { measure: "m2", beat: 0, occurrence: 2 }, to: { measure: "m3", beat: 3, occurrence: 1 }, passes: 2 }]);
+    expect(dbUpdate).toHaveBeenCalledTimes(1);
+    expect(lastSave()).toEqual({ recording: song.serialize().recording, arrangement: song.serialize().arrangement });
+  });
+
+  it("previews the length and the dropped references without changing anything", () => {
+    const song = makeDalSegnoSong();
+    const before = song.serialize();
+
+    const preview = song.previewRecordingSpans(WITHOUT_FIRST_THREE);
+
+    expect(preview.spans).toEqual(WITHOUT_FIRST_THREE);
+    expect(preview.length).toBe(6);
+    expect(preview.dropped).toEqual({ warpMarkers: [{ measure: "m3", occurrence: 1, time: 1 }], markers: [song.getMarkers()[0]], sections: [] });
+    expect(song.serialize()).toEqual(before);
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it("saves only the recording when the arrangement keeps its locations", async () => {
+    const song = makeAudioSongWithRepeat();
+
+    await song.setRecordingSpans(setRecordedCount(song.getMeasures(), song.getRecording(), { from: locationOf(song, "2"), to: locationOf(song, "3") }, 4));
+
+    expect(song.getTimeline()).toHaveLength(10);
+    expect(song.getSections()[0]).toMatchObject({ from: locationOf(song, "2"), to: locationOf(song, "3", 3) });
+    expect(Object.keys(lastSave())).toEqual(["recording"]);
+  });
+
+  it("drops sections that end up inside the recorded passes of another", () => {
+    const song = makeSong(["a.mp3"], [], {
+      measures: [new Measure("m1", "1", 4), new Measure("m2", "2", 4), new Measure("m3", "3", 4)],
+      spans: [{ from: "m1", to: "m2" }, { from: "m1", to: "m1" }, { from: "m3", to: "m3" }],
+      sections: [
+        { kind: "repeat", from: { measure: "m1", beat: 0, occurrence: 1 }, to: { measure: "m1", beat: 3, occurrence: 1 }, passes: 2 },
+        { kind: "cut", from: { measure: "m1", beat: 0, occurrence: 2 }, to: { measure: "m1", beat: 3, occurrence: 2 } },
+      ],
+    });
+
+    const preview = song.previewRecordingSpans([{ from: "m1", to: "m1" }, { from: "m1", to: "m3" }]);
+
+    expect(preview.dropped.sections).toEqual([song.getSections()[1]]);
+  });
+
+  it("keeps MIDI recordings read-only", async () => {
+    const song = makeMidiSong();
+
+    expect(song.isRecordingEditable()).toBe(false);
+    expect(makeAudioSongWithRepeat().isRecordingEditable()).toBe(true);
+    await expect(song.setRecordingSpans([{ from: idOf(song, "0"), to: idOf(song, "1") }])).rejects.toThrow("beat map");
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+});
+
+function numbers(from: number, to: number): string[] {
+  return Array.from({ length: to - from + 1 }, (_, i) => String(from + i));
+}
+
+/**
+ * Measures with the IDs "m1", "m2", ... played straight through, like the songs of the Durchs-Loch guide
+ * after the migration. A measure named in `copies` gets the box of the measure it fakes a repeat of.
+ */
+function makeFakedRepeatSong(labels: string[], copies: Record<string, string>, layers: SongLayers = {}): Song {
+  const measures = labels.map((label, i) => new Measure(`m${i + 1}`, label, 4, { page: Math.floor(i / 20), x: (i % 20) / 20, y: 0.1, width: 0.05, height: 0.1 }));
+  for (const measure of measures) {
+    const original = copies[measure.label];
+    if (original) {
+      measure.layout = measures.find(other => other.label === original)!.layout;
+    }
+  }
+
+  return makeSong(["a.mp3"], [], { measures, spans: [{ from: "m1", to: `m${labels.length}` }], ...layers });
+}
+
+function expectValidLayers(song: Song): void {
+  const timeline = song.getTimeline();
+  const times = song.getWarpMarkers().map(marker => marker.time);
+
+  expect(song.getWarpMarkers().every(marker => findPosition(timeline, marker) !== undefined)).toBe(true);
+  expect(times.every((time, i) => i === 0 || time > times[i - 1]!)).toBe(true);
+  expect(song.getMarkers().every(marker => !validateLocation(song.getMeasures(), timeline, marker.at))).toBe(true);
+  expect(validateSections(song.getMeasures(), timeline, song.getSections())).toEqual([]);
+}
+
+async function playDetectedDuplicatesAsRepeat(song: Song): Promise<void> {
+  const [run] = findDuplicateRuns(song.getMeasures());
+  await song.playDuplicatesAsRepeat(run!.duplicates.map(m => m.id), run!.originals.map(m => m.id));
+}
+
+describe("Song duplicates played as a repeat", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("turns 8a to 8h of Durchs Loch und mittendrin into the second time of 1 to 8", async () => {
+    const labels = [...numbers(1, 8), ..."abcdefgh".split("").map(letter => `8${letter}`), ...numbers(9, 106)];
+    const copies = Object.fromEntries("abcdefgh".split("").map((letter, i) => [`8${letter}`, String(i + 1)]));
+    const warpMarkers = [{ measure: "m1", occurrence: 1, time: 0.3315 }, { measure: "m114", occurrence: 1, time: 210.558 }];
+    const song = makeFakedRepeatSong(labels, copies, { warpMarkers });
+    const box = song.findMeasure("m1")!.layout;
+
+    expect(findDuplicateRuns(song.getMeasures()).map(run => [run.duplicates.map(m => m.label), run.originals.map(m => m.label)])).toEqual([
+      [["8a", "8b", "8c", "8d", "8e", "8f", "8g", "8h"], numbers(1, 8)],
+    ]);
+
+    await playDetectedDuplicatesAsRepeat(song);
+
+    expect(song.getMeasures()).toHaveLength(106);
+    expect(song.findMeasure("m9")).toBeUndefined();
+    expect(song.findMeasure("m1")!.layout).toBe(box);
+    expect(song.getRecording()).toEqual([{ from: "m1", to: "m8" }, { from: "m1", to: "m8" }, { from: "m17", to: "m114" }]);
+    expect(song.getTimeline()).toHaveLength(114);
+    expect(song.getWarpMarkers()).toEqual(warpMarkers);
+    expect(dbUpdate).toHaveBeenCalledTimes(1);
+    expect(lastSave()).toEqual({ score: song.serialize().score, recording: song.serialize().recording });
+    expectValidLayers(song);
+  });
+
+  it("turns 4a to 4d of Ohne Sorgen chill'n into the second time of 1 to 4", async () => {
+    const labels = [...numbers(1, 4), "4a", "4b", "4c", "4d", ...numbers(5, 122)];
+    const song = makeFakedRepeatSong(labels, { "4a": "1", "4b": "2", "4c": "3", "4d": "4" });
+
+    await playDetectedDuplicatesAsRepeat(song);
+
+    expect(song.getRecording()).toEqual([{ from: "m1", to: "m4" }, { from: "m1", to: "m4" }, { from: "m9", to: "m126" }]);
+    expectValidLayers(song);
+  });
+
+  it("moves the warp marker and the vamp on 22 to 25 of It's A Privilege To Pee (Reprise) to the second time of 21A to 21D", async () => {
+    const labels = [...numbers(1, 21), "21A", "21B", "21C", "21D", ...numbers(22, 30)];
+    const song = makeFakedRepeatSong(labels, { 22: "21A", 23: "21B", 24: "21C", 25: "21D" }, {
+      warpMarkers: [{ measure: "m1", occurrence: 1, time: 0 }, { measure: "m26", occurrence: 1, time: 32.62 }, { measure: "m34", occurrence: 1, time: 60 }],
+      markers: [{ at: { measure: "m27", beat: 2, occurrence: 1 }, text: "Breath" }],
+      sections: [{ kind: "vamp", from: { measure: "m26", beat: 0, occurrence: 1 }, to: { measure: "m29", beat: 1, occurrence: 1 }, passes: 0, out: "onEnd", vocals: "all" }],
+    });
+    const run = findDuplicateRuns(song.getMeasures())[0]!;
+
+    const preview = song.previewDuplicatesAsRepeat(run.duplicates.map(m => m.id), run.originals.map(m => m.id));
+    expect(formatRecording(preview.spans, song.getMeasures())).toBe("1-21D, 21A-21D, 26-30");
+    expect(preview.length).toBe(34);
+    expect(preview.dropped).toEqual({ warpMarkers: [], markers: [], sections: [] });
+
+    await playDetectedDuplicatesAsRepeat(song);
+
+    expect(song.getRecording()).toEqual([{ from: "m1", to: "m25" }, { from: "m22", to: "m25" }, { from: "m30", to: "m34" }]);
+    expect(song.getWarpMarkers()).toEqual([
+      { measure: "m1", occurrence: 1, time: 0 },
+      { measure: "m22", occurrence: 2, time: 32.62 },
+      { measure: "m34", occurrence: 1, time: 60 },
+    ]);
+    expect(song.getMarkers()).toEqual([{ at: { measure: "m23", beat: 2, occurrence: 2 }, text: "Breath" }]);
+    expect(song.getSections()).toEqual([{
+      kind: "vamp",
+      from: { measure: "m22", beat: 0, occurrence: 2 },
+      to: { measure: "m25", beat: 1, occurrence: 2 },
+      passes: 0,
+      out: "onEnd",
+      vocals: "all",
+    }]);
+    expect(Object.keys(lastSave())).toEqual(["score", "recording", "arrangement"]);
+    expectValidLayers(song);
+  });
+
+  it("rejects duplicates that do not pair up with originals", async () => {
+    const song = makeFakedRepeatSong(numbers(1, 4), { 3: "1" });
+
+    expect(() => song.previewDuplicatesAsRepeat(["m3", "m4"], ["m1"])).toThrow("exactly one original");
+    expect(() => song.previewDuplicatesAsRepeat(["m9"], ["m1"])).toThrow("does not exist");
+    expect(() => song.previewDuplicatesAsRepeat(["m3", "m1"], ["m1", "m2"])).toThrow("both");
+    await expect(makeMidiSong().playDuplicatesAsRepeat(["m2"], ["m1"])).rejects.toThrow("beat map");
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 });

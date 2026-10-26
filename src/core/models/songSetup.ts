@@ -1,4 +1,6 @@
+import type Measure from "./measure";
 import { countReviewItems } from "./measureReview";
+import { findUnplayedMeasures } from "./recording";
 import type Song from "./song";
 
 export type SetupStepId = "score" | "playback" | "measures" | "review" | "sync";
@@ -9,9 +11,17 @@ export type SetupStep = {
   done: boolean;
 };
 
+/** Something worth a look that does not keep the song from being ready. */
+export type SetupHint = {
+  id: "unplayed";
+  label: string;
+  measures: Measure[];
+};
+
 export type SongSetup = {
   steps: SetupStep[];
   next?: SetupStep & { action: string };
+  hints: SetupHint[];
 };
 
 // Audio sync needs at least a start and an end anchor before measures line up with the recording.
@@ -75,7 +85,32 @@ export function getSongSetup(song: Song): SongSetup {
   const nextStep = steps.find(step => !step.done);
   const next = nextStep && { ...nextStep, action: actions[nextStep.id] };
 
-  return { steps, next };
+  return { steps, next, hints: getHints(song) };
+}
+
+/** "8a to 8h, 12", grouping measures that follow each other in the score. */
+function formatMeasureRuns(score: readonly Measure[], measures: readonly Measure[]): string {
+  const runs: Measure[][] = [];
+  for (const measure of measures) {
+    const run = runs.at(-1);
+    if (run && score.indexOf(run.at(-1)!) + 1 === score.indexOf(measure)) {
+      run.push(measure);
+    } else {
+      runs.push([measure]);
+    }
+  }
+
+  return runs.map(run => run.length > 1 ? `${run[0]!.label} to ${run.at(-1)!.label}` : run[0]!.label).join(", ");
+}
+
+function getHints(song: Song): SetupHint[] {
+  const unplayed = findUnplayedMeasures(song.getMeasures(), song.getTimeline());
+  if (unplayed.length === 0) {
+    return [];
+  }
+
+  const noun = unplayed.length > 1 ? "measures" : "measure";
+  return [{ id: "unplayed", label: `The recording never plays ${noun} ${formatMeasureRuns(song.getMeasures(), unplayed)}`, measures: unplayed }];
 }
 
 export function isFileStep(id: SetupStepId): boolean {

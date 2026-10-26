@@ -3,12 +3,15 @@ import { describe, expect, it } from "vitest";
 import { makeAudioSongWithVamp, makeMidiSong } from "@/test/fixtures";
 
 import Measure, { type MeasureLayout } from "./measure";
+import type { RecordingSpan } from "./recording";
 import Song from "./song";
 import { getSongSetup, hasUnsyncedAudio } from "./songSetup";
 
 const LAYOUT = { page: 0, x: 0, y: 0, width: 0.1, height: 0.1 };
 
-function makeSong(options: { pdf?: boolean; audio?: boolean; measures?: Measure[]; unnumberedBoxes?: MeasureLayout[] } = {}): Song {
+type SongOptions = { pdf?: boolean; audio?: boolean; measures?: Measure[]; unnumberedBoxes?: MeasureLayout[]; spans?: RecordingSpan[] };
+
+function makeSong(options: SongOptions = {}): Song {
   return new Song(
     "song-id",
     "1",
@@ -18,7 +21,7 @@ function makeSong(options: { pdf?: boolean; audio?: boolean; measures?: Measure[
     options.pdf ? "score.pdf" : undefined,
     options.audio ? ["mix.mp3"] : [],
     [],
-    { measures: options.measures ?? [], unnumberedBoxes: options.unnumberedBoxes ?? [] },
+    { measures: options.measures ?? [], unnumberedBoxes: options.unnumberedBoxes ?? [], spans: options.spans },
   );
 }
 
@@ -76,6 +79,37 @@ describe("getSongSetup", () => {
 
     const unsynced = makeSong({ pdf: true, audio: true, measures: [new Measure("m1", "1", 4, LAYOUT)] });
     expect(getSongSetup(unsynced).next).toMatchObject({ id: "sync", action: "Sync audio" });
+  });
+});
+
+describe("setup hints", () => {
+  const measures = (): Measure[] => ["1", "2", "3", "4", "5"].map((label, i) => new Measure(`m${i + 1}`, label, 4, LAYOUT));
+
+  it("names measures the recording never plays, grouped into runs", () => {
+    const song = makeSong({ pdf: true, audio: true, measures: measures(), spans: [{ from: "m1", to: "m1" }, { from: "m3", to: "m3" }] });
+
+    const [hint] = getSongSetup(song).hints;
+
+    expect(hint).toMatchObject({ id: "unplayed", label: "The recording never plays measures 2, 4 to 5" });
+    expect(hint!.measures.map(measure => measure.id)).toEqual(["m2", "m4", "m5"]);
+  });
+
+  it("names a single measure", () => {
+    const song = makeSong({ measures: measures(), spans: [{ from: "m1", to: "m4" }] });
+
+    expect(getSongSetup(song).hints.map(hint => hint.label)).toEqual(["The recording never plays measure 5"]);
+  });
+
+  it("does not keep the song from being ready", () => {
+    const song = makeSong({ pdf: true, measures: measures(), spans: [{ from: "m1", to: "m4" }] });
+    song.playerMode = "midi";
+
+    expect(getSongSetup(song).next).toBeUndefined();
+  });
+
+  it("has no hints when the recording plays every measure", () => {
+    expect(getSongSetup(makeMidiSong()).hints).toEqual([]);
+    expect(getSongSetup(makeSong()).hints).toEqual([]);
   });
 });
 
