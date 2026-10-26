@@ -170,6 +170,7 @@ PocketBase lives in a separate repository (`choirchaos-pb`). The app reads its U
 - A song stores its layers in the JSON fields `score`, `recording` and `arrangement`. Each is always read and written whole, through one serializer per layer in `Song`, and the app has no handling for older formats. A change that touches several layers (removing measures, replacing the beat map) sends them in one request, which PocketBase applies atomically.
 - A song with measures always has recording spans. A MIDI song's score and recording come from its beat map through `scoreFromBeatMap()`, which reads repeated passes (`12-2`, `12R`) as the written measure `12`. The beat map stays the timing source, and a MIDI song never has warp markers.
 - Every mutation removes the references it leaves unresolved (markers, sections, warp markers), since the e2e invariants reject them.
+- Recording changes (`setRecordingSpans()`, `playDuplicatesAsRepeat()`) first move references by timeline position through `remapReferences()` in `recording.ts`, keeping warp marker times, and drop only what has no surviving position. The span editing helpers there return normalized spans (`spansFromSequence()`), and the UI previews every change with `previewRecordingSpans()` before saving. MIDI recordings are read-only.
 
 ---
 

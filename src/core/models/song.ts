@@ -26,8 +26,12 @@ import {
   findPosition,
   type Location,
   type Occurrence,
+  type OccurrenceMap,
   type RecordingSpan,
+  remapLocation,
+  remapReferences,
   removeMeasureFromSpans,
+  spansFromSequence,
   type StoredRecording,
   type StoredWarpMarker,
   type Timeline,
@@ -75,6 +79,28 @@ export type SongLayers = {
   markers?: Marker[];
   sections?: Section[];
   segue?: boolean;
+};
+
+/** References a recording change cannot move, as they are before the change. */
+export type DroppedReferences = {
+  warpMarkers: StoredWarpMarker[];
+  markers: Marker[];
+  sections: Section[];
+};
+
+/** What a recording change will do, shown before it is saved. */
+export type RecordingPreview = {
+  spans: RecordingSpan[];
+  /** How many measures the recording plays afterwards. */
+  length: number;
+  dropped: DroppedReferences;
+};
+
+type RecordingChange = Omit<RecordingPreview, "length"> & {
+  measures: Measure[];
+  warpMarkers: StoredWarpMarker[];
+  markers: Marker[];
+  sections: Section[];
 };
 
 const EMPTY_SCORE: StoredScore = Object.freeze({ measures: [], unnumberedBoxes: [] }) as StoredScore;
@@ -612,17 +638,156 @@ export default class Song {
 
   // Recording mutations
 
-  public async setRecordingSpans(spans: RecordingSpan[]): Promise<void> {
-    expandRecording(this.measures, spans);
-    replaceAll(this.spans, spans.map(span => ({ ...span })));
-    this.invalidateTimeline();
+  /** MIDI songs take their recording from the beat map. */
+  public isRecordingEditable(): boolean {
+    return this.playerMode !== "midi";
+  }
 
-    const fields: PbRecord = {};
-    if (this.dropUnresolvedReferences().arrangement) {
+  private assertRecordingEditable(): void {
+    if (!this.isRecordingEditable()) {
+      throw new Error("A MIDI song takes its recording from the beat map.");
+    }
+  }
+
+  /**
+   * The layers after the recording changes to `spans` over `measures`. References move by timeline
+   * position wherever it survives, and the rest are dropped. Nothing changes until it is applied.
+   */
+  private planRecordingChange(measures: readonly Measure[], spans: readonly RecordingSpan[], replacements?: ReadonlyMap<MeasureId, MeasureId>): RecordingChange {
+    const timeline = expandRecording(measures, spans);
+    const map = remapReferences(this.getTimeline(), timeline, replacements);
+    const dropped: DroppedReferences = { warpMarkers: [], markers: [], sections: [] };
+
+    const warpMarkers = this.warpMarkers.flatMap((marker) => {
+      const moved = map(marker);
+      if (!moved) {
+        dropped.warpMarkers.push(marker);
+        return [];
+      }
+
+      return [{ ...moved, time: marker.time }];
+    });
+
+    const markers = this.markers.flatMap((marker) => {
+      const at = remapLocation(map, marker.at);
+      if (!at || validateLocation(measures, timeline, at)) {
+        dropped.markers.push(marker);
+        return [];
+      }
+
+      return [{ at, text: marker.text }];
+    });
+
+    return {
+      measures: [...measures],
+      spans: spans.map(span => ({ ...span })),
+      warpMarkers,
+      markers,
+      sections: this.remapSections(map, measures, timeline, dropped),
+      dropped,
+    };
+  }
+
+  /** Sections whose ends both move and that still validate, for example without overlapping, in timeline order. */
+  private remapSections(map: OccurrenceMap, measures: readonly Measure[], timeline: Timeline, dropped: DroppedReferences): Section[] {
+    const moved = this.sections.flatMap((original) => {
+      const from = remapLocation(map, original.from);
+      const to = remapLocation(map, original.to);
+      return from && to ? [{ original, section: { ...original, from, to } }] : [];
+    });
+    moved.sort((a, b) => compareSections(timeline, a.section, b.section));
+
+    const invalid = new Set(validateSections(measures, timeline, moved.map(({ section }) => section)).map(issue => issue.index));
+    const kept = moved.filter((_, index) => !invalid.has(index));
+    dropped.sections.push(...this.sections.filter(section => !kept.some(({ original }) => original === section)));
+    return kept.map(({ section }) => section);
+  }
+
+  private applyRecordingChange(change: RecordingChange): void {
+    replaceAll(this.measures, change.measures);
+    replaceAll(this.spans, change.spans);
+    replaceAll(this.warpMarkers, change.warpMarkers);
+    replaceAll(this.markers, change.markers);
+    replaceAll(this.sections, change.sections);
+    this.invalidateTimeline();
+  }
+
+  private toPreview(change: RecordingChange): RecordingPreview {
+    return { spans: change.spans, length: expandRecording(change.measures, change.spans).length, dropped: change.dropped };
+  }
+
+  /** What `setRecordingSpans(spans)` would do, for showing before saving. Throws like it on invalid spans. */
+  public previewRecordingSpans(spans: readonly RecordingSpan[]): RecordingPreview {
+    return this.toPreview(this.planRecordingChange(this.measures, spans));
+  }
+
+  /**
+   * Replaces the recording. Warp markers keep their times, and they, markers and sections move with
+   * their timeline position wherever it survives the change. Only the rest are dropped.
+   */
+  public async setRecordingSpans(spans: readonly RecordingSpan[]): Promise<void> {
+    this.assertRecordingEditable();
+    const change = this.planRecordingChange(this.measures, spans);
+    const arrangementBefore = JSON.stringify(this.serializeArrangement());
+    this.applyRecordingChange(change);
+
+    const fields: PbRecord = { recording: this.serializeRecording() };
+    if (JSON.stringify(this.serializeArrangement()) !== arrangementBefore) {
       fields.arrangement = this.serializeArrangement();
     }
 
-    await this.save({ recording: this.serializeRecording(), ...fields });
+    await this.save(fields);
+  }
+
+  private planDuplicatesAsRepeat(duplicates: readonly MeasureId[], originals: readonly MeasureId[]): RecordingChange {
+    this.assertRecordingEditable();
+    if (duplicates.length === 0 || duplicates.length !== originals.length) {
+      throw new Error("Every duplicate needs exactly one original.");
+    }
+
+    const unknown = [...duplicates, ...originals].find(id => !this.findMeasure(id));
+    if (unknown) {
+      throw new Error(`Measure ${unknown} does not exist.`);
+    }
+
+    const removed = new Set(duplicates);
+    if (removed.size !== duplicates.length || originals.some(id => removed.has(id))) {
+      throw new Error("A measure cannot be both a duplicate and an original.");
+    }
+
+    const replacements = new Map(duplicates.map((id, i) => [id, originals[i]!]));
+    const measures = this.measures.filter(measure => !removed.has(measure.id));
+    const sequence = this.getTimeline().map(entry => replacements.get(entry.measure) ?? entry.measure);
+    const spans = spansFromSequence(measures.map(measure => measure.id), sequence);
+    return this.planRecordingChange(measures, spans, replacements);
+  }
+
+  /** What `playDuplicatesAsRepeat()` would do, for the review card. */
+  public previewDuplicatesAsRepeat(duplicates: readonly MeasureId[], originals: readonly MeasureId[]): RecordingPreview {
+    return this.toPreview(this.planDuplicatesAsRepeat(duplicates, originals));
+  }
+
+  /**
+   * Turns measures that fake a repeat with boxes on top of `originals` into another pass of the originals.
+   * The recording plays the i-th original wherever it played the i-th duplicate, every reference on a
+   * duplicate moves to that occurrence of its original, and the duplicates are deleted. Timeline positions
+   * stay the same, so the audio sync does not change. Saves all three layers in one request.
+   */
+  public async playDuplicatesAsRepeat(duplicates: readonly MeasureId[], originals: readonly MeasureId[]): Promise<void> {
+    const change = this.planDuplicatesAsRepeat(duplicates, originals);
+    const arrangementBefore = JSON.stringify(this.serializeArrangement());
+    duplicates.forEach((id, i) => {
+      const original = this.findMeasure(originals[i]!)!;
+      original.layout ??= this.findMeasure(id)!.layout;
+    });
+    this.applyRecordingChange(change);
+
+    const fields: PbRecord = { score: this.serializeScore(), recording: this.serializeRecording() };
+    if (JSON.stringify(this.serializeArrangement()) !== arrangementBefore) {
+      fields.arrangement = this.serializeArrangement();
+    }
+
+    await this.save(fields);
   }
 
   private findWarpMarkerIndex(occurrence: Occurrence): number {
