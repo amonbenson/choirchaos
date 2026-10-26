@@ -2,9 +2,17 @@
 @import "tailwindcss-primeui";
 @import "primeicons/primeicons.css";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-surface: var(--p-content-background);
   --color-surface-alt: var(--p-content-hover-background);
+
+  /* Section kinds on the score, the playbar and the editor. Text on them uses section-contrast. */
+  --color-section-repeat: var(--color-sky-700);
+  --color-section-vamp: var(--color-violet-600);
+  --color-section-cut: var(--color-slate-600);
+  --color-section-contrast: var(--color-white);
 }
 
 @layer base {
@@ -12,9 +20,25 @@
     @apply size-full select-none bg-surface;
   }
 
+  /* Lighter tones stay visible on dark panels and take dark text, while the score page itself stays white. */
+  .dark {
+    --color-section-repeat: var(--color-sky-400);
+    --color-section-vamp: var(--color-violet-400);
+    --color-section-cut: var(--color-slate-400);
+    --color-section-contrast: var(--color-slate-950);
+  }
+
   kbd {
     @apply bg-(--p-button-secondary-background) text-(--p-button-secondary-color) border border-(--p-button-secondary-color)/20 px-1.5 py-0.5 rounded shadow-sm not-italic font-[80%] text-xs;
   }
+}
+
+@utility hatch-section-cut {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-section-cut) 30%, transparent) 0 6px,
+    transparent 6px 12px
+  );
 }
 
 @custom-variant touch (@media (pointer: coarse));

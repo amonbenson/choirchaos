@@ -1,19 +1,32 @@
 <script setup lang="ts">
 import { onLongPress, useEventListener } from "@vueuse/core";
 import SelectButton from "primevue/selectbutton";
-import { computed, type ComputedRef, ref, shallowRef, watch } from "vue";
+import { computed, type ComputedRef, ref, shallowRef, useId, watch } from "vue";
 
 import Draggable from "@/components/base/Draggable.vue";
 import { injectMeasureEditor, type MeasureTool } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
+import { formatTimes } from "@/core/models/locationFormat";
 import Measure, { type MeasureId, type MeasureLayout, needsReview } from "@/core/models/measure";
 import { getReadingOrder, intersects, normalizeLayout, planLayouts, splitLayout } from "@/core/models/measureEditing";
+import { countOccurrences } from "@/core/models/recording";
+import {
+  describeOverlays,
+  describeSection,
+  findRecordedRepeats,
+  formatSectionChip,
+  getMarkerOverlays,
+  getSectionOverlays,
+  type OverlayRun,
+} from "@/core/models/scoreOverlays";
+import type { SectionKind } from "@/core/models/sections";
 import Song from "@/core/models/song";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
 import { usePlayerStore } from "@/stores/player";
 
 import PdfViewer from "./PdfViewer.vue";
+import { SECTION_COLORS, SECTION_CONTRAST_TEXT } from "./sectionColors";
 
 const player = usePlayerStore();
 const { notifyError } = useNotify();
@@ -186,9 +199,118 @@ const currentPositionProgress = computed(() => {
   return length > 0 ? Math.max(0, Math.min(1, (player.position - start) / length)) : 0;
 });
 
+/** The occurrence tag on the playing box, only for measures the recording plays more than once. */
+const currentOccurrenceTag = computed(() => {
+  const location = player.currentLocation;
+  if (!location || !props.song || countOccurrences(props.song.getTimeline(), location.measure) < 2) {
+    return undefined;
+  }
+
+  return formatTimes(location.occurrence);
+});
+
 watch(() => player.position, () => {
   pdfViewer.value?.redrawOverlay();
 });
+
+// Arrangement overlays. They never take pointer events, and every box describes its overlays, so
+// screen readers hear them on the box. Only the first chip of a section is an image of its own.
+
+/** Overlays of sections drawn on the same boxes stack upwards by this much. */
+const LANE_HEIGHT_PX = 22;
+const BAR_OFFSET_PX = 5;
+
+type SectionBar = {
+  key: string;
+  run: OverlayRun;
+  kind: SectionKind;
+  lane: number;
+  chip: string;
+  name?: string;
+};
+
+type OverlayBox = { key: string; layout: MeasureLayout; text: string; name?: string };
+
+const playingSection = computed(() => player.ready ? player.currentSection : undefined);
+
+const sectionOverlays = computed(() => props.song
+  ? getSectionOverlays(props.song.getMeasures(), props.song.getTimeline(), props.song.getSections())
+  : []);
+
+const recordedRepeats = computed(() => props.song ? findRecordedRepeats(props.song.getTimeline()) : []);
+
+const sectionBars = computed<SectionBar[]>(() => sectionOverlays.value.flatMap(({ index, section, runs, lane }) => {
+  const playing = playingSection.value?.section === index ? playingSection.value : undefined;
+  const chip = formatSectionChip(section, playing);
+  const name = describeSection(props.song!.getMeasures(), section, playing);
+  return runs.map((run, i) => ({ key: `section-${index}-${i}`, run, kind: section.kind, lane, chip, name: i === 0 ? name : undefined }));
+}));
+
+const cutBoxes = computed(() => sectionOverlays.value
+  .filter(overlay => overlay.section.kind === "cut")
+  .flatMap(overlay => overlay.measures.flatMap(id => props.song?.findMeasure(id)?.layout ?? [])));
+
+const recordedGlyphs = computed<OverlayBox[]>(() => recordedRepeats.value.flatMap(({ measures, times }, i) => {
+  const layout = props.song?.findMeasure(measures.at(-1)!)?.layout;
+  const labels = measures.map(id => props.song!.findMeasure(id)?.label ?? "?");
+  const range = labels.length === 1 ? `Measure ${labels[0]}` : `Measures ${labels[0]} to ${labels.at(-1)}`;
+  return layout ? [{ key: `recorded-${i}`, layout, text: `×${times}`, name: `${range} recorded ${times} times` }] : [];
+}));
+
+/** The highest lane of the sections drawn on each measure, so marker chips go above their chips. */
+const topLanes = computed(() => {
+  const lanes = new Map<MeasureId, number>();
+  for (const { measures, lane } of sectionOverlays.value) {
+    measures.forEach(id => lanes.set(id, Math.max(lane, lanes.get(id) ?? 0)));
+  }
+
+  return lanes;
+});
+
+const markerChips = computed<(OverlayBox & { lane?: number })[]>(() => props.song
+  ? getMarkerOverlays(props.song.getMarkers()).flatMap(({ measure, texts }) => {
+      const layout = props.song!.findMeasure(measure)?.layout;
+      return layout ? [{ key: `marker-${measure}`, layout, text: texts.join(", "), lane: topLanes.value.get(measure) }] : [];
+    })
+  : []);
+
+const overlayDescriptions = computed(() => props.song
+  ? describeOverlays({
+      measures: props.song.getMeasures(),
+      timeline: props.song.getTimeline(),
+      sections: sectionOverlays.value,
+      repeats: recordedRepeats.value,
+      markers: props.song.getMarkers(),
+      playing: playingSection.value,
+    })
+  : new Map<MeasureId, string>());
+
+const descriptionIdPrefix = useId();
+
+function descriptionId(measure: Measure): string | undefined {
+  return overlayDescriptions.value.has(measure.id) ? `${descriptionIdPrefix}-${measure.id}` : undefined;
+}
+
+function onPage<T>(items: readonly T[], page: number, pageOf: (item: T) => number): T[] {
+  return items.filter(item => pageOf(item) === page);
+}
+
+function sectionBarStyle({ run, lane }: SectionBar): Record<string, string> {
+  return {
+    left: `${run.x * 100}%`,
+    width: `${run.width * 100}%`,
+    top: `calc(${run.y * 100}% - ${BAR_OFFSET_PX + lane * LANE_HEIGHT_PX}px)`,
+  };
+}
+
+function markerChipStyle({ layout, lane }: OverlayBox & { lane?: number }): Record<string, string> {
+  const offset = lane === undefined ? 2 : BAR_OFFSET_PX + (lane + 1) * LANE_HEIGHT_PX;
+  return { left: `calc(${layout.x * 100}% + 2px)`, top: `calc(${layout.y * 100}% - ${offset}px)` };
+}
+
+function recordedGlyphStyle({ layout }: OverlayBox): Record<string, string> {
+  return { left: `calc(${(layout.x + layout.width) * 100}% - 2px)`, top: `calc(${layout.y * 100}% + 2px)` };
+}
 
 watch(() => props.song, () => {
   if (props.song) {
@@ -720,6 +842,21 @@ async function onHandleDragEnd(measure: Measure): Promise<void> {
           :aria-label="`Page ${page.pageNumber + 1}`"
           :data-page="page.pageNumber"
         >
+          <div hidden>
+            <span
+              v-for="measure of visibleMeasures(page.pageNumber).filter(descriptionId)"
+              :id="descriptionId(measure)"
+              :key="measure.id"
+            >{{ overlayDescriptions.get(measure.id) }}</span>
+          </div>
+
+          <div
+            v-for="(layout, i) of onPage(cutBoxes, page.pageNumber, box => box.page)"
+            :key="`cut-${i}`"
+            class="pointer-events-none absolute hatch-section-cut"
+            :style="boxStyle(layout)"
+          />
+
           <div
             v-for="measure of visibleMeasures(page.pageNumber)"
             :key="measure.id"
@@ -730,6 +867,7 @@ async function onHandleDragEnd(measure: Measure): Promise<void> {
             :aria-label="`Measure ${measure.label}`"
             :aria-pressed="editMode ? editor.isSelected(measure) : undefined"
             :aria-current="currentMeasureId === measure.id ? 'location' : undefined"
+            :aria-describedby="descriptionId(measure)"
             :data-measure="measure.id"
             @contextmenu.stop.prevent
             @click="onBoxClick($event, measure)"
@@ -745,6 +883,12 @@ async function onHandleDragEnd(measure: Measure): Promise<void> {
               class="pointer-events-none absolute top-0 h-full w-1 -translate-x-1/2 rounded-full bg-primary"
               :style="{ left: `${currentPositionProgress * 100}%` }"
             />
+
+            <span
+              v-if="currentMeasureId === measure.id && currentOccurrenceTag"
+              class="pointer-events-none absolute bottom-0.5 left-1.5 rounded-sm bg-primary px-1 text-[0.625rem] leading-4 font-semibold whitespace-nowrap text-primary-contrast"
+              aria-hidden="true"
+            >{{ currentOccurrenceTag }}</span>
 
             <template v-if="editMode && hasHandles(measure)">
               <Draggable
@@ -812,6 +956,74 @@ async function onHandleDragEnd(measure: Measure): Promise<void> {
             class="pointer-events-none absolute border border-primary bg-primary/20"
             :style="boxStyle(drawnRect)"
           />
+
+          <div
+            v-for="bar of onPage(sectionBars, page.pageNumber, item => item.run.page)"
+            :key="bar.key"
+            class="pointer-events-none absolute h-[3px] rounded-full"
+            :class="SECTION_COLORS[bar.kind].background"
+            :style="sectionBarStyle(bar)"
+          >
+            <span
+              class="absolute bottom-full left-0 mb-0.5 rounded-sm px-1.5 text-[0.625rem] leading-4 font-semibold whitespace-nowrap shadow-sm"
+              :class="[SECTION_COLORS[bar.kind].background, SECTION_CONTRAST_TEXT]"
+              :role="bar.name ? 'img' : undefined"
+              :aria-label="bar.name"
+              :aria-hidden="bar.name ? undefined : 'true'"
+            >{{ bar.chip }}</span>
+          </div>
+
+          <span
+            v-for="glyph of onPage(recordedGlyphs, page.pageNumber, item => item.layout.page)"
+            :key="glyph.key"
+            class="pointer-events-none absolute inline-flex -translate-x-full items-center gap-1 rounded-sm border border-slate-700 bg-white/95 px-1 text-[0.625rem] leading-4 font-bold text-slate-800 shadow-sm"
+            :style="recordedGlyphStyle(glyph)"
+            role="img"
+            :aria-label="glyph.name"
+          >
+            <svg
+              class="h-2.5 w-[0.4375rem]"
+              viewBox="0 0 7 12"
+              aria-hidden="true"
+            >
+              <circle
+                cx="1.2"
+                cy="4"
+                r="1.1"
+                fill="currentColor"
+              />
+              <circle
+                cx="1.2"
+                cy="8"
+                r="1.1"
+                fill="currentColor"
+              />
+              <rect
+                x="3.2"
+                width="1"
+                height="12"
+                fill="currentColor"
+              />
+              <rect
+                x="5.2"
+                width="1.8"
+                height="12"
+                fill="currentColor"
+              />
+            </svg>
+            <span aria-hidden="true">{{ glyph.text }}</span>
+          </span>
+
+          <span
+            v-for="marker of onPage(markerChips, page.pageNumber, item => item.layout.page)"
+            :key="marker.key"
+            class="pointer-events-none absolute inline-flex max-w-32 -translate-y-full items-center gap-1 rounded-full bg-primary px-1.5 text-[0.625rem] leading-4 font-semibold whitespace-nowrap text-primary-contrast shadow-sm"
+            :style="markerChipStyle(marker)"
+            aria-hidden="true"
+          >
+            <i class="pi pi-bookmark text-[0.5625rem]" />
+            <span class="truncate">{{ marker.text }}</span>
+          </span>
         </div>
 
         <div

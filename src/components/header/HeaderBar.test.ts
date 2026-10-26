@@ -4,6 +4,7 @@ import PrimeVue from "primevue/config";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type Show from "@/core/models/show";
+import type { TimelinePosition } from "@/core/player/timeline";
 import type { PlayerLocation, PlayerSectionState } from "@/core/player/types";
 import { usePlayerStore } from "@/stores/player";
 import { locationOf, makeMidiSongWithRepeat } from "@/test/fixtures";
@@ -23,6 +24,7 @@ const player = vi.hoisted(() => ({
   currentSegue: undefined,
   currentLocation: undefined as PlayerLocation | undefined,
   currentSection: undefined as PlayerSectionState | undefined,
+  timeline: [] as TimelinePosition[],
   setMeasure: () => {},
   setBeat: () => {},
   seek: () => {},
@@ -64,6 +66,15 @@ function mountHeader(): VueWrapper {
   });
 }
 
+const TICKS_PER_POSITION = 100;
+
+function resolveTimeline(): TimelinePosition[] {
+  return song.getTimeline().map((entry) => {
+    const start = entry.position * TICKS_PER_POSITION;
+    return { ...entry, beats: 4, beatTicks: [0, 1, 2, 3].map(beat => start + beat * 25), endTick: start + TICKS_PER_POSITION };
+  });
+}
+
 function sectionButton(wrapper: VueWrapper): VueWrapper["element"] {
   return wrapper.findAll("button").find(button => /^(Vamp|Repeat|Exiting)/.test(button.text()))!.element;
 }
@@ -75,6 +86,8 @@ describe("HeaderBar", () => {
     const state = fakePlayer();
     state.currentLocation = { position: 4, ...locationOf(song, "2", 0, 2), beat: 1 };
     state.currentSection = undefined;
+    state.timeline = resolveTimeline();
+    state.duration = state.timeline.length * TICKS_PER_POSITION;
   });
 
   it("shows the label of the playing measure and its beat", () => {
@@ -115,5 +128,24 @@ describe("HeaderBar", () => {
 
     expect(button.textContent?.trim()).toBe("Vamp");
     expect(button.disabled).toBe(true);
+  });
+
+  it("colors the recorded passes of each section on the playbar", () => {
+    const wrapper = mountHeader();
+    const timeline = fakePlayer().timeline;
+    const first = timeline.findIndex(entry => entry.measure === locationOf(song, "2").measure);
+    const ranges = wrapper.findAll(".bg-section-repeat");
+
+    expect(ranges).toHaveLength(1);
+    expect((ranges[0]!.element as HTMLElement).style.left).toBe(`${first / timeline.length * 100}%`);
+    expect((ranges[0]!.element as HTMLElement).style.width).toBe(`${6 / timeline.length * 100}%`);
+  });
+
+  it("names the measure and section in the position slider", async () => {
+    const wrapper = mountHeader();
+    fakePlayer().currentSection = { ...VAMP, kind: "repeat", passes: 3, recordedPasses: 3 };
+    await flushPromises();
+
+    expect(wrapper.find("[role='slider'][aria-label='Position']").attributes("aria-valuetext")).toBe("2, 2nd time, Repeat pass 2 of 3");
   });
 });
