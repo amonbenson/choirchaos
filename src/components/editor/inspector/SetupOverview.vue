@@ -13,6 +13,9 @@ import { parseLabelList } from "@/core/models/measureLabel";
 import type Song from "@/core/models/song";
 import { getSongSetup, isFileStep, type SetupStep } from "@/core/models/songSetup";
 
+import DuplicateReviewCard from "./DuplicateReviewCard.vue";
+import RecordingOverview from "./RecordingOverview.vue";
+
 const props = defineProps<{
   song: Song;
 }>();
@@ -126,6 +129,8 @@ async function addMeasures(): Promise<void> {
       @click="emit('openDetails')"
     />
 
+    <DuplicateReviewCard :song="song" />
+
     <div
       v-if="mode === 'audio' || song.pdfFile || hasBoxes"
       class="flex flex-wrap gap-2"
@@ -202,6 +207,11 @@ async function addMeasures(): Promise<void> {
       v-else-if="measures.length === 0 && mode === 'audio'"
       class="text-sm"
     >This song has no measures yet. Draw a box on the score or add them by number.</span>
+
+    <RecordingOverview
+      v-if="song.getTimeline().length > 0"
+      :song="song"
+    />
 
     <Popover ref="addPopover">
       <form

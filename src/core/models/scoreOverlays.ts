@@ -1,8 +1,8 @@
-import { formatTimes } from "./locationFormat";
+import { formatOccurrence, formatTimes } from "./locationFormat";
 import type { Marker } from "./markers";
 import type Measure from "./measure";
 import type { MeasureId, MeasureLayout } from "./measure";
-import { countOccurrences, findRecordedPasses, type Timeline } from "./recording";
+import { countOccurrences, findRecordedPasses, type Occurrence, type Timeline } from "./recording";
 import type { Section } from "./sections";
 
 /**
@@ -166,6 +166,60 @@ export function findRecordedRepeats(timeline: Timeline): RecordedRepeat[] {
   return repeats;
 }
 
+/** A place where the recording does not go on with the next measure of the score, e.g. "after 8, 2nd time, to 9". */
+export type RecordingJump = {
+  /** Timeline position of the measure played before the jump. */
+  position: number;
+  after: Occurrence;
+  to: Occurrence;
+};
+
+function isRepeatReturn(repeats: readonly RecordedRepeat[], position: number): boolean {
+  return repeats.some(({ first, last, times }) => {
+    const length = last - first + 1;
+    const offset = position + 1 - first;
+    return offset > 0 && offset % length === 0 && offset / length < times;
+  });
+}
+
+/**
+ * Every place where the recording continues somewhere other than the next measure of the score. Returns to
+ * the start of a passage played back to back are left out, since the recorded-repeat glyph shows them.
+ */
+export function findRecordingJumps(measures: readonly Measure[], timeline: Timeline): RecordingJump[] {
+  const indices = new Map(measures.map((measure, index) => [measure.id, index]));
+  const repeats = findRecordedRepeats(timeline);
+  const jumps: RecordingJump[] = [];
+
+  for (let position = 0; position < timeline.length - 1; position++) {
+    const current = timeline[position]!;
+    const next = timeline[position + 1]!;
+    if (indices.get(next.measure) === indices.get(current.measure)! + 1 || isRepeatReturn(repeats, position)) {
+      continue;
+    }
+
+    jumps.push({
+      position,
+      after: { measure: current.measure, occurrence: current.occurrence },
+      to: { measure: next.measure, occurrence: next.occurrence },
+    });
+  }
+
+  return jumps;
+}
+
+/** The short text of a jump chip, e.g. "to 9" or "to 1, 2nd time". */
+export function formatJumpChip(measures: readonly Measure[], jump: RecordingJump): string {
+  return `to ${formatOccurrence(labelOf(measures, jump.to.measure), jump.to.occurrence)}`;
+}
+
+/** "After 8, 2nd time, the recording continues at 9". The first time is named when the measure plays more than once. */
+export function describeJump(measures: readonly Measure[], timeline: Timeline, { after, to }: RecordingJump): string {
+  const label = labelOf(measures, after.measure);
+  const from = countOccurrences(timeline, after.measure) > 1 ? `${label}, ${formatTimes(after.occurrence)}` : label;
+  return `After ${from}, the recording continues at ${formatOccurrence(labelOf(measures, to.measure), to.occurrence)}`;
+}
+
 /** Markers grouped by measure, so a measure with markers on several occurrences shows one chip. */
 export function getMarkerOverlays(markers: readonly Marker[]): MarkerOverlay[] {
   const byMeasure = new Map<MeasureId, string[]>();
@@ -255,11 +309,12 @@ export type OverlayDescriptionInput = {
   sections: readonly SectionOverlay[];
   repeats: readonly RecordedRepeat[];
   markers: readonly Marker[];
+  jumps?: readonly RecordingJump[];
   playing?: PlayingSection;
 };
 
 /** What the overlays on each box say, for its `aria-describedby`: "Vamp 19 to 20, until released. Recorded 4 times. Marker D." */
-export function describeOverlays({ measures, timeline, sections, repeats, markers, playing }: OverlayDescriptionInput): Map<MeasureId, string> {
+export function describeOverlays({ measures, timeline, sections, repeats, markers, jumps = [], playing }: OverlayDescriptionInput): Map<MeasureId, string> {
   const descriptions = new Map<MeasureId, string[]>();
   for (const { index, section, measures: covered } of sections) {
     append(descriptions, covered, describeSection(measures, section, playing?.section === index ? playing : undefined));
@@ -271,6 +326,10 @@ export function describeOverlays({ measures, timeline, sections, repeats, marker
 
   for (const marker of markers) {
     append(descriptions, [marker.at.measure], formatMarker(timeline, marker));
+  }
+
+  for (const jump of jumps) {
+    append(descriptions, [jump.after.measure], describeJump(measures, timeline, jump));
   }
 
   return new Map([...descriptions].map(([measure, texts]) => [measure, `${texts.join(". ")}.`]));

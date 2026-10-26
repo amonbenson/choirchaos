@@ -44,7 +44,7 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 |---|---|
 | `src/views/` | Routed pages. See `src/views/AGENTS.md` |
 | `src/components/` | UI components in the folder of the area they appear in (`header/`, `show/`, `song/`, `player/`, `editor/`, `score/`), plus generic `base/` and `icons/` |
-| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useMeasureEditor` holds the song editor's selection, the selected run and the tool |
+| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useMeasureEditor` holds the song editor's selection, the selected run and the tool. `useRecordingEditor` saves recording changes after previewing them |
 | `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
 | `src/router/` | Routes and navigation guards |
 | `src/core/models/` | Domain models (Show, Song, Track, Measure, markers, sections) and the pure logic around them: the recording timeline, location formatting, song dialog drafts, setup status, measure editing, detection, review and warp editing |

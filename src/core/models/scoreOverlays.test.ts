@@ -3,9 +3,12 @@ import { describe, expect, it } from "vitest";
 import Measure, { type MeasureLayout } from "./measure";
 import { expandRecording, type Location, type RecordingSpan } from "./recording";
 import {
+  describeJump,
   describeOverlays,
   describeSection,
   findRecordedRepeats,
+  findRecordingJumps,
+  formatJumpChip,
   formatPlayingSection,
   formatSectionChip,
   getMarkerOverlays,
@@ -120,6 +123,38 @@ describe("findRecordedRepeats", () => {
   });
 });
 
+describe("findRecordingJumps", () => {
+  it("finds the jumps of endings and a D.S.", () => {
+    const withEndings = expandRecording(measures, [span(1, 8), span(1, 7), span(9, 16)]);
+    const dalSegno = expandRecording(measures, [span(1, 12), span(5, 8), span(13, 16)]);
+
+    expect(findRecordingJumps(measures, withEndings)).toEqual([
+      { position: 7, after: { measure: "m8", occurrence: 1 }, to: { measure: "m1", occurrence: 2 } },
+      { position: 14, after: { measure: "m7", occurrence: 2 }, to: { measure: "m9", occurrence: 1 } },
+    ]);
+    expect(findRecordingJumps(measures, dalSegno).map(jump => jump.position)).toEqual([11, 15]);
+  });
+
+  it("leaves out the returns of passages played back to back and straight playing", () => {
+    const repeated = expandRecording(measures, [span(1, 11), span(10, 11), span(10, 11), span(12, 16)]);
+    const repeatThenEnding = expandRecording(measures, [span(1, 4), span(1, 4), span(1, 3), span(5, 16)]);
+
+    expect(findRecordingJumps(measures, repeated)).toEqual([]);
+    expect(findRecordingJumps(measures, straight)).toEqual([]);
+    expect(findRecordingJumps(measures, repeatThenEnding).map(jump => jump.position)).toEqual([7, 10]);
+  });
+
+  it("names the jump on the chip and in full", () => {
+    const withEndings = expandRecording(measures, [span(1, 8), span(1, 7), span(9, 16)]);
+    const [back, ending] = findRecordingJumps(measures, withEndings);
+
+    expect(formatJumpChip(measures, back!)).toBe("to 1, 2nd time");
+    expect(formatJumpChip(measures, ending!)).toBe("to 9");
+    expect(describeJump(measures, withEndings, back!)).toBe("After 8, the recording continues at 1, 2nd time");
+    expect(describeJump(measures, withEndings, ending!)).toBe("After 7, 2nd time, the recording continues at 9");
+  });
+});
+
 describe("getMarkerOverlays", () => {
   it("groups markers by measure", () => {
     const markers = [{ at: at(1), text: "A" }, { at: at(5), text: "B" }, { at: at(5, 0, 2), text: "B2" }];
@@ -169,5 +204,12 @@ describe("describeOverlays", () => {
     expect(descriptions.get("m11")).toBe("Vamp 10 to 11, pass 2. Recorded 3 times.");
     expect(descriptions.get("m12")).toBe("Marker E.");
     expect(descriptions.has("m1")).toBe(false);
+  });
+
+  it("names the jumps after a box", () => {
+    const timeline = expandRecording(measures, [span(1, 8), span(1, 7), span(9, 16)]);
+    const descriptions = describeOverlays({ measures, timeline, sections: [], repeats: [], markers: [], jumps: findRecordingJumps(measures, timeline) });
+
+    expect(descriptions.get("m7")).toBe("After 7, 2nd time, the recording continues at 9.");
   });
 });
