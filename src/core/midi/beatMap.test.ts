@@ -105,10 +105,19 @@ describe("beat map", () => {
   it("starts a new bar whenever the label changes and counts its highest beat", () => {
     const bars = readBeatMapBars(beatMapOf([["1", 3], "1-2", ["2", 2]]));
 
-    expect(bars).toEqual([
+    expect(bars.map(({ label, beats }) => ({ label, beats }))).toEqual([
       { label: "1", beats: 3 },
       { label: "1-2", beats: 4 },
       { label: "2", beats: 2 },
+    ]);
+  });
+
+  it("times every beat and ends each bar where the next one starts", () => {
+    const bars = readBeatMapBars(beatMapOf([["1", 2], ["2", 1]]));
+
+    expect(bars.map(({ beatTicks, endTick }) => ({ beatTicks, endTick }))).toEqual([
+      { beatTicks: [0, TICKS_PER_BEAT], endTick: 2 * TICKS_PER_BEAT },
+      { beatTicks: [2 * TICKS_PER_BEAT], endTick: 3 * TICKS_PER_BEAT },
     ]);
   });
 

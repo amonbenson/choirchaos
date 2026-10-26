@@ -1,3 +1,4 @@
+import { readBeatMapBars } from "../midi/beatMap";
 import { BeatEvent, MidiEventList } from "../midi/events";
 import type { Tick } from "../midi/types";
 import type { WarpMarker } from "../midi/warp";
@@ -19,57 +20,20 @@ export type TimelinePosition = TimelineEntry & {
 
 export type ResolvedTimeline = readonly TimelinePosition[];
 
-type BeatMapEvent = MTIMidiJson["score"]["events"][number];
-type BeatMapBeat = Extract<BeatMapEvent, { type: "BEAT" }>;
-type BeatMapBar = { label: string; beatTicks: Tick[] };
-
-function isBeat(event: BeatMapEvent): event is BeatMapBeat {
-  return event.type === "BEAT";
-}
-
-function fillMissingBeats(beatTicks: (Tick | undefined)[]): Tick[] {
-  let previous = beatTicks.find(tick => tick !== undefined) ?? 0;
-  return Array.from(beatTicks, (tick) => {
-    previous = tick ?? previous;
-    return previous;
-  });
-}
-
-/** The beat map's bars in tick order, including the terminal bar. A bar starts whenever the label changes. */
-function readBeatMapBars(beatMap: MTIMidiJson): BeatMapBar[] {
-  const beats = beatMap.score.events.filter(isBeat).sort((a, b) => a.tickcount - b.tickcount);
-  const bars: { label: string; beatTicks: (Tick | undefined)[] }[] = [];
-
-  for (const { tickcount, value } of beats) {
-    let bar = bars.at(-1);
-    if (bar?.label !== value.meas) {
-      bar = { label: value.meas, beatTicks: [] };
-      bars.push(bar);
-    }
-
-    bar.beatTicks[value.beat - 1] = tickcount;
-  }
-
-  return bars.map(({ label, beatTicks }) => ({ label, beatTicks: fillMissingBeats(beatTicks) }));
-}
-
 /**
  * Times a MIDI song's timeline with its beat map, whose k-th bar is timeline position k. Each position
  * takes its beats from its own bar, which can have more beats than the measure's first occurrence.
  */
 export function resolveMidiTimeline(timeline: Timeline, beatMap: MTIMidiJson): TimelinePosition[] {
   const bars = readBeatMapBars(beatMap);
-  const playedBars = bars.length - 1;
-  if (playedBars !== timeline.length) {
-    throw new Error(`The beat map has ${Math.max(0, playedBars)} measures, but the recording plays ${timeline.length}.`);
+  if (bars.length !== timeline.length) {
+    throw new Error(`The beat map has ${bars.length} measures, but the recording plays ${timeline.length}.`);
   }
 
-  return timeline.map((entry, position) => ({
-    ...entry,
-    beats: bars[position]!.beatTicks.length,
-    beatTicks: bars[position]!.beatTicks,
-    endTick: bars[position + 1]!.beatTicks[0]!,
-  }));
+  return timeline.map((entry, position) => {
+    const { beats, beatTicks, endTick } = bars[position]!;
+    return { ...entry, beats, beatTicks, endTick };
+  });
 }
 
 /** Resolves warp markers to timeline positions. Markers whose occurrence the recording no longer plays are dropped. */

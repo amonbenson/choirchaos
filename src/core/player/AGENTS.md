@@ -25,7 +25,7 @@ Playback engine shared by both modes:
 ## Timeline
 
 - A `TimelinePosition` is a timeline entry with `beats`, `beatTicks` and `endTick`. The timeline is the engine's only timing source: measures carry no ticks.
-- MIDI: the beat map's k-th bar is position k. Bars start where the `BEAT` label changes, and the last bar is the terminal bar that only ends the one before it. A count mismatch fails the load. A position takes its beats from its own bar, so a later occurrence can have more beats than `measure.beats` (a 1-beat `153-1` followed by a 2-beat `153-2`). Lookups clamp beats to the bar.
+- MIDI: the beat map's k-th bar is position k. Bars come from `readBeatMapBars()` in `../midi/beatMap.ts`, the same reader the import uses: a bar starts where the `BEAT` label changes, and the terminal bar only ends the one before it. A count mismatch fails the load. A position takes its beats from its own bar, so a later occurrence can have more beats than `measure.beats` (a 1-beat `153-1` followed by a 2-beat `153-2`). Lookups clamp beats to the bar.
 - Audio: `WarpMap` indices are positions. Warp markers resolve through `(measure, occurrence)`, and markers that no longer resolve are dropped. Beats are spread evenly over a position.
 - `systemEvents.beat` holds one `BeatEvent { position, beat }` per beat. The current location is looked up in the timeline after every step, not reported by the backends.
 - MIDI also collects the tracks that start a note in each position (`getActiveTrackIndices()`), which the score uses to highlight boxes.
@@ -60,6 +60,7 @@ Playback engine shared by both modes:
 ## Warp Editing
 
 - `WaveformView` draws `mixdownChunks()` with peaks.js. Audio mode positions are milliseconds, peaks.js works in seconds.
+- Warp markers are keyed by `(measure, occurrence)`, and their labels name the occurrence from the second time on.
 - `warpEditing.ts` keeps markers in timeline order: new markers only go between their neighbours and dragging is clamped between them, since `WarpMap` requires strictly increasing marker times.
 - peaks.js caches every zoom level it resamples, so zoom only moves along `ZoomLadder` levels to keep the cache bounded. The base waveform has one sample per pixel (coarser for very long recordings), which allows zooming to single samples.
 

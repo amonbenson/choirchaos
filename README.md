@@ -1,6 +1,6 @@
 # Choir Chaos
 
-A web-based rehearsal platform for musical ensembles, loosely based on [ChordChaos](https://chordchaos.com/) and similar proprietary tools. Editors organize shows into songs, upload sheet music PDFs with MIDI or audio files, and sync them to the score with automatic measure detection. Rehearsers play songs back with multi-track mixing, vamp loops, segues and real-time time-stretching. Shows can be private, unlisted or public, with owner, editor and viewer roles.
+A web-based rehearsal platform for musical ensembles, loosely based on [ChordChaos](https://chordchaos.com/) and similar proprietary tools. Editors organize shows into songs, upload sheet music PDFs with MIDI or audio files, and sync them to the score with automatic measure detection. Rehearsers play songs back with multi-track mixing, vamps, repeats, cuts, segues and real-time time-stretching. Shows can be private, unlisted or public, with owner, editor and viewer roles.
 
 ## Technology Stack
 

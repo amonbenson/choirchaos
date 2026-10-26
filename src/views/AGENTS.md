@@ -20,7 +20,7 @@ Every page starts with `HeaderBar`. Its start holds `ShowBreadcrumb`, modelled o
 | `HomeView` | `home` `/` | everyone | Picking and creating shows |
 | `ShowEditView` | `show-edit` `/show/:showId/edit` | editors | Show title, cover, sharing, deletion, the song list, creating and importing songs |
 | `WorkspaceView` | `show`, `song` `/show/:showId/song/:songId` | everyone | Rehearsing: transport, mixer, markers, score |
-| `WorkspaceView` | `song-edit` `/show/:showId/song/:songId/edit` | editors | Song details, markers, measures, audio sync, deleting the song |
+| `WorkspaceView` | `song-edit` `/show/:showId/song/:songId/edit` | editors | Song details, markers, sections, measures, audio sync, deleting the song |
 
 - Both views and the router guard get the show from `stores/show`, which keeps one instance while the route stays in that show and drops it when the route leaves. Never fetch the show per view, or the header loses it on every switch between the show page and a song.
 - `WorkspaceView` decides whether it edits from the route name, never from local state. The router guard sends viewers who open an edit URL to the player.
@@ -29,8 +29,8 @@ Every page starts with `HeaderBar`. Its start holds `ShowBreadcrumb`, modelled o
 
 ## Song Editor
 
-- The player shows the Markers panel only when the song has markers. The editor puts its panel there, with the tabs Details, Markers and Measures. The tab is a persisted setting (`workspace.editorTab`), so other places point at a step by setting it. Selecting or drawing on the score, the Draw tool and detection switch to Measures.
-- The Details tab keeps a draft and saves with "Save", because saving uploads files. "Revert" or switching songs drops the draft. Markers save on Enter or blur.
+- The player shows the Markers panel only when the song has markers. The editor puts its panel there, with the tabs Details, Markers, Measures and Sections. The tab is a persisted setting (`workspace.editorTab`), so other places point at a step by setting it. Selecting or drawing on the score, the Draw tool and detection switch to Measures.
+- The Details tab keeps a draft and saves with "Save", because saving uploads files. "Revert" or switching songs drops the draft. Markers and sections save on Enter or blur, and selects on change. Both take locations through `LocationInput`, which offers the occurrence only for measures the recording plays more than once. A section that `validateSections()` rejects is not saved and shows the reason below its row. After a section edit the player calls `syncWarp()` instead of reloading.
 - All measure work happens in the Measures tab. The score only selects and draws, never opens a popover. Its tools decide what a drag does, for mouse and touch alike: Select draws a marquee that may start beside the pages and reaches across them (with ctrl/cmd it adds to the selection), Move pans like the player, Draw adds a box. Move is the default, and holding Shift switches to Select while it is held, so the toolbar and cursor always show the active tool. With Select and Move, click selects, shift-click selects a range, ctrl/cmd-click toggles, a click on empty space clears the selection and touch long-press starts multi-select. Ctrl/cmd+A selects every box, and so does "Select all", which only touch devices show since they have no shortcut. The middle button, the wheel and pinching pan or zoom with every tool. Resize handles appear on a single selected box only, so multi-select ends once one box or none is left.
 - While editing, the score's overlay takes every press and tracks it as one gesture with the tool it started with. Drags capture the pointer only once they move (here and in `usePanZoom`), because an earlier capture retargets the click of a tap away from the box under it.
 - The panel shows what is not placed when nothing is selected, the selection's properties otherwise, and asks what a newly drawn box holds.

@@ -47,12 +47,12 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 | `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useMeasureEditor` holds the song editor's selection and tool |
 | `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
 | `src/router/` | Routes and navigation guards |
-| `src/core/models/` | Domain models (Show, Song, Track, Measure, MeasureEvent) and the pure logic around them: song dialog drafts, setup status, measure editing, detection and review |
+| `src/core/models/` | Domain models (Show, Song, Track, Measure, markers, sections) and the pure logic around them: the recording timeline, location formatting, song dialog drafts, setup status, measure editing, detection, review and warp editing |
 | `src/core/import/` | Groups dropped files into songs by the number in their names |
 | `src/core/player/` | Playback engine with MIDI and audio backends. See `src/core/player/AGENTS.md` |
-| `src/core/midi/` | MIDI event types, beat maps and the tick/time `WarpMap` |
+| `src/core/midi/` | MIDI event types, beat map import and the `WarpMap` from timeline positions to recording time |
 | `src/core/pdf/` | PDF rendering in a Web Worker, automatic measure detection |
-| `src/core/utils/` | `Property`/`Emitter` events, measure numbering, `Updater`, `ZoomLadder` and small helpers |
+| `src/core/utils/` | `Property`/`Emitter` events, song numbering, `Updater`, `ZoomLadder` and small helpers |
 | `src/pocketbase/` | PocketBase client, auth, DB access |
 | `src/test/` | Shared test setup, fixtures, and helpers |
 | `e2e/` | Playwright tests against a Dockerized backend, plus test data generators. See `e2e/AGENTS.md` |
@@ -76,7 +76,7 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 
 ## UI
 
-Rehearsers (viewers) only play songs back. Editors (editors and owners) also set up shows, songs, measures and audio sync. Which page owns which action is mapped in `src/views/AGENTS.md`. Every page, the song editor included, must work on phones, tablets and desktops.
+Rehearsers (viewers) only play songs back. Editors (editors and owners) also set up shows, songs, measures, markers, sections and audio sync. Which page owns which action is mapped in `src/views/AGENTS.md`. Every page, the song editor included, must work on phones, tablets and desktops.
 
 ### Design Principles
 
@@ -117,6 +117,7 @@ Rehearsers (viewers) only play songs back. Editors (editors and owners) also set
 - Canvas components cannot use CSS variables. Resolve theme colors at runtime and rebuild when the `.dark` class changes (see `WaveformView`).
 - Dark mode is class-based (`.dark`). Check every visual change in both modes.
 - A MIDI track's title links it to its MIDI data by name, so MIDI tracks cannot be renamed.
+- Locations are shown through `locationFormat.ts`. Markers and location inputs name every occurrence of a measure that plays more than once ("12, 1st time"), while warp markers and section names only add it from the second time on, since there the first occurrence is the obvious one.
 
 ### Accessibility
 
@@ -150,7 +151,7 @@ Every change keeps the app usable with a screen reader and keyboard. Prefer nati
 - `vite.config.ts` excludes `measure-detection` and `onnxruntime-web` from dependency pre-bundling, which would break their relative worker and WASM loading in the dev server.
 - `pdfjs-dist` must satisfy the `measure-detection` peer range, since the app passes its own `PDFDocumentProxy` in.
 - Detection never writes directly. `planMeasureDetection()` builds a plan that is previewed until the user applies or discards it, and `toMeasureEdit()` turns it into one `MeasureEdit`. Detected numbers are matched to labels without regard to case. Only text that parses as a measure number creates a measure, at its box's reading-order position, and in MIDI mode it never adds measures.
-- Applying keeps what detection was unsure about: low-confidence boxes get `review: true` in their layout, and boxes without a usable number go into the song's `unnumberedBoxes`. Leftovers on top of an existing box are dropped, so detecting twice does not pile them up.
+- Applying keeps what detection was unsure about: low-confidence boxes get `review: true` in their layout, and boxes without a usable number go into `score.unnumberedBoxes`. Leftovers on top of an existing box are dropped, so detecting twice does not pile them up.
 - Confirming or renumbering a box clears its review flag (boxes only shifted out of the way keep it), and numbering an unnumbered box makes it that measure's layout. While any review item is open, `songSetup` does not report the song as ready.
 
 ---
@@ -164,7 +165,7 @@ PocketBase lives in a separate repository (`choirchaos-pb`). The app reads its U
 - Users can only read their own user record, so member names and email lookups go through `pb_hooks/members.pb.js` (`Show.getMembers()`/`addMember()`). Role changes and removals use the regular show update, which only the owner may do.
 - A MIDI song is only playable together with its beat map (`jsonFile`). Never store one without the other.
 - A song stores its layers in the JSON fields `score`, `recording` and `arrangement`. Each is always read and written whole, through one serializer per layer in `Song`, and the app has no handling for older formats. A change that touches several layers (removing measures, replacing the beat map) sends them in one request, which PocketBase applies atomically.
-- A song with measures always has recording spans. A MIDI song's score and recording come from its beat map, which stays its timing source, and it never has warp markers.
+- A song with measures always has recording spans. A MIDI song's score and recording come from its beat map through `scoreFromBeatMap()`, which reads repeated passes (`12-2`, `12R`) as the written measure `12`. The beat map stays the timing source, and a MIDI song never has warp markers.
 - Every mutation removes the references it leaves unresolved (markers, sections, warp markers), since the e2e invariants reject them.
 
 ---
