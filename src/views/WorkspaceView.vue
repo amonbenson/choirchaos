@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { breakpointsTailwind, useBreakpoints, useElementSize } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
@@ -66,6 +67,11 @@ const tabs = computed(() => [
 const selectedTab = computed(() => tabs.value.some(tab => tab.value === settings.current.workspace.selectedTab)
   ? settings.current.workspace.selectedTab
   : "pdf");
+
+const isSheetLayout = useBreakpoints(breakpointsTailwind).smaller("lg");
+const editorPanel = ref();
+const { height: editorPanelHeight } = useElementSize(editorPanel, undefined, { box: "border-box" });
+const scoreCoveredBottom = computed(() => editMode.value && isSheetLayout.value ? editorPanelHeight.value : 0);
 
 const songs = computed(() => show.value?.songs ?? []);
 const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
@@ -378,7 +384,8 @@ const pdfLoading = ref(false);
       >
         <SongEditorPanel
           v-if="editMode"
-          class="pointer-events-auto absolute inset-x-0 bottom-0 max-h-[70%] min-h-0 lg:inset-0 lg:max-h-none"
+          ref="editorPanel"
+          class="pointer-events-auto absolute inset-x-0 bottom-0 max-h-1/2 min-h-0 lg:inset-0 lg:max-h-none"
           :class="isStartPanelOpen ? 'lg:opacity-100' : 'lg:pointer-events-none lg:opacity-0'"
           :song="song"
           @open-details="openSongDetails"
@@ -412,6 +419,7 @@ const pdfLoading = ref(false);
             class="size-full"
             :song="song"
             :edit-mode="editMode"
+            :covered-bottom="scoreCoveredBottom"
             @pdf-loading="pdfLoading = $event"
           />
         </div>

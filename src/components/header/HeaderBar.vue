@@ -20,7 +20,10 @@ import { getBeatTick } from "@/core/player/timeline";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
+import PlaybackControlsForm from "./PlaybackControlsForm.vue";
 import ShowBreadcrumb from "./ShowBreadcrumb.vue";
+import TempoStepper from "./TempoStepper.vue";
+import TranspositionStepper from "./TranspositionStepper.vue";
 import UserMenuButton from "./UserMenuButton.vue";
 
 type NoteValue = "quarter" | "half" | "dottedQuarter" | "dottedHalf";
@@ -41,6 +44,8 @@ const NOTE_VALUE_SVG_MAP: Record<NoteValue, object> = {
 // The breadcrumb shares the row with the Edit toggle. Below sm, and from lg up where the transport
 // shares the row too, it only fits when they drop their labels.
 const NARROW_HIDDEN_LABEL = "hidden sm:inline lg:hidden xl:inline";
+
+const BAR_GAP = "gap-2 sm:gap-4 2xl:gap-8";
 
 const props = defineProps<{
   show?: Show;
@@ -135,33 +140,44 @@ const tempoNoteValue: ComputedRef<NoteValue> = computed(() => {
 });
 const writtenTempo = computed(() => player.currentTempo / NOTE_VALUE_QUARTER_MAP[tempoNoteValue.value]);
 
-const playbackSpeedPercentage = computed({
-  get: () => player.playbackSpeed * 100,
-  set: value => player.playbackSpeed = value / 100,
-});
+const speedPercentage = computed(() => Math.round(player.playbackSpeed * 100));
+const isTempoChanged = computed(() => speedPercentage.value !== 100);
 
 const tempoLabel = computed(() => {
   if (player.mode === "midi") {
     return player.ready ? `Tempo ${Math.round(player.playbackSpeed * writtenTempo.value)}` : "Tempo";
   }
 
-  const percentage = Math.round(playbackSpeedPercentage.value);
-  return percentage === 100 ? "Tempo" : `Tempo ${percentage} %`;
+  return isTempoChanged.value ? `Tempo ${speedPercentage.value} %` : "Tempo";
 });
 
+const transpositionText = computed(() => `${player.playbackTransposition > 0 ? "+" : ""}${player.playbackTransposition}`);
+
+const timeSignatureText = computed(() => player.mode === "midi"
+  ? `${player.currentTimeSignature[0]}/${Math.pow(2, player.currentTimeSignature[1])}`
+  : "-/-");
+
 const timeSignatureLabel = computed(() => player.mode === "midi"
-  ? `Time signature ${player.currentTimeSignature[0]}/${Math.pow(2, player.currentTimeSignature[1])}`
+  ? `Time signature ${timeSignatureText.value}`
   : "Time signature");
+
+const hasMoreControls = computed(() => visibleButtons.value.transposition || visibleButtons.value.tempo
+  || visibleButtons.value.timeSignature || visibleButtons.value.segue
+  || (visibleButtons.value.measure && player.mode === "midi"));
+
+// The bar only hides the beat on phones, so a "More" that would hold nothing else is only needed there.
+const moreOnlyHoldsBeat = computed(() => !visibleButtons.value.transposition && !visibleButtons.value.tempo
+  && !visibleButtons.value.timeSignature && !visibleButtons.value.segue);
 </script>
 
 <template>
   <div class="relative">
     <Toolbar
-      class="relative px-4"
-      :class="playback ? 'grid grid-cols-[auto_auto] lg:grid-cols-[repeat(3,auto)] lg:overflow-x-auto' : 'flex-nowrap'"
-      pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-4 sm:gap-8 min-w-0 overflow-hidden"
+      class="relative px-2 sm:px-4"
+      :class="playback ? 'grid grid-cols-[auto_minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,1fr)_auto_auto_auto]' : 'flex-nowrap'"
+      :pt:start="`col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center min-w-0 overflow-hidden ${BAR_GAP}`"
       pt:center="flex justify-center items-center"
-      :pt:end="playback ? 'overflow-x-auto lg:overflow-x-visible min-w-0' : 'flex-none'"
+      :pt:end="playback ? 'contents' : 'flex-none'"
     >
       <template #start>
         <ShowBreadcrumb
@@ -217,30 +233,35 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
       </template>
 
       <template #end>
-        <div class="flex items-center justify-end gap-4 sm:gap-8">
-          <template v-if="playback">
-            <!-- Measure -->
-            <div
-              v-if="visibleButtons.measure"
-              class="flex items-center justify-end gap-1"
+        <!-- Below lg the account sits next to the breadcrumb, so the playback controls have the second row to themselves. -->
+        <div
+          v-if="playback"
+          class="col-span-2 col-start-2 row-start-2 flex min-w-0 items-center justify-end lg:col-span-1 lg:col-start-3 lg:row-start-1"
+          :class="BAR_GAP"
+        >
+          <!-- Measure -->
+          <div
+            v-if="visibleButtons.measure"
+            class="flex flex-none items-center justify-end gap-1"
+          >
+            <PopoverButton
+              button-class="w-12 whitespace-nowrap"
+              :aria-label="measureLabel === undefined ? 'Current measure' : `Current measure ${measureLabel}`"
+              :label="measureLabel ?? '-'"
+              :disabled="!player.ready"
             >
-              <PopoverButton
-                button-class="w-12 whitespace-nowrap"
-                :aria-label="measureLabel === undefined ? 'Current measure' : `Current measure ${measureLabel}`"
-                :label="measureLabel ?? '-'"
-                :disabled="!player.ready"
-              >
-                <template #default="{ setFocusTarget }">
-                  <InputText
-                    :ref="setFocusTarget"
-                    :model-value="measureLabel"
-                    aria-label="Current measure"
-                    class="w-16"
-                    fluid
-                    @change="player.setMeasure(($event.target as HTMLInputElement).value)"
-                  />
-                </template>
-              </PopoverButton>
+              <template #default="{ setFocusTarget }">
+                <InputText
+                  :ref="setFocusTarget"
+                  :model-value="measureLabel"
+                  aria-label="Current measure"
+                  class="w-16"
+                  fluid
+                  @change="player.setMeasure(($event.target as HTMLInputElement).value)"
+                />
+              </template>
+            </PopoverButton>
+            <div class="hidden items-center gap-1 sm:flex">
               .
               <PopoverButton
                 button-class="w-8 whitespace-nowrap"
@@ -260,50 +281,19 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
                 </template>
               </PopoverButton>
             </div>
+          </div>
 
+          <div class="hidden xl:contents">
             <!-- Transposition -->
             <PopoverButton
               v-if="visibleButtons.transposition"
               button-class="w-16 whitespace-nowrap"
-              :aria-label="`Transposition ${player.playbackTransposition > 0 ? '+' : ''}${player.playbackTransposition} semitones`"
-              :label="`${player.playbackTransposition > 0 ? '+' : ''}${player.playbackTransposition}&nbsp;HT`"
+              :aria-label="`Transposition ${transpositionText} semitones`"
+              :label="`${transpositionText}&nbsp;HT`"
               :active="player.playbackTransposition !== 0"
             >
               <template #default="{ setFocusTarget }">
-                <div class="flex items-center justify-stretch gap-1">
-                  <Button
-                    icon="pi pi-minus"
-                    severity="secondary"
-                    size="small"
-                    rounded
-                    text
-                    :disabled="player.playbackTransposition <= -12"
-                    aria-label="Transpose down"
-                    @click="player.playbackTransposition--"
-                  />
-                  <InputNumber
-                    :ref="setFocusTarget"
-                    v-model="player.playbackTransposition"
-                    aria-label="Transposition in semitones"
-                    class="w-20"
-                    :min="-12"
-                    :max="12"
-                    :step="1"
-                    :prefix="player.playbackTransposition > 0 ? '+' : ''"
-                    suffix=" HT"
-                    fluid
-                  />
-                  <Button
-                    icon="pi pi-plus"
-                    severity="secondary"
-                    size="small"
-                    rounded
-                    text
-                    :disabled="player.playbackTransposition >= 12"
-                    aria-label="Transpose up"
-                    @click="player.playbackTransposition++"
-                  />
-                </div>
+                <TranspositionStepper :ref="setFocusTarget" />
               </template>
             </PopoverButton>
 
@@ -312,7 +302,7 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
               v-if="visibleButtons.tempo"
               button-class="w-22 whitespace-nowrap"
               :aria-label="tempoLabel"
-              :active="Math.round(playbackSpeedPercentage) !== 100"
+              :active="isTempoChanged"
             >
               <template #button>
                 <template v-if="player.mode === 'midi'">
@@ -322,44 +312,12 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
                   />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * writtenTempo) : "-" }}
                 </template>
                 <template v-else>
-                  {{ Math.round(playbackSpeedPercentage) === 100 ? 'Tempo' : `${Math.round(playbackSpeedPercentage)} %` }}
+                  {{ isTempoChanged ? `${speedPercentage} %` : 'Tempo' }}
                 </template>
               </template>
 
               <template #default="{ setFocusTarget }">
-                <div class="flex items-center justify-stretch gap-4">
-                  <Button
-                    icon="pi pi-minus"
-                    severity="secondary"
-                    size="small"
-                    rounded
-                    text
-                    :disabled="playbackSpeedPercentage <= 10"
-                    aria-label="Slower"
-                    @click="playbackSpeedPercentage--"
-                  />
-                  <InputNumber
-                    :ref="setFocusTarget"
-                    v-model="playbackSpeedPercentage"
-                    aria-label="Playback speed in percent"
-                    class="w-18"
-                    :min="10"
-                    :max="300"
-                    :step="1"
-                    suffix=" %"
-                    fluid
-                  />
-                  <Button
-                    icon="pi pi-plus"
-                    severity="secondary"
-                    size="small"
-                    rounded
-                    text
-                    :disabled="playbackSpeedPercentage >= 300"
-                    aria-label="Faster"
-                    @click="playbackSpeedPercentage++"
-                  />
-                </div>
+                <TempoStepper :ref="setFocusTarget" />
               </template>
             </PopoverButton>
 
@@ -368,40 +326,61 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
               v-if="visibleButtons.timeSignature"
               class="cursor-default"
               severity="secondary"
+              :label="timeSignatureText"
               :aria-label="timeSignatureLabel"
+            />
+          </div>
+
+          <!-- Section: releases or resets a vamp, and shows the pass of a repeat -->
+          <Button
+            v-if="visibleButtons.vamp"
+            class="min-w-0 shrink whitespace-nowrap sm:w-28 sm:flex-none"
+            pt:label="truncate"
+            :disabled="section?.kind !== 'vamp'"
+            :label="sectionLabel"
+            :severity="vamping ? 'primary': 'secondary'"
+            @click="emit('toggleVamp')"
+          />
+
+          <!-- Segue -->
+          <Button
+            v-if="visibleButtons.segue"
+            class="hidden w-24 whitespace-nowrap xl:inline-flex"
+            :disabled="player.currentSegue === undefined"
+            label="Segue"
+            :aria-pressed="!!player.currentSegue?.enabled"
+            :severity="player.currentSegue?.enabled ? 'primary': 'secondary'"
+            @click="emit('toggleSegue')"
+          />
+
+          <!-- The controls that do not fit the bar below xl -->
+          <div
+            v-if="hasMoreControls"
+            class="contents"
+            :class="moreOnlyHoldsBeat ? 'sm:hidden' : 'xl:hidden'"
+          >
+            <PopoverButton
+              button-class="flex-none"
+              aria-label="More playback controls"
+              :active="isTempoChanged || player.playbackTransposition !== 0 || !!player.currentSegue?.enabled"
             >
-              <template v-if="player.mode === 'midi'">
-                {{ player.currentTimeSignature[0] }}&nbsp;/&nbsp;{{ Math.pow(2, player.currentTimeSignature[1]) }}
+              <template #button>
+                <i
+                  class="pi pi-ellipsis-v"
+                  aria-hidden="true"
+                />
               </template>
-              <template v-else>
-                &ndash;&nbsp;/&nbsp;&ndash;
-              </template>
-            </Button>
 
-            <!-- Section: releases or resets a vamp, and shows the pass of a repeat -->
-            <Button
-              v-if="visibleButtons.vamp"
-              class="w-28 whitespace-nowrap"
-              :disabled="section?.kind !== 'vamp'"
-              :label="sectionLabel"
-              :severity="vamping ? 'primary': 'secondary'"
-              @click="emit('toggleVamp')"
-            />
-
-            <!-- Segue -->
-            <Button
-              v-if="visibleButtons.segue"
-              class="w-24 whitespace-nowrap"
-              :disabled="player.currentSegue === undefined"
-              label="Segue"
-              :severity="player.currentSegue?.enabled ? 'primary': 'secondary'"
-              @click="emit('toggleSegue')"
-            />
-          </template>
-
-          <!-- User menu -->
-          <UserMenuButton class="-ml-1" />
+              <PlaybackControlsForm
+                :time-signature-text="timeSignatureText"
+                @toggle-segue="emit('toggleSegue')"
+              />
+            </PopoverButton>
+          </div>
         </div>
+
+        <!-- User menu -->
+        <UserMenuButton :class="playback ? 'col-start-3 row-start-1 justify-self-end lg:col-start-4' : '-ml-1'" />
       </template>
     </Toolbar>
 

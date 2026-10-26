@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onLongPress, useEventListener } from "@vueuse/core";
+import { onLongPress, useElementSize, useEventListener } from "@vueuse/core";
 import SelectButton from "primevue/selectbutton";
 import { computed, type ComputedRef, nextTick, ref, shallowRef, useId, watch } from "vue";
 
@@ -31,7 +31,7 @@ import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
 import { usePlayerStore } from "@/stores/player";
 
-import PdfViewer from "./PdfViewer.vue";
+import PdfViewer, { type ViewInsets } from "./PdfViewer.vue";
 import { SECTION_COLORS, SECTION_CONTRAST_TEXT } from "./sectionColors";
 
 const player = usePlayerStore();
@@ -42,6 +42,8 @@ const { tool, pendingBox, pendingCount, touchMultiSelect, detection, revealReque
 const props = defineProps<{
   song?: Song;
   editMode?: boolean;
+  /** Pixels at the bottom of the score that a panel covers, such as the inspector's bottom sheet. */
+  coveredBottom?: number;
 }>();
 
 const emit = defineEmits<{
@@ -412,6 +414,43 @@ watch(revealRequest, (request) => {
   }
 });
 
+// The tool switcher floats this far below the top edge of the score.
+const TOOLBAR_OFFSET_PX = 8;
+const toolbar = ref();
+const { height: toolbarHeight } = useElementSize(toolbar, undefined, { box: "border-box" });
+
+const viewInsets = computed<ViewInsets>(() => ({
+  top: props.editMode ? TOOLBAR_OFFSET_PX + toolbarHeight.value : 0,
+  bottom: props.coveredBottom ?? 0,
+}));
+
+type ClickedBox = { measureId: MeasureId } | { box: MeasureLayout };
+
+/** The box clicked last, kept in view while it stays selected. */
+let lastClicked: ClickedBox | undefined;
+
+function getLastClickedLayout(): MeasureLayout | undefined {
+  const clicked = lastClicked;
+  if (!clicked) {
+    return undefined;
+  }
+
+  if ("box" in clicked) {
+    return editor.isBoxSelected(clicked.box) ? clicked.box : undefined;
+  }
+
+  return editor.selection.value.find(measure => measure.id === clicked.measureId)?.layout;
+}
+
+// Selecting expands the bottom sheet, which would otherwise cover the box that was just clicked.
+// Post flush, so the viewer already knows the new insets.
+watch(() => props.coveredBottom ?? 0, (covered, previous) => {
+  const layout = getLastClickedLayout();
+  if (layout && covered > previous) {
+    scrollToLayout(layout);
+  }
+}, { flush: "post" });
+
 function scrollToLayout(layout: MeasureLayout): void {
   if (!pdfViewer.value) {
     return;
@@ -524,6 +563,7 @@ function onBoxClick(event: MouseEvent, measure: Measure): void {
     return;
   }
 
+  lastClicked = { measureId: measure.id };
   if (lastPointerType !== "mouse") {
     if (touchMultiSelect.value) {
       editor.toggle(measure);
@@ -549,6 +589,7 @@ function onUnnumberedClick(event: MouseEvent, box: MeasureLayout): void {
     return;
   }
 
+  lastClicked = { box };
   const toggles = lastPointerType === "mouse" ? event.shiftKey || event.ctrlKey || event.metaKey : touchMultiSelect.value;
   if (toggles) {
     editor.toggleBox(box);
@@ -1044,6 +1085,7 @@ async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
     class="@container"
     :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
     :pannable="!editMode || activeTool === 'move'"
+    :insets="viewInsets"
     role="region"
     aria-label="Score"
     @loading-change="emit('pdf-loading', $event)"
@@ -1323,6 +1365,7 @@ async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
 
       <SelectButton
         v-if="editMode"
+        ref="toolbar"
         :model-value="activeTool"
         class="absolute top-2 left-1/2 -translate-x-1/2 shadow-sm"
         :options="TOOL_OPTIONS"
