@@ -44,7 +44,7 @@ Do not use `npm test`. It starts vitest in watch mode and never exits.
 |---|---|
 | `src/views/` | Routed pages. See `src/views/AGENTS.md` |
 | `src/components/` | UI components in the folder of the area they appear in (`header/`, `show/`, `song/`, `player/`, `editor/`, `score/`), plus generic `base/` and `icons/` |
-| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useMeasureEditor` holds the song editor's selection, the selected run and the tool. `useRecordingEditor` saves recording changes after previewing them |
+| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useMeasureEditor` holds the song editor's selection, the selected run and the tool. `useRecordingEditor` saves recording changes after previewing them. `useSyncEditor` saves sync points with at most one save in flight |
 | `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
 | `src/router/` | Routes and navigation guards |
 | `src/core/models/` | Domain models (Show, Song, Track, Measure, markers, sections) and the pure logic around them: the recording timeline, location formatting, song dialog drafts, setup status, measure editing, detection, review and warp editing |
@@ -85,7 +85,7 @@ Rehearsers (viewers) only play songs back. Editors (editors and owners) also set
 3. **One meaning per icon, app-wide** (see the table below). Icon-only buttons are reserved for universally known controls (transport, close, overflow). Everything else carries a text label where the layout has room, and always an `aria-label`.
 4. **State that matters lives in the URL.** Reloading or going back keeps the user where they were. Editing a song is a route, not a flag.
 5. **Every action has one home.** Secondary entry points open the same dialog or page and keep its label. Only empty states and status hints may name the step instead, e.g. "Add playback".
-6. **Do not duplicate information.** A canvas (the score, the waveform) is the list of its objects. Side panels show the selection's properties or what the canvas cannot show.
+6. **Do not duplicate information.** A canvas (the score in written order, the timeline in played order) is the list of its objects. Side panels show the selection's properties or what the canvas cannot show.
 7. **Select, then act.** The panel next to a canvas edits the whole selection at once and shows mixed values as empty. The selected occurrence is the one at the playhead.
 8. **Automation proposes, the user decides, leftovers stay visible.** Automatic results are previewed where they will appear, and anything still to check stays marked on the object until resolved.
 9. **Empty states and status hints name the next step** and contain the control that does it.
@@ -104,6 +104,7 @@ Rehearsers (viewers) only play songs back. Editors (editors and owners) also set
 | `pi-ellipsis-v` | More actions for this item |
 | `pi-sparkles` | Automatic measure detection |
 | `pi-bookmark` | A marker |
+| `pi-map-marker` | A sync point (audio sync) |
 | `pi-trash` | Delete or remove |
 | `pi-arrow-up-left` | The score's Select tool |
 | `pi-arrows-alt` | The score's Move tool |
@@ -117,7 +118,7 @@ Rehearsers (viewers) only play songs back. Editors (editors and owners) also set
 - No `prompt()`/`confirm()`. Destructive confirmations use PrimeVue's `useConfirm()`, errors use `useNotify()` toasts.
 - Canvas components cannot use CSS variables. Resolve theme colors at runtime and rebuild when the `.dark` class changes (see `WaveformView`).
 - Dark mode is class-based (`.dark`). Check every visual change in both modes.
-- Section kinds have one color each, defined once as theme tokens (`--color-section-repeat`, `-vamp`, `-cut` and `--color-section-contrast` for text on them) in `src/main.css` with `.dark` overrides. Components get the classes and variable names from `score/sectionColors.ts` and never spell out a section color.
+- Section kinds have one color each, defined once as theme tokens (`--color-section-repeat`, `-vamp`, `-cut` and `--color-section-contrast` for text on them) in `src/main.css` with `.dark` overrides. Components get the classes and variable names from `score/sectionColors.ts` and never spell out a section color. Sync points are orange everywhere, through `editor/warp/syncColors.ts`, so they never look like the playhead.
 - Score overlays are drawn by `ScoreViewer` from the pure geometry in `core/models/scoreOverlays.ts`. They take no pointer events. Each box's `aria-describedby` names its overlays, so only a section's first chip and the recorded repeat glyph are images of their own.
 - A MIDI track's title links it to its MIDI data by name, so MIDI tracks cannot be renamed.
 - Locations are shown through `locationFormat.ts`. Markers and location inputs name every occurrence of a measure that plays more than once ("12, 1st time"), while warp markers and section names only add it from the second time on, since there the first occurrence is the obvious one.

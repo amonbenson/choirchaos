@@ -27,7 +27,7 @@ export type InspectorGroupId = keyof DataOf<InspectorCollapsedSettings>;
 
 export class WorkspaceSettings extends SettingsBase {
   constructor(
-    public readonly selectedTab: "markers" | "pdf" | "mixer" = "pdf",
+    public readonly selectedTab: "markers" | "pdf" | "timeline" | "mixer" = "pdf",
     public readonly panelVisible: PanelVisibleSettings = new PanelVisibleSettings(),
     public readonly inspectorCollapsed: InspectorCollapsedSettings = new InspectorCollapsedSettings(),
   ) {

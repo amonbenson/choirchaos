@@ -4,9 +4,10 @@ import SelectButton from "primevue/selectbutton";
 import { computed, type ComputedRef, nextTick, ref, shallowRef, useId, watch } from "vue";
 
 import Draggable from "@/components/base/Draggable.vue";
+import { SYNC_POINT_COLORS } from "@/components/editor/warp/syncColors";
 import { injectMeasureEditor, type MeasureTool } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
-import { formatLocation, formatTimes } from "@/core/models/locationFormat";
+import { formatLocation, formatOrdinal, formatTimes } from "@/core/models/locationFormat";
 import Measure, { type MeasureId, type MeasureLayout, needsReview } from "@/core/models/measure";
 import { getReadingOrder, intersects, normalizeLayout, planLayouts, splitLayout } from "@/core/models/measureEditing";
 import { findNearestPosition, formatSectionName, getSectionRun, type SelectedRun, withRun } from "@/core/models/measureSelection";
@@ -25,6 +26,7 @@ import {
 } from "@/core/models/scoreOverlays";
 import { type SectionKind, validateSections } from "@/core/models/sections";
 import Song from "@/core/models/song";
+import { getSyncedOccurrences } from "@/core/models/warpEditing";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
 import { usePlayerStore } from "@/stores/player";
@@ -301,17 +303,48 @@ const markerChips = computed<(OverlayBox & { lane?: number })[]>(() => props.son
     })
   : []);
 
-const overlayDescriptions = computed(() => props.song
-  ? describeOverlays({
-      measures: props.song.getMeasures(),
-      timeline: props.song.getTimeline(),
-      sections: sectionOverlays.value,
-      repeats: recordedRepeats.value,
-      markers: props.song.getMarkers(),
-      jumps: recordingJumps.value,
-      playing: playingSection.value,
-    })
-  : new Map<MeasureId, string>());
+/** Sync points only matter while editing an audio song. One pin per measure, at its start. */
+const syncedOccurrences = computed(() => props.editMode && props.song?.playerMode === "audio"
+  ? getSyncedOccurrences(props.song.getTimeline(), props.song.getWarpMarkers())
+  : new Map<MeasureId, number[]>());
+
+const syncPins = computed(() => [...syncedOccurrences.value.keys()].flatMap((id) => {
+  const layout = props.song?.findMeasure(id)?.layout;
+  return layout ? [{ key: `sync-${id}`, layout }] : [];
+}));
+
+function describeSyncPin(measure: MeasureId, occurrences: readonly number[]): string {
+  if (countOccurrences(props.song!.getTimeline(), measure) < 2) {
+    return "Sync point";
+  }
+
+  const times = occurrences.map(formatOrdinal);
+  const list = times.length > 1 ? `${times.slice(0, -1).join(", ")} and ${times.at(-1)}` : times[0];
+  return `Sync point on the ${list} time`;
+}
+
+const overlayDescriptions = computed(() => {
+  if (!props.song) {
+    return new Map<MeasureId, string>();
+  }
+
+  const descriptions = describeOverlays({
+    measures: props.song.getMeasures(),
+    timeline: props.song.getTimeline(),
+    sections: sectionOverlays.value,
+    repeats: recordedRepeats.value,
+    markers: props.song.getMarkers(),
+    jumps: recordingJumps.value,
+    playing: playingSection.value,
+  });
+  for (const [measure, occurrences] of syncedOccurrences.value) {
+    const sync = `${describeSyncPin(measure, occurrences)}.`;
+    const existing = descriptions.get(measure);
+    descriptions.set(measure, existing ? `${existing} ${sync}` : sync);
+  }
+
+  return descriptions;
+});
 
 const descriptionIdPrefix = useId();
 
@@ -334,6 +367,10 @@ function sectionBarStyle({ run, lane }: SectionBar): Record<string, string> {
 function markerChipStyle({ layout, lane }: OverlayBox & { lane?: number }): Record<string, string> {
   const offset = lane === undefined ? 2 : BAR_OFFSET_PX + (lane + 1) * LANE_HEIGHT_PX;
   return { left: `calc(${layout.x * 100}% + 2px)`, top: `calc(${layout.y * 100}% - ${offset}px)` };
+}
+
+function syncPinStyle({ layout }: { layout: MeasureLayout }): Record<string, string> {
+  return { left: `${layout.x * 100}%`, top: `calc(${(layout.y + layout.height) * 100}% + 1px)` };
 }
 
 function recordedGlyphStyle({ layout }: OverlayBox): Record<string, string> {
@@ -1266,6 +1303,15 @@ async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
             <i class="pi pi-bookmark text-[0.5625rem]" />
             <span class="truncate">{{ marker.text }}</span>
           </span>
+
+          <i
+            v-for="pin of onPage(syncPins, page.pageNumber, item => item.layout.page)"
+            :key="pin.key"
+            class="pi pi-map-marker pointer-events-none absolute -translate-x-1/2 text-[0.625rem]"
+            :class="SYNC_POINT_COLORS.onScore"
+            :style="syncPinStyle(pin)"
+            aria-hidden="true"
+          />
         </div>
 
         <div
