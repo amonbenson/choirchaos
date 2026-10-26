@@ -8,7 +8,7 @@ import { useRoute, useRouter } from "vue-router";
 
 import KbdShortcut from "@/components/base/KbdShortcut.vue";
 import SongEditorPanel from "@/components/editor/SongEditorPanel.vue";
-import WarpPanel from "@/components/editor/warp/WarpPanel.vue";
+import TimelinePanel from "@/components/editor/warp/TimelinePanel.vue";
 import HeaderBar from "@/components/header/HeaderBar.vue";
 import BabySvenja from "@/components/icons/BabySvenja.vue";
 import MarkerPanel from "@/components/player/MarkerPanel.vue";
@@ -45,19 +45,21 @@ const song = ref<Song | undefined>();
 const songLoading = ref(true);
 const editMode = computed(() => route.name === "song-edit");
 const canEdit = computed(() => !!show.value && getAccessFlags(show.value.permissions, auth.user?.id).editor);
-const showWarpPanel = computed(() => editMode.value && song.value?.playerMode === "audio");
+const showTimeline = computed(() => editMode.value && !!song.value);
 const hasMarkers = computed(() => (song.value?.getMarkers().length ?? 0) > 0);
 const hasStartPanel = computed(() => editMode.value || hasMarkers.value);
 const isStartPanelOpen = computed(() => hasStartPanel.value && settings.current.workspace.panelVisible.markers);
-const isWarpPanelOpen = computed(() => showWarpPanel.value && settings.current.workspace.panelVisible.warp);
-const showSyncNotice = computed(() => !!song.value && hasUnsyncedAudio(song.value) && !isWarpPanelOpen.value);
+const isTimelineOpen = computed(() => showTimeline.value && settings.current.workspace.panelVisible.warp);
+const showSyncNotice = computed(() => !!song.value && hasUnsyncedAudio(song.value) && !isTimelineOpen.value);
 
 provideMeasureEditor(useMeasureEditor(song, editMode));
 
-// Rehearsers have nothing to do with an empty markers panel. Below lg the song editor's panel is a bottom sheet over the score.
+// Rehearsers have nothing to do with an empty markers panel. Below lg the song editor's panel is a bottom sheet
+// over the score and the timeline, which gets a tab of its own since it needs the width.
 const tabs = computed(() => [
   ...(editMode.value || !hasMarkers.value ? [] : [{ value: "markers", label: "Markers" } as const]),
   { value: "pdf", label: "PDF" } as const,
+  ...(showTimeline.value ? [{ value: "timeline", label: "Timeline" } as const] : []),
   { value: "mixer", label: "Mixer" } as const,
 ]);
 const selectedTab = computed(() => tabs.value.some(tab => tab.value === settings.current.workspace.selectedTab)
@@ -313,10 +315,8 @@ const pdfLoading = ref(false);
 
 <template>
   <div
-    class="grid size-full grid-cols-1 gap-2 overflow-hidden p-2 lg:grid-cols-[auto_1fr_auto]"
-    :class="showWarpPanel
-      ? 'grid-rows-[auto_auto_1fr_auto] lg:grid-rows-[auto_1fr_auto]'
-      : 'grid-rows-[auto_auto_1fr] lg:grid-rows-[auto_1fr]'"
+    class="grid size-full grid-cols-1 grid-rows-[auto_auto_1fr] gap-2 overflow-hidden p-2 lg:grid-cols-[auto_1fr_auto]"
+    :class="showTimeline ? 'lg:grid-rows-[auto_1fr_auto]' : 'lg:grid-rows-[auto_1fr]'"
   >
     <HeaderBar
       class="lg:col-span-3"
@@ -362,13 +362,13 @@ const pdfLoading = ref(false);
       desktop: use lg:contents to make the wrapper div invisible and use its contents as direct grid children
       mobile: div acts as a single grid cell where all panels overlap absolutely
     -->
-    <div class="relative size-full lg:contents">
+    <div class="relative col-start-1 row-start-3 size-full lg:contents">
       <!-- Markers Panel (player) or Song Editor Panel (editor) -->
       <div
         class="absolute inset-0 transition-all lg:relative lg:inset-auto lg:size-full"
         :class="[
           editMode
-            ? ['pointer-events-none z-10 lg:pointer-events-auto', selectedTab !== 'pdf' ? 'invisible lg:visible' : '']
+            ? ['pointer-events-none z-30 lg:pointer-events-auto lg:z-10', selectedTab === 'mixer' ? 'invisible lg:visible' : '']
             : selectedTab !== 'markers' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : '',
           isStartPanelOpen ? 'lg:w-96' : 'lg:w-0',
         ]"
@@ -506,10 +506,11 @@ const pdfLoading = ref(false);
       @deleted="onSongDeleted"
     />
 
-    <!-- Warp Panel (audio mode) -->
-    <WarpPanel
-      v-if="showWarpPanel"
-      class="lg:col-span-3"
+    <!-- Below lg the timeline shares the panels' grid cell and shows only in its tab. -->
+    <TimelinePanel
+      v-if="showTimeline && song"
+      class="z-20 col-start-1 row-start-3 min-h-0 lg:z-auto lg:col-span-3"
+      :class="selectedTab === 'timeline' ? '' : 'max-lg:hidden'"
       :song="song"
     />
   </div>

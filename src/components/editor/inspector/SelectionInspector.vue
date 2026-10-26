@@ -11,6 +11,7 @@ import InspectorGroup from "./InspectorGroup.vue";
 import MarkerGroup from "./MarkerGroup.vue";
 import RecordingGroup from "./RecordingGroup.vue";
 import RehearsalGroup from "./RehearsalGroup.vue";
+import SyncGroup from "./SyncGroup.vue";
 
 const MAX_LISTED_BOXES = 3;
 
@@ -81,6 +82,11 @@ defineExpose({ removeBoxes: () => selectionForm.value?.removeBoxes() });
         :run="selectedRun"
       />
       <RecordingGroup
+        :song="song"
+        :run="selectedRun"
+      />
+      <SyncGroup
+        v-if="song.playerMode === 'audio'"
         :song="song"
         :run="selectedRun"
       />

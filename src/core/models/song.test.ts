@@ -486,6 +486,45 @@ describe("Song recording", () => {
     expect(lastSave()).toEqual({ recording: song.serialize().recording });
   });
 
+  it("gives a warp marker to another occurrence and keeps its time", async () => {
+    const song = makeAudioSongWithRepeat();
+    const three = idOf(song, "3");
+    const twoSecond = { measure: idOf(song, "2"), occurrence: 2 };
+    await song.addWarpMarker({ ...twoSecond, time: 0.75 });
+    vi.clearAllMocks();
+
+    await song.reassignWarpMarker(twoSecond, { measure: three, occurrence: 2 });
+
+    expect(song.getWarpMarkers().map(m => [m.measure, m.occurrence, m.time])).toEqual([
+      [idOf(song, "1"), 1, 0],
+      [three, 1, 0.5],
+      [three, 2, 0.75],
+    ]);
+    expect(lastSave()).toEqual({ recording: song.serialize().recording });
+  });
+
+  it("reassigns a warp marker only to a free occurrence the recording plays", async () => {
+    const song = makeAudioSongWithRepeat();
+    const three = { measure: idOf(song, "3"), occurrence: 1 };
+
+    await expect(song.reassignWarpMarker(three, { measure: idOf(song, "1"), occurrence: 1 })).rejects.toThrow("already has");
+    await expect(song.reassignWarpMarker(three, { measure: idOf(song, "4"), occurrence: 2 })).rejects.toThrow("not played 2 times");
+    await expect(song.reassignWarpMarker({ measure: idOf(song, "2"), occurrence: 1 }, three)).rejects.toThrow("no warp marker");
+    await song.reassignWarpMarker(three, { measure: idOf(song, "4"), occurrence: 1 });
+
+    expect(song.getWarpMarkers().map(m => m.measure)).toEqual([idOf(song, "1"), idOf(song, "4")]);
+  });
+
+  it("refuses a reassignment that would break the timeline order", async () => {
+    const song = makeAudioSongWithRepeat();
+    await song.addWarpMarker({ measure: idOf(song, "2"), occurrence: 3, time: 1.25 });
+    vi.clearAllMocks();
+
+    await expect(song.reassignWarpMarker({ measure: idOf(song, "3"), occurrence: 1 }, { measure: idOf(song, "4"), occurrence: 1 }))
+      .rejects.toThrow("neighbouring");
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
   it("replaces the spans and drops what no longer resolves", async () => {
     const song = makeAudioSongWithRepeat();
     await song.addMarker(locationOf(song, "3", 0, 3), "Last time");

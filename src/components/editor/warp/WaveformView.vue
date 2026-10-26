@@ -7,6 +7,7 @@ import WaveformData from "waveform-data";
 
 import { getAnchoredStartTime, normalizeWheelDelta, ZoomLadder } from "@/core/utils/zoom";
 
+import { SYNC_POINT_COLORS } from "./syncColors";
 import { createLabelledPointMarkerFactory } from "./waveformMarker";
 
 export type WaveformMarker = {
@@ -26,7 +27,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   seek: [time: number];
   markerMove: [id: string, time: number];
-  markerClick: [id: string, event: MouseEvent];
+  markerClick: [id: string];
+  markerContextMenu: [id: string, event: MouseEvent];
+  /** The visible part of the recording changed, in seconds. */
+  view: [start: number, end: number];
 }>();
 
 // Full sample resolution costs 2 bytes per sample. Longer recordings start one level coarser.
@@ -38,6 +42,7 @@ const root = useTemplateRef<HTMLElement>("root");
 const zoomviewContainer = useTemplateRef<HTMLElement>("zoomview");
 const scrollbarContainer = useTemplateRef<HTMLElement>("scrollbar");
 const colorProbe = useTemplateRef<HTMLElement>("colorProbe");
+const syncProbe = useTemplateRef<HTMLElement>("syncProbe");
 
 const loading = ref(false);
 const scale = ref(0);
@@ -60,11 +65,12 @@ function resolveColor(cssValue: string): string {
 function getThemeOptions(): Pick<PeaksOptions, "zoomview" | "pointMarkerColor" | "fontFamily" | "createPointMarker"> & { scrollbarColor: string } {
   const muted = resolveColor("var(--p-text-muted-color)");
   const primary = resolveColor("var(--p-primary-color)");
+  const sync = getComputedStyle(syncProbe.value!);
 
   return {
     fontFamily: getComputedStyle(root.value!).fontFamily,
-    pointMarkerColor: primary,
-    createPointMarker: createLabelledPointMarkerFactory({ background: primary, text: resolveColor("var(--p-primary-contrast-color)") }),
+    pointMarkerColor: sync.backgroundColor,
+    createPointMarker: createLabelledPointMarkerFactory({ background: sync.backgroundColor, text: sync.color }),
     scrollbarColor: resolveColor("var(--p-content-border-color)"),
     zoomview: {
       waveformColor: muted,
@@ -135,20 +141,30 @@ function attachEvents(instance: PeaksInstance): void {
 
   instance.on("points.dragend", ({ point }) => emit("markerMove", point.id!, point.time));
 
-  instance.on("points.click", ({ point, evt, preventViewEvent }) => {
+  instance.on("points.click", ({ point, preventViewEvent }) => {
     preventViewEvent();
-    emit("markerClick", point.id!, evt);
+    emit("markerClick", point.id!);
   });
 
   instance.on("points.contextmenu", ({ point, evt, preventViewEvent }) => {
     preventViewEvent();
     evt.preventDefault();
-    emit("markerClick", point.id!, evt);
+    emit("markerContextMenu", point.id!, evt);
   });
 
   instance.on("zoom.update", ({ currentZoom }) => {
     scale.value = currentZoom;
+    emitView();
   });
+
+  instance.on("zoomview.update", ({ startTime, endTime }) => emit("view", startTime, endTime));
+}
+
+function emitView(): void {
+  const view = peaks?.views.getView("zoomview");
+  if (view) {
+    emit("view", view.getStartTime(), view.getEndTime());
+  }
 }
 
 function destroyPeaks(): void {
@@ -175,6 +191,13 @@ async function buildPeaks(): Promise<void> {
     }
 
     cachedWaveform = waveform;
+  }
+
+  // peaks.js cannot start in a hidden container, e.g. in a phone tab that is not shown. The resize
+  // observer builds it once the container gets a size.
+  if (!hasSize()) {
+    loading.value = false;
+    return;
   }
 
   const { scrollbarColor, ...theme } = getThemeOptions();
@@ -214,6 +237,7 @@ async function buildPeaks(): Promise<void> {
     instance.views.getView("zoomview")?.setStartTime(previousStart);
   }
 
+  emitView();
   loading.value = false;
 }
 
@@ -292,9 +316,19 @@ watch(() => props.markers, (markers) => {
 
 useMutationObserver(document.documentElement, () => buildPeaks(), { attributes: true, attributeFilter: ["class"] });
 
+function hasSize(): boolean {
+  return !!zoomviewContainer.value?.clientWidth && !!zoomviewContainer.value.clientHeight;
+}
+
 useResizeObserver(zoomviewContainer, () => {
+  if (!peaks && cachedWaveform && hasSize()) {
+    buildPeaks();
+    return;
+  }
+
   peaks?.views.getView("zoomview")?.fitToContainer();
   peaks?.views.getScrollbar()?.fitToContainer();
+  emitView();
 });
 
 onBeforeUnmount(() => {
@@ -315,6 +349,10 @@ defineExpose({ zoomIn, zoomOut, fit, getPoints: (): Point[] => peaks?.points.get
     <span
       ref="colorProbe"
       class="hidden"
+    />
+    <span
+      ref="syncProbe"
+      :class="['hidden', SYNC_POINT_COLORS.background, SYNC_POINT_COLORS.text]"
     />
     <div
       ref="zoomview"

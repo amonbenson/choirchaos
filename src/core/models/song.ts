@@ -39,6 +39,7 @@ import {
 } from "./recording";
 import { compareSections, deserializeSection, type Section, serializeSection, type StoredSection, validateSections } from "./sections";
 import Track from "./track";
+import { canPlaceWarpMarker, isSameOccurrence } from "./warpEditing";
 
 export type SongNumber = Numbering;
 
@@ -114,10 +115,6 @@ function insertSorted<T>(items: T[], item: T, compare: (a: T, b: T) => number): 
 
 function replaceAll<T>(items: T[], replacement: readonly T[]): void {
   items.splice(0, items.length, ...replacement);
-}
-
-function isSameOccurrence(a: Occurrence, b: Occurrence): boolean {
-  return a.measure === b.measure && a.occurrence === b.occurrence;
 }
 
 export default class Song {
@@ -818,6 +815,40 @@ export default class Song {
     }
 
     marker.time = time;
+    await this.save({ recording: this.serializeRecording() });
+  }
+
+  /**
+   * Gives a warp marker to another occurrence and keeps its time, which rescues the sync after a
+   * recording change moved a measure. The target must lie between the marker's neighbours.
+   */
+  public async reassignWarpMarker(from: Occurrence, to: Occurrence): Promise<void> {
+    const marker = this.warpMarkers[this.findWarpMarkerIndex(from)];
+    if (!marker) {
+      throw new Error(`Measure ${from.measure} has no warp marker on its occurrence ${from.occurrence}.`);
+    }
+
+    if (isSameOccurrence(from, to)) {
+      return;
+    }
+
+    const timeline = this.getTimeline();
+    if (findPosition(timeline, to) === undefined) {
+      throw new Error(`Measure ${to.measure} is not played ${to.occurrence} times.`);
+    }
+
+    if (this.findWarpMarkerIndex(to) !== -1) {
+      throw new Error(`Measure ${to.measure} already has a warp marker.`);
+    }
+
+    const others = this.warpMarkers.filter(other => other !== marker);
+    if (!canPlaceWarpMarker(timeline, others, to, marker.time, Infinity)) {
+      throw new Error(`Measure ${to.measure} does not lie between the neighbouring warp markers.`);
+    }
+
+    marker.measure = to.measure;
+    marker.occurrence = to.occurrence;
+    this.warpMarkers.sort((a, b) => this.compareWarpMarkers(a, b));
     await this.save({ recording: this.serializeRecording() });
   }
 
