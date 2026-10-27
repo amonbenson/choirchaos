@@ -7,6 +7,7 @@ import { expandRecording } from "@/core/models/recording";
 import { BEAT_MAP_LABELS, idOf, makeAudioSongWithBakedVamp, makeMidiSong, makeMidiSongWithBakedVamp, makeMtiJson, positionTick, TICKS } from "@/test/fixtures";
 
 import {
+  buildAudioTempoEvents,
   buildBeatEvents,
   findLocationAt,
   getBeatTick,
@@ -14,6 +15,7 @@ import {
   groupPositionsByMeasure,
   resolveAudioTimeline,
   resolveMidiTimeline,
+  type TimelinePosition,
 } from "./timeline";
 
 type MtiEvent = MTIMidiJson["score"]["events"][number];
@@ -89,6 +91,32 @@ describe("resolveAudioTimeline", () => {
     resolveAudioTimeline(song.getTimeline(), song.getMeasures(), markers, warpMap);
 
     expect(warpMap.getMarkers()).toEqual([{ position: 0, time: 0 }, { position: 2, time: 0.5 }]);
+  });
+});
+
+describe("buildAudioTempoEvents", () => {
+  /** Positions that start where the previous one ends, each with its beats and length in milliseconds. */
+  function timelineOf(positions: [beats: number, length: number][]): TimelinePosition[] {
+    let start = 0;
+    return positions.map(([beats, length], position) => {
+      const beatTicks = Array.from({ length: beats }, (_, beat) => start + beat * length / beats);
+      start += length;
+      return { position, measure: `m${position + 1}`, occurrence: 1, beats, beatTicks, endTick: start };
+    });
+  }
+
+  it("spreads the time between sync points over the beats between them", () => {
+    const timeline = timelineOf([[4, 1000], [2, 1000], [4, 500], [4, 500]]);
+    const events = buildAudioTempoEvents(timeline, [{ position: 0, time: 0 }, { position: 2, time: 2 }]);
+
+    expect(events.items().map(e => [e.tick, e.bpm])).toEqual([[0, 180], [2000, 480]]);
+  });
+
+  it("adds no event where the tempo stays the same", () => {
+    const timeline = timelineOf([[4, 1000], [4, 1000], [4, 1000]]);
+    const events = buildAudioTempoEvents(timeline, [{ position: 1, time: 1 }, { position: 2, time: 2 }]);
+
+    expect(events.items().map(e => [e.tick, e.bpm])).toEqual([[0, 240]]);
   });
 });
 

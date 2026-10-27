@@ -1,12 +1,12 @@
 import axios from "axios";
 
-import { MidiEventList, TempoEvent, TimeSignatureEvent } from "../../midi/events";
+import { MidiEventList, type TempoEvent, TimeSignatureEvent } from "../../midi/events";
 import type { Tick } from "../../midi/types";
 import WarpMap from "../../midi/warp";
 import type Song from "../../models/song";
 import { resolveUrl } from "../../utils/file";
 import { type BackendCallbacks, type LoadResult, PlayerBackend, type StepResult } from "../backend";
-import { resolveAudioTimeline, type TimelinePosition } from "../timeline";
+import { buildAudioTempoEvents, resolveAudioTimeline, type TimelinePosition } from "../timeline";
 import type { SystemEvents } from "../types";
 import { type AudioChunk, detectChunks } from "./chunkDetector";
 import AudioDriver from "./driver";
@@ -14,7 +14,6 @@ import AudioDriver from "./driver";
 const MAX_CONCURRENT_DECODE_BYTES = 750 * 1024 * 1024;
 const DECODED_BYTES_PER_COMPRESSED_BYTE = 128; // Rough estimate for spares MP3s with VBR and stereo channels
 const MILLISECONDS_PER_SECOND = 1000;
-const AUDIO_TEMPO = 125;
 
 function medianRatio(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -27,6 +26,7 @@ export default class AudioBackend extends PlayerBackend {
   private trackChunks: AudioChunk[][] = [];
   private warpMap = new WarpMap();
   private currentSong: Song | undefined = undefined;
+  private currentBpm: number | undefined = undefined;
 
   constructor(
     context: AudioContext,
@@ -163,6 +163,7 @@ export default class AudioBackend extends PlayerBackend {
 
     this.audioDriver?.setTempo(this.playbackSpeed);
     this.audioDriver?.setPitch(this.playbackTransposition);
+    this.syncTempoAt(p1);
 
     return { p0: currentPosition, p1, deltaTimeConsumed: deltaTime };
   }
@@ -171,7 +172,9 @@ export default class AudioBackend extends PlayerBackend {
     this.audioDriver?.scheduleSeek(newPosition / MILLISECONDS_PER_SECOND, 0);
   }
 
-  onTempoRestored(_bpm: number): void {}
+  onTempoRestored(bpm: number): void {
+    this.currentBpm = bpm;
+  }
 
   override onPlaybackSpeedChanged(speed: number): void {
     super.onPlaybackSpeedChanged(speed);
@@ -194,9 +197,18 @@ export default class AudioBackend extends PlayerBackend {
     const song = this.currentSong!;
     const timeline = resolveAudioTimeline(song.getTimeline(), song.getMeasures(), song.getWarpMarkers(), this.warpMap);
 
-    this.systemEvents.tempo = new MidiEventList([new TempoEvent(0, AUDIO_TEMPO)]);
+    this.systemEvents.tempo = buildAudioTempoEvents(timeline, this.warpMap.getMarkers());
     this.systemEvents.timeSignature = new MidiEventList([new TimeSignatureEvent(0, [4, 2])]);
 
     return timeline;
+  }
+
+  private syncTempoAt(tick: Tick): void {
+    const options = { direction: "backward" as const, inclusive: true, extend: true };
+    const event = this.systemEvents.tempo.search({ tick } as TempoEvent, options);
+    if (event && event.bpm !== this.currentBpm) {
+      this.currentBpm = event.bpm;
+      this.callbacks.onTempoChanged(event.bpm);
+    }
   }
 }

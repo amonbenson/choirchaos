@@ -1,5 +1,5 @@
 import { readBeatMapBars } from "../midi/beatMap";
-import { BeatEvent, MidiEventList } from "../midi/events";
+import { BeatEvent, MidiEventList, TempoEvent } from "../midi/events";
 import type { MTIMidiJson } from "../midi/mtiJson";
 import type { Tick } from "../midi/types";
 import type { WarpMarker } from "../midi/warp";
@@ -10,6 +10,7 @@ import { findPosition, type Occurrence, type StoredWarpMarker, type Timeline, ty
 import type { PlayerLocation } from "./types";
 
 const MILLISECONDS_PER_SECOND = 1000;
+const MILLISECONDS_PER_MINUTE = 60 * MILLISECONDS_PER_SECOND;
 
 /** A timeline position with its timing. `beatTicks` holds the start of every beat, `endTick` where the next position starts. */
 export type TimelinePosition = TimelineEntry & {
@@ -66,6 +67,31 @@ export function resolveAudioTimeline(
       endTick: end,
     };
   });
+}
+
+/**
+ * The tempo of an audio song. Between two sync points, and before the first and after the last, a beat lasts
+ * the time they span divided by the beats they span. Only changes of tempo get an event.
+ */
+export function buildAudioTempoEvents(timeline: ResolvedTimeline, warpMarkers: readonly WarpMarker[]): MidiEventList<TempoEvent> {
+  const inner = warpMarkers.map(marker => marker.position).filter(position => position > 0 && position < timeline.length);
+  const starts = [0, ...inner];
+  const events = new MidiEventList<TempoEvent>();
+  let previous: number | undefined;
+
+  starts.forEach((start, i) => {
+    const end = starts[i + 1] ?? timeline.length;
+    const stretch = timeline.slice(start, end);
+    const beats = stretch.reduce((sum, position) => sum + position.beats, 0);
+    const duration = stretch.at(-1)!.endTick - getStartTick(stretch[0]!);
+    const bpm = duration > 0 ? beats * MILLISECONDS_PER_MINUTE / duration : undefined;
+    if (bpm !== undefined && bpm !== previous) {
+      events.insert(new TempoEvent(getStartTick(stretch[0]!), bpm));
+      previous = bpm;
+    }
+  });
+
+  return events;
 }
 
 export function getStartTick(position: TimelinePosition): Tick {

@@ -26,7 +26,7 @@ Playback engine shared by both modes:
 
 - A `TimelinePosition` is a timeline entry with `beats`, `beatTicks` and `endTick`. The timeline is the engine's only timing source: measures carry no ticks.
 - MIDI: the beat map's k-th bar is position k. Bars come from `readBeatMapBars()` in `../midi/beatMap.ts`, the same reader the import uses: a bar starts where the `BEAT` label changes, and the terminal bar only ends the one before it. A count mismatch fails the load. A position takes its beats from its own bar, so a later occurrence can have more beats than `measure.beats` (a 1-beat `153-1` followed by a 2-beat `153-2`). Lookups clamp beats to the bar.
-- Audio: `WarpMap` indices are positions. Warp markers resolve through `(measure, occurrence)`, and markers that no longer resolve are dropped. Beats are spread evenly over a position.
+- Audio: `WarpMap` indices are positions. Warp markers resolve through `(measure, occurrence)`, and markers that no longer resolve are dropped. Beats are spread evenly over a position. The tempo comes from `buildAudioTempoEvents()`: between two warp markers (and before the first and after the last) a beat lasts their time span divided by the beats they span. `AudioBackend.step()` reports tempo changes like the MIDI backend, and `syncWarp()` updates the displayed tempo. Audio has no time signature, and the header shows none.
 - `systemEvents.beat` holds one `BeatEvent { position, beat }` per beat. The current location is looked up in the timeline after every step, not reported by the backends.
 - MIDI also collects the tracks that start a note in each position (`getActiveTrackIndices()`), which the score uses to highlight boxes.
 
