@@ -91,21 +91,3 @@ export class SetIntervalUpdater extends Updater {
 
   protected updateCompleteImpl(): void {}
 }
-
-export class AnimationFrameUpdater extends Updater {
-  private animationFrameHandle?: number;
-
-  protected startImpl(): void {
-    this.animationFrameHandle = requestAnimationFrame(() => this.update());
-  }
-
-  protected stopImpl(): void {
-    cancelAnimationFrame(this.animationFrameHandle!);
-  }
-
-  protected updateCompleteImpl(): void {
-    if (this.isRunning()) {
-      this.animationFrameHandle = requestAnimationFrame(() => this.update());
-    }
-  }
-}

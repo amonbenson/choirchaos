@@ -18,8 +18,3 @@ export const SECTION_COLORS: Record<SectionKind, SectionColor> = {
 
 /** Text and icons drawn on a section color. */
 export const SECTION_CONTRAST_TEXT = "text-section-contrast";
-
-/** Canvas code cannot use CSS variables, so it resolves the current color and rebuilds when `.dark` changes. */
-export function resolveSectionColor(kind: SectionKind, element: Element = document.documentElement): string {
-  return getComputedStyle(element).getPropertyValue(SECTION_COLORS[kind].variable).trim();
-}

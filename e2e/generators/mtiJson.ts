@@ -1,4 +1,4 @@
-import type { MTIMidiJson } from "../../src/core/scripts/jsonTypes/mti";
+import type { MTIMidiJson } from "../../src/core/midi/mtiJson";
 import { midiChannelForPart } from "./midi";
 import { PPQN, terminalMeasureNumber, type Timeline } from "./score/timeline";
 

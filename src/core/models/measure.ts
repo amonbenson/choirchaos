@@ -76,7 +76,7 @@ export type MeasureAddition = {
   index: number;
 };
 
-/** Every change of one Measures tab action, saved by `Song.applyMeasureEdit()` in one request. */
+/** Every change of one inspector box action, saved by `Song.applyMeasureEdit()` in one request. */
 export type MeasureEdit = {
   additions: MeasureAddition[];
   removals: MeasureId[];

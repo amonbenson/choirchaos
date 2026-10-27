@@ -1,12 +1,12 @@
 import { readBeatMapBars } from "../midi/beatMap";
 import { BeatEvent, MidiEventList } from "../midi/events";
+import type { MTIMidiJson } from "../midi/mtiJson";
 import type { Tick } from "../midi/types";
 import type { WarpMarker } from "../midi/warp";
 import type WarpMap from "../midi/warp";
 import type Measure from "../models/measure";
 import type { MeasureId } from "../models/measure";
 import { findPosition, type Occurrence, type StoredWarpMarker, type Timeline, type TimelineEntry } from "../models/recording";
-import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
 import type { PlayerLocation } from "./types";
 
 const MILLISECONDS_PER_SECOND = 1000;

@@ -1,9 +1,9 @@
+import type { MTIMidiJson } from "../core/midi/mtiJson";
 import Measure, { type MeasureId, type MeasureLayout } from "../core/models/measure";
 import type { Location, RecordingSpan, StoredWarpMarker } from "../core/models/recording";
 import type { Section, VampOut, VampVocals } from "../core/models/sections";
 import Song from "../core/models/song";
 import Track from "../core/models/track";
-import type { MTIMidiJson } from "../core/scripts/jsonTypes/mti";
 import { buildMidiBuffer, type TestTrack } from "./midi";
 
 // Constants
@@ -385,17 +385,4 @@ export function computeRms(samples: Float32Array): number {
   }
 
   return Math.sqrt(sum / samples.length);
-}
-
-export function makeSineBuffer(ctx: OfflineAudioContext, freq: number, durationSec: number): AudioBuffer {
-  const sr = ctx.sampleRate;
-  const buf = ctx.createBuffer(2, Math.floor(sr * durationSec), sr);
-  for (let ch = 0; ch < 2; ch++) {
-    const data = buf.getChannelData(ch);
-    for (let i = 0; i < data.length; i++) {
-      data[i] = 0.5 * Math.sin((2 * Math.PI * freq * i) / sr);
-    }
-  }
-
-  return buf;
 }

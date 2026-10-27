@@ -37,10 +37,6 @@ export function deserializeLocation({ measure, beat, occurrence }: StoredLocatio
   return { measure, beat, occurrence: occurrence ?? FIRST_OCCURRENCE };
 }
 
-export function isSameLocation(a: Location, b: Location): boolean {
-  return a.measure === b.measure && a.beat === b.beat && a.occurrence === b.occurrence;
-}
-
 function getScoreIndices(score: readonly MeasureId[]): Map<MeasureId, number> {
   return new Map(score.map((id, index) => [id, index]));
 }

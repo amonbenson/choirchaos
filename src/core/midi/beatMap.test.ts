@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { MTIMidiJson } from "@/core/scripts/jsonTypes/mti";
+import type { MTIMidiJson } from "@/core/midi/mtiJson";
 import { makeMtiJson, TRACK_NAMES } from "@/test/fixtures";
 
 import { isBeatMap, readBeatMapBars, scoreFromBeatMap, tracksFromBeatMap, writtenLabel } from "./beatMap";

@@ -3,8 +3,8 @@
 Extends the root `AGENTS.md`, whose rules apply here too.
 
 Playback engine shared by both modes:
-- **MIDI:** `.mid` plus an MTIMidiJson `.json` beat map that maps ticks to bars and beats. Ticks are MIDI ticks.
-- **Audio:** one `.mp3`/`.wav` per track, pitch- and tempo-shifted with `rubberband-web`. Ticks are milliseconds of the recording.
+- **MIDI:** `.mid` plus an MTI `.json` beat map (`MTIMidiJson` in `../midi/mtiJson.ts`) that maps ticks to bars and beats. Ticks are MIDI ticks.
+- **Audio:** one `.mp3`/`.wav` per track, pitch- and tempo-shifted with `rubberband-web`. Ticks are milliseconds of the recording, placed by warp markers, which the UI calls sync points.
 
 ## Files
 
@@ -59,16 +59,15 @@ Playback engine shared by both modes:
 
 ## Warp Editing
 
-- `WaveformView` draws `mixdownChunks()` with peaks.js. Audio mode positions are milliseconds, peaks.js works in seconds.
-- Warp markers are keyed by `(measure, occurrence)`, and their labels name the occurrence from the second time on.
-- `warpEditing.ts` keeps markers in timeline order: new markers only go between their neighbours, dragging and nudging are clamped between them, and `Song.reassignWarpMarker()` only moves a marker to a free occurrence between them, since `WarpMap` requires strictly increasing marker times.
+- Warp markers are keyed by `(measure, occurrence)`. `warpEditing.ts` keeps them in timeline order: new markers only go between their neighbours, dragging and nudging are clamped between them, and `Song.reassignWarpMarker()` only moves a marker to a free occurrence between them, since `WarpMap` requires strictly increasing marker times.
+- The timeline's `WaveformView` draws `mixdownChunks()` with peaks.js. Audio positions are milliseconds, peaks.js works in seconds.
 - peaks.js cannot start in a hidden container (a phone tab that is not shown), so `WaveformView` builds it once its container gets a size.
 - peaks.js caches every zoom level it resamples, so zoom only moves along `ZoomLadder` levels to keep the cache bounded. The base waveform has one sample per pixel (coarser for very long recordings), which allows zooming to single samples.
 
 ## Audio
 
 - `AudioDriver` takes `AudioChunk[][]`: one array of mono chunks per track. `sampleOffset` is the chunk's start in the original file, in samples.
-- `scheduleSeek()` is a crossfade seek, used for jumps. `seek()` is a hard cut, used only for seeks.
+- `scheduleSeek()` is a crossfade seek, used for route jumps. `seek()` is a hard cut, used for user seeks.
 - `AUDIO_LOOKAHEAD` in `audio/driver.ts` must equal `AUDIO_CLOCK_OFFSET` in `midi/backend.ts`. The visual position leads audio by this margin in both modes.
 - Decoding is memory-bounded for mobile by `MAX_CONCURRENT_DECODE_BYTES`. Do not replace it with an unbounded `Promise.all`.
 

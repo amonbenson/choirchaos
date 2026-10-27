@@ -3,8 +3,8 @@ import { NoPermissions, type Permissions } from "@/pocketbase/auth";
 import { dbCreate, dbCreateWithFiles, dbDelete, dbUpdate, dbUpdateWithFiles } from "@/pocketbase/db";
 
 import { scoreFromBeatMap, tracksFromBeatMap } from "../midi/beatMap";
+import type { MTIMidiJson } from "../midi/mtiJson";
 import type { PlayerMode, SystemEvents } from "../player/types";
-import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
 import type { UrlOrFile } from "../utils/file";
 import type { Numbering } from "../utils/numbering";
 import { inferTrackClassification } from "../utils/trackInference";

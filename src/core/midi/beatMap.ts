@@ -1,8 +1,8 @@
 import Measure from "../models/measure";
 import type { RecordingSpan } from "../models/recording";
 import Track from "../models/track";
-import type { MTIMidiJson } from "../scripts/jsonTypes/mti";
 import { inferTrackClassification } from "../utils/trackInference";
+import type { MTIMidiJson } from "./mtiJson";
 import type { Tick } from "./types";
 
 export function isBeatMap(value: unknown): value is MTIMidiJson {

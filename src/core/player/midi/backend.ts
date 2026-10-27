@@ -2,9 +2,9 @@ import axios from "axios";
 import { parseArrayBuffer as parseMidiBuffer } from "midi-json-parser";
 
 import { MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "../../midi/events";
+import type { MTIMidiJson } from "../../midi/mtiJson";
 import type { Tick } from "../../midi/types";
 import type Song from "../../models/song";
-import type { MTIMidiJson } from "../../scripts/jsonTypes/mti";
 import { resolveUrl } from "../../utils/file";
 import { type BackendCallbacks, type LoadResult, PlayerBackend, type StepResult } from "../backend";
 import { findPositionAt, resolveMidiTimeline, type TimelinePosition } from "../timeline";

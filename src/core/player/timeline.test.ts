@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import type { MTIMidiJson } from "@/core/midi/mtiJson";
 import WarpMap from "@/core/midi/warp";
 import Measure from "@/core/models/measure";
 import { expandRecording } from "@/core/models/recording";
-import type { MTIMidiJson } from "@/core/scripts/jsonTypes/mti";
 import { BEAT_MAP_LABELS, idOf, makeAudioSongWithBakedVamp, makeMidiSong, makeMidiSongWithBakedVamp, makeMtiJson, positionTick, TICKS } from "@/test/fixtures";
 
 import {
