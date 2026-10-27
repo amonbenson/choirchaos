@@ -4,7 +4,6 @@ import ToastService from "primevue/toastservice";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { h, reactive, type Ref, ref, type SetupContext } from "vue";
 
-import Draggable from "@/components/base/Draggable.vue";
 import { provideSongEditor, type SongEditor } from "@/composables/useSongEditor";
 import type { MeasureId } from "@/core/models/measure";
 import { selectMeasures } from "@/core/models/selection";
@@ -15,6 +14,7 @@ import { dbUpdate } from "@/pocketbase/db";
 import { usePlayerStore } from "@/stores/player";
 import { idOf, locationOf, makeAudioSong, makeMidiSongWithCut, makeMidiSongWithRepeat, makeMidiSongWithVamp } from "@/test/fixtures";
 
+import BoxResizeHandle from "./BoxResizeHandle.vue";
 import ScoreViewer from "./ScoreViewer.vue";
 
 const TICKS_PER_POSITION = 400;
@@ -108,6 +108,20 @@ function box(wrapper: VueWrapper, label: string): VueWrapper["element"] {
   return wrapper.find(`[role='button'][aria-label='Measure ${label}']`).element;
 }
 
+/** The box with its badges and playbar around it. */
+function frame(wrapper: VueWrapper, label: string): HTMLElement {
+  return (box(wrapper, label) as HTMLElement).closest<HTMLElement>("[data-measure]")!;
+}
+
+function playbar(wrapper: VueWrapper, label: string): HTMLElement {
+  return frame(wrapper, label).querySelector<HTMLElement>("[style*='left']")!;
+}
+
+/** The short texts on a box, which screen readers hear through its name and description instead. */
+function badgeTexts(wrapper: VueWrapper, label: string): string[] {
+  return [...frame(wrapper, label).querySelectorAll("[aria-hidden='true']")].map(badge => badge.textContent!.trim()).filter(text => text);
+}
+
 describe("ScoreViewer", () => {
   beforeAll(() => {
     Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 100 });
@@ -128,7 +142,7 @@ describe("ScoreViewer", () => {
       const song = makeMidiSongWithRepeat();
       const { wrapper } = mountViewer(song);
 
-      expect(box(wrapper, "2").getAttribute("data-measure")).toBe(idOf(song, "2"));
+      expect(frame(wrapper, "2").getAttribute("data-measure")).toBe(idOf(song, "2"));
     });
 
     it("marks the box of the playing measure in every pass", async () => {
@@ -138,12 +152,12 @@ describe("ScoreViewer", () => {
       playAt(2, 200);
       await flushPromises();
       expect(box(wrapper, "2").getAttribute("aria-current")).toBe("location");
-      expect((box(wrapper, "2").querySelector("div") as HTMLElement).style.left).toBe("50%");
+      expect(playbar(wrapper, "2").style.left).toBe("50%");
 
       playAt(4, 100);
       await flushPromises();
       expect(box(wrapper, "2").getAttribute("aria-current")).toBe("location");
-      expect((box(wrapper, "2").querySelector("div") as HTMLElement).style.left).toBe("25%");
+      expect(playbar(wrapper, "2").style.left).toBe("25%");
       expect(box(wrapper, "3").getAttribute("aria-current")).toBeNull();
     });
 
@@ -181,7 +195,7 @@ describe("ScoreViewer", () => {
 
       expect(description(wrapper, "2")).toBe("Repeat 2 to 3, 3 times. Recorded 3 times.");
       expect(description(wrapper, "1")).toBeUndefined();
-      expect(wrapper.find("[role='img'][aria-label='Repeat 2 to 3, 3 times']").text()).toBe("Repeat 3×");
+      expect(wrapper.find("button[aria-label='Repeat 2 to 3, 3 times']").text()).toBe("Repeat 3×");
       expect(wrapper.find("[role='img'][aria-label='Measures 2 to 3 recorded 3 times']").text()).toBe("×3");
     });
 
@@ -191,8 +205,8 @@ describe("ScoreViewer", () => {
       fakePlayer().currentSection = { section: 0, kind: "repeat", pass: 2, passes: 3, recordedPasses: 3, released: false };
       await flushPromises();
 
-      expect(wrapper.find("[role='img'][aria-label='Repeat 2 to 3, pass 2 of 3']").text()).toBe("Repeat 2/3");
-      expect(box(wrapper, "2").textContent).toContain("2nd time");
+      expect(wrapper.find("button[aria-label='Repeat 2 to 3, pass 2 of 3']").text()).toBe("Repeat 2/3");
+      expect(badgeTexts(wrapper, "2")).toContain("2nd time");
       expect(description(wrapper, "2")).toBe("Repeat 2 to 3, pass 2 of 3. Recorded 3 times.");
     });
 
@@ -206,12 +220,25 @@ describe("ScoreViewer", () => {
       expect(description(wrapper, "2")).toBe("After 2, 2nd time, the recording continues at 4.");
     });
 
+    it("moves the playhead to a section or marker whose badge is clicked", async () => {
+      const song = makeMidiSongWithRepeat();
+      await song.editLayers({ markers: [{ at: locationOf(song, "3"), text: "A" }] });
+      const { wrapper, selection } = mountViewer(song);
+
+      click(wrapper.find("button[aria-label='Repeat 2 to 3, 3 times']").element);
+      expect(fakePlayer().seekLocation).toHaveBeenLastCalledWith(song.getSections()[0]!.from);
+
+      click(wrapper.find("button[aria-label='Marker A, 1st time']").element);
+      expect(fakePlayer().seekLocation).toHaveBeenLastCalledWith(locationOf(song, "3"));
+      expect(selection.selection.value).toEqual({ kind: "none" });
+    });
+
     it("hatches the boxes of a cut", () => {
       const song = makeMidiSongWithCut();
       const { wrapper } = mountViewer(song);
 
       expect(wrapper.findAll(".hatch-section-cut").length).toBeGreaterThan(0);
-      expect(wrapper.find("[role='img'][aria-label^='Cut']").text()).toBe("Cut");
+      expect(wrapper.find("button[aria-label^='Cut']").text()).toBe("Cut");
     });
   });
 
@@ -220,7 +247,32 @@ describe("ScoreViewer", () => {
       const song = makeMidiSongWithRepeat();
       const { wrapper } = mountViewer(song, true);
 
-      expect(box(wrapper, "2").textContent?.trim()).toBe("2");
+      expect(badgeTexts(wrapper, "2")).toEqual(["2"]);
+    });
+
+    it("selects the section or marker of a clicked badge, not the box below it", async () => {
+      const song = makeMidiSongWithRepeat();
+      await song.editLayers({ markers: [{ at: locationOf(song, "3"), text: "A" }] });
+      const { wrapper, selection } = mountViewer(song, true);
+
+      click(wrapper.find("button[aria-label='Repeat 2 to 3, 3 times']").element);
+      await flushPromises();
+      expect(selection.selection.value).toEqual({ kind: "section", from: song.getSections()[0]!.from });
+      expect(wrapper.find("button[aria-label='Repeat 2 to 3, 3 times']").attributes("aria-pressed")).toBe("true");
+
+      click(wrapper.find("button[aria-label='Marker A, 1st time']").element);
+      await flushPromises();
+      expect(selection.selection.value).toEqual({ kind: "marker", marker: song.getMarkers()[0] });
+      expect(fakePlayer().seekLocation).toHaveBeenLastCalledWith(locationOf(song, "3"));
+    });
+
+    it("leaves a click on any other badge to its box", async () => {
+      const song = makeMidiSongWithRepeat();
+      const context = mountViewer(song, true);
+
+      click(context.wrapper.find("[role='img'][aria-label='Measures 2 to 3 recorded 3 times']").element);
+
+      expect(selectedLabels(context)).toEqual(["3"]);
     });
 
     it("selects a clicked measure and enters it at its first pass", async () => {
@@ -382,14 +434,17 @@ describe("ScoreViewer", () => {
       context.selection.select(selectMeasures([measure.id]));
       await flushPromises();
 
-      const right = wrapper.findAllComponents(Draggable)[1]!;
-      right.vm.$emit("drag", { delta: { x: 5, y: 0 } });
-      right.vm.$emit("drag", { delta: { x: 5, y: 0 } });
+      const right = wrapper.findAllComponents(BoxResizeHandle)[1]!.element as HTMLElement;
+      // jsdom has no pointer capture.
+      right.setPointerCapture = vi.fn();
+      right.dispatchEvent(new PointerEvent("pointerdown", { clientX: 0, clientY: 0, buttons: 1, pointerId: 1 }));
+      right.dispatchEvent(new PointerEvent("pointermove", { clientX: 5, clientY: 0, buttons: 1, pointerId: 1 }));
+      right.dispatchEvent(new PointerEvent("pointermove", { clientX: 10, clientY: 0, buttons: 1, pointerId: 1 }));
       await flushPromises();
       expect(apply).not.toHaveBeenCalled();
       expect(measure.layout).toEqual(before.measure);
 
-      right.vm.$emit("dragend");
+      right.dispatchEvent(new PointerEvent("pointerup", { clientX: 10, clientY: 0, buttons: 0, pointerId: 1 }));
       await flushPromises();
 
       expect(apply).toHaveBeenCalledTimes(1);

@@ -34,7 +34,7 @@ The editor has two canvases, the score (written order) and the timeline (played 
 - `core/models/selection.ts` defines the selection: exactly one kind at a time, either measures (by ID), boxes without a number (by position), one section (by its start location, since sections never overlap), one marker (by location and name), one sync point (by occurrence), one recording pass (by index) or nothing. Selecting one kind replaces the others, so a section is never selected together with its measures. `resolveSelection()` looks the objects up after every save, and a selection whose objects are gone (undo, delete) resolves to nothing.
 - `useEditorSelection` holds it for the score, the inspector and the timeline. For selected measures it derives their runs (where the recording plays them back to back) and picks the one at or nearest to the playhead, so the playhead decides which pass the inspector edits. `selectAndSeek()` selects an object and moves the playhead to it, as clicks in the timeline do. An edit that changes how an object is identified (renaming a marker, moving a section's start) selects the edited object again.
 - A click on a box enters the measure at its first pass, in the player and in the editor. Other passes are reached through the inspector's pass picker ("Pass, follows the playhead") or the timeline.
-- The timeline never selects measures: a click on a measure cell only seeks. Its sections, markers, recording passes and sync points select themselves.
+- The timeline never selects measures: a click on a measure cell only seeks. Its sections, markers, recording passes and sync points select themselves. On the score, section and marker badges select their object the same way, and a click on any other badge selects its box.
 
 ### Inspector
 

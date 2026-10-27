@@ -496,6 +496,50 @@ export function planLayouts(changes: readonly [Measure, MeasureLayout][]): Plann
   return createPlannedEdit(edit, toTargets(changes.map(([measure]) => measure)));
 }
 
+export type BoxEdge = "top" | "right" | "bottom" | "left";
+
+const SAME_EDGE_TOLERANCE = 0.01;
+
+function isSameEdge(a: number, b: number): boolean {
+  return Math.abs(a - b) < SAME_EDGE_TOLERANCE;
+}
+
+/** The boxes on the same page whose top and bottom line up with the box, in score order. */
+function getStaff(measures: readonly Measure[], layout: MeasureLayout): Measure[] {
+  return measures.filter(other => other.layout?.page === layout.page
+    && isSameEdge(other.layout.y, layout.y)
+    && isSameEdge(other.layout.y + other.layout.height, layout.y + layout.height));
+}
+
+/**
+ * The layouts after moving one edge of a measure's box by `delta` page fractions. The top and bottom edges
+ * move with the whole staff. The left and right edges are shared with the neighbour in the staff, which moves too.
+ */
+export function resizeBox(measures: readonly Measure[], measure: Measure, edge: BoxEdge, delta: { x: number; y: number }): [Measure, MeasureLayout][] {
+  const layout = measure.layout;
+  if (!layout) {
+    return [];
+  }
+
+  const staff = getStaff(measures, layout);
+  const index = staff.indexOf(measure);
+  const moveEdge = (box: Measure | undefined, change: (layout: MeasureLayout) => Partial<MeasureLayout>): [Measure, MeasureLayout][] =>
+    box?.layout ? [[box, { ...box.layout, ...change(box.layout) }]] : [];
+  const moveLeft = (box: MeasureLayout): Partial<MeasureLayout> => ({ x: box.x + delta.x, width: box.width - delta.x });
+  const moveRight = (box: MeasureLayout): Partial<MeasureLayout> => ({ width: box.width + delta.x });
+
+  switch (edge) {
+    case "top":
+      return staff.flatMap(box => moveEdge(box, other => ({ y: other.y + delta.y, height: other.height - delta.y })));
+    case "bottom":
+      return staff.flatMap(box => moveEdge(box, other => ({ height: other.height + delta.y })));
+    case "left":
+      return [...moveEdge(measure, moveLeft), ...moveEdge(staff[index - 1], moveRight)];
+    case "right":
+      return [...moveEdge(measure, moveRight), ...moveEdge(staff[index + 1], moveLeft)];
+  }
+}
+
 function resolveBoxes(edit: MeasureEdit, all: readonly MeasureLayout[], resolved: readonly MeasureLayout[]): void {
   if (resolved.length > 0) {
     edit.unnumberedBoxes = withoutBoxes(all, resolved);

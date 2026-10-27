@@ -1,0 +1,33 @@
+<template>
+  <svg
+    aria-hidden="true"
+    xmlns="http://www.w3.org/2000/svg"
+    class="h-2.5 w-[0.4375rem]"
+    viewBox="0 0 7 12"
+  >
+    <circle
+      cx="1.2"
+      cy="4"
+      r="1.1"
+      class="fill-current"
+    />
+    <circle
+      cx="1.2"
+      cy="8"
+      r="1.1"
+      class="fill-current"
+    />
+    <rect
+      x="3.2"
+      width="1"
+      height="12"
+      class="fill-current"
+    />
+    <rect
+      x="5.2"
+      width="1.8"
+      height="12"
+      class="fill-current"
+    />
+  </svg>
+</template>

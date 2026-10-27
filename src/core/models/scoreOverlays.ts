@@ -1,4 +1,4 @@
-import { formatOccurrence, formatTimes } from "./locationFormat";
+import { formatOccurrence, formatOrdinal, formatTimes } from "./locationFormat";
 import type { Marker } from "./markers";
 import type Measure from "./measure";
 import type { MeasureId, MeasureLayout } from "./measure";
@@ -37,12 +37,29 @@ export type RecordedRepeat = {
   measures: MeasureId[];
 };
 
-export type MarkerOverlay = { measure: MeasureId; texts: string[] };
-
 /** The section state the score shows while that section plays. */
 export type PlayingSection = { section: number; pass: number; passes?: number; released: boolean };
 
 type Placed = { measure: MeasureId; layout: MeasureLayout };
+
+/**
+ * Badges above the boxes stack in lanes, so sections that share boxes never cover each other. Each lane
+ * holds a badge and, for a section, the bar under it. Lane 0 is closest to the boxes.
+ */
+export const LANE_HEIGHT_PX = 24;
+export const BAR_GAP_PX = 2;
+export const BAR_HEIGHT_PX = 3;
+const LANE_BASE_PX = 2 * BAR_GAP_PX + BAR_HEIGHT_PX;
+
+/** How far above the top of its boxes the badges of a lane end, in pixels. A section bar lies below that line. */
+export function getLaneOffset(lane: number): number {
+  return LANE_BASE_PX + lane * LANE_HEIGHT_PX;
+}
+
+/** How far above the top of its boxes the middle of a lane's section bar is, in pixels. */
+export function getBarCenterOffset(lane: number): number {
+  return getLaneOffset(lane) - BAR_GAP_PX - BAR_HEIGHT_PX / 2;
+}
 
 const KIND_NAMES: Record<Section["kind"], string> = { cut: "Cut", repeat: "Repeat", vamp: "Vamp" };
 
@@ -220,16 +237,6 @@ export function describeJump(measures: readonly Measure[], timeline: Timeline, {
   return `After ${from}, the recording continues at ${formatOccurrence(labelOf(measures, to.measure), to.occurrence)}`;
 }
 
-/** Markers grouped by measure, so a measure with markers on several occurrences shows one chip. */
-export function getMarkerOverlays(markers: readonly Marker[]): MarkerOverlay[] {
-  const byMeasure = new Map<MeasureId, string[]>();
-  for (const { at, text } of markers) {
-    byMeasure.set(at.measure, [...byMeasure.get(at.measure) ?? [], text]);
-  }
-
-  return [...byMeasure].map(([measure, texts]) => ({ measure, texts }));
-}
-
 function labelOf(measures: readonly Measure[], id: MeasureId): string {
   return measures.find(measure => measure.id === id)?.label ?? "?";
 }
@@ -303,40 +310,122 @@ function formatMarker(timeline: Timeline, { at, text }: Marker): string {
   return countOccurrences(timeline, at.measure) > 1 ? `Marker ${text}, ${formatTimes(at.occurrence)}` : `Marker ${text}`;
 }
 
-function append(descriptions: Map<MeasureId, string[]>, measures: readonly MeasureId[], text: string): void {
-  for (const measure of measures) {
-    descriptions.set(measure, [...descriptions.get(measure) ?? [], text]);
-  }
+/** One bar per score row of each section. Only the first bar's chip is named, the others repeat it. */
+export type SectionBar = {
+  key: string;
+  section: Section;
+  run: OverlayRun;
+  lane: number;
+  chip: string;
+  name?: string;
+};
+
+export function getSectionBars(measures: readonly Measure[], overlays: readonly SectionOverlay[], playing?: PlayingSection): SectionBar[] {
+  return overlays.flatMap(({ index, section, runs, lane }) => {
+    const pass = playing?.section === index ? playing : undefined;
+    const chip = formatSectionChip(section, pass);
+    const name = describeSection(measures, section, pass);
+    return runs.map((run, i) => ({ key: `section-${index}-${i}`, section, run, lane, chip, name: i === 0 ? name : undefined }));
+  });
 }
 
-export type OverlayDescriptionInput = {
+/** A badge's short text and the name screen readers hear instead. */
+export type BoxBadge = { key: string; text: string; name: string };
+
+export type MarkerBadge = { marker: Marker; name: string };
+
+/** Everything the arrangement draws on and around one box. */
+export type BoxOverlays = {
+  /** What all overlays on the box say, for its `aria-describedby`: "Vamp 19 to 20. Recorded 4 times. Marker D." */
+  description: string;
+  /** On the last box of a passage the recording plays back to back. */
+  recorded?: BoxBadge;
+  /** The jumps after this box, in playing order. */
+  jumps: BoxBadge[];
+  markers: MarkerBadge[];
+  /** The lane of the marker badges, above every section chip on the box. */
+  markerLane: number;
+  synced: boolean;
+};
+
+export type BoxOverlayInput = {
   measures: readonly Measure[];
   timeline: Timeline;
   sections: readonly SectionOverlay[];
   repeats: readonly RecordedRepeat[];
   markers: readonly Marker[];
   jumps?: readonly RecordingJump[];
+  /** The occurrences of each measure that have a sync point. */
+  synced?: ReadonlyMap<MeasureId, readonly number[]>;
   playing?: PlayingSection;
 };
 
-/** What the overlays on each box say, for its `aria-describedby`: "Vamp 19 to 20. Recorded 4 times. Marker D." */
-export function describeOverlays({ measures, timeline, sections, repeats, markers, jumps = [], playing }: OverlayDescriptionInput): Map<MeasureId, string> {
-  const descriptions = new Map<MeasureId, string[]>();
-  for (const { index, section, measures: covered } of sections) {
-    append(descriptions, covered, describeSection(measures, section, playing?.section === index ? playing : undefined));
+function describeRecordedRepeat(measures: readonly Measure[], repeat: RecordedRepeat): string {
+  const labels = repeat.measures.map(id => labelOf(measures, id));
+  const range = labels.length === 1 ? `Measure ${labels[0]}` : `Measures ${labels[0]} to ${labels.at(-1)}`;
+  return `${range} recorded ${formatCount(repeat.times)}`;
+}
+
+function describeSyncPoints(timeline: Timeline, measure: MeasureId, occurrences: readonly number[]): string {
+  if (countOccurrences(timeline, measure) < 2) {
+    return "Sync point";
   }
 
-  for (const repeat of repeats) {
-    append(descriptions, repeat.measures, `Recorded ${formatCount(repeat.times)}`);
+  const times = occurrences.map(formatOrdinal);
+  const list = times.length > 1 ? `${times.slice(0, -1).join(", ")} and ${times.at(-1)}` : times[0];
+  return `Sync point on the ${list} time`;
+}
+
+type BoxOverlayDraft = Omit<BoxOverlays, "description"> & { texts: string[] };
+
+/** The overlays of every box that has any, keyed by measure. */
+export function getBoxOverlays(input: BoxOverlayInput): Map<MeasureId, BoxOverlays> {
+  const { measures, timeline, sections, repeats, markers, jumps = [], synced = new Map(), playing } = input;
+  const drafts = new Map<MeasureId, BoxOverlayDraft>();
+  const draftOf = (measure: MeasureId): BoxOverlayDraft => {
+    const existing = drafts.get(measure);
+    if (existing) {
+      return existing;
+    }
+
+    const draft: BoxOverlayDraft = { texts: [], jumps: [], markers: [], markerLane: 0, synced: false };
+    drafts.set(measure, draft);
+    return draft;
+  };
+
+  for (const { index, section, measures: covered, lane } of sections) {
+    const text = describeSection(measures, section, playing?.section === index ? playing : undefined);
+    for (const measure of covered) {
+      const draft = draftOf(measure);
+      draft.texts.push(text);
+      draft.markerLane = Math.max(draft.markerLane, lane + 1);
+    }
   }
+
+  repeats.forEach((repeat, i) => {
+    repeat.measures.forEach(measure => draftOf(measure).texts.push(`Recorded ${formatCount(repeat.times)}`));
+    draftOf(repeat.measures.at(-1)!).recorded = { key: `recorded-${i}`, text: `×${repeat.times}`, name: describeRecordedRepeat(measures, repeat) };
+  });
 
   for (const marker of markers) {
-    append(descriptions, [marker.at.measure], formatMarker(timeline, marker));
+    const draft = draftOf(marker.at.measure);
+    const name = formatMarker(timeline, marker);
+    draft.texts.push(name);
+    draft.markers.push({ marker, name });
   }
 
   for (const jump of jumps) {
-    append(descriptions, [jump.after.measure], describeJump(measures, timeline, jump));
+    const draft = draftOf(jump.after.measure);
+    const name = describeJump(measures, timeline, jump);
+    draft.texts.push(name);
+    draft.jumps.push({ key: `jump-${jump.position}`, text: formatJumpChip(measures, jump), name });
   }
 
-  return new Map([...descriptions].map(([measure, texts]) => [measure, `${texts.join(". ")}.`]));
+  for (const [measure, occurrences] of synced) {
+    const draft = draftOf(measure);
+    draft.texts.push(describeSyncPoints(timeline, measure, occurrences));
+    draft.synced = true;
+  }
+
+  return new Map([...drafts].map(([measure, { texts, ...overlays }]) => [measure, { ...overlays, description: `${texts.join(". ")}.` }]));
 }
