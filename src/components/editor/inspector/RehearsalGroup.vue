@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { useDebounceFn } from "@vueuse/core";
 import Button from "primevue/button";
-import Checkbox from "primevue/checkbox";
 import InputNumber from "primevue/inputnumber";
 import Message from "primevue/message";
 import Select from "primevue/select";
@@ -13,17 +12,8 @@ import { SECTION_COLORS } from "@/components/score/sectionColors";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
 import { formatSectionName, getSectionRun, type SectionMatch, type SelectedRun, toMeasureRange, withRun } from "@/core/models/measureSelection";
-import { findRecordedPasses } from "@/core/models/recording";
 import { formatSectionChip } from "@/core/models/scoreOverlays";
-import {
-  createSection,
-  type Section,
-  type SectionKind,
-  UNTIL_RELEASED,
-  validateSections,
-  type VampOut,
-  type VampVocals,
-} from "@/core/models/sections";
+import { createSection, type Section, type SectionKind, validateSections, type VampOut, type VampVocals } from "@/core/models/sections";
 import type Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
 
@@ -40,8 +30,8 @@ const KIND_OPTIONS: { value: Choice; label: string }[] = [
 
 const OUT_OPTIONS: { value: VampOut; label: string }[] = [
   { value: "onEnd", label: "At the end" },
-  { value: "anyBar", label: "At the next measure" },
-  { value: "anyBeat", label: "At the next beat" },
+  { value: "anyBar", label: "Any measure" },
+  { value: "anyBeat", label: "Any beat" },
 ];
 
 const VOCALS_OPTIONS: { value: VampVocals; label: string }[] = [
@@ -64,7 +54,7 @@ const editor = injectMeasureEditor();
 const player = usePlayerStore();
 const { notifyError } = useNotify();
 const confirm = useConfirm();
-const ids = { passes: useId(), untilReleased: useId(), out: useId(), vocals: useId(), error: useId() };
+const ids = { passes: useId(), out: useId(), vocals: useId(), error: useId() };
 
 const measures = computed(() => props.song.getMeasures());
 const timeline = computed(() => props.song.getTimeline());
@@ -81,11 +71,10 @@ const passes = ref<number | null>(null);
 
 const section = computed(() => target.value?.section);
 const kind = computed<Choice>(() => pending.value?.kind ?? section.value?.kind ?? "recorded");
-const isUntilReleased = computed(() => section.value?.kind === "vamp" && section.value.passes === UNTIL_RELEASED);
 const summary = computed(() => section.value ? formatSectionChip(section.value) : "As recorded");
 
 watch(() => [props.run.first, props.run.last, section.value], () => {
-  passes.value = section.value && section.value.kind !== "cut" ? section.value.passes : null;
+  passes.value = section.value?.kind === "repeat" ? section.value.passes : null;
   pending.value = undefined;
   error.value = undefined;
 }, { immediate: true });
@@ -202,15 +191,9 @@ const savePasses = useDebounceFn((value: number) => update({ passes: value }), P
 
 function onPassesChange(value: number | null): void {
   passes.value = value;
-  if (value !== null && section.value?.kind !== "cut" && value !== section.value?.passes) {
+  if (value !== null && section.value?.kind === "repeat" && value !== section.value.passes) {
     savePasses(value);
   }
-}
-
-// A limited vamp starts at the passes the recording has, so it plays as recorded until changed.
-function changeUntilReleased(untilReleased: boolean): void {
-  const recorded = section.value ? findRecordedPasses(timeline.value, section.value).length : 1;
-  update({ passes: untilReleased ? UNTIL_RELEASED : Math.max(recorded, 1) });
 }
 </script>
 
@@ -284,79 +267,62 @@ function changeUntilReleased(untilReleased: boolean): void {
       </div>
     </div>
 
-    <template v-if="section && section.kind !== 'cut'">
-      <div class="flex items-center justify-between gap-2">
-        <label
-          :for="isUntilReleased ? ids.untilReleased : ids.passes"
-          class="text-sm"
-        >Passes</label>
-        <div class="flex items-center gap-3">
-          <InputNumber
-            v-if="!isUntilReleased"
-            :model-value="passes"
-            :input-id="ids.passes"
-            :min="1"
-            :max="99"
-            show-buttons
-            button-layout="horizontal"
-            size="small"
-            input-class="w-10 text-center"
-            :invalid="!!error"
-            :aria-describedby="error ? ids.error : undefined"
-            @update:model-value="onPassesChange"
-          />
-          <div
-            v-if="section.kind === 'vamp'"
-            class="flex items-center gap-2"
-          >
-            <Checkbox
-              :model-value="isUntilReleased"
-              :input-id="ids.untilReleased"
-              binary
-              @update:model-value="changeUntilReleased"
-            />
-            <label
-              :for="ids.untilReleased"
-              class="text-sm whitespace-nowrap"
-            >Until released</label>
-          </div>
-        </div>
-      </div>
+    <div
+      v-if="section?.kind === 'repeat'"
+      class="flex items-center justify-between gap-2"
+    >
+      <label
+        :for="ids.passes"
+        class="text-sm"
+      >Passes</label>
+      <InputNumber
+        :model-value="passes"
+        :input-id="ids.passes"
+        :min="1"
+        :max="99"
+        show-buttons
+        button-layout="horizontal"
+        size="small"
+        input-class="w-10 text-center"
+        :invalid="!!error"
+        :aria-describedby="error ? ids.error : undefined"
+        @update:model-value="onPassesChange"
+      />
+    </div>
 
-      <template v-if="section.kind === 'vamp'">
-        <div class="flex items-center justify-between gap-2">
-          <span
-            :id="ids.out"
-            class="text-sm"
-          >Go on</span>
-          <Select
-            :model-value="section.out"
-            class="w-48"
-            size="small"
-            :options="OUT_OPTIONS"
-            option-label="label"
-            option-value="value"
-            :aria-labelledby="ids.out"
-            @update:model-value="update({ out: $event })"
-          />
-        </div>
-        <div class="flex items-center justify-between gap-2">
-          <span
-            :id="ids.vocals"
-            class="text-sm"
-          >Vocals</span>
-          <Select
-            :model-value="section.vocals"
-            class="w-48"
-            size="small"
-            :options="VOCALS_OPTIONS"
-            option-label="label"
-            option-value="value"
-            :aria-labelledby="ids.vocals"
-            @update:model-value="update({ vocals: $event })"
-          />
-        </div>
-      </template>
+    <template v-if="section?.kind === 'vamp'">
+      <div class="flex items-center justify-between gap-2">
+        <span
+          :id="ids.out"
+          class="text-sm"
+        >Out</span>
+        <Select
+          :model-value="section.out"
+          class="w-48"
+          size="small"
+          :options="OUT_OPTIONS"
+          option-label="label"
+          option-value="value"
+          :aria-labelledby="ids.out"
+          @update:model-value="update({ out: $event })"
+        />
+      </div>
+      <div class="flex items-center justify-between gap-2">
+        <span
+          :id="ids.vocals"
+          class="text-sm"
+        >Vocals</span>
+        <Select
+          :model-value="section.vocals"
+          class="w-48"
+          size="small"
+          :options="VOCALS_OPTIONS"
+          option-label="label"
+          option-value="value"
+          :aria-labelledby="ids.vocals"
+          @update:model-value="update({ vocals: $event })"
+        />
+      </div>
     </template>
 
     <Message

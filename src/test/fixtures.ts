@@ -129,7 +129,7 @@ type LabelBeat = [label: string, beat: number];
 type LabelSection
   = | { kind: "cut"; from: LabelBeat; to: LabelBeat }
     | { kind: "repeat"; from: LabelBeat; to: LabelBeat; passes: number }
-    | { kind: "vamp"; from: LabelBeat; to: LabelBeat; passes: number; out?: VampOut; vocals?: VampVocals };
+    | { kind: "vamp"; from: LabelBeat; to: LabelBeat; out?: VampOut; vocals?: VampVocals };
 
 type FixtureLayout = {
   spans: LabelSpan[];
@@ -154,7 +154,7 @@ function toSection(measures: readonly Measure[], section: LabelSection): Section
     case "repeat":
       return { kind: "repeat", ...range, passes: section.passes };
     case "vamp":
-      return { kind: "vamp", ...range, passes: section.passes, out: section.out ?? "onEnd", vocals: section.vocals ?? "all" };
+      return { kind: "vamp", ...range, out: section.out ?? "onEnd", vocals: section.vocals ?? "all" };
   }
 }
 
@@ -182,11 +182,11 @@ export function makeMidiSong(): Song {
   return makeMidiFixture("test-midi-song", "Test MIDI Song", { spans: MIDI_PLAIN });
 }
 
-/** Vamps measure "2", which the plain layout recorded once, for 2 passes. */
+/** Vamps measure "2", which the plain layout recorded once. */
 export function makeMidiSongWithVamp(): Song {
   return makeMidiFixture("test-midi-song-vamp", "Test MIDI Song with Vamp", {
     spans: MIDI_PLAIN,
-    sections: [{ kind: "vamp", from: ["2", 0], to: ["2", 3], passes: 2 }],
+    sections: [{ kind: "vamp", from: ["2", 0], to: ["2", 3] }],
   });
 }
 
@@ -206,13 +206,13 @@ export function makeMidiSongWithCut(): Song {
   });
 }
 
-export type VampOptions = { passes?: number; out?: VampOut; vocals?: VampVocals };
+export type VampOptions = { out?: VampOut; vocals?: VampVocals };
 
 /** Vamps measure "2", which `BEAT_MAP_LABELS.bakedVamp` recorded four times. */
-export function makeMidiSongWithBakedVamp({ passes = 2, out, vocals }: VampOptions = {}): Song {
+export function makeMidiSongWithBakedVamp({ out, vocals }: VampOptions = {}): Song {
   return makeMidiFixture("test-midi-song-baked-vamp", "Test MIDI Song with Baked Vamp", {
     spans: MIDI_BAKED_VAMP,
-    sections: [{ kind: "vamp", from: ["2", 0], to: ["2", 3], passes, out, vocals }],
+    sections: [{ kind: "vamp", from: ["2", 0], to: ["2", 3], out, vocals }],
   });
 }
 
@@ -257,11 +257,11 @@ export function makeAudioSong(): Song {
   return makeAudioFixture("test-audio-song", "Audio Test Song", { spans: AUDIO_PLAIN });
 }
 
-/** Vamps measure "2" (250 ms to 500 ms) for 2 passes on the plain layout. */
+/** Vamps measure "2" (250 ms to 500 ms) on the plain layout. */
 export function makeAudioSongWithVamp(): Song {
   return makeAudioFixture("test-audio-song-vamp", "Audio Test Song with Vamp", {
     spans: AUDIO_PLAIN,
-    sections: [{ kind: "vamp", from: ["2", 0], to: ["2", 3], passes: 2 }],
+    sections: [{ kind: "vamp", from: ["2", 0], to: ["2", 3] }],
     warpMarkers: QUARTER_SECOND_POSITIONS,
   });
 }
@@ -270,7 +270,7 @@ export function makeAudioSongWithVamp(): Song {
 export function makeAudioSongWithVocalVamp(vocals: VampVocals = "split"): Song {
   return makeAudioFixture("test-audio-song-vocal-vamp", "Audio Test Song with Vocal Vamp", {
     spans: AUDIO_PLAIN,
-    sections: [{ kind: "vamp", from: ["2", 0], to: ["2", 3], passes: 2, vocals }],
+    sections: [{ kind: "vamp", from: ["2", 0], to: ["2", 3], vocals }],
     tracks: [
       new Track("Accompaniment", "Accompaniment", 0, "accomp.mp3"),
       new Track("Vocals", "Vocal", 0, "vocal.mp3"),
@@ -286,7 +286,7 @@ export function makeAudioSongWithVocalVamp(vocals: VampVocals = "split"): Song {
 export function makeAudioSongWithVampOut(out: VampOut): Song {
   return makeAudioFixture(`test-audio-song-vamp-${out}`, `Audio Test Song (out=${out})`, {
     spans: AUDIO_PLAIN,
-    sections: [{ kind: "vamp", from: ["2", 0], to: ["3", 3], passes: 0, out }],
+    sections: [{ kind: "vamp", from: ["2", 0], to: ["3", 3], out }],
     warpMarkers: QUARTER_SECOND_POSITIONS,
   });
 }
@@ -310,10 +310,10 @@ export function makeAudioSongWithCut(): Song {
 }
 
 /** Vamps measure "2", which the recording plays four times (positions 1 to 4). */
-export function makeAudioSongWithBakedVamp({ passes = 2, out, vocals }: VampOptions = {}): Song {
+export function makeAudioSongWithBakedVamp({ out, vocals }: VampOptions = {}): Song {
   return makeAudioFixture("test-audio-song-baked-vamp", "Audio Test Song with Baked Vamp", {
     spans: AUDIO_BAKED_VAMP,
-    sections: [{ kind: "vamp", from: ["2", 0], to: ["2", 3], passes, out, vocals }],
+    sections: [{ kind: "vamp", from: ["2", 0], to: ["2", 3], out, vocals }],
     warpMarkers: BAKED_VAMP_QUARTER_SECOND_POSITIONS,
   });
 }

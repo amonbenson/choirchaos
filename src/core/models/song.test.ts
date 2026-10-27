@@ -223,7 +223,7 @@ describe("Song layers", () => {
   };
   const arrangement: StoredArrangement = {
     markers: [{ at: { measure: "m2", beat: 1, occurrence: 2 }, text: "B" }],
-    sections: [{ kind: "vamp", from: { measure: "m2", beat: 0 }, to: { measure: "m2", beat: 2 }, passes: 0, out: "anyBar", vocals: "last" }],
+    sections: [{ kind: "vamp", from: { measure: "m2", beat: 0 }, to: { measure: "m2", beat: 2 }, out: "anyBar", vocals: "last" }],
     segue: true,
   };
   const record = { id: "song-id", number: "1", title: "Song", audioFiles: ["a.mp3"], tracks: [], score, recording, arrangement };
@@ -707,7 +707,7 @@ describe("Song duplicates played as a repeat", () => {
     const song = makeFakedRepeatSong(labels, { 22: "21A", 23: "21B", 24: "21C", 25: "21D" }, {
       warpMarkers: [{ measure: "m1", occurrence: 1, time: 0 }, { measure: "m26", occurrence: 1, time: 32.62 }, { measure: "m34", occurrence: 1, time: 60 }],
       markers: [{ at: { measure: "m27", beat: 2, occurrence: 1 }, text: "Breath" }],
-      sections: [{ kind: "vamp", from: { measure: "m26", beat: 0, occurrence: 1 }, to: { measure: "m29", beat: 1, occurrence: 1 }, passes: 0, out: "onEnd", vocals: "all" }],
+      sections: [{ kind: "vamp", from: { measure: "m26", beat: 0, occurrence: 1 }, to: { measure: "m29", beat: 1, occurrence: 1 }, out: "onEnd", vocals: "all" }],
     });
     const run = findDuplicateRuns(song.getMeasures())[0]!;
 
@@ -729,7 +729,6 @@ describe("Song duplicates played as a repeat", () => {
       kind: "vamp",
       from: { measure: "m22", beat: 0, occurrence: 2 },
       to: { measure: "m25", beat: 1, occurrence: 2 },
-      passes: 0,
       out: "onEnd",
       vocals: "all",
     }]);

@@ -246,11 +246,7 @@ function formatRange(measures: readonly Measure[], { from, to }: Section): strin
 }
 
 function formatPlannedPasses(section: Section): string | undefined {
-  if (section.kind === "cut") {
-    return undefined;
-  }
-
-  return section.kind === "vamp" && section.passes === 0 ? "until released" : formatCount(section.passes);
+  return section.kind === "repeat" ? formatCount(section.passes) : undefined;
 }
 
 function formatPlayingPass({ pass, passes, released }: PlayingSection): string {
@@ -266,19 +262,19 @@ export function formatPlayingSection(kind: Section["kind"], playing: PlayingSect
   return `${KIND_NAMES[kind]} ${formatPlayingPass(playing)}`;
 }
 
-/** The short text of the section being played and its pass, e.g. "Vamp 2/4" or "Vamp 3" until released. */
+/** The short text of the section being played and its pass, e.g. "Repeat 2/4" or "Vamp 3". */
 export function formatSectionPass(kind: Section["kind"], { pass, passes }: PlayingSection): string {
   return passes === undefined ? `${KIND_NAMES[kind]} ${pass}` : `${KIND_NAMES[kind]} ${pass}/${passes}`;
 }
 
-/** The section and what it plays, e.g. "Vamp 19 to 20, until released" or, while it plays, "Repeat 14 to 15, pass 2 of 3". */
+/** The section and what it plays, e.g. "Repeat 14 to 15, 3 times" or, while it plays, "Repeat 14 to 15, pass 2 of 3". */
 export function describeSection(measures: readonly Measure[], section: Section, playing?: PlayingSection): string {
   const passes = playing ? formatPlayingPass(playing) : formatPlannedPasses(section);
   const name = `${KIND_NAMES[section.kind]} ${formatRange(measures, section)}`;
   return passes ? `${name}, ${passes}` : name;
 }
 
-/** The short text of a section chip, e.g. "Repeat 3×", "Vamp, until released" or, while it plays, "Repeat 2/3". */
+/** The short text of a section chip, e.g. "Repeat 3×", "Vamp" or, while it plays, "Repeat 2/3". */
 export function formatSectionChip(section: Section, playing?: PlayingSection): string {
   const kind = KIND_NAMES[section.kind];
   const occurrence = section.from.occurrence > 1 ? `, ${formatTimes(section.from.occurrence)}` : "";
@@ -294,7 +290,7 @@ export function formatSectionChip(section: Section, playing?: PlayingSection): s
     return formatSectionPass(section.kind, playing);
   }
 
-  const passes = section.kind === "vamp" && section.passes === 0 ? ", until released" : ` ${section.passes}×`;
+  const passes = section.kind === "repeat" ? ` ${section.passes}×` : "";
   return `${kind}${passes}${occurrence}`;
 }
 
@@ -318,7 +314,7 @@ export type OverlayDescriptionInput = {
   playing?: PlayingSection;
 };
 
-/** What the overlays on each box say, for its `aria-describedby`: "Vamp 19 to 20, until released. Recorded 4 times. Marker D." */
+/** What the overlays on each box say, for its `aria-describedby`: "Vamp 19 to 20. Recorded 4 times. Marker D." */
 export function describeOverlays({ measures, timeline, sections, repeats, markers, jumps = [], playing }: OverlayDescriptionInput): Map<MeasureId, string> {
   const descriptions = new Map<MeasureId, string[]>();
   for (const { index, section, measures: covered } of sections) {

@@ -33,12 +33,12 @@ Playback engine shared by both modes:
 ## Sections
 
 `Route` is rebuilt whenever the timeline, the sections or `setVampsEnabled` change. The engine owns the `RouteState { section, pass, released }`.
-- A section's recorded passes come from `findRecordedPasses()`, each as a tick range from `from`'s beat to the end of `to`'s beat. Cuts play 0 passes, repeats `passes`, vamps `passes` or until released. A disabled vamp is left out of the route, which plays it as recorded.
-- Desired pass `i` plays the last recorded pass if it is the last pass, recorded pass `i` while `i` is below the recorded count, and otherwise the filler, the recorded pass before the last. With 4 recorded passes, 2 passes play P1 P4 and 6 play P1 P2 P3 P3 P3 P4.
+- A section's recorded passes come from `findRecordedPasses()`, each as a tick range from `from`'s beat to the end of `to`'s beat. Cuts play 0 passes, repeats `passes`, vamps until released. A disabled vamp is left out of the route, which plays it as recorded.
+- Desired pass `i` plays the last recorded pass if it is the last pass, recorded pass `i` while `i` is below the recorded count, and otherwise the filler, the recorded pass before the last. With 4 recorded passes, a repeat of 2 passes plays P1 P4 and one of 6 plays P1 P2 P3 P3 P3 P4. A vamp loops P1 P2 P3 P3 ... and, once released, finishes in P4.
 - When the last pass is decided while another recording plays (a release, or 1 pass of several), the route jumps at the first barline up to that pass's midpoint to the same measure offset, beat and beat fraction in the last pass (`mapTick()`). Past the midpoint the pass finishes and the last pass follows in full.
 - A released vamp with `anyBar`/`anyBeat` jumps at the next barline or beat to the end of its last pass.
 - A cut jumps from its start to the end of its last pass when playback reaches or starts there. Seeking strictly inside plays on.
-- `stateAt(tick)` derives the state from the position, so seeking, stopping and `resetVamp()` need no bookkeeping. Recorded pass k is pass k. With several recorded passes, the last one, and passes beyond the total, count as the last pass.
+- `stateAt(tick)` derives the state from the position, so seeking, stopping and `resetVamp()` need no bookkeeping. Recorded pass k is pass k. For a repeat with several recorded passes, the last one, and passes beyond the total, count as the last pass.
 - `nextJump()` returns `{ at, to, next }`. `to === at` is a pass boundary that only changes the state.
 - Vocal roles: `entering` in the first recorded pass, `exiting` in the last, `repeating` between. A single recorded pass is entering before its midpoint and exiting after it. Entering material outside desired pass 1 and exiting material outside the last pass count as repeating. Only vamps mute.
 

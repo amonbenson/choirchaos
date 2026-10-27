@@ -1,6 +1,6 @@
 import type { Tick } from "../midi/types";
 import { findRecordedPasses, type RecordedPass } from "../models/recording";
-import { type Section, UNTIL_RELEASED, type VampOut } from "../models/sections";
+import type { Section, VampOut } from "../models/sections";
 import { findBeatAt, findPositionAt, getBeatTick, getStartTick, type ResolvedTimeline, type TimelinePosition } from "./timeline";
 import type { PlayerSectionState } from "./types";
 
@@ -185,12 +185,12 @@ export default class Route {
     return routeSection.passes.findIndex(pass => pass.start <= tick && tick < pass.end);
   }
 
-  /** Total passes to play, or undefined while a vamp runs until released. */
+  /** Total passes to play, or undefined for a vamp, which plays until released. */
   private getTotalPasses({ section }: RouteSection): number | undefined {
     switch (section.kind) {
       case "cut": return 0;
       case "repeat": return section.passes;
-      case "vamp": return section.passes === UNTIL_RELEASED ? undefined : section.passes;
+      case "vamp": return undefined;
     }
   }
 

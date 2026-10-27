@@ -17,7 +17,7 @@ export type PlayerSectionState = {
   kind: SectionKind;
   /** The 1-based pass being played. */
   pass: number;
-  /** Total passes, undefined while a vamp runs until released. */
+  /** Total passes, undefined for a vamp until it is released. */
   passes?: number;
   recordedPasses: number;
   released: boolean;

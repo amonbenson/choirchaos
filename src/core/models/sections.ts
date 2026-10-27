@@ -23,8 +23,8 @@ export type CutSection<L = Location> = Range<L> & { kind: "cut" };
 /** Plays its range `passes` times in total. */
 export type RepeatSection<L = Location> = Range<L> & { kind: "repeat"; passes: number };
 
-/** Plays its range `passes` times in total, or until released when `passes` is 0. */
-export type VampSection<L = Location> = Range<L> & { kind: "vamp"; passes: number; out: VampOut; vocals: VampVocals };
+/** Plays its range until released. */
+export type VampSection<L = Location> = Range<L> & { kind: "vamp"; out: VampOut; vocals: VampVocals };
 
 export type Section = CutSection | RepeatSection | VampSection;
 
@@ -34,11 +34,8 @@ export const VAMP_OUTS: readonly VampOut[] = ["onEnd", "anyBar", "anyBeat"];
 export const VAMP_VOCALS: readonly VampVocals[] = ["all", "first", "last", "split"];
 
 export const DEFAULT_REPEAT_PASSES = 2;
-export const UNTIL_RELEASED = 0;
 export const DEFAULT_VAMP_OUT: VampOut = "onEnd";
 export const DEFAULT_VAMP_VOCALS: VampVocals = "all";
-
-const MIN_PASSES: Record<Exclude<SectionKind, "cut">, number> = { repeat: 1, vamp: UNTIL_RELEASED };
 
 export function createSection(kind: SectionKind, from: Location, to: Location): Section {
   switch (kind) {
@@ -47,7 +44,7 @@ export function createSection(kind: SectionKind, from: Location, to: Location): 
     case "repeat":
       return { kind, from, to, passes: DEFAULT_REPEAT_PASSES };
     case "vamp":
-      return { kind, from, to, passes: UNTIL_RELEASED, out: DEFAULT_VAMP_OUT, vocals: DEFAULT_VAMP_VOCALS };
+      return { kind, from, to, out: DEFAULT_VAMP_OUT, vocals: DEFAULT_VAMP_VOCALS };
   }
 }
 
@@ -86,20 +83,15 @@ function overlaps(a: SectionExtent, b: SectionExtent): boolean {
   return !isBefore(a.to, b.from) && !isBefore(b.to, a.from);
 }
 
-function validatePasses(section: Section): string | undefined {
-  if (section.kind === "cut") {
-    return undefined;
+function validateKindFields(section: Section): string | undefined {
+  switch (section.kind) {
+    case "cut":
+      return undefined;
+    case "repeat":
+      return Number.isInteger(section.passes) && section.passes >= 1 ? undefined : "A repeat needs at least 1 pass.";
+    case "vamp":
+      return VAMP_OUTS.includes(section.out) && VAMP_VOCALS.includes(section.vocals) ? undefined : "A vamp needs a valid out and vocals mode.";
   }
-
-  if (!Number.isInteger(section.passes) || section.passes < MIN_PASSES[section.kind]) {
-    return `A ${section.kind} needs at least ${MIN_PASSES[section.kind]} passes.`;
-  }
-
-  if (section.kind === "vamp" && (!VAMP_OUTS.includes(section.out) || !VAMP_VOCALS.includes(section.vocals))) {
-    return "A vamp needs a valid exit and vocals mode.";
-  }
-
-  return undefined;
 }
 
 /** Why a single section cannot be played, or undefined when it can. */
@@ -113,7 +105,7 @@ export function validateSection(measures: readonly Measure[], timeline: Timeline
     return "A section must start before it ends.";
   }
 
-  return validatePasses(section);
+  return validateKindFields(section);
 }
 
 export type SectionIssue = { index: number; reason: string };

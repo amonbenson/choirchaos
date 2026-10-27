@@ -170,10 +170,10 @@ describe("section texts", () => {
 
   it("names the kind and the planned passes", () => {
     expect(formatSectionChip(repeat)).toBe("Repeat 3×");
-    expect(formatSectionChip(vamp)).toBe("Vamp, until released, 2nd time");
+    expect(formatSectionChip(vamp)).toBe("Vamp, 2nd time");
     expect(formatSectionChip(cut)).toBe("Cut");
     expect(describeSection(measures, repeat)).toBe("Repeat 14 to 15, 3 times");
-    expect(describeSection(measures, vamp)).toBe("Vamp 10 to 11, 2nd time, until released");
+    expect(describeSection(measures, vamp)).toBe("Vamp 10 to 11, 2nd time");
     expect(describeSection(measures, cut)).toBe("Cut 16");
   });
 
@@ -182,12 +182,12 @@ describe("section texts", () => {
     expect(formatSectionChip(vamp, { section: 0, pass: 2, released: false })).toBe("Vamp 2");
     expect(formatSectionChip(vamp, { section: 0, pass: 3, released: true })).toBe("Vamp, exiting");
     expect(describeSection(measures, repeat, { section: 0, pass: 2, passes: 3, released: false })).toBe("Repeat 14 to 15, pass 2 of 3");
-    expect(formatPlayingSection("vamp", { section: 0, pass: 2, passes: 4, released: false })).toBe("Vamp pass 2 of 4");
+    expect(formatPlayingSection("repeat", { section: 0, pass: 2, passes: 4, released: false })).toBe("Repeat pass 2 of 4");
+    expect(formatPlayingSection("vamp", { section: 0, pass: 2, released: false })).toBe("Vamp pass 2");
     expect(formatPlayingSection("vamp", { section: 0, pass: 4, released: true })).toBe("Vamp exiting");
   });
 
   it("names the playing pass in short like the header", () => {
-    expect(formatSectionPass("vamp", { section: 0, pass: 1, passes: 2, released: false })).toBe("Vamp 1/2");
     expect(formatSectionPass("vamp", { section: 0, pass: 3, released: false })).toBe("Vamp 3");
     expect(formatSectionPass("repeat", { section: 0, pass: 2, passes: 3, released: false })).toBe("Repeat 2/3");
   });

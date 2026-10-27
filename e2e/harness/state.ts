@@ -140,7 +140,7 @@ const LAYOUT_KEYS = ["page", "x", "y", "width", "height"];
 const SECTION_KEYS: Record<string, string[]> = {
   cut: ["kind", "from", "to"],
   repeat: ["kind", "from", "to", "passes"],
-  vamp: ["kind", "from", "to", "passes", "out", "vocals"],
+  vamp: ["kind", "from", "to", "out", "vocals"],
 };
 
 const VAMP_OUTS = ["onEnd", "anyBar", "anyBeat"];
@@ -345,8 +345,7 @@ function sectionFieldViolation(section: Json): string | undefined {
     return "needs at least one pass";
   }
 
-  const vampFieldsValid = Number.isInteger(section.passes) && (section.passes as number) >= 0
-    && VAMP_OUTS.includes(section.out as string) && VAMP_VOCALS.includes(section.vocals as string);
+  const vampFieldsValid = VAMP_OUTS.includes(section.out as string) && VAMP_VOCALS.includes(section.vocals as string);
   return section.kind === "vamp" && !vampFieldsValid ? "has invalid vamp fields" : undefined;
 }
 
