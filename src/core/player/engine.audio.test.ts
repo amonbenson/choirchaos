@@ -156,6 +156,38 @@ describe("PlayerEngine – audio mode", () => {
     expect(player.getFinalLocation()).toEqual({ position: 6, measure: idOf(song, "4"), occurrence: 1, beat: 3 });
   });
 
+  // ── tempo ─────────────────────────────────────────────────────────────────
+
+  it("takes the tempo from the beats between sync points", async () => {
+    const song = makeAudioSong();
+    vi.spyOn(song, "getWarpMarkers").mockReturnValue([
+      { measure: idOf(song, "1"), occurrence: 1, time: 0 },
+      { measure: idOf(song, "2"), occurrence: 1, time: 0.5 },
+      { measure: idOf(song, "3"), occurrence: 1, time: 0.75 },
+    ]);
+    await reload(song);
+    expect(player.getCurrentTempo()).toBe(480);
+
+    player.play();
+    stepAt(0.6);
+
+    expect(player.getCurrentTempo()).toBe(960);
+  });
+
+  it("follows sync point edits with the tempo", async () => {
+    const song = makeAudioSong();
+    await reload(song);
+    expect(player.getCurrentTempo()).toBe(120);
+
+    vi.spyOn(song, "getWarpMarkers").mockReturnValue([
+      { measure: idOf(song, "1"), occurrence: 1, time: 0 },
+      { measure: idOf(song, "2"), occurrence: 1, time: 1 },
+    ]);
+    player.syncWarp();
+
+    expect(player.getCurrentTempo()).toBe(240);
+  });
+
   // ── position tracking ─────────────────────────────────────────────────────
 
   it("syncs position from audioPlayer.position (seconds → ticks/ms)", () => {

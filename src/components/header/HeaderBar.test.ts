@@ -86,6 +86,8 @@ describe("HeaderBar", () => {
     const state = fakePlayer();
     state.currentLocation = { position: 4, ...locationOf(song, "2", 0, 2), beat: 1 };
     state.currentSection = undefined;
+    state.mode = "midi";
+    state.playbackSpeed = 1;
     state.timeline = resolveTimeline();
     state.duration = state.timeline.length * TICKS_PER_POSITION;
   });
@@ -147,5 +149,14 @@ describe("HeaderBar", () => {
     await flushPromises();
 
     expect(wrapper.find("[role='slider'][aria-label='Position']").attributes("aria-valuetext")).toBe("2, 2nd time, Repeat pass 2 of 3");
+  });
+  it("shows the beat and the played tempo in audio mode too", () => {
+    const state = fakePlayer();
+    state.mode = "audio";
+    state.playbackSpeed = 0.5;
+    const wrapper = mountHeader();
+
+    expect(wrapper.find("button[aria-label='Current beat 2']").exists()).toBe(true);
+    expect(wrapper.find("button[aria-label='Tempo 60']").text()).toContain("60");
   });
 });

@@ -509,7 +509,7 @@ export default class PlayerEngine {
     }
 
     this.rebuildRoute();
-    this.syncLocation(this.position.get());
+    this.syncDisplayAt(this.position.get());
   }
 
   private createRoute(): Route {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useMediaQuery } from "@vueuse/core";
+import { useEventListener, useMediaQuery } from "@vueuse/core";
 import ConfirmDialog from "primevue/confirmdialog";
 import Toast from "primevue/toast";
 import { onMounted, watchEffect } from "vue";
@@ -16,6 +16,14 @@ watchEffect(() => {
   const isDark = theme === "dark" || (theme === "system" && systemPrefersDark.value);
   document.documentElement.classList.toggle("dark", isDark);
 });
+
+// Browsers zoom the whole page on ctrl or cmd and wheel, and on trackpad pinch, which they report the same
+// way. The score and the timeline handle these gestures first and zoom themselves.
+useEventListener(window, "wheel", (event: WheelEvent) => {
+  if (event.ctrlKey || event.metaKey) {
+    event.preventDefault();
+  }
+}, { passive: false });
 
 const router = useRouter();
 const route = useRoute();
