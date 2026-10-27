@@ -8,7 +8,7 @@ import Select from "primevue/select";
 import { computed, ref, shallowRef, useId, useTemplateRef, watch } from "vue";
 
 import CollapsiblePanel from "@/components/base/CollapsiblePanel.vue";
-import { injectMeasureEditor } from "@/composables/useMeasureEditor";
+import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { useSyncEditor } from "@/composables/useSyncEditor";
 import { formatOccurrence, formatOccurrenceShort } from "@/core/models/locationFormat";
 import type { Occurrence } from "@/core/models/recording";
@@ -33,7 +33,7 @@ const MILLISECONDS_PER_SECOND = 1000;
 
 const player = usePlayerStore();
 const settings = useSettingsStore();
-const editor = injectMeasureEditor();
+const { selectAndSeek } = injectEditorSelection();
 const sync = useSyncEditor(() => props.song);
 const titleId = useId();
 
@@ -104,7 +104,7 @@ async function addMarker(key: string): Promise<void> {
   const candidate = candidates.value.find(entry => getOccurrenceKey(entry) === key);
   if (candidate) {
     await sync.add(candidate, currentTime.value);
-    selectMarker(candidate.position);
+    selectAndSeek({ kind: "syncPoint", occurrence: { measure: candidate.measure, occurrence: candidate.occurrence } });
   }
 }
 
@@ -117,17 +117,10 @@ function onAddClick(event: Event): void {
   }
 }
 
-/** Selects the sync point's measure where it has a box, so the inspector shows the sync point. */
-function selectMarker(position: number): void {
-  const measure = props.song.findMeasure(player.timeline[position]?.measure ?? "");
-  editor.setSelection(measure?.layout ? [measure] : []);
-  player.seekPosition(position);
-}
-
 function onMarkerClick(key: string): void {
   const marker = markersByKey.value.get(key);
   if (marker) {
-    selectMarker(marker.position);
+    selectAndSeek({ kind: "syncPoint", occurrence: { measure: marker.measure, occurrence: marker.occurrence } });
   }
 }
 
@@ -175,7 +168,7 @@ function constrainMarker(key: string, time: number): number {
           v-if="!collapsed"
           class="hidden flex-1 truncate text-sm text-muted-color md:inline"
         >{{ isAudio
-          ? "Select a measure, play, pause on its first beat and sync it in the editor panel. Hold Ctrl and scroll to zoom."
+          ? "Pause where a measure starts and add a sync point, or click one to nudge it in the editor panel. Hold Ctrl and scroll to zoom."
           : "The measures in the order the recording plays them." }}</span>
         <div
           v-if="!collapsed && isAudio"

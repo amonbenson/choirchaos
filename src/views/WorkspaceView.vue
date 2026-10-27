@@ -18,8 +18,8 @@ import VampCard from "@/components/player/VampCard.vue";
 import ScoreViewer from "@/components/score/ScoreViewer.vue";
 import SongDetailsDialog from "@/components/song/SongDetailsDialog.vue";
 import { type ShortcutAction, useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
-import { provideMeasureEditor, useMeasureEditor } from "@/composables/useMeasureEditor";
 import { usePlayerSync } from "@/composables/usePlayerSync";
+import { provideSongEditor } from "@/composables/useSongEditor";
 import { useSongHistory } from "@/composables/useSongHistory";
 import { formatSectionPass } from "@/core/models/scoreOverlays";
 import type Song from "@/core/models/song";
@@ -56,7 +56,7 @@ const isStartPanelOpen = computed(() => hasStartPanel.value && settings.current.
 const isTimelineOpen = computed(() => showTimeline.value && settings.current.workspace.panelVisible.warp);
 const showSyncNotice = computed(() => !!song.value && hasUnsyncedAudio(song.value) && !isTimelineOpen.value);
 
-provideMeasureEditor(useMeasureEditor(song, editMode));
+provideSongEditor(song, editMode);
 usePlayerSync(song);
 const history = useSongHistory(song, editMode);
 
@@ -431,8 +431,7 @@ const pdfLoading = ref(false);
         <!-- The dark theme's message background is translucent and would wash out over the white score. -->
         <div
           v-if="showSyncNotice"
-          class="absolute left-1/2 w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-md bg-surface-0 dark:bg-surface-900"
-          :class="editMode ? 'top-14' : 'top-2'"
+          class="absolute top-2 left-1/2 w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-md bg-surface-0 dark:bg-surface-900"
         >
           <Message
             severity="warn"

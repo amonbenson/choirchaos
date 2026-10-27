@@ -37,16 +37,17 @@ test.describe("undo", () => {
     await waitForPlayer(page);
     const undo = page.getByRole("button", { name: "Undo" });
     const redo = page.getByRole("button", { name: "Redo" });
-    const rehearsal = page.getByRole("region", { name: "Editor panel" }).getByRole("region", { name: "Rehearsal" });
+    const panel = page.getByRole("region", { name: "Editor panel" });
+    const create = panel.getByRole("region", { name: "Section" });
     await expect(undo).toBeDisabled();
     await expect(redo).toBeDisabled();
 
     await select(page, "1", "2");
-    await rehearsal.getByRole("button", { name: "Repeat", exact: true }).click();
+    await create.getByRole("button", { name: "Repeat", exact: true }).click();
     const repeat: SongSection = { kind: "repeat", from: locationAt(score, "1"), to: locationAt(score, "2", 3), passes: 2 };
     await expect.poll(() => storedSections(admin, song.id)).toEqual([repeat]);
     await select(page, "3");
-    await rehearsal.getByRole("button", { name: "Cut", exact: true }).click();
+    await create.getByRole("button", { name: "Cut", exact: true }).click();
     const cut: SongSection = { kind: "cut", from: locationAt(score, "3"), to: locationAt(score, "3", 3) };
     await expect.poll(() => storedSections(admin, song.id)).toEqual([repeat, cut]);
 
@@ -67,14 +68,14 @@ test.describe("undo", () => {
 
     // A focused field keeps the keys for its own text.
     await select(page, "1");
-    await rehearsal.getByLabel("Passes").focus();
+    await create.getByRole("button", { name: "Select repeat 1 to 2" }).click();
+    await panel.getByLabel("Passes").focus();
     await page.keyboard.press("ControlOrMeta+z");
     await page.waitForTimeout(500);
     expect(await storedSections(admin, song.id)).toEqual([repeat, cut]);
 
     // Renaming a measure is a score edit, which undo covers like the arrangement.
     await select(page, "4");
-    const panel = page.getByRole("region", { name: "Editor panel" });
     await panel.getByLabel("Number").fill("4a");
     await panel.getByLabel("Number").press("Enter");
     await expect.poll(() => storedLabels(admin, song.id)).toContain("4a");
@@ -93,7 +94,7 @@ test.describe("undo", () => {
     await page.goto(`/show/${show.id}/song/${song.id}/edit`);
     await waitForPlayer(page);
     await select(page, "1");
-    await page.getByRole("region", { name: "Rehearsal" }).getByRole("button", { name: "Cut", exact: true }).click();
+    await page.getByRole("region", { name: "Section" }).getByRole("button", { name: "Cut", exact: true }).click();
     await expect.poll(() => storedSections(admin, song.id)).toHaveLength(1);
     await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 

@@ -42,7 +42,7 @@ Before finishing a task, run `npm run lint:fix`, `npm run typecheck` and `npx vi
 |---|---|
 | `src/views/` | Routed pages |
 | `src/components/` | UI components in the folder of the area they appear in (`header/`, `show/`, `song/`, `player/`, `editor/`, `score/`), plus generic `base/` and `icons/` |
-| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useMeasureEditor` holds the song editor's selection and tool, `useRecordingEditor` and `useSyncEditor` save recording and sync changes, `usePlayerSync` keeps the player in step with saved edits, `useSongHistory` binds undo and redo |
+| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useEditorSelection` holds the song editor's typed selection, `useMeasureEditor` drawing, placing and reviewing boxes (`provideSongEditor` sets up both), `useRecordingEditor` and `useSyncEditor` save recording and sync changes, `usePlayerSync` keeps the player in step with saved edits, `useSongHistory` binds undo and redo |
 | `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
 | `src/router/` | Routes and navigation guards |
 | `src/theme/` | The PrimeVue preset, the single place for the accent and surface palettes |
@@ -118,7 +118,7 @@ Rehearsers (viewers) only play songs back. Editors (editors and owners) also set
 4. **State that matters lives in the URL.** Reloading or going back keeps the user where they were. Editing a song is a route, not a flag.
 5. **Every action has one home.** Secondary entry points open the same dialog or page and keep its label. Only empty states and status hints may name the step instead, e.g. "Add playback".
 6. **Do not duplicate information.** A canvas (the score in written order, the timeline in played order) is the list of its objects. Side panels show the selection's properties or what the canvas cannot show.
-7. **Select, then act.** The panel next to a canvas edits the whole selection at once and shows mixed values as empty. The selected occurrence is the one at the playhead.
+7. **Select, then act.** One kind of object is selected at a time (measures, boxes without a number, a section, a marker, a sync point or a recording pass), and the panel next to a canvas shows only what applies to it. It edits the whole selection at once and shows mixed values as empty. Selected measures are edited in the pass at the playhead.
 8. **Automation proposes, the user decides, leftovers stay visible.** Automatic results are previewed where they will appear, and anything still to check stays marked on the object until resolved.
 9. **Empty states and status hints name the next step** and contain the control that does it.
 10. **The top bar always says where you are.** Every page starts with `HeaderBar`, whose breadcrumb leads to every parent, so no page needs a back button. Dialogs have one obvious exit ("Cancel"). Destructive actions are confirmed, everything else saves without asking.
@@ -139,9 +139,6 @@ Rehearsers (viewers) only play songs back. Editors (editors and owners) also set
 | `pi-map-marker` | A sync point |
 | `pi-trash` | Delete or remove |
 | `pi-undo` | Undo, and mirrored (`-scale-x-100`) Redo |
-| `pi-arrow-up-left` | The score's Select tool |
-| `pi-arrows-alt` | The score's Move tool |
-| `pi-stop` | The score's Draw tool |
 
 ### Conventions
 

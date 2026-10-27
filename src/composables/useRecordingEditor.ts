@@ -4,8 +4,8 @@ import { type Ref, ref } from "vue";
 import type { DroppedReferences, RecordingPreview } from "@/core/models/layers";
 import { formatOccurrence } from "@/core/models/locationFormat";
 import type { MeasureId } from "@/core/models/measure";
-import { formatSectionName } from "@/core/models/measureSelection";
 import type { RecordingSpan } from "@/core/models/recording";
+import { formatSectionName } from "@/core/models/scoreOverlays";
 import type Song from "@/core/models/song";
 
 import { useNotify } from "./useNotify";

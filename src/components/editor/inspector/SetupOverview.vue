@@ -6,15 +6,18 @@ import Message from "primevue/message";
 import Popover from "primevue/popover";
 import { computed, ref, useId } from "vue";
 
+import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
-import { findExistingLabels, getUnplacedRuns, type MeasureRun, planAddMeasures } from "@/core/models/measureEditing";
+import { findExistingLabels, getReadingOrder, getUnplacedRuns, type MeasureRun, planAddMeasures } from "@/core/models/measureEditing";
 import { parseLabelList } from "@/core/models/measureLabel";
+import { selectMeasures } from "@/core/models/selection";
 import type Song from "@/core/models/song";
 import { getSongSetup, isFileStep, type SetupStep } from "@/core/models/songSetup";
 
 import DuplicateReviewCard from "./DuplicateReviewCard.vue";
 import RecordingOverview from "./RecordingOverview.vue";
+import SyncStatus from "./SyncStatus.vue";
 
 const props = defineProps<{
   song: Song;
@@ -25,7 +28,8 @@ const emit = defineEmits<{
 }>();
 
 const editor = injectMeasureEditor();
-const { measures, mode, tool, placeFrom, unnumberedBoxes, reviewItems } = editor;
+const { measures, mode, unnumberedBoxes, reviewItems } = editor;
+const selection = injectEditorSelection();
 const { notifyError } = useNotify();
 const ids = { checklist: useId(), unplaced: useId() };
 
@@ -33,6 +37,8 @@ const setup = computed(() => getSongSetup(props.song));
 const placedCount = computed(() => measures.value.filter(measure => measure.layout).length);
 const unplacedRuns = computed(() => getUnplacedRuns(measures.value));
 const hasBoxes = computed(() => placedCount.value > 0 || unnumberedBoxes.value.length > 0);
+/** Measures are drawn on the score. Only audio songs without one add them by number. */
+const addsByNumber = computed(() => !props.song.pdfFile && mode.value === "audio");
 const nextFileStep = computed(() => setup.value.next && isFileStep(setup.value.next.id) ? setup.value.next : undefined);
 
 function describeStep(step: SetupStep): string {
@@ -61,9 +67,18 @@ const newMeasureBeats = ref(4);
 const parsedNewMeasures = computed(() => parseLabelList(newMeasures.value));
 const duplicateMeasures = computed(() => findExistingLabels(measures.value, parsedNewMeasures.value ?? []));
 
-function openAddMeasures(event: Event): void {
+function addMeasuresClicked(event: Event): void {
+  if (!addsByNumber.value) {
+    editor.startDrawing();
+    return;
+  }
+
   newMeasures.value = "";
   addPopover.value.toggle(event);
+}
+
+function selectAll(): void {
+  selection.select(selectMeasures(getReadingOrder(measures.value).map(measure => measure.id)));
 }
 
 async function addMeasures(): Promise<void> {
@@ -132,17 +147,16 @@ async function addMeasures(): Promise<void> {
     <DuplicateReviewCard :song="song" />
 
     <div
-      v-if="mode === 'audio' || song.pdfFile || hasBoxes"
+      v-if="song.pdfFile || addsByNumber"
       class="flex flex-wrap gap-2"
     >
       <Button
-        v-if="mode === 'audio'"
-        label="Add"
+        label="Add measures"
         icon="pi pi-plus"
         severity="secondary"
         size="small"
-        aria-haspopup="dialog"
-        @click="openAddMeasures"
+        :aria-haspopup="addsByNumber ? 'dialog' : undefined"
+        @click="addMeasuresClicked"
       />
       <Button
         v-if="song.pdfFile"
@@ -159,24 +173,21 @@ async function addMeasures(): Promise<void> {
         severity="secondary"
         size="small"
         text
-        @click="editor.selectAll()"
+        @click="selectAll"
       />
     </div>
 
     <span
-      v-if="tool === 'draw'"
-      class="text-sm"
-    >
-      Drag a box around one or more measures on the score.
-      <template v-if="placeFrom">The next box starts at measure {{ placeFrom }}.</template>
-    </span>
-    <span
-      v-else
+      v-if="hasBoxes"
       class="text-sm text-muted-color"
-    >Click a measure on the score to set how rehearsals play it, mark it or edit its box. Drag over several with the Select tool or Shift. Use the Draw tool to add boxes.</span>
+    >Click a measure on the score to edit it, ctrl-click to add more and shift-click to select a range. Drag to move the score.</span>
+    <span
+      v-else-if="measures.length === 0 && addsByNumber"
+      class="text-sm"
+    >This song has no score yet, so add its measures by number.</span>
 
     <div
-      v-if="unplacedRuns.length > 0"
+      v-if="song.pdfFile && unplacedRuns.length > 0"
       class="flex flex-col"
     >
       <h3
@@ -198,15 +209,16 @@ async function addMeasures(): Promise<void> {
             severity="secondary"
             text
             :aria-label="`Place ${runLabel(run).toLowerCase()}`"
-            @click="editor.startPlacing(run.first.label)"
+            @click="editor.startDrawing(run.first.label)"
           />
         </li>
       </ul>
     </div>
-    <span
-      v-else-if="measures.length === 0 && mode === 'audio'"
-      class="text-sm"
-    >This song has no measures yet. Draw a box on the score or add them by number.</span>
+
+    <SyncStatus
+      v-if="song.playerMode === 'audio' && song.getTimeline().length > 0"
+      :song="song"
+    />
 
     <RecordingOverview
       v-if="song.getTimeline().length > 0"

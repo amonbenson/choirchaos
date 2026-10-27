@@ -11,6 +11,7 @@ import {
   formatJumpChip,
   formatPlayingSection,
   formatSectionChip,
+  formatSectionName,
   formatSectionPass,
   getMarkerOverlays,
   getSectionOverlays,
@@ -175,6 +176,8 @@ describe("section texts", () => {
     expect(describeSection(measures, repeat)).toBe("Repeat 14 to 15, 3 times");
     expect(describeSection(measures, vamp)).toBe("Vamp 10 to 11, 2nd time");
     expect(describeSection(measures, cut)).toBe("Cut 16");
+    expect(formatSectionName(measures, repeat)).toBe("Repeat 14 to 15");
+    expect(formatSectionName(measures, vamp)).toBe("Vamp 10 to 11, 2nd time");
   });
 
   it("names the pass while the section plays", () => {

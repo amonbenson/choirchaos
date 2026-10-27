@@ -51,10 +51,7 @@ async function place(resolution?: "shift"): Promise<void> {
   }
 
   try {
-    await editor.apply(planned);
-    editor.clearSelection();
-    editor.pendingBox.value = undefined;
-    placeFrom.value = undefined;
+    await editor.placePendingBox(planned);
   } catch (error) {
     notifyError("Could not place the measures", error);
   }
@@ -75,7 +72,7 @@ function cancel(): void {
       <label
         for="new-box-count"
         class="text-sm"
-      >Measures in this box</label>
+      >How many measures</label>
       <InputNumber
         v-model="pendingCount"
         input-id="new-box-count"
@@ -137,7 +134,7 @@ function cancel(): void {
         size="small"
         variant="simple"
       >
-        Measure {{ result.conflict.label }} already has a box.
+        Measure {{ result.conflict.label }} is already on the score.
       </Message>
       <Button
         :label="`Shift ${result.conflict.label} and later by +${pendingCount}`"

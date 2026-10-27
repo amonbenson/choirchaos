@@ -1,9 +1,12 @@
 import type Measure from "./measure";
+import type { MeasureId } from "./measure";
 import {
   compareLocations,
   deserializeLocation,
+  findPosition,
   findRecordedPasses,
   type Location,
+  type RecordedPass,
   serializeLocation,
   type StoredLocation,
   type Timeline,
@@ -141,4 +144,57 @@ export function compareSections(timeline: Timeline, a: Section, b: Section): num
 /** The sections without `replaced`, plus `added`. Sections are found by identity, so one write can replace several. */
 export function replaceSections(sections: readonly Section[], replaced: readonly Section[], added?: Section): Section[] {
   return [...sections.filter(section => !replaced.includes(section)), ...added ? [added] : []];
+}
+
+/** Two section starts are the same section, since sections never overlap. */
+export function isSameStart(a: Location, b: Location): boolean {
+  return a.measure === b.measure && a.occurrence === b.occurrence && a.beat === b.beat;
+}
+
+export function findSection(sections: readonly Section[], from: Location): Section | undefined {
+  return sections.find(section => isSameStart(section.from, from));
+}
+
+/** The positions of a section's first pass, which its range handles move. */
+export function getSectionRun(timeline: Timeline, section: Section): RecordedPass | undefined {
+  const first = findPosition(timeline, section.from);
+  const last = findPosition(timeline, section.to);
+  return first === undefined || last === undefined ? undefined : { first, last };
+}
+
+/** A section range over whole measures: from the first beat of the run's first measure to the last beat of its last. */
+export function toMeasureRange(measures: readonly Measure[], timeline: Timeline, run: RecordedPass): { from: Location; to: Location } {
+  const first = timeline[run.first]!;
+  const last = timeline[run.last]!;
+  const beats = measures.find(measure => measure.id === last.measure)?.beats ?? 1;
+  return {
+    from: { measure: first.measure, occurrence: first.occurrence, beat: 0 },
+    to: { measure: last.measure, occurrence: last.occurrence, beat: beats - 1 },
+  };
+}
+
+/** The section snapped to whole measures of a run, keeping its kind and settings. */
+export function withRun<T extends Section>(measures: readonly Measure[], timeline: Timeline, section: T, run: RecordedPass): T {
+  return { ...section, ...toMeasureRange(measures, timeline, run) };
+}
+
+/** The position of a measure closest to `near` within `min..max`, where a range handle dropped on its box lands. */
+export function findNearestPosition(timeline: Timeline, measure: MeasureId, near: number, min: number, max: number): number | undefined {
+  return timeline
+    .filter(entry => entry.measure === measure && entry.position >= min && entry.position <= max)
+    .reduce<number | undefined>((best, { position }) => best === undefined || Math.abs(position - near) < Math.abs(best - near) ? position : best, undefined);
+}
+
+/** Sections that share a played measure with the run, counting all their recorded passes. */
+export function findSectionsAt(timeline: Timeline, sections: readonly Section[], run: RecordedPass): Section[] {
+  return sections.filter((section) => {
+    const extent = getSectionExtent(timeline, section);
+    return extent && extent.to.position >= run.first && extent.from.position <= run.last;
+  });
+}
+
+/** Whether the section, with all its recorded passes, holds the whole run. */
+export function holdsRun(timeline: Timeline, section: Section, run: RecordedPass): boolean {
+  const extent = getSectionExtent(timeline, section);
+  return !!extent && extent.from.position <= run.first && run.last <= extent.to.position;
 }

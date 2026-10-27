@@ -8,6 +8,7 @@ import type Song from "@/core/models/song";
 import { moveWarpMarker } from "@/core/models/warpEditing";
 import { idOf, locationOf, makeAudioSongWithRepeat } from "@/test/fixtures";
 
+import { useEditorSelection } from "./useEditorSelection";
 import { useMeasureEditor } from "./useMeasureEditor";
 import { usePlayerSync } from "./usePlayerSync";
 
@@ -121,9 +122,10 @@ describe("usePlayerSync", () => {
       finishLoad = resolve;
     }));
     const scope = effectScope();
-    const editor = scope.run(() => {
+    const { selection, editor } = scope.run(() => {
       usePlayerSync(current);
-      return useMeasureEditor(current, ref(true));
+      const selection = useEditorSelection(current, ref(true));
+      return { selection, editor: useMeasureEditor(current, ref(true), selection) };
     })!;
     const edit = { ...createEmptyMeasureEdit(), additions: [{ label: "5", beats: 4, index: 5, layout: { page: 0, x: 0.5, y: 0.5, width: 0.1, height: 0.1 } }] };
 
@@ -131,7 +133,7 @@ describe("usePlayerSync", () => {
 
     expect(player.load).toHaveBeenCalledOnce();
     expect(editor.saving.value).toBe(false);
-    expect(editor.selection.value.map(measure => measure.label)).toEqual(["5"]);
+    expect(selection.selected.value).toMatchObject({ kind: "measures", measures: [{ label: "5" }] });
     finishLoad();
     scope.stop();
   });

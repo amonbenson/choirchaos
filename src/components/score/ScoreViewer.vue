@@ -1,17 +1,16 @@
 <script setup lang="ts">
-import { onLongPress, useElementSize, useEventListener } from "@vueuse/core";
-import SelectButton from "primevue/selectbutton";
-import { computed, type ComputedRef, nextTick, ref, shallowRef, useId, watch } from "vue";
+import { onLongPress, useEventListener, usePointerSwipe } from "@vueuse/core";
+import { computed, type ComputedRef, nextTick, ref, shallowRef, useId, useTemplateRef, watch } from "vue";
 
 import Draggable from "@/components/base/Draggable.vue";
 import { SYNC_POINT_COLORS } from "@/components/editor/warp/syncColors";
-import { injectMeasureEditor, type MeasureTool } from "@/composables/useMeasureEditor";
+import { injectEditorSelection } from "@/composables/useEditorSelection";
+import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
 import { formatLocation, formatOrdinal, formatTimes } from "@/core/models/locationFormat";
 import Measure, { type MeasureId, type MeasureLayout, needsReview } from "@/core/models/measure";
-import { getReadingOrder, intersects, normalizeLayout, planLayouts, splitLayout } from "@/core/models/measureEditing";
-import { findNearestPosition, formatSectionName, getSectionRun, type SelectedRun, withRun } from "@/core/models/measureSelection";
-import { countOccurrences } from "@/core/models/recording";
+import { getReadingOrder, normalizeLayout, planLayouts, splitLayout } from "@/core/models/measureEditing";
+import { countOccurrences, type RecordedPass } from "@/core/models/recording";
 import {
   describeJump,
   describeOverlays,
@@ -20,11 +19,21 @@ import {
   findRecordingJumps,
   formatJumpChip,
   formatSectionChip,
+  formatSectionName,
   getMarkerOverlays,
   getSectionOverlays,
   type OverlayRun,
 } from "@/core/models/scoreOverlays";
-import { replaceSections, type SectionKind, validateSections } from "@/core/models/sections";
+import { findNearestPosition, getSectionRun, replaceSections, type SectionKind, validateSections, withRun } from "@/core/models/sections";
+import {
+  isBoxSelected,
+  isMarkerSelected,
+  isMeasureSelected,
+  selectMeasureRange,
+  selectMeasures,
+  toggleBox,
+  toggleMeasure,
+} from "@/core/models/selection";
 import Song from "@/core/models/song";
 import { getSyncedOccurrences } from "@/core/models/warpEditing";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
@@ -37,7 +46,9 @@ import { SECTION_COLORS, SECTION_CONTRAST_TEXT } from "./sectionColors";
 const player = usePlayerStore();
 const { notifyError } = useNotify();
 const editor = injectMeasureEditor();
-const { tool, pendingBox, pendingCount, touchMultiSelect, detection, revealRequest } = editor;
+const { drawing, pendingBox, pendingCount, detection, revealRequest } = editor;
+const editorSelection = injectEditorSelection();
+const { selection, selected, touchMultiSelect } = editorSelection;
 
 const props = defineProps<{
   song?: Song;
@@ -137,8 +148,8 @@ function previewClass(box: PreviewBox): string {
 }
 
 function unnumberedClass(box: MeasureLayout): string[] {
-  const interaction = activeTool.value === "draw" || previewing.value ? "pointer-events-none" : "";
-  const state = editor.isBoxSelected(box)
+  const interaction = drawing.value || previewing.value ? "pointer-events-none" : "";
+  const state = isBoxSelected(selection.value, box)
     ? "border-2 border-primary bg-primary/30"
     : "border-2 border-unnumbered/80 bg-unnumbered/10 hover:bg-unnumbered/20";
   return [interaction, state, previewing.value ? "opacity-40" : ""];
@@ -172,12 +183,12 @@ function boxClass(measure: Measure): string[] {
     return ["cursor-pointer", isMeasureHighlighted(measure) ? "bg-track-highlight/25 hover:bg-track-highlight/45" : "bg-primary/0 hover:bg-primary/25"];
   }
 
-  const interaction = activeTool.value === "draw" || previewing.value ? "pointer-events-none" : "";
+  const interaction = drawing.value || previewing.value ? "pointer-events-none" : "";
   return [interaction, measureStateClass(measure), previewing.value ? "opacity-40" : ""];
 }
 
 function measureStateClass(measure: Measure): string {
-  if (editor.isSelected(measure)) {
+  if (isMeasureSelected(selection.value, measure.id)) {
     return "border-2 border-primary bg-primary/30";
   }
 
@@ -187,7 +198,8 @@ function measureStateClass(measure: Measure): string {
 }
 
 function hasHandles(measure: Measure): boolean {
-  return activeTool.value !== "draw" && editor.selection.value.length === 1 && editor.isSelected(measure);
+  const current = selected.value;
+  return !drawing.value && current.kind === "measures" && current.measures.length === 1 && current.measures[0]!.id === measure.id;
 }
 
 // ── Playback sync ─────────────────────────────────────────────────────────────
@@ -298,10 +310,11 @@ const topLanes = computed(() => {
   return lanes;
 });
 
-const markerChips = computed<(OverlayBox & { lane?: number })[]>(() => props.song
+const markerChips = computed<(OverlayBox & { lane?: number; selected: boolean })[]>(() => props.song
   ? getMarkerOverlays(props.song.getMarkers()).flatMap(({ measure, texts }) => {
       const layout = props.song!.findMeasure(measure)?.layout;
-      return layout ? [{ key: `marker-${measure}`, layout, text: texts.join(", "), lane: topLanes.value.get(measure) }] : [];
+      const selected = props.song!.getMarkers().some(marker => marker.at.measure === measure && isMarkerSelected(selection.value, marker));
+      return layout ? [{ key: `marker-${measure}`, layout, text: texts.join(", "), lane: topLanes.value.get(measure), selected }] : [];
     })
   : []);
 
@@ -414,15 +427,7 @@ watch(revealRequest, (request) => {
   }
 });
 
-// The tool switcher floats this far below the top edge of the score.
-const TOOLBAR_OFFSET_PX = 8;
-const toolbar = ref();
-const { height: toolbarHeight } = useElementSize(toolbar, undefined, { box: "border-box" });
-
-const viewInsets = computed<ViewInsets>(() => ({
-  top: props.editMode ? TOOLBAR_OFFSET_PX + toolbarHeight.value : 0,
-  bottom: props.coveredBottom ?? 0,
-}));
+const viewInsets = computed<ViewInsets>(() => ({ top: 0, bottom: props.coveredBottom ?? 0 }));
 
 type ClickedBox = { measureId: MeasureId } | { box: MeasureLayout };
 
@@ -436,10 +441,11 @@ function getLastClickedLayout(): MeasureLayout | undefined {
   }
 
   if ("box" in clicked) {
-    return editor.isBoxSelected(clicked.box) ? clicked.box : undefined;
+    return isBoxSelected(selection.value, clicked.box) ? clicked.box : undefined;
   }
 
-  return editor.selection.value.find(measure => measure.id === clicked.measureId)?.layout;
+  const current = selected.value;
+  return current.kind === "measures" ? current.measures.find(measure => measure.id === clicked.measureId)?.layout : undefined;
 }
 
 // Selecting expands the bottom sheet, which would otherwise cover the box that was just clicked.
@@ -481,24 +487,7 @@ function scrollToLayout(layout: MeasureLayout): void {
   pdfViewer.value.redrawAll();
 }
 
-// ── Tools ─────────────────────────────────────────────────────────────────────
-
-const TOOL_OPTIONS: { label: string; value: MeasureTool; icon: string }[] = [
-  { label: "Select", value: "select", icon: "pi pi-arrow-up-left" },
-  { label: "Move", value: "move", icon: "pi pi-arrows-alt" },
-  { label: "Draw", value: "draw", icon: "pi pi-stop" },
-];
-
-const TOOL_CURSORS: Record<MeasureTool, string> = {
-  select: "cursor-default",
-  move: "cursor-grab active:cursor-grabbing",
-  draw: "cursor-crosshair",
-};
-
-const shiftHeld = ref(false);
-
-/** The tool the score works with. Holding Shift switches to Select for as long as it is held. */
-const activeTool = computed<MeasureTool>(() => shiftHeld.value ? "select" : tool.value);
+// ── Keys ──────────────────────────────────────────────────────────────────────
 
 function isTyping(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
@@ -514,35 +503,29 @@ useEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "Shift") {
-    shiftHeld.value = true;
-  } else if (isSelectAll(event) && !previewing.value) {
+  if (isSelectAll(event) && !previewing.value) {
     event.preventDefault();
-    editor.selectAll();
+    editorSelection.select(selectMeasures(getReadingOrder(editor.measures.value).map(measure => measure.id)));
   } else if (event.key === "Escape") {
-    cancelOrDeselect();
+    stepBack();
   }
 });
 
-useEventListener("keyup", (event: KeyboardEvent) => {
-  if (event.key === "Shift") {
-    shiftHeld.value = false;
-  }
-});
-
-useEventListener("blur", () => {
-  shiftHeld.value = false;
-});
-
-function cancelOrDeselect(): void {
+/** Escape steps back once: from a drawn box to drawing, from drawing to selecting, and from a selection to none. */
+function stepBack(): void {
   if (pendingBox.value) {
     pendingBox.value = undefined;
+  } else if (drawing.value) {
+    editor.stopDrawing();
   } else {
-    editor.clearSelection();
+    editorSelection.clear();
   }
 }
 
-// ── Clicking boxes ────────────────────────────────────────────────────────────
+// ── Clicking ──────────────────────────────────────────────────────────────────
+// A drag pans the score, and the viewer swallows the click that ends it, so only real clicks get here.
+
+type ClickIntent = "select" | "toggle" | "range";
 
 let lastPointerType: string = "mouse";
 let suppressNextClick = false;
@@ -551,10 +534,28 @@ function rememberPointerType(event: PointerEvent): void {
   lastPointerType = event.pointerType;
 }
 
-/** A click always moves the playhead. In edit mode it also selects, so the selected occurrence is the playing one. */
+/** On touch a long press starts multi-select, after which taps toggle. With a mouse, Ctrl/Cmd toggles and Shift selects a range. */
+function getClickIntent(event: MouseEvent): ClickIntent {
+  if (lastPointerType !== "mouse") {
+    return touchMultiSelect.value ? "toggle" : "select";
+  }
+
+  if (event.shiftKey) {
+    return "range";
+  }
+
+  return event.ctrlKey || event.metaKey ? "toggle" : "select";
+}
+
+/** A repeated measure is always entered at its first pass. Other passes are reached through the inspector or the timeline. */
+function seekMeasure(measure: Measure): void {
+  player.seekLocation({ measure: measure.id, occurrence: 1, beat: 0 });
+}
+
+/** A click always moves the playhead. In edit mode it also selects. */
 function onBoxClick(event: MouseEvent, measure: Measure): void {
   if (!props.editMode) {
-    editor.seekMeasure(measure);
+    seekMeasure(measure);
     return;
   }
 
@@ -564,22 +565,17 @@ function onBoxClick(event: MouseEvent, measure: Measure): void {
   }
 
   lastClicked = { measureId: measure.id };
-  if (lastPointerType !== "mouse") {
-    if (touchMultiSelect.value) {
-      editor.toggle(measure);
-    } else {
-      editor.selectOnly(measure);
-    }
-  } else if (event.shiftKey) {
-    editor.selectRange(measure);
-  } else if (event.ctrlKey || event.metaKey) {
-    editor.toggle(measure);
+  const intent = getClickIntent(event);
+  if (intent === "range") {
+    editorSelection.select(selectMeasureRange(editor.measures.value, selection.value, measure.id));
+  } else if (intent === "toggle") {
+    editorSelection.select(toggleMeasure(selection.value, measure.id));
   } else {
-    editor.selectOnly(measure);
+    editorSelection.select(selectMeasures([measure.id]));
   }
 
-  if (editor.isSelected(measure)) {
-    editor.seekMeasure(measure);
+  if (isMeasureSelected(selection.value, measure.id)) {
+    seekMeasure(measure);
   }
 }
 
@@ -590,21 +586,25 @@ function onUnnumberedClick(event: MouseEvent, box: MeasureLayout): void {
   }
 
   lastClicked = { box };
-  const toggles = lastPointerType === "mouse" ? event.shiftKey || event.ctrlKey || event.metaKey : touchMultiSelect.value;
-  if (toggles) {
-    editor.toggleBox(box);
-  } else {
-    editor.selectBox(box);
+  editorSelection.select(getClickIntent(event) === "select" ? { kind: "boxes", boxes: [box] } : toggleBox(selection.value, box));
+}
+
+function isOnObject(target: EventTarget | null): boolean {
+  return !!(target as Element | null)?.closest("[data-measure], [data-unnumbered-box], [data-range-handle]");
+}
+
+/** A click on empty space clears the selection, unless a modifier asks to add to it. */
+function onEmptyClick(event: MouseEvent): void {
+  if (drawing.value || previewing.value || isOnObject(event.target) || event.shiftKey || event.ctrlKey || event.metaKey) {
+    return;
   }
+
+  editorSelection.clear();
 }
 
 function pageAt(target: EventTarget | null): number | undefined {
   const value = (target as Element | null)?.closest<HTMLElement>("[data-page]")?.dataset.page;
   return value === undefined ? undefined : Number(value);
-}
-
-function isOnBox(target: EventTarget | null): boolean {
-  return !!(target as Element | null)?.closest("[data-measure], [data-unnumbered-box]");
 }
 
 function findMeasureAt(target: EventTarget | null): Measure | undefined {
@@ -618,151 +618,72 @@ function findUnnumberedBoxAt(target: EventTarget | null): MeasureLayout | undefi
   return index === undefined || page === undefined ? undefined : unnumberedByPage.value[page]?.[Number(index)];
 }
 
-function selectForMultiSelect(target: EventTarget | null): boolean {
+/** Adds what was pressed to the selection. True when a measure or a box was pressed. */
+function addForMultiSelect(target: EventTarget | null): boolean {
   const measure = findMeasureAt(target);
   if (measure) {
-    if (!editor.isSelected(measure)) {
-      editor.toggle(measure);
+    if (!isMeasureSelected(selection.value, measure.id)) {
+      editorSelection.select(toggleMeasure(selection.value, measure.id));
     }
 
     return true;
   }
 
   const box = findUnnumberedBoxAt(target);
-  if (box && !editor.isBoxSelected(box)) {
-    editor.toggleBox(box);
+  if (box && !isBoxSelected(selection.value, box)) {
+    editorSelection.select(toggleBox(selection.value, box));
   }
 
   return !!box;
 }
 
-// On touch a long press starts multi-select, after which taps add and remove boxes. The box is
-// selected before the mode starts, because a selection of one box ends multi-select.
+// On touch a long press starts multi-select. The pressed box is selected before the mode starts,
+// because a selection of one measure ends multi-select.
 onLongPress(overlayRoot, (event) => {
-  if (!props.editMode || activeTool.value === "draw" || event.pointerType === "mouse" || previewing.value) {
+  if (!props.editMode || drawing.value || event.pointerType === "mouse" || previewing.value) {
     return;
   }
 
-  if (selectForMultiSelect(event.target)) {
+  if (addForMultiSelect(event.target)) {
     touchMultiSelect.value = true;
     suppressNextClick = true;
   }
 });
 
-// ── Gestures ──────────────────────────────────────────────────────────────────
+// ── Drawing ───────────────────────────────────────────────────────────────────
 
 type ScreenPoint = { x: number; y: number };
 
-/**
- * One press on the score, in screen coordinates so a marquee can start beside the pages and reach
- * across them. It keeps the tool it started with and becomes a drag once it moves. With the Move
- * tool the viewer pans the drag, so only its taps matter here.
- */
-type Gesture = {
-  tool: MeasureTool;
-  page?: number;
-  start: ScreenPoint;
-  end: ScreenPoint;
-  dragging: boolean;
-  onBox: boolean;
-  additive: boolean;
-  keepsSelection: boolean;
-};
-
 const MIN_DRAG_PIXELS = 4;
 const MIN_BOX_SIZE = 0.005;
-const gesture = shallowRef<Gesture>();
+const drawLayer = useTemplateRef<HTMLElement>("drawLayer");
 
-function screenPoint(e: PointerEvent): ScreenPoint {
-  return { x: e.clientX, y: e.clientY };
+const { isSwiping, posStart, posEnd } = usePointerSwipe(drawLayer, {
+  threshold: MIN_DRAG_PIXELS,
+  onSwipeEnd: finishDrawing,
+});
+
+function findPageAt(point: ScreenPoint): number | undefined {
+  return [...pageDivRefs].find(([, element]) => {
+    const rect = element.getBoundingClientRect();
+    return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+  })?.[0];
 }
 
-function onPointerDown(e: PointerEvent): void {
-  if (e.button !== 0 || !e.isPrimary || previewing.value) {
-    return;
-  }
-
-  gesture.value = {
-    tool: activeTool.value,
-    page: pageAt(e.target),
-    start: screenPoint(e),
-    end: screenPoint(e),
-    dragging: false,
-    onBox: isOnBox(e.target),
-    additive: e.ctrlKey || e.metaKey,
-    keepsSelection: e.shiftKey || e.ctrlKey || e.metaKey,
-  };
-}
-
-// The pointer is captured only once a drag starts, because a capture retargets the click of a tap
-// away from the box under the pointer.
-function onPointerMove(e: PointerEvent): void {
-  const current = gesture.value;
-  if (!current) {
-    return;
-  }
-
-  const end = screenPoint(e);
-  const dragging = current.dragging || Math.hypot(end.x - current.start.x, end.y - current.start.y) >= MIN_DRAG_PIXELS;
-  if (dragging && !current.dragging && current.tool !== "move") {
-    overlayRoot.value?.setPointerCapture(e.pointerId);
-  }
-
-  gesture.value = { ...current, end, dragging };
-}
-
-function onPointerUp(): void {
-  const current = gesture.value;
-  gesture.value = undefined;
-  if (!current) {
-    return;
-  }
-
-  if (!current.dragging) {
-    finishTap(current);
-  } else if (current.tool === "select") {
-    finishMarquee(current);
-  } else if (current.tool === "draw" && current.page !== undefined) {
-    finishDrawing(current, current.page);
-  }
-}
-
-/** Boxes handle their own clicks, so a tap here only clears the selection on empty space. */
-function finishTap(current: Gesture): void {
-  if (current.tool !== "draw" && !current.onBox && !current.keepsSelection) {
-    editor.clearSelection();
-  }
-}
-
-function finishMarquee(current: Gesture): void {
-  const { measures, boxes } = findMarqueeHits(current);
-  if (current.additive) {
-    editor.addToSelection(measures, boxes);
-  } else {
-    editor.setSelection(measures, boxes);
-  }
-}
-
-function finishDrawing(current: Gesture, page: number): void {
-  const rect = dragOnPage(current, page);
-  if (rect && rect.width >= MIN_BOX_SIZE && rect.height >= MIN_BOX_SIZE) {
-    pendingBox.value = clampToPage(rect);
-  }
-}
-
-/** The gesture relative to a page. It may reach beyond the page. */
-function dragOnPage(current: Gesture, page: number): MeasureLayout | undefined {
-  const rect = pageDivRefs.get(page)?.getBoundingClientRect();
-  if (!rect || rect.width === 0 || rect.height === 0) {
+/** The drag relative to the page it started on. It may reach beyond the page. */
+function dragOnPage(start: ScreenPoint, end: ScreenPoint): MeasureLayout | undefined {
+  const page = findPageAt(start);
+  const rect = page === undefined ? undefined : pageDivRefs.get(page)?.getBoundingClientRect();
+  if (page === undefined || !rect || rect.width === 0 || rect.height === 0) {
     return undefined;
   }
 
   return normalizeLayout({
     page,
-    x: (current.start.x - rect.left) / rect.width,
-    y: (current.start.y - rect.top) / rect.height,
-    width: (current.end.x - current.start.x) / rect.width,
-    height: (current.end.y - current.start.y) / rect.height,
+    x: (start.x - rect.left) / rect.width,
+    y: (start.y - rect.top) / rect.height,
+    width: (end.x - start.x) / rect.width,
+    height: (end.y - start.y) / rect.height,
   });
 }
 
@@ -772,40 +693,14 @@ function clampToPage(layout: MeasureLayout): MeasureLayout {
   return { page: layout.page, x, y, width: Math.min(1, layout.x + layout.width) - x, height: Math.min(1, layout.y + layout.height) - y };
 }
 
-function findMarqueeHits(current: Gesture): { measures: Measure[]; boxes: MeasureLayout[] } {
-  const measures: Measure[] = [];
-  const boxes: MeasureLayout[] = [];
-  for (const page of pageDivRefs.keys()) {
-    const rect = dragOnPage(current, page);
-    if (rect) {
-      measures.push(...visibleMeasures(page).filter(measure => intersects(layoutOf(measure)!, rect)));
-      boxes.push(...(unnumberedByPage.value[page] ?? []).filter(box => intersects(box, rect)));
-    }
+function finishDrawing(): void {
+  const rect = dragOnPage(posStart, posEnd);
+  if (rect && rect.width >= MIN_BOX_SIZE && rect.height >= MIN_BOX_SIZE) {
+    pendingBox.value = clampToPage(rect);
   }
-
-  return { measures: getReadingOrder(measures), boxes };
 }
 
-const drawnRect = computed(() => {
-  const current = gesture.value;
-  return current?.dragging && current.tool === "draw" && current.page !== undefined ? dragOnPage(current, current.page) : undefined;
-});
-
-const marqueeStyle = computed(() => {
-  const current = gesture.value;
-  const root = overlayRoot.value?.getBoundingClientRect();
-  if (!current?.dragging || current.tool !== "select" || !root) {
-    return undefined;
-  }
-
-  const { start, end } = current;
-  return {
-    left: `${Math.min(start.x, end.x) - root.left}px`,
-    top: `${Math.min(start.y, end.y) - root.top}px`,
-    width: `${Math.abs(end.x - start.x)}px`,
-    height: `${Math.abs(end.y - start.y)}px`,
-  };
-});
+const drawnRect = computed(() => isSwiping.value ? dragOnPage(posStart, posEnd) : undefined);
 
 const pendingParts = computed(() => pendingBox.value ? splitLayout(pendingBox.value, Math.max(1, pendingCount.value)) : []);
 
@@ -903,7 +798,7 @@ async function onHandleDragEnd(measure: Measure): Promise<void> {
   try {
     if (changes.length > 0) {
       await editor.apply(planLayouts(changes));
-      editor.selectOnly(measure);
+      editorSelection.select(selectMeasures([measure.id]));
     }
   } catch (error) {
     notifyError("Could not save the measure boxes", error);
@@ -920,16 +815,17 @@ type RangeHandle = { end: RangeEnd; position: number; layout: MeasureLayout; nam
 const RANGE_STEP_KEYS: Record<string, number> = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 };
 
 /** The run a handle is being dragged to, shown on the score until it is dropped. */
-const handleDrag = shallowRef<{ end: RangeEnd; run: SelectedRun }>();
+const handleDrag = shallowRef<{ end: RangeEnd; run: RecordedPass }>();
 
-/** The section the inspector edits gets handles at both ends, unless the score is busy with another tool. */
+/** The selected section gets handles at both ends, unless the score is busy drawing or previewing. */
 const handleTarget = computed(() => {
-  const match = props.editMode && activeTool.value !== "draw" && !previewing.value ? editor.selectedSection.value : undefined;
-  const run = match && props.song ? getSectionRun(props.song.getTimeline(), match.section) : undefined;
-  return match && run ? { ...match, run } : undefined;
+  const current = selected.value;
+  const section = props.editMode && !drawing.value && !previewing.value && current.kind === "section" ? current.section : undefined;
+  const run = section && props.song ? getSectionRun(props.song.getTimeline(), section) : undefined;
+  return section && run ? { section, run } : undefined;
 });
 
-const handleLane = computed(() => sectionOverlays.value.find(overlay => overlay.index === handleTarget.value?.index)?.lane ?? 0);
+const handleLane = computed(() => sectionOverlays.value.find(overlay => overlay.section === handleTarget.value?.section)?.lane ?? 0);
 
 const rangeHandles = computed<RangeHandle[]>(() => {
   const target = handleTarget.value;
@@ -950,8 +846,9 @@ const rangeHandles = computed<RangeHandle[]>(() => {
   });
 });
 
+/** The boxes of the selected section's first pass, or of where a handle is being dragged to. */
 const handlePreviewBoxes = computed(() => {
-  const run = handleDrag.value?.run;
+  const run = handleDrag.value?.run ?? handleTarget.value?.run;
   const song = props.song;
   if (!run || !song) {
     return [];
@@ -966,7 +863,7 @@ function rangeHandleStyle({ end, layout }: RangeHandle): Record<string, string> 
   return { left: `${x * 100}%`, top: `calc(${layout.y * 100}% - ${BAR_OFFSET_PX + handleLane.value * LANE_HEIGHT_PX}px)` };
 }
 
-function movedRun(run: SelectedRun, end: RangeEnd, position: number): SelectedRun {
+function movedRun(run: RecordedPass, end: RangeEnd, position: number): RecordedPass {
   return end === "first" ? { first: position, last: run.last } : { first: run.first, last: position };
 }
 
@@ -1048,7 +945,7 @@ function onHandleKeydown(event: KeyboardEvent, end: RangeEnd): void {
 }
 
 /** Saves the section over whole measures of the new run and keeps it selected, so its handles stay. */
-async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
+async function moveSection(run: RecordedPass, end: RangeEnd): Promise<void> {
   const target = handleTarget.value;
   const song = props.song;
   if (!target || !song || (run.first === target.run.first && run.last === target.run.last)) {
@@ -1068,7 +965,7 @@ async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
   const hadFocus = !!document.activeElement?.closest(`[data-range-handle="${end}"]`);
   try {
     await song.editLayers({ sections });
-    editor.selectSection(song.getSections().findIndex(section => getSectionRun(timeline, section)?.first === run.first));
+    editorSelection.select({ kind: "section", from: moved.from });
     if (hadFocus) {
       await nextTick();
       overlayRoot.value?.querySelector<HTMLElement>(`[data-range-handle="${end}"]`)?.focus();
@@ -1082,25 +979,21 @@ async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
 <template>
   <PdfViewer
     ref="pdfViewer"
-    class="@container"
     :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
-    :pannable="!editMode || activeTool === 'move'"
+    :pannable="!editMode || !drawing"
     :insets="viewInsets"
     role="region"
     aria-label="Score"
     @loading-change="emit('pdf-loading', $event)"
   >
     <template #default="{ visiblePages }">
-      <!-- While editing, the overlay takes every press on the score and turns it into a gesture -->
+      <!-- While editing, the overlay takes the clicks on empty space, which clear the selection -->
       <div
         ref="overlayRoot"
         class="absolute inset-0"
-        :class="editMode ? ['pointer-events-auto', TOOL_CURSORS[activeTool]] : 'pointer-events-none'"
+        :class="editMode ? 'pointer-events-auto cursor-grab active:cursor-grabbing' : 'pointer-events-none'"
         @pointerdown.capture="rememberPointerType"
-        @pointerdown="editMode && onPointerDown($event)"
-        @pointermove="onPointerMove"
-        @pointerup="onPointerUp"
-        @pointercancel="gesture = undefined"
+        @click="editMode && onEmptyClick($event)"
       >
         <div
           v-for="page of visiblePages"
@@ -1140,7 +1033,7 @@ async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
             :style="boxStyle(layoutOf(measure)!)"
             role="button"
             :aria-label="`Measure ${measure.label}`"
-            :aria-pressed="editMode ? editor.isSelected(measure) : undefined"
+            :aria-pressed="editMode ? isMeasureSelected(selection, measure.id) : undefined"
             :aria-current="currentMeasureId === measure.id ? 'location' : undefined"
             :aria-describedby="descriptionId(measure)"
             :data-measure="measure.id"
@@ -1198,7 +1091,7 @@ async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
             :style="boxStyle(box)"
             role="button"
             aria-label="Box without a number"
-            :aria-pressed="editor.isBoxSelected(box)"
+            :aria-pressed="isBoxSelected(selection, box)"
             :data-unnumbered-box="i"
             @contextmenu.stop.prevent
             @click="onUnnumberedClick($event, box)"
@@ -1339,6 +1232,7 @@ async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
             v-for="marker of onPage(markerChips, page.pageNumber, item => item.layout.page)"
             :key="marker.key"
             class="pointer-events-none absolute inline-flex max-w-32 -translate-y-full items-center gap-1 rounded-full bg-primary px-1.5 text-[0.625rem] leading-4 font-semibold whitespace-nowrap text-primary-contrast shadow-sm"
+            :class="marker.selected ? 'ring-2 ring-primary ring-offset-1 ring-offset-surface-0' : ''"
             :style="markerChipStyle(marker)"
             aria-hidden="true"
           >
@@ -1357,34 +1251,11 @@ async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
         </div>
 
         <div
-          v-if="marqueeStyle"
-          class="pointer-events-none absolute border border-dashed border-primary bg-primary/10"
-          :style="marqueeStyle"
+          v-if="editMode && drawing && !previewing"
+          ref="drawLayer"
+          class="absolute inset-0 cursor-crosshair touch-none"
         />
       </div>
-
-      <SelectButton
-        v-if="editMode"
-        ref="toolbar"
-        :model-value="activeTool"
-        class="absolute top-2 left-1/2 -translate-x-1/2 shadow-sm"
-        :options="TOOL_OPTIONS"
-        option-label="label"
-        option-value="value"
-        :allow-empty="false"
-        :disabled="previewing"
-        aria-label="Score tool"
-        size="small"
-        @update:model-value="editor.setTool($event)"
-      >
-        <template #option="{ option }">
-          <i
-            :class="option.icon"
-            aria-hidden="true"
-          />
-          <span class="sr-only @sm:not-sr-only">{{ option.label }}</span>
-        </template>
-      </SelectButton>
     </template>
   </PdfViewer>
 </template>

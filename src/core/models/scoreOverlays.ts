@@ -267,10 +267,15 @@ export function formatSectionPass(kind: Section["kind"], { pass, passes }: Playi
   return passes === undefined ? `${KIND_NAMES[kind]} ${pass}` : `${KIND_NAMES[kind]} ${pass}/${passes}`;
 }
 
+/** "Vamp 19 to 20", "Repeat 12" or "Cut 10 to 11, 2nd time": the section by its kind and measures. */
+export function formatSectionName(measures: readonly Measure[], section: Section): string {
+  return `${KIND_NAMES[section.kind]} ${formatRange(measures, section)}`;
+}
+
 /** The section and what it plays, e.g. "Repeat 14 to 15, 3 times" or, while it plays, "Repeat 14 to 15, pass 2 of 3". */
 export function describeSection(measures: readonly Measure[], section: Section, playing?: PlayingSection): string {
   const passes = playing ? formatPlayingPass(playing) : formatPlannedPasses(section);
-  const name = `${KIND_NAMES[section.kind]} ${formatRange(measures, section)}`;
+  const name = formatSectionName(measures, section);
   return passes ? `${name}, ${passes}` : name;
 }
 

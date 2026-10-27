@@ -1,16 +1,25 @@
 import { describe, expect, it } from "vitest";
 
+import { idOf, locationOf, makeMidiSong, makeMidiSongWithBakedVamp, makeMidiSongWithRepeat } from "@/test/fixtures";
+
 import { deserializeMarker, serializeMarker } from "./markers";
 import Measure from "./measure";
 import { expandRecording, type Location } from "./recording";
 import {
   createSection,
   deserializeSection,
+  findNearestPosition,
+  findSection,
+  findSectionsAt,
   getSectionExtent,
+  getSectionRun,
+  holdsRun,
   type Section,
   serializeSection,
+  toMeasureRange,
   validateSection,
   validateSections,
+  withRun,
 } from "./sections";
 
 const SCORE = ["1", "2", "3", "4", "5"].map(label => new Measure(label, label, 4));
@@ -117,5 +126,59 @@ describe("section extents and overlaps", () => {
     expect(validateSections(SCORE, TIMELINE, [cut(at("1"), at("1", 3)), cut(at("9"), at("1"))])).toEqual([
       { index: 1, reason: "Measure 9 does not exist." },
     ]);
+  });
+});
+
+describe("sections over runs of the recording", () => {
+  it("finds the sections that share a played measure with a run and whether one holds it", () => {
+    const song = makeMidiSongWithRepeat();
+    const timeline = song.getTimeline();
+    const [repeat] = song.getSections();
+
+    expect(findSectionsAt(timeline, song.getSections(), { first: 5, last: 5 })).toEqual([repeat]);
+    expect(holdsRun(timeline, repeat!, { first: 5, last: 5 })).toBe(true);
+    expect(holdsRun(timeline, repeat!, { first: 7, last: 8 })).toBe(false);
+    expect(findSectionsAt(timeline, song.getSections(), { first: 0, last: 1 })).toEqual([]);
+  });
+
+  it("counts the recorded passes of a section as part of it", () => {
+    const song = makeMidiSongWithBakedVamp();
+
+    expect(holdsRun(song.getTimeline(), song.getSections()[0]!, { first: 4, last: 4 })).toBe(true);
+  });
+
+  it("finds a section by its start", () => {
+    const song = makeMidiSongWithRepeat();
+
+    expect(findSection(song.getSections(), locationOf(song, "2"))).toBe(song.getSections()[0]);
+    expect(findSection(song.getSections(), locationOf(song, "2", 1))).toBeUndefined();
+  });
+
+  it("covers whole measures of the run's occurrences", () => {
+    const song = makeMidiSongWithRepeat();
+
+    expect(toMeasureRange(song.getMeasures(), song.getTimeline(), { first: 4, last: 5 })).toEqual({
+      from: locationOf(song, "2", 0, 2),
+      to: locationOf(song, "3", 3, 2),
+    });
+  });
+
+  it("snaps a section that starts mid-measure, keeping its settings", () => {
+    const song = makeMidiSong();
+    const section = { kind: "repeat" as const, from: locationOf(song, "1", 2), to: locationOf(song, "2", 1), passes: 3 };
+
+    expect(withRun(song.getMeasures(), song.getTimeline(), section, { first: 1, last: 3 })).toEqual({
+      kind: "repeat", from: locationOf(song, "1"), to: locationOf(song, "3", 3), passes: 3,
+    });
+    expect(getSectionRun(song.getTimeline(), section)).toEqual({ first: 1, last: 2 });
+  });
+
+  it("lands a range handle on the occurrence closest to where it started, inside its limits", () => {
+    const song = makeMidiSongWithRepeat();
+    const timeline = song.getTimeline();
+
+    expect(findNearestPosition(timeline, idOf(song, "3"), 5, 0, 8)).toBe(5);
+    expect(findNearestPosition(timeline, idOf(song, "3"), 8, 0, 8)).toBe(7);
+    expect(findNearestPosition(timeline, idOf(song, "3"), 0, 0, 2)).toBeUndefined();
   });
 });

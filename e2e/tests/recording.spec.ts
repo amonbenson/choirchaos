@@ -128,6 +128,9 @@ test.describe("recording editing", () => {
     await expect(score.getByRole("img", { name: "Measures 3 to 4 recorded 2 times" })).toBeVisible();
 
     await page.getByRole("button", { name: "Clear selection" }).click();
+    const passes = panel.getByRole("list", { name: "The order the backing track plays the measures in" });
+    await passes.getByRole("button").first().click();
+    await expect(panel.getByRole("heading", { name: /^Recording pass 1 to 4/ })).toBeVisible();
     await panel.getByRole("button", { name: "Edit as text" }).click();
     const text = panel.getByRole("textbox", { name: "Recording as text" });
     await expect(text).toHaveValue("1-4, 3-4");
