@@ -10,6 +10,9 @@ type P5Sketch = p5 & { canvas?: HTMLCanvasElement };
 
 export type ViewInsets = { top: number; bottom: number };
 
+/** A page in view, in fractions of the overlay. */
+export type VisiblePage = { x: number; y: number; width: number; height: number; pageNumber: number };
+
 const props = withDefaults(defineProps<{
   url: string | undefined;
   /** Whether dragging pans. Overlays that use drags for themselves turn it off. */
@@ -37,7 +40,7 @@ const overlayInstance = shallowRef<p5 | undefined>();
 const overlaySketch = shallowRef<P5Sketch | undefined>();
 
 const transform = shallowRef(new PageTransform({ x: 100, y: 100 }, 750));
-const visiblePages = shallowRef<{ x: number; y: number; width: number; height: number; pageNumber: number }[]>([]);
+const visiblePages = shallowRef<VisiblePage[]>([]);
 
 const { pages, documentStatus } = usePdfPages(toRef(props, "url"), { onUpdate: redrawAll });
 

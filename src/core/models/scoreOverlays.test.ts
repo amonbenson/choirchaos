@@ -4,7 +4,6 @@ import Measure, { type MeasureLayout } from "./measure";
 import { expandRecording, type Location, type RecordingSpan } from "./recording";
 import {
   describeJump,
-  describeOverlays,
   describeSection,
   findRecordedRepeats,
   findRecordingJumps,
@@ -13,7 +12,9 @@ import {
   formatSectionChip,
   formatSectionName,
   formatSectionPass,
-  getMarkerOverlays,
+  getBoxOverlays,
+  getLaneOffset,
+  getSectionBars,
   getSectionOverlays,
   splitIntoRuns,
 } from "./scoreOverlays";
@@ -157,13 +158,6 @@ describe("findRecordingJumps", () => {
   });
 });
 
-describe("getMarkerOverlays", () => {
-  it("groups markers by measure", () => {
-    const markers = [{ at: at(1), text: "A" }, { at: at(5), text: "B" }, { at: at(5, 0, 2), text: "B2" }];
-    expect(getMarkerOverlays(markers)).toEqual([{ measure: "m1", texts: ["A"] }, { measure: "m5", texts: ["B", "B2"] }]);
-  });
-});
-
 describe("section texts", () => {
   const repeat = { ...createSection("repeat", at(14), at(15, 3)), passes: 3 } as Section;
   const vamp = createSection("vamp", at(10, 0, 2), at(11, 3, 2));
@@ -196,30 +190,65 @@ describe("section texts", () => {
   });
 });
 
-describe("describeOverlays", () => {
-  it("joins what each box shows", () => {
-    const timeline = expandRecording(measures, [span(1, 11), span(10, 11), span(10, 11), span(12, 16)]);
-    const sectionList = [createSection("vamp", at(10), at(11, 3))];
+describe("getSectionBars", () => {
+  it("draws a bar per row and names only the first chip", () => {
+    const timeline = expandRecording(measures, [span(1, 16)]);
+    const overlays = getSectionOverlays(measures, timeline, [createSection("vamp", at(3), at(6, 3))]);
+
+    const bars = getSectionBars(measures, overlays, { section: 0, pass: 2, released: false });
+
+    expect(bars.map(bar => bar.run.measures)).toEqual([["m3", "m4"], ["m5", "m6"]]);
+    expect(bars.map(bar => bar.chip)).toEqual(["Vamp 2", "Vamp 2"]);
+    expect(bars.map(bar => bar.name)).toEqual(["Vamp 3 to 6, pass 2", undefined]);
+  });
+});
+
+describe("getLaneOffset", () => {
+  it("stacks lanes upwards by one lane height", () => {
+    expect(getLaneOffset(1) - getLaneOffset(0)).toBe(getLaneOffset(2) - getLaneOffset(1));
+    expect(getLaneOffset(0)).toBeGreaterThan(0);
+  });
+});
+
+describe("getBoxOverlays", () => {
+  const timeline = expandRecording(measures, [span(1, 11), span(10, 11), span(10, 11), span(12, 16)]);
+  const sections = getSectionOverlays(measures, timeline, [createSection("vamp", at(10), at(11, 3))]);
+
+  it("joins what each box shows into its description", () => {
     const markers = [{ at: at(10, 0, 2), text: "D" }, { at: at(12), text: "E" }];
-    const descriptions = describeOverlays({
+    const overlays = getBoxOverlays({
       measures,
       timeline,
-      sections: getSectionOverlays(measures, timeline, sectionList),
+      sections,
       repeats: findRecordedRepeats(timeline),
       markers,
+      synced: new Map([["m10", [1, 3]], ["m12", [1]]]),
       playing: { section: 0, pass: 2, released: false },
     });
 
-    expect(descriptions.get("m10")).toBe("Vamp 10 to 11, pass 2. Recorded 3 times. Marker D, 2nd time.");
-    expect(descriptions.get("m11")).toBe("Vamp 10 to 11, pass 2. Recorded 3 times.");
-    expect(descriptions.get("m12")).toBe("Marker E.");
-    expect(descriptions.has("m1")).toBe(false);
+    expect(overlays.get("m10")?.description).toBe("Vamp 10 to 11, pass 2. Recorded 3 times. Marker D, 2nd time. Sync point on the 1st and 3rd time.");
+    expect(overlays.get("m11")?.description).toBe("Vamp 10 to 11, pass 2. Recorded 3 times.");
+    expect(overlays.get("m12")?.description).toBe("Marker E. Sync point.");
+    expect(overlays.has("m1")).toBe(false);
+  });
+
+  it("puts the recorded repeat badge on the last box and markers above the section chips", () => {
+    const markers = [{ at: at(10), text: "D" }, { at: at(10, 0, 2), text: "D2" }, { at: at(12), text: "E" }];
+    const overlays = getBoxOverlays({ measures, timeline, sections, repeats: findRecordedRepeats(timeline), markers });
+
+    expect(overlays.get("m10")?.recorded).toBeUndefined();
+    expect(overlays.get("m11")?.recorded).toEqual({ key: "recorded-0", text: "×3", name: "Measures 10 to 11 recorded 3 times" });
+    expect(overlays.get("m10")?.markers.map(badge => badge.name)).toEqual(["Marker D, 1st time", "Marker D2, 2nd time"]);
+    expect(overlays.get("m10")?.markerLane).toBe(1);
+    expect(overlays.get("m12")?.markerLane).toBe(0);
+    expect(overlays.get("m12")?.synced).toBe(false);
   });
 
   it("names the jumps after a box", () => {
-    const timeline = expandRecording(measures, [span(1, 8), span(1, 7), span(9, 16)]);
-    const descriptions = describeOverlays({ measures, timeline, sections: [], repeats: [], markers: [], jumps: findRecordingJumps(measures, timeline) });
+    const withEndings = expandRecording(measures, [span(1, 8), span(1, 7), span(9, 16)]);
+    const overlays = getBoxOverlays({ measures, timeline: withEndings, sections: [], repeats: [], markers: [], jumps: findRecordingJumps(measures, withEndings) });
 
-    expect(descriptions.get("m7")).toBe("After 7, 2nd time, the recording continues at 9.");
+    expect(overlays.get("m7")?.description).toBe("After 7, 2nd time, the recording continues at 9.");
+    expect(overlays.get("m7")?.jumps.map(jump => jump.text)).toEqual(["to 9"]);
   });
 });
