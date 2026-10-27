@@ -42,7 +42,7 @@ Before finishing a task, run `npm run lint:fix`, `npm run typecheck` and `npx vi
 |---|---|
 | `src/views/` | Routed pages |
 | `src/components/` | UI components in the folder of the area they appear in (`header/`, `show/`, `song/`, `player/`, `editor/`, `score/`), plus generic `base/` and `icons/` |
-| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useEditorSelection` holds the song editor's typed selection, `useMeasureEditor` drawing, placing and reviewing boxes (`provideSongEditor` sets up both), `useRecordingEditor` and `useSyncEditor` save recording and sync changes, `usePlayerSync` keeps the player in step with saved edits, `useSongHistory` binds undo and redo |
+| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useEditorSelection` holds the song editor's typed selection, `useMeasureEditor` drawing, placing and reviewing boxes (`provideSongEditor` sets up both), `useRecordingEditor` and `useSyncEditor` save recording and sync changes, `usePlayerSync` keeps the player in step with saved edits, `useSongHistory` binds undo and redo, `useTimelineAxis` is the timeline's shared zoom and scroll |
 | `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
 | `src/router/` | Routes and navigation guards |
 | `src/theme/` | The PrimeVue preset, the single place for the accent and surface palettes |

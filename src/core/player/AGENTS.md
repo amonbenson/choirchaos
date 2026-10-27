@@ -60,9 +60,9 @@ Playback engine shared by both modes:
 ## Warp Editing
 
 - Warp markers are keyed by `(measure, occurrence)`. `warpEditing.ts` keeps them in timeline order: new markers only go between their neighbours, dragging and nudging are clamped between them, and `reassignWarpMarker()` only moves a marker to a free occurrence between them, since `WarpMap` requires strictly increasing marker times.
-- The timeline's `WaveformView` draws `mixdownChunks()` with peaks.js. Audio positions are milliseconds, peaks.js works in seconds.
+- The timeline's `WaveformView` draws `mixdownChunks()` with peaks.js at the scale and offset of the timeline's shared axis (`src/views/AGENTS.md`, Timeline). Audio positions are milliseconds, peaks.js works in seconds.
 - peaks.js cannot start in a hidden container (a phone tab that is not shown), so `WaveformView` builds it once its container gets a size.
-- peaks.js caches every zoom level it resamples, so zoom only moves along `ZoomLadder` levels to keep the cache bounded. The base waveform has one sample per pixel (coarser for very long recordings), which allows zooming to single samples.
+- peaks.js caches every zoom level it resamples, so the axis only zooms along `ZoomLadder` levels to keep the cache bounded. The base waveform has one sample per pixel (`getWaveformBaseScale()`, coarser for very long recordings), which allows zooming to single samples.
 
 ## Audio
 

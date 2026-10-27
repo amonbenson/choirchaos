@@ -58,7 +58,12 @@ The editor has two canvases, the score (written order) and the timeline (played 
 
 ### Timeline
 
-`editor/warp/TimelinePanel` shows the song in played order: lanes for markers, sections, recorded passes and played measures and, for audio songs, the waveform with its sync points. With a waveform the lanes follow its zoom and scroll, without one they scroll on their own. Measure cells only seek. Everything else selects itself and is edited in the inspector.
+`editor/warp/TimelinePanel` shows the song in played order: lanes for markers, sections, recorded passes and played measures and, for audio songs, the waveform with its sync points. MIDI songs get the same component without the waveform.
+
+- **One axis.** `useTimelineAxis` owns zoom and scroll for every row: the lanes, the waveform, the one playhead element that runs through all of them, and `TimelineScrollbar`. Its scale is whole units per pixel (samples of the recording, or MIDI ticks) and its offset whole pixels, because peaks.js draws whole samples per pixel and scrolls by pixels. That keeps the lanes, the sync points and the playhead on the same pixel. Ctrl or pinch wheel input zooms around the pointer, sideways or shift wheel input scrolls, and the axis scrolls a playhead that left the view back in, except while scrubbing.
+- **peaks.js only draws** the waveform, its time axis and the sync points. Its playhead is transparent, its container takes no pointer events, and it never scrolls or zooms on its own. The scrollbar is our own, since a browser scrollbar cannot be as wide as a song zoomed to single samples.
+- **One pointer handler** on the axis (`usePointerSwipe`): a drag that starts on a sync point moves it (hit-tested by distance, saved on release through `useSyncEditor`), any other drag scrubs the playhead, and the click that ends a drag is swallowed so it neither seeks nor selects. A plain click selects a sync point under it or seeks, and lane items handle their own clicks. peaks.js has no drag-to-seek option, and its own drag scrolls the waveform.
+- **Lanes** are lists of `TimelineLaneItem`s with one height. Every lane renders only the items inside the view (`axis.toBlock()` returns nothing outside it), cut to the visible part so a long item keeps its text. Measure cells only seek and never show the measure selection. Everything else selects itself and is edited in the inspector.
 
 ### Score Gestures and Drawing
 

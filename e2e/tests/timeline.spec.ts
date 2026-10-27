@@ -133,6 +133,46 @@ test.describe("timeline and audio sync", () => {
     expect(errors).toEqual([]);
   });
 
+  test("dragging anywhere scrubs the playhead without selecting, and zooming in hides what left the view", async ({ page, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const bundle = await buildSongBundle(MINIMAL, { mode: "midi", withPdf: false });
+    const { score } = bundle.fields;
+    bundle.fields.arrangement.sections = [{ kind: "cut", from: locationAt(score, "4"), to: locationAt(score, "4", 3) }];
+    const song = await factory.createSong(owner, show, bundle);
+    const errors = collectPageErrors(page);
+    await loginAs(owner);
+
+    await page.goto(`/show/${show.id}/song/${song.id}/edit`);
+    await waitForPlayer(page);
+    const timeline = page.getByRole("region", { name: "Timeline", exact: true });
+    const panel = page.getByRole("region", { name: "Editor panel" });
+    const measures = timeline.getByRole("list", { name: "Measures" });
+    const start = (await measures.getByRole("button", { name: "1", exact: true }).boundingBox())!;
+    const end = (await measures.getByRole("button", { name: "3", exact: true }).boundingBox())!;
+
+    // Starts on the recording pass, which a click would select.
+    const recording = (await timeline.getByRole("list", { name: "Recording" }).boundingBox())!;
+    await page.mouse.move(start.x + start.width / 2, recording.y + recording.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(end.x + end.width / 2, recording.y + recording.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByRole("slider", { name: "Position" })).toHaveAttribute("aria-valuetext", /^3/);
+    await expect(panel.getByRole("heading", { name: "Song setup" })).toBeVisible();
+
+    const sections = timeline.getByRole("list", { name: "Sections" });
+    await expect(sections.getByRole("button", { name: "Cut 4" })).toHaveCount(1);
+    for (let i = 0; i < 4; i++) {
+      await page.getByRole("button", { name: "Zoom in" }).click();
+    }
+
+    // Rewinding brings the playhead at the start back into view, far from the cut at the end.
+    await page.getByRole("button", { name: "Rewind / Previous Song" }).click();
+    await expect(measures.getByRole("button", { name: "1", exact: true })).toBeVisible();
+    await expect(sections.getByRole("listitem")).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
   test("a MIDI song shows its timeline read-only and without audio", async ({ page, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);

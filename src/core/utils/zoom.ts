@@ -59,9 +59,9 @@ export class ZoomLadder {
 }
 
 /**
- * Start time of the visible window after zooming, chosen so that the time under the pointer stays
- * under the pointer. scale is in samples per pixel.
+ * Scroll offset in pixels after zooming, chosen so that the tick under the pointer stays under the
+ * pointer.
  */
-export function getAnchoredStartTime(anchorTime: number, anchorX: number, scale: number, sampleRate: number): number {
-  return Math.max(0, anchorTime - (anchorX * scale) / sampleRate);
+export function getAnchoredOffset(anchorTick: number, anchorX: number, ticksPerPixel: number): number {
+  return Math.max(0, Math.round(anchorTick / ticksPerPixel - anchorX));
 }

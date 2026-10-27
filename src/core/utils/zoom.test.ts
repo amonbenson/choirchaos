@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getAnchoredStartTime, normalizeWheelDelta, ZoomLadder } from "./zoom";
+import { getAnchoredOffset, normalizeWheelDelta, ZoomLadder } from "./zoom";
 
 describe("normalizeWheelDelta", () => {
   it("converts lines and pages to pixels", () => {
@@ -54,13 +54,13 @@ describe("ZoomLadder", () => {
   });
 });
 
-describe("getAnchoredStartTime", () => {
-  it("keeps the anchor time under the anchor pixel", () => {
-    // 100 samples per pixel at 1000 Hz: 0.1 s per pixel, so 50 px left of the anchor is 5 s earlier.
-    expect(getAnchoredStartTime(12, 50, 100, 1000)).toBeCloseTo(7);
+describe("getAnchoredOffset", () => {
+  it("keeps the anchor tick under the anchor pixel", () => {
+    // 10 ticks per pixel: tick 1200 is pixel 120 of the song, so it stays at x = 50 with an offset of 70.
+    expect(getAnchoredOffset(1200, 50, 10)).toBe(70);
   });
 
   it("never scrolls before the start", () => {
-    expect(getAnchoredStartTime(1, 500, 100, 1000)).toBe(0);
+    expect(getAnchoredOffset(100, 500, 10)).toBe(0);
   });
 });

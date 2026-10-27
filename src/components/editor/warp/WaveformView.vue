@@ -1,12 +1,21 @@
+<script lang="ts">
+// Full sample resolution costs 2 bytes per sample. Longer recordings start one level coarser.
+const MAX_FULL_RESOLUTION_SAMPLES = 16 * 1024 * 1024;
+
+/** The closest zoom the waveform draws, in samples per pixel. */
+export function getWaveformBaseScale(audioBuffer: AudioBuffer): number {
+  return Math.max(1, Math.ceil(audioBuffer.length / MAX_FULL_RESOLUTION_SAMPLES));
+}
+</script>
+
 <script setup lang="ts">
-import { useEventListener, useResizeObserver } from "@vueuse/core";
-import Peaks, { type PeaksInstance, type PeaksOptions, type PlayerAdapter, type Point, type PointOptions } from "peaks.js";
+import { useResizeObserver } from "@vueuse/core";
+import Peaks, { type PeaksInstance, type PeaksOptions, type PlayerAdapter, type PointOptions } from "peaks.js";
 import ProgressSpinner from "primevue/progressspinner";
 import { onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from "vue";
 import WaveformData from "waveform-data";
 
 import { useCanvasColors } from "@/composables/useCanvasColors";
-import { getAnchoredStartTime, normalizeWheelDelta, ZoomLadder } from "@/core/utils/zoom";
 
 import { SYNC_POINT_COLORS } from "./syncColors";
 import { createLabelledPointMarkerFactory } from "./waveformMarker";
@@ -19,95 +28,63 @@ export type WaveformMarker = {
 
 const props = defineProps<{
   audioBuffer?: AudioBuffer;
-  currentTime: number;
+  /** Samples per pixel, from the timeline's shared axis. */
+  scale: number;
+  /** Pixels scrolled from the start of the recording, from the timeline's shared axis. */
+  offset: number;
   markers: WaveformMarker[];
-  /** Limits where a marker may be dragged to. Returns the allowed time closest to the requested one. */
-  constrainMarker?: (id: string, time: number) => number;
 }>();
 
-const emit = defineEmits<{
-  seek: [time: number];
-  markerMove: [id: string, time: number];
-  markerClick: [id: string];
-  markerContextMenu: [id: string, event: MouseEvent];
-  /** The visible part of the recording changed, in seconds. */
-  view: [start: number, end: number];
-}>();
-
-// Full sample resolution costs 2 bytes per sample. Longer recordings start one level coarser.
-const MAX_FULL_RESOLUTION_SAMPLES = 16 * 1024 * 1024;
-const ZOOM_STEPS_PER_DOUBLING = 4;
-const BUTTON_ZOOM_STEPS = 2;
+// peaks.js turns a start time into a pixel offset by rounding down, so the time aims at the middle of the pixel.
+const HALF_PIXEL = 0.5;
 
 const root = useTemplateRef<HTMLElement>("root");
 const zoomviewContainer = useTemplateRef<HTMLElement>("zoomview");
-const scrollbarContainer = useTemplateRef<HTMLElement>("scrollbar");
 
 const loading = ref(false);
-const scale = ref(0);
+const drawn = ref(false);
 
 let peaks: PeaksInstance | undefined;
-let playerEvents: Parameters<PlayerAdapter["init"]>[0] | undefined;
 let cachedWaveform: ArrayBuffer | undefined;
-let zoomValue = 0;
-let ladder: ZoomLadder | undefined;
 let buildGeneration = 0;
 
 const colors = useCanvasColors(() => buildPeaks());
 
-function getThemeOptions(): Pick<PeaksOptions, "zoomview" | "pointMarkerColor" | "fontFamily" | "createPointMarker"> & { scrollbarColor: string } {
-  const muted = colors.resolve("var(--p-text-muted-color)");
-  const primary = colors.resolve("var(--p-primary-color)");
-  const border = colors.resolve("var(--p-content-border-color)");
-  const sync = colors.resolveVariable(SYNC_POINT_COLORS.variable);
-
-  return {
-    fontFamily: getComputedStyle(root.value!).fontFamily,
-    pointMarkerColor: sync,
-    createPointMarker: createLabelledPointMarkerFactory({ background: sync, text: colors.resolveVariable(SYNC_POINT_COLORS.contrastVariable) }),
-    scrollbarColor: border,
-    zoomview: {
-      waveformColor: muted,
-      playheadColor: primary,
-      axisLabelColor: muted,
-      axisGridlineColor: border,
-      fontSize: 11,
-      showPlayheadTime: true,
-      playheadTextColor: primary,
-      wheelMode: "scroll",
-    },
-  };
-}
-
-function getSampleRate(): number {
-  return props.audioBuffer?.sampleRate ?? 44100;
-}
-
-function getFitScale(): number {
-  const width = zoomviewContainer.value?.clientWidth || 1;
-  return Math.max(getBaseScale(), Math.ceil((props.audioBuffer?.length ?? 0) / width));
-}
-
-function getBaseScale(): number {
-  return Math.max(1, Math.ceil((props.audioBuffer?.length ?? 0) / MAX_FULL_RESOLUTION_SAMPLES));
-}
-
+// The timeline draws the one playhead and handles every pointer, so peaks.js only draws.
 const playerAdapter: PlayerAdapter = {
-  init: async (events) => {
-    playerEvents = events;
-    events.emit("player.canplay");
-  },
-  destroy: () => {
-    playerEvents = undefined;
-  },
+  init: async events => events.emit("player.canplay"),
+  destroy: () => {},
   play: async () => {},
   pause: () => {},
   isPlaying: () => false,
   isSeeking: () => false,
-  getCurrentTime: () => props.currentTime,
+  getCurrentTime: () => 0,
   getDuration: () => props.audioBuffer?.duration ?? 0,
-  seek: time => emit("seek", time),
+  seek: () => {},
 };
+
+function getThemeOptions(): Pick<PeaksOptions, "zoomview" | "fontFamily" | "createPointMarker"> & { pointColor: string } {
+  const muted = colors.resolve("var(--p-text-muted-color)");
+  const border = colors.resolve("var(--p-content-border-color)");
+  const pointColor = colors.resolveVariable(SYNC_POINT_COLORS.variable);
+
+  return {
+    pointColor,
+    fontFamily: getComputedStyle(root.value!).fontFamily,
+    createPointMarker: createLabelledPointMarkerFactory({ background: pointColor, text: colors.resolveVariable(SYNC_POINT_COLORS.contrastVariable) }),
+    zoomview: {
+      waveformColor: muted,
+      axisLabelColor: muted,
+      axisGridlineColor: border,
+      fontSize: 11,
+      playheadColor: "transparent",
+      playheadWidth: 0,
+      showPlayheadTime: false,
+      wheelMode: "none",
+      autoScroll: false,
+    },
+  };
+}
 
 async function createWaveformData(audioBuffer: AudioBuffer, scale: number): Promise<ArrayBuffer> {
   return await new Promise((resolve, reject) => {
@@ -122,64 +99,40 @@ async function createWaveformData(audioBuffer: AudioBuffer, scale: number): Prom
 }
 
 function toPoint(marker: WaveformMarker, color: string): PointOptions {
-  return { id: marker.id, time: marker.time, labelText: marker.label, editable: true, color };
-}
-
-function attachEvents(instance: PeaksInstance): void {
-  instance.on("points.dragmove", ({ point }) => {
-    const allowed = props.constrainMarker?.(point.id!, point.time) ?? point.time;
-    if (allowed !== point.time) {
-      point.update({ time: allowed });
-    }
-  });
-
-  instance.on("points.dragend", ({ point }) => emit("markerMove", point.id!, point.time));
-
-  instance.on("points.click", ({ point, preventViewEvent }) => {
-    preventViewEvent();
-    emit("markerClick", point.id!);
-  });
-
-  instance.on("points.contextmenu", ({ point, evt, preventViewEvent }) => {
-    preventViewEvent();
-    evt.preventDefault();
-    emit("markerContextMenu", point.id!, evt);
-  });
-
-  instance.on("zoom.update", ({ currentZoom }) => {
-    scale.value = currentZoom;
-    emitView();
-  });
-
-  instance.on("zoomview.update", ({ startTime, endTime }) => emit("view", startTime, endTime));
-}
-
-function emitView(): void {
-  const view = peaks?.views.getView("zoomview");
-  if (view) {
-    emit("view", view.getStartTime(), view.getEndTime());
-  }
+  return { id: marker.id, time: marker.time, labelText: marker.label, editable: false, color };
 }
 
 function destroyPeaks(): void {
   peaks?.destroy();
   peaks = undefined;
+  drawn.value = false;
+}
+
+function applyView(): void {
+  const view = peaks?.views.getView("zoomview");
+  if (!view || !props.audioBuffer) {
+    return;
+  }
+
+  view.setZoom({ scale: props.scale });
+  view.setStartTime(((props.offset + HALF_PIXEL) * props.scale) / props.audioBuffer.sampleRate);
+}
+
+function hasSize(): boolean {
+  return !!zoomviewContainer.value?.clientWidth && !!zoomviewContainer.value.clientHeight;
 }
 
 async function buildPeaks(): Promise<void> {
   const generation = ++buildGeneration;
-  // Rebuilding for a theme change keeps the scroll position, a new recording starts at the beginning.
-  const previousStart = cachedWaveform ? peaks?.views.getView("zoomview")?.getStartTime() : undefined;
   destroyPeaks();
 
-  if (!props.audioBuffer || !zoomviewContainer.value || !scrollbarContainer.value) {
+  if (!props.audioBuffer || !zoomviewContainer.value) {
     return;
   }
 
-  const baseScale = getBaseScale();
   if (!cachedWaveform) {
     loading.value = true;
-    const waveform = await createWaveformData(props.audioBuffer, baseScale);
+    const waveform = await createWaveformData(props.audioBuffer, getWaveformBaseScale(props.audioBuffer));
     if (generation !== buildGeneration) {
       return;
     }
@@ -194,15 +147,14 @@ async function buildPeaks(): Promise<void> {
     return;
   }
 
-  const { scrollbarColor, ...theme } = getThemeOptions();
+  const { pointColor, ...theme } = getThemeOptions();
   const options: PeaksOptions = {
     ...theme,
     zoomview: { ...theme.zoomview, container: zoomviewContainer.value },
-    scrollbar: { container: scrollbarContainer.value, color: scrollbarColor, minWidth: 40 },
     player: playerAdapter,
     keyboard: false,
-    zoomLevels: [Math.max(baseScale, zoomValue || getFitScale())],
-    points: props.markers.map(marker => toPoint(marker, theme.pointMarkerColor!)),
+    zoomLevels: [props.scale],
+    points: props.markers.map(marker => toPoint(marker, pointColor)),
     waveformData: { arraybuffer: cachedWaveform },
   };
 
@@ -222,95 +174,42 @@ async function buildPeaks(): Promise<void> {
   }
 
   peaks = instance;
-  ladder ??= new ZoomLadder({ min: baseScale, max: props.audioBuffer.length, stepsPerDoubling: ZOOM_STEPS_PER_DOUBLING });
-  zoomValue ||= getFitScale();
-  scale.value = Math.max(baseScale, Math.floor(zoomValue));
-  attachEvents(instance);
-
-  if (previousStart !== undefined) {
-    instance.views.getView("zoomview")?.setStartTime(previousStart);
-  }
-
-  emitView();
+  peaks.views.getView("zoomview")?.enableSeek(false);
+  applyView();
+  drawn.value = true;
   loading.value = false;
 }
 
-function setZoom(nextValue: number, anchorX?: number): void {
-  const view = peaks?.views.getView("zoomview");
-  if (!view || !ladder) {
-    return;
-  }
-
-  const width = zoomviewContainer.value!.clientWidth;
-  const x = anchorX ?? width / 2;
-  const anchorTime = view.getStartTime() + (x / width) * (view.getEndTime() - view.getStartTime());
-
-  zoomValue = Math.min(getFitScale(), nextValue);
-  view.setZoom({ scale: Math.max(getBaseScale(), Math.floor(zoomValue)) });
-  view.setStartTime(getAnchoredStartTime(anchorTime, x, Math.floor(zoomValue), getSampleRate()));
-}
-
-function zoomIn(): void {
-  setZoom(ladder?.step(zoomValue, -BUTTON_ZOOM_STEPS) ?? zoomValue);
-}
-
-function zoomOut(): void {
-  setZoom(ladder?.step(zoomValue, BUTTON_ZOOM_STEPS) ?? zoomValue);
-}
-
-function fit(): void {
-  zoomValue = getFitScale();
-  peaks?.views.getView("zoomview")?.setZoom({ seconds: "auto" });
-}
-
-// Plain wheel input is left to peaks, which scrolls the waveform. Ctrl and pinch gestures zoom.
-useEventListener(zoomviewContainer, "wheel", (event: WheelEvent) => {
-  if (!event.ctrlKey && !event.metaKey) {
-    return;
-  }
-
-  event.preventDefault();
-  event.stopPropagation();
-
-  if (!ladder) {
-    return;
-  }
-
-  const next = ladder.applyWheel(zoomValue, normalizeWheelDelta(event));
-  if (next !== zoomValue) {
-    const rect = zoomviewContainer.value!.getBoundingClientRect();
-    setZoom(next, event.clientX - rect.left);
-  }
-}, { capture: true, passive: false });
-
-function resetWaveform(): void {
-  cachedWaveform = undefined;
-  ladder = undefined;
-  zoomValue = 0;
-  buildPeaks();
-}
-
-// Not an immediate watcher: that would run during setup, before the containers exist.
-onMounted(resetWaveform);
-watch(() => props.audioBuffer, resetWaveform);
-
-watch(() => props.currentTime, (time) => {
-  playerEvents?.emit("player.timeupdate", time);
-});
-
-watch(() => props.markers, (markers) => {
+function syncPoints(markers: WaveformMarker[]): void {
   if (!peaks) {
     return;
   }
 
-  const color = getThemeOptions().pointMarkerColor!;
-  peaks.points.removeAll();
-  peaks.points.add(markers.map(marker => toPoint(marker, color)));
-}, { deep: true });
+  const pending = new Map(markers.map(marker => [marker.id, marker]));
+  for (const point of peaks.points.getPoints()) {
+    const marker = pending.get(point.id!);
+    pending.delete(point.id!);
+    if (!marker) {
+      peaks.points.removeById(point.id!);
+    } else if (point.time !== marker.time || point.labelText !== marker.label) {
+      point.update({ time: marker.time, labelText: marker.label });
+    }
+  }
 
-function hasSize(): boolean {
-  return !!zoomviewContainer.value?.clientWidth && !!zoomviewContainer.value.clientHeight;
+  const { pointColor } = getThemeOptions();
+  peaks.points.add([...pending.values()].map(marker => toPoint(marker, pointColor)));
 }
+
+function resetWaveform(): void {
+  cachedWaveform = undefined;
+  buildPeaks();
+}
+
+// Not an immediate watcher: that would run during setup, before the container exists.
+onMounted(resetWaveform);
+watch(() => props.audioBuffer, resetWaveform);
+watch(() => [props.scale, props.offset], applyView);
+watch(() => props.markers, syncPoints, { deep: true });
 
 useResizeObserver(zoomviewContainer, () => {
   if (!peaks && cachedWaveform && hasSize()) {
@@ -319,35 +218,27 @@ useResizeObserver(zoomviewContainer, () => {
   }
 
   peaks?.views.getView("zoomview")?.fitToContainer();
-  peaks?.views.getScrollbar()?.fitToContainer();
-  emitView();
+  applyView();
 });
 
 onBeforeUnmount(() => {
   buildGeneration++;
   destroyPeaks();
 });
-
-defineExpose({ zoomIn, zoomOut, fit, getPoints: (): Point[] => peaks?.points.getPoints() ?? [] });
 </script>
 
 <template>
   <div
     ref="root"
-    class="relative flex size-full flex-col"
-    :data-zoom-scale="scale"
+    class="relative"
+    :data-zoom-scale="drawn ? scale : 0"
     :data-sample-rate="audioBuffer?.sampleRate"
   >
     <div
       ref="zoomview"
-      class="min-h-0 flex-1"
+      class="pointer-events-none size-full"
       role="img"
       aria-label="Waveform"
-    />
-    <div
-      ref="scrollbar"
-      class="h-3 flex-none"
-      aria-hidden="true"
     />
     <div
       v-if="loading"
