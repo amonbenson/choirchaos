@@ -154,8 +154,8 @@ describe("ScoreViewer", () => {
       const { wrapper } = mountViewer(song);
       await flushPromises();
 
-      expect(box(wrapper, "3").className).toContain("bg-sky-400/25");
-      expect(box(wrapper, "2").className).not.toContain("bg-sky-400/25");
+      expect(box(wrapper, "3").className).toContain("bg-track-highlight/25");
+      expect(box(wrapper, "2").className).not.toContain("bg-track-highlight/25");
     });
   });
 

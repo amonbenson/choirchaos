@@ -55,7 +55,7 @@ defineExpose({ confirmCurrent });
         class="flex items-center gap-2 text-sm font-semibold"
         aria-live="polite"
       >
-        <span class="size-2 rounded-full bg-amber-500" />
+        <span class="size-2 rounded-full bg-review" />
         {{ label }}
       </span>
       <div

@@ -258,7 +258,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
                 <div
                   v-for="warning in resolve(row).warnings"
                   :key="warning"
-                  class="mt-1 text-xs text-orange-600 dark:text-orange-400"
+                  class="mt-1 text-xs text-attention"
                 >
                   {{ warning }}
                 </div>
@@ -290,7 +290,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
                 </div>
                 <div
                   v-if="row.status === 'error'"
-                  class="mt-1 text-xs text-red-500"
+                  class="mt-1 text-xs text-danger"
                 >
                   {{ row.error }}
                 </div>

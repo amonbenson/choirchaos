@@ -1,6 +1,5 @@
 import "./main.css";
 
-import Aura from "@primeuix/themes/aura";
 import { createPinia } from "pinia";
 import PrimeVue from "primevue/config";
 import ConfirmationService from "primevue/confirmationservice";
@@ -11,6 +10,7 @@ import webAudioFontUrl from "webaudiofont/npm/dist/WebAudioFontPlayer.js?url";
 
 import App from "./App.vue";
 import { router } from "./router/router";
+import { createPreset, DEFAULT_PALETTES } from "./theme/preset";
 
 // PrimeVue renders icon font glyphs without hiding them, so screen readers would announce them next to the label.
 const HIDDEN = { "aria-hidden": "true" };
@@ -39,7 +39,7 @@ async function init(): Promise<void> {
   app.use(PrimeVue, {
     pt: DECORATIVE_ICONS_PT,
     theme: {
-      preset: Aura,
+      preset: createPreset(DEFAULT_PALETTES),
       options: {
         prefix: "p",
         darkModeSelector: ".dark",

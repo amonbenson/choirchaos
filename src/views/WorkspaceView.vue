@@ -468,7 +468,7 @@ const pdfLoading = ref(false);
         </div>
         <div
           v-if="player.loading || pdfLoading"
-          class="absolute top-0 left-0 flex size-full flex-col items-center justify-center bg-black/50 text-white select-none"
+          class="absolute top-0 left-0 flex size-full flex-col items-center justify-center bg-scrim/50 text-scrim-contrast select-none"
           role="status"
         >
           <BabySvenja class="w-full max-w-lg" />

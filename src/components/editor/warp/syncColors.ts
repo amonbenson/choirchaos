@@ -1,11 +1,12 @@
 /**
- * Sync points are orange everywhere (score pins, waveform, timeline), so they never look like the
- * primary colored playhead. Canvases read the color from an element with these classes.
+ * Sync points look the same everywhere (score pins, waveform, timeline). The colors themselves are
+ * theme tokens in main.css.
  */
 export const SYNC_POINT_COLORS = {
-  background: "bg-orange-600 dark:bg-orange-400",
-  text: "text-white dark:text-surface-950",
-  foreground: "text-orange-600 dark:text-orange-400",
-  // The score page stays white in dark mode.
-  onScore: "text-orange-600",
+  /** Theme variable of the point, for canvases. */
+  variable: "--color-sync",
+  /** Theme variable of text on the point, for canvases. */
+  contrastVariable: "--color-sync-contrast",
+  /** Tailwind class for a pin on the score page. */
+  onScore: "text-score-sync",
 } as const;

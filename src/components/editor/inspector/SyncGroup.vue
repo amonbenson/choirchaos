@@ -356,7 +356,7 @@ function showIssue({ position }: StatusIssue): void {
           class="flex items-start gap-2"
         >
           <i
-            class="pi pi-exclamation-circle mt-0.5 text-orange-600 dark:text-orange-400"
+            class="pi pi-exclamation-circle mt-0.5 text-attention"
             aria-hidden="true"
           />
           <button

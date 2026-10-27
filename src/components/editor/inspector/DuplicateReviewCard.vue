@@ -94,7 +94,7 @@ function keepSeparate({ key }: Proposal): void {
     <li
       v-for="proposal in proposals"
       :key="proposal.key"
-      class="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/40"
+      class="flex flex-col gap-2 rounded-md border border-review-border bg-review-surface p-3"
     >
       <span
         class="text-sm font-semibold"
@@ -112,7 +112,7 @@ function keepSeparate({ key }: Proposal): void {
       >The recording never plays {{ proposal.duplicates }}, so merging only deletes them.</span>
       <span
         v-if="proposal.dropped.length > 0"
-        class="text-xs text-amber-700 dark:text-amber-400"
+        class="text-xs text-review-text"
       >Removes {{ proposal.dropped.join(", ") }}.</span>
       <div class="flex flex-wrap gap-2">
         <Button

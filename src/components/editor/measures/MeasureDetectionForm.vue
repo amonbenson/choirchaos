@@ -105,14 +105,14 @@ async function apply(): Promise<void> {
         v-if="plan.lowConfidence.length > 0"
         class="flex items-center gap-2"
       >
-        <span class="size-3 flex-none rounded-xs border-2 border-dashed border-amber-500" />
+        <span class="size-3 flex-none rounded-xs border-2 border-dashed border-review" />
         {{ plan.lowConfidence.length }} unsure, marked for review
       </li>
       <li
         v-if="plan.unnumbered.length > 0"
         class="flex items-center gap-2"
       >
-        <span class="size-3 flex-none rounded-xs border-2 border-dashed border-red-500" />
+        <span class="size-3 flex-none rounded-xs border-2 border-dashed border-unnumbered" />
         {{ plan.unnumbered.length }} without a number, marked for review
       </li>
       <li

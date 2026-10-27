@@ -22,7 +22,7 @@ const summary = computed(() => setup.value.steps.map(step => `${step.label}: ${s
   <div
     v-if="compact"
     class="truncate text-sm"
-    :class="setup.next ? 'text-orange-600 dark:text-orange-400' : 'text-muted-color'"
+    :class="setup.next ? 'text-attention' : 'text-muted-color'"
   >
     <template v-if="setup.next">
       <i

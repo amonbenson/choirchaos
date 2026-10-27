@@ -204,17 +204,6 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                   Choose which controls are visible in the transport bar.
                 </div>
               </div>
-              <!-- <div class="flex gap-4 rounded bg-black p-2">
-                <Button
-                  v-for="(label, key) in TRANSPORT_BUTTON_LABELS"
-                  :key="key"
-                  :label="label"
-                  :severity="settings.current.appearance.transportButtonVisible[key as TransportButtonKey] ? 'primary' : 'secondary'"
-                  size="small"
-                  fluid
-                  @click="settings.updateAppearance({ transportButtonVisible: { ...settings.current.appearance.transportButtonVisible, [key]: !settings.current.appearance.transportButtonVisible[key as TransportButtonKey] } })"
-                />
-              </div> -->
               <SelectButton
                 v-model="transportButtons"
                 :options="Object.entries(TRANSPORT_BUTTON_LABELS).map(([key, label]) => ({ label, value: key }))"
