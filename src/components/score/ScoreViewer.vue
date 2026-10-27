@@ -122,25 +122,25 @@ const CHIP_CLASS = "pointer-events-none absolute top-0 left-0 rounded-br-sm px-1
 
 function chipClass(layout: MeasureLayout | undefined, numbered: boolean): string[] {
   if (!numbered) {
-    return [CHIP_CLASS, "bg-red-500 text-white"];
+    return [CHIP_CLASS, "bg-unnumbered text-unnumbered-contrast"];
   }
 
-  return [CHIP_CLASS, needsReview(layout) ? "bg-amber-400 text-amber-950" : "bg-primary text-primary-contrast"];
+  return [CHIP_CLASS, needsReview(layout) ? "bg-review-fill text-review-contrast" : "bg-primary text-primary-contrast"];
 }
 
 function previewClass(box: PreviewBox): string {
   if (box.label === undefined) {
-    return "border-red-500 bg-red-500/10";
+    return "border-unnumbered bg-unnumbered/10";
   }
 
-  return needsReview(box.layout) ? "border-amber-500 bg-amber-400/15" : "border-primary bg-primary/10";
+  return needsReview(box.layout) ? "border-review bg-review-fill/15" : "border-primary bg-primary/10";
 }
 
 function unnumberedClass(box: MeasureLayout): string[] {
   const interaction = activeTool.value === "draw" || previewing.value ? "pointer-events-none" : "";
   const state = editor.isBoxSelected(box)
     ? "border-2 border-primary bg-primary/30"
-    : "border-2 border-red-500/80 bg-red-500/10 hover:bg-red-500/20";
+    : "border-2 border-unnumbered/80 bg-unnumbered/10 hover:bg-unnumbered/20";
   return [interaction, state, previewing.value ? "opacity-40" : ""];
 }
 
@@ -169,7 +169,7 @@ function boxStyle(layout: MeasureLayout): Record<string, string> {
 
 function boxClass(measure: Measure): string[] {
   if (!props.editMode) {
-    return ["cursor-pointer", isMeasureHighlighted(measure) ? "bg-sky-400/25 hover:bg-sky-400/45" : "bg-primary/0 hover:bg-primary/25"];
+    return ["cursor-pointer", isMeasureHighlighted(measure) ? "bg-track-highlight/25 hover:bg-track-highlight/45" : "bg-primary/0 hover:bg-primary/25"];
   }
 
   const interaction = activeTool.value === "draw" || previewing.value ? "pointer-events-none" : "";
@@ -182,7 +182,7 @@ function measureStateClass(measure: Measure): string {
   }
 
   return needsReview(measure.layout)
-    ? "border-2 border-amber-500 bg-amber-400/15 hover:bg-amber-400/30"
+    ? "border-2 border-review bg-review-fill/15 hover:bg-review-fill/30"
     : "border border-primary/70 bg-primary/10 hover:bg-primary/25";
 }
 
@@ -1251,7 +1251,7 @@ async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
           <span
             v-for="glyph of onPage(recordedGlyphs, page.pageNumber, item => item.layout.page)"
             :key="glyph.key"
-            class="pointer-events-none absolute inline-flex -translate-x-full items-center gap-1 rounded-sm border border-slate-700 bg-white/95 px-1 text-[0.625rem] leading-4 font-bold text-slate-800 shadow-sm"
+            class="pointer-events-none absolute inline-flex -translate-x-full items-center gap-1 rounded-sm border border-score-chip-border bg-score-chip/95 px-1 text-[0.625rem] leading-4 font-bold text-score-chip-contrast shadow-sm"
             :style="recordedGlyphStyle(glyph)"
             role="img"
             :aria-label="glyph.name"
@@ -1292,7 +1292,7 @@ async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
           <span
             v-for="chip of onPage(jumpChips, page.pageNumber, item => item.layout.page)"
             :key="chip.key"
-            class="pointer-events-none absolute -translate-x-full rounded-sm border border-slate-700 bg-white/95 px-1 text-[0.625rem] leading-4 font-bold whitespace-nowrap text-slate-800 shadow-sm"
+            class="pointer-events-none absolute -translate-x-full rounded-sm border border-score-chip-border bg-score-chip/95 px-1 text-[0.625rem] leading-4 font-bold whitespace-nowrap text-score-chip-contrast shadow-sm"
             :style="jumpChipStyle(chip)"
             role="img"
             :aria-label="chip.name"

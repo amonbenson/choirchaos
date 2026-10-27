@@ -13,6 +13,39 @@
   --color-section-vamp: var(--color-violet-600);
   --color-section-cut: var(--color-slate-600);
   --color-section-contrast: var(--color-white);
+
+  /* Text and icons that name an open issue, such as import warnings or the next setup step. */
+  --color-attention: var(--color-orange-600);
+  /* PrimeVue only defines danger per component, and only once that component's style is loaded. */
+  --color-danger: var(--color-red-500);
+
+  /* Sync points, orange so they never look like the primary colored playhead. */
+  --color-sync: var(--color-orange-600);
+  --color-sync-contrast: var(--color-white);
+
+  /* Detection results still to review, in panels. */
+  --color-review-text: var(--color-amber-700);
+  --color-review-surface: var(--color-amber-50);
+  --color-review-border: var(--color-amber-300);
+
+  /*
+   * Drawn on the score page, which stays white in dark mode, so these have no dark override.
+   * The legends and marks in panels reuse them to match the score.
+   */
+  --color-review: var(--color-amber-500);
+  --color-review-fill: var(--color-amber-400);
+  --color-review-contrast: var(--color-amber-950);
+  --color-unnumbered: var(--color-red-500);
+  --color-unnumbered-contrast: var(--color-white);
+  --color-score-sync: var(--color-orange-600);
+  --color-track-highlight: var(--color-sky-400);
+  --color-score-chip: var(--color-white);
+  --color-score-chip-border: var(--color-slate-700);
+  --color-score-chip-contrast: var(--color-slate-800);
+
+  /* Covers the page while it loads. */
+  --color-scrim: var(--color-black);
+  --color-scrim-contrast: var(--color-white);
 }
 
 @layer base {
@@ -26,6 +59,12 @@
     --color-section-vamp: var(--color-violet-400);
     --color-section-cut: var(--color-slate-400);
     --color-section-contrast: var(--color-slate-950);
+    --color-attention: var(--color-orange-400);
+    --color-sync: var(--color-orange-400);
+    --color-sync-contrast: var(--p-surface-950);
+    --color-review-text: var(--color-amber-400);
+    --color-review-surface: color-mix(in oklab, var(--color-amber-950) 40%, transparent);
+    --color-review-border: var(--color-amber-700);
   }
 
   kbd {

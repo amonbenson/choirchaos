@@ -98,7 +98,7 @@ async function save(): Promise<void> {
         <span>{{ check.length }}</span>
         <span
           v-if="check.dropped.length > 0"
-          class="text-amber-700 dark:text-amber-400"
+          class="text-review-text"
         >Removes {{ check.dropped.join(", ") }}.</span>
       </div>
     </div>

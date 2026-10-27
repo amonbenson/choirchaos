@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { useEventListener, useMutationObserver, useResizeObserver } from "@vueuse/core";
+import { useEventListener, useResizeObserver } from "@vueuse/core";
 import Peaks, { type PeaksInstance, type PeaksOptions, type PlayerAdapter, type Point, type PointOptions } from "peaks.js";
 import ProgressSpinner from "primevue/progressspinner";
 import { onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from "vue";
 import WaveformData from "waveform-data";
 
+import { useCanvasColors } from "@/composables/useCanvasColors";
 import { getAnchoredStartTime, normalizeWheelDelta, ZoomLadder } from "@/core/utils/zoom";
 
 import { SYNC_POINT_COLORS } from "./syncColors";
@@ -41,8 +42,6 @@ const BUTTON_ZOOM_STEPS = 2;
 const root = useTemplateRef<HTMLElement>("root");
 const zoomviewContainer = useTemplateRef<HTMLElement>("zoomview");
 const scrollbarContainer = useTemplateRef<HTMLElement>("scrollbar");
-const colorProbe = useTemplateRef<HTMLElement>("colorProbe");
-const syncProbe = useTemplateRef<HTMLElement>("syncProbe");
 
 const loading = ref(false);
 const scale = ref(0);
@@ -54,29 +53,24 @@ let zoomValue = 0;
 let ladder: ZoomLadder | undefined;
 let buildGeneration = 0;
 
-// Theme tokens can be var() references or color-mix() expressions, which canvas cannot parse.
-// Resolving them through an element's computed color always yields a plain rgb() value.
-function resolveColor(cssValue: string): string {
-  const probe = colorProbe.value!;
-  probe.style.color = cssValue;
-  return getComputedStyle(probe).color;
-}
+const colors = useCanvasColors(() => buildPeaks());
 
 function getThemeOptions(): Pick<PeaksOptions, "zoomview" | "pointMarkerColor" | "fontFamily" | "createPointMarker"> & { scrollbarColor: string } {
-  const muted = resolveColor("var(--p-text-muted-color)");
-  const primary = resolveColor("var(--p-primary-color)");
-  const sync = getComputedStyle(syncProbe.value!);
+  const muted = colors.resolve("var(--p-text-muted-color)");
+  const primary = colors.resolve("var(--p-primary-color)");
+  const border = colors.resolve("var(--p-content-border-color)");
+  const sync = colors.resolveVariable(SYNC_POINT_COLORS.variable);
 
   return {
     fontFamily: getComputedStyle(root.value!).fontFamily,
-    pointMarkerColor: sync.backgroundColor,
-    createPointMarker: createLabelledPointMarkerFactory({ background: sync.backgroundColor, text: sync.color }),
-    scrollbarColor: resolveColor("var(--p-content-border-color)"),
+    pointMarkerColor: sync,
+    createPointMarker: createLabelledPointMarkerFactory({ background: sync, text: colors.resolveVariable(SYNC_POINT_COLORS.contrastVariable) }),
+    scrollbarColor: border,
     zoomview: {
       waveformColor: muted,
       playheadColor: primary,
       axisLabelColor: muted,
-      axisGridlineColor: resolveColor("var(--p-content-border-color)"),
+      axisGridlineColor: border,
       fontSize: 11,
       showPlayheadTime: true,
       playheadTextColor: primary,
@@ -314,8 +308,6 @@ watch(() => props.markers, (markers) => {
   peaks.points.add(markers.map(marker => toPoint(marker, color)));
 }, { deep: true });
 
-useMutationObserver(document.documentElement, () => buildPeaks(), { attributes: true, attributeFilter: ["class"] });
-
 function hasSize(): boolean {
   return !!zoomviewContainer.value?.clientWidth && !!zoomviewContainer.value.clientHeight;
 }
@@ -346,14 +338,6 @@ defineExpose({ zoomIn, zoomOut, fit, getPoints: (): Point[] => peaks?.points.get
     :data-zoom-scale="scale"
     :data-sample-rate="audioBuffer?.sampleRate"
   >
-    <span
-      ref="colorProbe"
-      class="hidden"
-    />
-    <span
-      ref="syncProbe"
-      :class="['hidden', SYNC_POINT_COLORS.background, SYNC_POINT_COLORS.text]"
-    />
     <div
       ref="zoomview"
       class="min-h-0 flex-1"

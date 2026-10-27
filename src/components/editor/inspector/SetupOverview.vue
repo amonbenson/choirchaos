@@ -101,7 +101,7 @@ async function addMeasures(): Promise<void> {
       >
         <i
           class="pi"
-          :class="step.done ? 'pi-check text-primary' : step.id === 'review' ? 'pi-exclamation-circle text-amber-600 dark:text-amber-400' : 'pi-circle'"
+          :class="step.done ? 'pi-check text-primary' : step.id === 'review' ? 'pi-exclamation-circle text-review-text' : 'pi-circle'"
           aria-hidden="true"
         />
         <span>{{ describeStep(step) }}<span class="sr-only">{{ step.done ? ", done" : ", open" }}</span></span>
