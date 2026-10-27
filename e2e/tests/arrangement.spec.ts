@@ -31,10 +31,10 @@ test.describe("visible arrangement", () => {
 
     await expect(score.getByRole("img", { name: "Repeat 14 to 15, 3 times" })).toHaveText("Repeat 3×");
     await expect(score.getByRole("img", { name: "Cut 16 to 17" })).toHaveText("Cut");
-    await expect(score.getByRole("img", { name: "Vamp 19 to 20, until released" })).toHaveText("Vamp, until released");
+    await expect(score.getByRole("img", { name: "Vamp 19 to 20" })).toHaveText("Vamp");
     await expect(score.getByRole("img", { name: "Measures 19 to 20 recorded 4 times" })).toHaveText("×4");
     await expect(score.getByRole("button", { name: "Measure 19" }))
-      .toHaveAccessibleDescription("Vamp 19 to 20, until released. Recorded 4 times. Marker D, 1st time.");
+      .toHaveAccessibleDescription("Vamp 19 to 20. Recorded 4 times. Marker D, 1st time.");
     await expect(score.getByRole("button", { name: "Measure 13" })).toHaveAccessibleDescription("Marker C.");
 
     await score.getByRole("button", { name: "Measure 14" }).click();

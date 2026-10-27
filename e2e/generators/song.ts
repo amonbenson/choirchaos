@@ -27,7 +27,7 @@ export type SongVampVocals = "all" | "first" | "last" | "split";
 export type SongSection
   = | { kind: "cut"; from: SongLocation; to: SongLocation }
     | { kind: "repeat"; from: SongLocation; to: SongLocation; passes: number }
-    | { kind: "vamp"; from: SongLocation; to: SongLocation; passes: number; out: SongVampOut; vocals: SongVampVocals };
+    | { kind: "vamp"; from: SongLocation; to: SongLocation; out: SongVampOut; vocals: SongVampVocals };
 
 export type SongScore = { measures: SongMeasure[]; unnumberedBoxes: MeasureLayout[] };
 export type SongRecording = { spans: SongSpan[]; warpMarkers: SongWarpMarker[] };
@@ -135,7 +135,6 @@ function buildArrangement(timeline: Timeline): SongArrangement {
         kind: "vamp",
         from: { measure: measureIdAt(vampStart.index), beat: 0 },
         to: { measure: measureIdAt(measure.index), beat: measure.beats - 1 },
-        passes: measure.vampEnd.iterations,
         out: "onEnd",
         vocals: "all",
       });

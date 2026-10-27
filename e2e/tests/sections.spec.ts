@@ -48,10 +48,12 @@ test.describe("sections", () => {
 
     await select(page, "4");
     await rehearsal.getByRole("button", { name: "Vamp", exact: true }).click();
-    const vamp: SongSection = { kind: "vamp", from: locationAt(score, "4"), to: locationAt(score, "4", 3), passes: 0, out: "onEnd", vocals: "all" };
+    const vamp: SongSection = { kind: "vamp", from: locationAt(score, "4"), to: locationAt(score, "4", 3), out: "onEnd", vocals: "all" };
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut, vamp]);
-    await rehearsal.getByLabel("Until released").uncheck();
-    await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut, { ...vamp, passes: 1 }]);
+    await expect(rehearsal.getByLabel("Passes")).toHaveCount(0);
+    await rehearsal.getByRole("combobox", { name: "Out" }).click();
+    await page.getByRole("option", { name: "Any measure" }).click();
+    await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut, { ...vamp, out: "anyBar" }]);
 
     await select(page, "2", "3");
     await expect(rehearsal).toContainText("These measures overlap Repeat 1 to 2 and Cut 3.");

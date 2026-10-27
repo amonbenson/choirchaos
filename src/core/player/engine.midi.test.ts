@@ -251,7 +251,7 @@ describe("PlayerEngine – MIDI mode", () => {
       player.play();
       stepPast(updater, player, TICKS.measure2 + 10);
 
-      expect(player.getCurrentSection()).toEqual({ section: 0, kind: "vamp", pass: 1, passes: 2, recordedPasses: 1, released: false });
+      expect(player.getCurrentSection()).toEqual({ section: 0, kind: "vamp", pass: 1, passes: undefined, recordedPasses: 1, released: false });
     });
 
     it("jumps back at the vamp end for the second pass", () => {
@@ -262,10 +262,11 @@ describe("PlayerEngine – MIDI mode", () => {
       expect(player.getPosition()).toBeLessThan(TICKS.measure3);
     });
 
-    it("leaves the vamp after the last pass", () => {
+    it("keeps looping until released and then leaves at the end of the pass", () => {
       const positions = recordPositions(player);
       player.play();
-      stepUntil(updater, () => player.getCurrentSection() !== undefined);
+      stepUntil(updater, () => (player.getCurrentSection()?.pass ?? 0) >= 3);
+      player.releaseVamp();
       stepUntil(updater, () => player.getCurrentSection() === undefined);
 
       expect(player.getPosition()).toBeGreaterThanOrEqual(TICKS.measure3);
@@ -289,6 +290,7 @@ describe("PlayerEngine – MIDI mode", () => {
 
       player.play();
       stepUntil(updater, () => player.getCurrentSection() !== undefined);
+      player.releaseVamp();
       stepUntil(updater, () => player.getCurrentSection() === undefined);
       stepPast(updater, player, TICKS.measure3 + 10);
 
@@ -360,31 +362,20 @@ describe("PlayerEngine – MIDI mode", () => {
   describe("baked vamp", () => {
     // Measure "2" is recorded four times, at positions 2 to 5.
 
-    it("plays the first and the last recorded pass for 2 passes", async () => {
-      await reload(makeMidiSongWithBakedVamp({ passes: 2 }), BEAT_MAP_LABELS.bakedVamp);
-      const positions = recordPositions(player);
-      const passes: number[] = [];
-      player.onCurrentSectionChange(section => section && passes.push(section.pass));
-
-      player.play();
-      stepPast(updater, player, player.getDuration());
-
-      expect(positions).toEqual([0, 1, 2, 5, 6, 7]);
-      expect(passes).toEqual([1, 2]);
-    });
-
-    it("plays the recording unchanged when the passes match", async () => {
-      await reload(makeMidiSongWithBakedVamp({ passes: 4 }), BEAT_MAP_LABELS.bakedVamp);
+    it("plays the recording unchanged when released in the pass before the last", async () => {
+      await reload(makeMidiSongWithBakedVamp(), BEAT_MAP_LABELS.bakedVamp);
       const positions = recordPositions(player);
 
       player.play();
+      stepUntil(updater, () => player.getCurrentLocation()?.position === 4);
+      player.releaseVamp();
       stepPast(updater, player, player.getDuration());
 
       expect(positions).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
     });
 
     it("plays a disabled vamp as recorded", async () => {
-      await reload(makeMidiSongWithBakedVamp({ passes: 2 }), BEAT_MAP_LABELS.bakedVamp);
+      await reload(makeMidiSongWithBakedVamp(), BEAT_MAP_LABELS.bakedVamp);
       player.setVampsEnabled(false);
       const positions = recordPositions(player);
 
@@ -397,15 +388,17 @@ describe("PlayerEngine – MIDI mode", () => {
 
     it("restores the tempo at the jump target", async () => {
       // The tempo changes to 140 BPM at position 3, which the jump from position 2 to 5 skips.
-      await reload(makeMidiSongWithBakedVamp({ passes: 2 }), BEAT_MAP_LABELS.bakedVamp);
+      await reload(makeMidiSongWithBakedVamp(), BEAT_MAP_LABELS.bakedVamp);
       player.play();
+      stepUntil(updater, () => player.getCurrentLocation()?.position === 2);
+      player.releaseVamp();
       stepUntil(updater, () => player.getCurrentLocation()?.position === 5);
 
       expect(player.getCurrentTempo()).toBe(140);
     });
 
     it("finishes the pass after a release past its first barline and then plays the last recorded pass", async () => {
-      await reload(makeMidiSongWithBakedVamp({ passes: 0 }), BEAT_MAP_LABELS.bakedVamp);
+      await reload(makeMidiSongWithBakedVamp(), BEAT_MAP_LABELS.bakedVamp);
       const positions = recordPositions(player);
 
       player.play();
@@ -417,7 +410,7 @@ describe("PlayerEngine – MIDI mode", () => {
     });
 
     it("mutes vocal notes while repeating when only the first pass has vocals", async () => {
-      await reload(makeMidiSongWithBakedVamp({ passes: 4, vocals: "first" }), BEAT_MAP_LABELS.bakedVamp);
+      await reload(makeMidiSongWithBakedVamp({ vocals: "first" }), BEAT_MAP_LABELS.bakedVamp);
       const notes: NoteEvent[] = [];
       player.onNote(e => notes.push(e));
 
@@ -444,7 +437,7 @@ describe("PlayerEngine – MIDI mode", () => {
           [{ delta: 0, trackName: TRACK_NAMES.vocals }],
         ],
       } as any);
-      await reload(makeMidiSongWithBakedVamp({ passes: 4, vocals: "first" }), BEAT_MAP_LABELS.bakedVamp);
+      await reload(makeMidiSongWithBakedVamp({ vocals: "first" }), BEAT_MAP_LABELS.bakedVamp);
 
       player.play();
       stepPast(updater, player, positionTick(4));
@@ -454,7 +447,7 @@ describe("PlayerEngine – MIDI mode", () => {
 
     it("uses the whole step when it stops at a pass boundary without a jump", async () => {
       const positionAfterStep = async (vocals: VampVocals): Promise<number> => {
-        await reload(makeMidiSongWithBakedVamp({ passes: 4, vocals }), BEAT_MAP_LABELS.bakedVamp);
+        await reload(makeMidiSongWithBakedVamp({ vocals }), BEAT_MAP_LABELS.bakedVamp);
         player.seek(positionTick(3) - 10);
         player.play();
         updater.step(0.02);
@@ -466,7 +459,7 @@ describe("PlayerEngine – MIDI mode", () => {
     });
 
     it("keeps vocal notes when every pass has vocals", async () => {
-      await reload(makeMidiSongWithBakedVamp({ passes: 4, vocals: "all" }), BEAT_MAP_LABELS.bakedVamp);
+      await reload(makeMidiSongWithBakedVamp({ vocals: "all" }), BEAT_MAP_LABELS.bakedVamp);
 
       player.play();
       stepPast(updater, player, positionTick(4));

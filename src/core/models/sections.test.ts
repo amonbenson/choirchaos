@@ -34,17 +34,17 @@ describe("section defaults", () => {
   it("creates each kind with its defaults", () => {
     expect(createSection("cut", at("1"), at("1", 3))).toEqual({ kind: "cut", from: at("1"), to: at("1", 3) });
     expect(createSection("repeat", at("1"), at("1", 3))).toMatchObject({ kind: "repeat", passes: 2 });
-    expect(createSection("vamp", at("1"), at("1", 3))).toMatchObject({ kind: "vamp", passes: 0, out: "onEnd", vocals: "all" });
+    expect(createSection("vamp", at("1"), at("1", 3))).toEqual({ kind: "vamp", from: at("1"), to: at("1", 3), out: "onEnd", vocals: "all" });
   });
 });
 
 describe("section storage", () => {
   it("round-trips sections and stores first occurrences without the field", () => {
-    const section: Section = { kind: "vamp", from: at("2", 0, 2), to: at("3", 3, 2), passes: 0, out: "anyBar", vocals: "split" };
+    const section: Section = { kind: "vamp", from: at("2", 0, 2), to: at("3", 3, 2), out: "anyBar", vocals: "split" };
 
     const stored = serializeSection(section);
 
-    expect(stored).toEqual({ kind: "vamp", from: { measure: "2", beat: 0, occurrence: 2 }, to: { measure: "3", beat: 3, occurrence: 2 }, passes: 0, out: "anyBar", vocals: "split" });
+    expect(stored).toEqual({ kind: "vamp", from: { measure: "2", beat: 0, occurrence: 2 }, to: { measure: "3", beat: 3, occurrence: 2 }, out: "anyBar", vocals: "split" });
     expect(serializeSection(cut(at("1"), at("1", 3)))).toEqual({ kind: "cut", from: { measure: "1", beat: 0 }, to: { measure: "1", beat: 3 } });
     expect(deserializeSection(stored)).toEqual(section);
   });
@@ -82,9 +82,9 @@ describe("validateSection", () => {
 
     expect(validateSection(SCORE, TIMELINE, { ...repeat, passes: 0 })).toMatch(/at least 1/);
     expect(validateSection(SCORE, TIMELINE, { ...repeat, passes: 1.5 })).toMatch(/at least 1/);
-    expect(validateSection(SCORE, TIMELINE, { ...vamp, passes: -1 } as Section)).toMatch(/at least 0/);
-    expect(validateSection(SCORE, TIMELINE, { ...vamp, out: "never" } as unknown as Section)).toMatch(/exit and vocals/);
-    expect(validateSection(SCORE, TIMELINE, { ...vamp, vocals: "none" } as unknown as Section)).toMatch(/exit and vocals/);
+    expect(validateSection(SCORE, TIMELINE, vamp)).toBeUndefined();
+    expect(validateSection(SCORE, TIMELINE, { ...vamp, out: "never" } as unknown as Section)).toMatch(/out and vocals/);
+    expect(validateSection(SCORE, TIMELINE, { ...vamp, vocals: "none" } as unknown as Section)).toMatch(/out and vocals/);
   });
 });
 

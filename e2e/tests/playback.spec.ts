@@ -47,13 +47,36 @@ test.describe("playback", () => {
     expect(errors).toEqual([]);
   });
 
-  test("a vamp recorded four times and set to two passes ends in the last recorded pass", async ({ page, factory, loginAs }) => {
+  test("a vamp recorded once loops until released", async ({ page, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const bundle = await buildSongBundle(FAST, { mode: "audio", withPdf: false });
+    const { score } = bundle.fields;
+    bundle.fields.arrangement.sections = [
+      { kind: "vamp", from: locationAt(score, "2"), to: locationAt(score, "3", 3), out: "onEnd", vocals: "all" },
+    ];
+    const song = await factory.createSong(owner, show, bundle);
+    const errors = collectPageErrors(page);
+    await loginAs(owner);
+
+    await play(page, show, song);
+    const looping = await recordPlayback(page, sample => sample.section === "Vamp 3");
+    await page.getByRole("button", { name: "Vamp 3", exact: true }).click();
+    const leaving = await recordPlayback(page, sample => sample.measure === "4");
+    const samples = [...looping, ...leaving];
+
+    expect(sequenceOf(samples, "measure")).toEqual(["1", "2", "3", "2", "3", "2", "3", "4"]);
+    expect(sequenceOf(samples, "section")).toEqual(["Vamp", "Vamp 1", "Vamp 2", "Vamp 3", "Exiting", "Vamp"]);
+    expect(errors).toEqual([]);
+  });
+
+  test("a released vamp recorded four times ends in the last recorded pass", async ({ page, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const bundle = await buildSongBundle(FAST, { mode: "audio", withPdf: false, repeats: [{ from: "2", to: "3", passes: 4 }] });
     const { score } = bundle.fields;
     bundle.fields.arrangement.sections = [
-      { kind: "vamp", from: locationAt(score, "2"), to: locationAt(score, "3", 3), passes: 2, out: "onEnd", vocals: "all" },
+      { kind: "vamp", from: locationAt(score, "2"), to: locationAt(score, "3", 3), out: "onEnd", vocals: "all" },
     ];
     const song = await factory.createSong(owner, show, bundle);
     const errors = collectPageErrors(page);
@@ -61,13 +84,16 @@ test.describe("playback", () => {
 
     await play(page, show, song);
     const times = recordedBarTimes(bundle).map(seconds => seconds * MS_PER_SECOND);
-    const samples = await recordPlayback(page, sample => sample.measure === "4");
+    const entering = await recordPlayback(page, sample => sample.section === "Vamp 2");
+    await page.getByRole("button", { name: "Vamp 2", exact: true }).click();
+    const leaving = await recordPlayback(page, sample => sample.measure === "4");
+    const samples = [...entering, ...leaving];
 
-    expect(sequenceOf(samples, "measure")).toEqual(["1", "2", "3", "2", "3", "4"]);
-    expect(sequenceOf(samples, "section")).toEqual(["Vamp", "Vamp 1/2", "Vamp 2/2", "Vamp"]);
-    const lastPass = samples.filter(sample => sample.section === "Vamp 2/2");
-    expect(lastPass.every(sample => isInside(sample, times[7]!, times[9]!))).toBe(true);
-    expect(samples.filter(sample => isInside(sample, times[3]!, times[7]!))).toEqual([]);
+    expect(sequenceOf(samples, "section")).toEqual(["Vamp", "Vamp 1", "Vamp 2", "Exiting", "Vamp"]);
+    // The release lands in the second recorded pass, which then finishes or jumps into the last one.
+    const exiting = samples.filter(sample => sample.section === "Exiting");
+    expect(exiting.every(sample => isInside(sample, times[3]!, times[5]!) || isInside(sample, times[7]!, times[9]!))).toBe(true);
+    expect(samples.filter(sample => isInside(sample, times[5]!, times[7]!))).toEqual([]);
     expect(errors).toEqual([]);
   });
 

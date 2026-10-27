@@ -96,9 +96,10 @@ describe("PlayerEngine – audio mode", () => {
 
   /**
    * Plays to the end like a real driver, which moves on by one step's time from wherever it is, and lists
-   * the positions in the order they sound. A jump back within a position starts it again.
+   * the positions in the order they sound. A jump back within a position starts it again. A vamp is
+   * released once it reaches `releaseAtPass`.
    */
-  function playThrough(): number[] {
+  function playThrough(releaseAtPass = 1): number[] {
     let previous = player.getCurrentLocation()!;
     const positions = [previous.position];
     player.onCurrentLocationChange((location) => {
@@ -111,6 +112,10 @@ describe("PlayerEngine – audio mode", () => {
 
     player.play();
     for (let i = 0; i < 1000 && player.isPlaying(); i++) {
+      if ((player.getCurrentSection()?.pass ?? 0) >= releaseAtPass) {
+        player.releaseVamp();
+      }
+
       stepAt(ap.getPosition() + STEP);
     }
 
@@ -233,7 +238,7 @@ describe("PlayerEngine – audio mode", () => {
   });
 
   // ── vamp recorded once ────────────────────────────────────────────────────
-  // Vamp on measure "2" from 250 ms to 500 ms, 2 passes.
+  // Vamp on measure "2" from 250 ms to 500 ms.
 
   describe("vamp recorded once", () => {
     beforeEach(async () => {
@@ -248,7 +253,7 @@ describe("PlayerEngine – audio mode", () => {
       expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25, 0);
       expect(ap.seek).not.toHaveBeenCalled();
       expect(player.getPosition()).toBe(250);
-      expect(player.getCurrentSection()).toMatchObject({ pass: 2, passes: 2 });
+      expect(player.getCurrentSection()).toMatchObject({ pass: 2, passes: undefined });
     });
 
     it("jumps to the exact vamp start even when the driver overshoots the end", () => {
@@ -258,9 +263,10 @@ describe("PlayerEngine – audio mode", () => {
       expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25, 0);
     });
 
-    it("leaves without a jump after the last pass", () => {
+    it("leaves without a jump at the end of a released pass", () => {
       stepAt(0.3);
       stepAt(0.5);
+      player.releaseVamp();
       ap.scheduleSeek.mockClear();
       stepAt(0.5);
 
@@ -268,10 +274,10 @@ describe("PlayerEngine – audio mode", () => {
       expect(player.getCurrentSection()).toBeUndefined();
     });
 
-    it("plays the vamp twice", () => {
+    it("plays the vamp until released", () => {
       player.pause();
       player.seek(0);
-      expect(playThrough()).toEqual([0, 1, 1, 2, 3]);
+      expect(playThrough(3)).toEqual([0, 1, 1, 1, 2, 3]);
     });
   });
 
@@ -280,23 +286,13 @@ describe("PlayerEngine – audio mode", () => {
   describe("baked vamp", () => {
     // Measure "2" is recorded four times: positions 1 to 4, from 250 ms to 1250 ms.
 
-    it("crossfades from the first to the last recorded pass for 2 passes", async () => {
-      await reload(makeAudioSongWithBakedVamp({ passes: 2 }));
-      player.play();
-      stepAt(0.3);
-      stepAt(0.5);
-
-      expect(ap.scheduleSeek).toHaveBeenCalledWith(1.0, 0);
-      expect(player.getCurrentSection()).toEqual({ section: 0, kind: "vamp", pass: 2, passes: 2, recordedPasses: 4, released: false });
+    it("plays the passes in recorded order with the filler pass repeated until released", async () => {
+      await reload(makeAudioSongWithBakedVamp());
+      expect(playThrough(5)).toEqual([0, 1, 2, 3, 3, 3, 4, 5, 6]);
     });
 
-    it("plays the passes in recorded order with the filler pass repeated", async () => {
-      await reload(makeAudioSongWithBakedVamp({ passes: 6 }));
-      expect(playThrough()).toEqual([0, 1, 2, 3, 3, 3, 4, 5, 6]);
-    });
-
-    it("finishes the pass and then plays the last recorded pass after a release", async () => {
-      await reload(makeAudioSongWithBakedVamp({ passes: 0 }));
+    it("finishes the pass and then crossfades to the last recorded pass after a release", async () => {
+      await reload(makeAudioSongWithBakedVamp());
       player.play();
       stepAt(0.3);
       player.releaseVamp();
@@ -304,7 +300,7 @@ describe("PlayerEngine – audio mode", () => {
 
       // The first recorded pass is one measure, so its only barline lies before the release.
       expect(ap.scheduleSeek).toHaveBeenCalledWith(1.0, 0);
-      expect(player.getCurrentSection()).toMatchObject({ pass: 1, passes: 1, released: true });
+      expect(player.getCurrentSection()).toEqual({ section: 0, kind: "vamp", pass: 1, passes: 1, recordedPasses: 4, released: true });
     });
   });
 
@@ -353,10 +349,10 @@ describe("PlayerEngine – audio mode", () => {
     expect(player.getCurrentSection()?.pass).toBe(2);
 
     const [section] = song.getSections() as Section[];
-    vi.spyOn(song, "getSections").mockReturnValue([{ ...section!, passes: 4 } as Section]);
+    vi.spyOn(song, "getSections").mockReturnValue([{ ...section!, vocals: "split" } as Section]);
     player.syncWarp();
 
-    expect(player.getCurrentSection()).toMatchObject({ pass: 2, passes: 4 });
+    expect(player.getCurrentSection()).toMatchObject({ kind: "vamp", pass: 2 });
   });
 
   it("syncWarp drops a removed section", async () => {
@@ -430,7 +426,7 @@ describe("PlayerEngine – audio mode", () => {
 
   // ── vamp vocals ───────────────────────────────────────────────────────────
   // Accompaniment is track 0 and Vocals track 1. The vamp on measure "2" (250 ms to 500 ms) is recorded
-  // once and plays 2 passes, so its midpoint at 375 ms splits entering from exiting material. Where
+  // once, so its midpoint at 375 ms splits entering from exiting material. Where
   // muting changes at the midpoint, the engine stops a step there, so crossing it takes an extra step.
 
   async function stepVocalVamp(vocals: VampVocals, seconds: number[], release = false): Promise<void> {
@@ -454,12 +450,12 @@ describe("PlayerEngine – audio mode", () => {
     { vocals: "split" as const, name: "exiting material of a pass that is not the last", seconds: [0.4], release: false, muted: true },
     { vocals: "split" as const, name: "exiting material after a release", seconds: [0.4], release: true, muted: false },
     { vocals: "split" as const, name: "entering material of the second pass", seconds: [0.3, 0.4, 0.5, 0.3], release: false, muted: true },
-    { vocals: "split" as const, name: "exiting material of the last pass", seconds: [0.3, 0.4, 0.5, 0.4], release: false, muted: false },
+    { vocals: "split" as const, name: "exiting material of the second pass after a release", seconds: [0.3, 0.4, 0.5, 0.4], release: true, muted: false },
     { vocals: "all" as const, name: "exiting material of a pass that is not the last", seconds: [0.4], release: false, muted: false },
     { vocals: "first" as const, name: "entering material of the first pass", seconds: [0.3], release: false, muted: false },
     { vocals: "first" as const, name: "exiting material after a release", seconds: [0.4], release: true, muted: true },
     { vocals: "last" as const, name: "entering material of the first pass", seconds: [0.3], release: false, muted: true },
-    { vocals: "last" as const, name: "exiting material of the last pass", seconds: [0.3, 0.4, 0.5, 0.4], release: false, muted: false },
+    { vocals: "last" as const, name: "exiting material of the second pass after a release", seconds: [0.3, 0.4, 0.5, 0.4], release: true, muted: false },
   ])("vocals=$vocals: $name is muted: $muted", async ({ vocals, seconds, release, muted }) => {
     await stepVocalVamp(vocals, seconds, release);
 

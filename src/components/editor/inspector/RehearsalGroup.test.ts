@@ -1,6 +1,5 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import Checkbox from "primevue/checkbox";
 import PrimeVue from "primevue/config";
 import InputNumber from "primevue/inputnumber";
 import Select from "primevue/select";
@@ -129,24 +128,17 @@ describe("RehearsalGroup", () => {
     expect(selectSection).toHaveBeenCalledWith(0);
   });
 
-  it("lets a vamp run until released and sets how it ends and who sings", async () => {
+  it("sets how a vamp ends and who sings, without a pass count", async () => {
     const song = makeMidiSongWithVamp();
     const wrapper = mountGroup(song, { first: 2, last: 2 });
     expect(wrapper.find("[aria-label='Select vamp 2']").exists()).toBe(false);
+    expect(wrapper.findComponent(InputNumber).exists()).toBe(false);
 
-    await wrapper.findComponent(Checkbox).vm.$emit("update:modelValue", true);
-    await flushPromises();
-    expect(song.getSections()[0]).toMatchObject({ kind: "vamp", passes: 0 });
-
-    await findSelect(wrapper, "Go on").vm.$emit("update:modelValue", "anyBar");
+    await findSelect(wrapper, "Out").vm.$emit("update:modelValue", "anyBar");
     await flushPromises();
     await findSelect(wrapper, "Vocals").vm.$emit("update:modelValue", "last");
     await flushPromises();
-    expect(song.getSections()[0]).toMatchObject({ kind: "vamp", passes: 0, out: "anyBar", vocals: "last" });
-
-    await wrapper.findComponent(Checkbox).vm.$emit("update:modelValue", false);
-    await flushPromises();
-    expect(song.getSections()[0]).toMatchObject({ passes: 1 });
+    expect(song.getSections()[0]).toEqual({ kind: "vamp", from: locationOf(song, "2"), to: locationOf(song, "2", 3), out: "anyBar", vocals: "last" });
   });
 
   it("switches a section to another kind with that kind's defaults", async () => {

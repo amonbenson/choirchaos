@@ -74,7 +74,6 @@ test.describe("recording editing", () => {
       kind: "vamp",
       from: { measure: "m5", beat: 0 },
       to: { measure: "m6", beat: 1 },
-      passes: 0,
       out: "onEnd",
       vocals: "all",
     }];
@@ -95,7 +94,6 @@ test.describe("recording editing", () => {
         kind: "vamp",
         from: { measure: "m1", beat: 0, occurrence: 2 },
         to: { measure: "m2", beat: 1, occurrence: 2 },
-        passes: 0,
         out: "onEnd",
         vocals: "all",
       }],

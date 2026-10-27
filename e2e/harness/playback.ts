@@ -3,7 +3,7 @@ import { expect, type Page } from "@playwright/test";
 /** What the player shows at one moment: the header's measure and section, the position and the highlighted box. */
 export type PlaybackSample = {
   measure: string | undefined;
-  /** The header's section button, e.g. "Vamp 2/4" or "Repeat 1/3". Plain "Vamp" while no section plays. */
+  /** The header's section button, e.g. "Vamp 2" or "Repeat 1/3". Plain "Vamp" while no section plays. */
   section: string;
   /** Recording milliseconds in audio mode, MIDI ticks in MIDI mode. */
   position: number;
