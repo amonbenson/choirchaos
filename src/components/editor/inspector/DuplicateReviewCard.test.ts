@@ -8,13 +8,10 @@ import Measure from "@/core/models/measure";
 import { formatRecording } from "@/core/models/recording";
 import Song from "@/core/models/song";
 import Track from "@/core/models/track";
+import { dbUpdate } from "@/pocketbase/db";
 import { makeMidiSong } from "@/test/fixtures";
 
 import DuplicateReviewCard from "./DuplicateReviewCard.vue";
-
-const player = vi.hoisted(() => ({ position: 0, load: (async () => {}) as (song: unknown) => Promise<void>, seek: (() => {}) as (position: number) => void }));
-
-vi.mock("@/stores/player", () => ({ usePlayerStore: () => player }));
 
 const confirmation = vi.hoisted(() => ({ require: (() => {}) as (options: { accept: () => void; reject: () => void }) => void }));
 
@@ -54,8 +51,6 @@ function button(wrapper: VueWrapper, label: string): ReturnType<VueWrapper["find
 describe("DuplicateReviewCard", () => {
   beforeEach(() => {
     sessionStorage.clear();
-    player.load = vi.fn(async () => {});
-    player.seek = vi.fn();
     confirmation.require = vi.fn(options => options.accept());
   });
 
@@ -72,7 +67,7 @@ describe("DuplicateReviewCard", () => {
     expect(button(wrapper, "Play as 2nd time of 1 to 2").exists()).toBe(true);
   });
 
-  it("plays the duplicates as a repeat, keeps the sync and reloads the player", async () => {
+  it("plays the duplicates as a repeat in one save and keeps the sync", async () => {
     const song = makeFakedRepeatSong();
     const wrapper = mountCard(song);
 
@@ -87,7 +82,7 @@ describe("DuplicateReviewCard", () => {
       { measure: "m8", occurrence: 1, time: 14 },
     ]);
     expect(confirmation.require).not.toHaveBeenCalled();
-    expect(player.load).toHaveBeenCalledWith(song);
+    expect(dbUpdate).toHaveBeenCalledOnce();
     expect(wrapper.find("li").exists()).toBe(false);
   });
 

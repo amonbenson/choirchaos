@@ -3,6 +3,7 @@ import PrimeVue from "primevue/config";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reactive } from "vue";
 
+import { addMarker } from "@/core/models/markers";
 import type { Location } from "@/core/models/recording";
 import type Song from "@/core/models/song";
 import type { PlayerLocation } from "@/core/player/types";
@@ -35,8 +36,8 @@ vi.mock("@/pocketbase/db", () => ({
 
 async function makeSongWithMarkers(): Promise<Song> {
   const song = makeMidiSongWithRepeat();
-  await song.addMarker(locationOf(song, "1"), "Intro");
-  await song.addMarker(locationOf(song, "2", 0, 2), "Chorus");
+  await song.editLayers({ markers: addMarker(song.getMarkers(), { at: locationOf(song, "1"), text: "Intro" }) });
+  await song.editLayers({ markers: addMarker(song.getMarkers(), { at: locationOf(song, "2", 0, 2), text: "Chorus" }) });
   return song;
 }
 

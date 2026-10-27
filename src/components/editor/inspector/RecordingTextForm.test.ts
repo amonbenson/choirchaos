@@ -6,13 +6,10 @@ import { reactive } from "vue";
 
 import { formatRecording } from "@/core/models/recording";
 import type Song from "@/core/models/song";
+import { dbUpdate } from "@/pocketbase/db";
 import { makeAudioSong, makeAudioSongWithBakedVamp, makeAudioSongWithRepeat } from "@/test/fixtures";
 
 import RecordingTextForm from "./RecordingTextForm.vue";
-
-const player = vi.hoisted(() => ({ position: 0, load: (async () => {}) as (song: unknown) => Promise<void>, seek: (() => {}) as (position: number) => void }));
-
-vi.mock("@/stores/player", () => ({ usePlayerStore: () => player }));
 
 const confirmation = vi.hoisted(() => ({ require: (() => {}) as (options: { accept: () => void; reject: () => void }) => void }));
 
@@ -42,8 +39,6 @@ function saveButton(wrapper: VueWrapper): ReturnType<VueWrapper["find"]> {
 
 describe("RecordingTextForm", () => {
   beforeEach(() => {
-    player.load = vi.fn(async () => {});
-    player.seek = vi.fn();
     confirmation.require = vi.fn(options => options.accept());
   });
 
@@ -81,7 +76,7 @@ describe("RecordingTextForm", () => {
     await flushPromises();
 
     expect(formatRecording(song.getRecording(), song.getMeasures())).toBe("1-2 x2, 3-4");
-    expect(player.load).toHaveBeenCalledWith(song);
+    expect(dbUpdate).toHaveBeenCalledOnce();
     expect(wrapper.emitted("close")).toHaveLength(1);
   });
 

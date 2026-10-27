@@ -1,13 +1,12 @@
 import { useConfirm } from "primevue/useconfirm";
 import { type Ref, ref } from "vue";
 
+import type { DroppedReferences, RecordingPreview } from "@/core/models/layers";
 import { formatOccurrence } from "@/core/models/locationFormat";
 import type { MeasureId } from "@/core/models/measure";
 import { formatSectionName } from "@/core/models/measureSelection";
 import type { RecordingSpan } from "@/core/models/recording";
 import type Song from "@/core/models/song";
-import type { DroppedReferences, RecordingPreview } from "@/core/models/song";
-import { usePlayerStore } from "@/stores/player";
 
 import { useNotify } from "./useNotify";
 
@@ -45,9 +44,10 @@ export type RecordingEditor = {
   saving: Ref<boolean>;
   /** What the last saved change did, for a status line. */
   status: Ref<string>;
-  /** Previews new spans, asks before removing references, saves and reloads the player. False when nothing was saved. */
+  /** Previews new spans, asks before removing references and saves. False when nothing was saved. */
   setSpans: (spans: readonly RecordingSpan[]) => Promise<boolean>;
-  playDuplicatesAsRepeat: (duplicates: readonly MeasureId[], originals: readonly MeasureId[]) => Promise<boolean>;
+  /** The same for any other recording change, previewed by `preview` and saved by `save`. */
+  apply: (preview: () => RecordingPreview, save: () => Promise<unknown>, failure: string) => Promise<boolean>;
 };
 
 /**
@@ -56,7 +56,6 @@ export type RecordingEditor = {
  */
 export function useRecordingEditor(getSong: () => Song): RecordingEditor {
   const confirm = useConfirm();
-  const player = usePlayerStore();
   const { notifyError } = useNotify();
   const saving = ref(false);
   const status = ref("");
@@ -81,14 +80,8 @@ export function useRecordingEditor(getSong: () => Song): RecordingEditor {
     });
   }
 
-  // The timeline changed, so the player needs it again. The playhead stays at the same time.
-  async function reloadPlayer(song: Song): Promise<void> {
-    const position = player.position;
-    await player.load(song);
-    player.seek(position);
-  }
-
-  async function commit(song: Song, preview: () => RecordingPreview, save: () => Promise<void>, failure: string): Promise<boolean> {
+  async function apply(preview: () => RecordingPreview, save: () => Promise<unknown>, failure: string): Promise<boolean> {
+    const song = getSong();
     let planned: RecordingPreview;
     try {
       planned = preview();
@@ -105,7 +98,6 @@ export function useRecordingEditor(getSong: () => Song): RecordingEditor {
     try {
       await save();
       status.value = `The recording now plays ${formatMeasureCount(planned.length)}.`;
-      await reloadPlayer(song);
       return true;
     } catch (error) {
       notifyError(failure, error);
@@ -121,18 +113,8 @@ export function useRecordingEditor(getSong: () => Song): RecordingEditor {
       return true;
     }
 
-    return commit(song, () => song.previewRecordingSpans(spans), () => song.setRecordingSpans(spans), "Could not change the recording");
+    return apply(() => song.previewRecordingSpans(spans), () => song.setRecordingSpans(spans), "Could not change the recording");
   }
 
-  async function playDuplicatesAsRepeat(duplicates: readonly MeasureId[], originals: readonly MeasureId[]): Promise<boolean> {
-    const song = getSong();
-    return commit(
-      song,
-      () => song.previewDuplicatesAsRepeat(duplicates, originals),
-      () => song.playDuplicatesAsRepeat(duplicates, originals),
-      "Could not play the measures as a repeat",
-    );
-  }
-
-  return { saving, status, setSpans, playDuplicatesAsRepeat };
+  return { saving, status, setSpans, apply };
 }

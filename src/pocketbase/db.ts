@@ -11,6 +11,14 @@ export async function dbUpdate(collection: string, id: string, data: PbRecord): 
   return pb.collection(collection).update(id, data);
 }
 
+export async function dbGetOne(collection: string, id: string, fields?: string): Promise<PbRecord> {
+  if (DRY_RUN) {
+    return { id };
+  }
+
+  return pb.collection(collection).getOne(id, { fields });
+}
+
 export async function dbUpdateWithFiles(collection: string, id: string, formData: FormData): Promise<PbRecord> {
   if (DRY_RUN) {
     const entries: Record<string, any> = {};

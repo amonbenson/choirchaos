@@ -4,9 +4,9 @@ import Button from "primevue/button";
 import { computed } from "vue";
 
 import { describeDropped, useRecordingEditor } from "@/composables/useRecordingEditor";
+import { type DuplicateRun, findDuplicateRuns, playDuplicatesAsRepeat, previewDuplicatesAsRepeat } from "@/core/models/duplicateMigration";
 import { formatOrdinal, formatTimes } from "@/core/models/locationFormat";
 import type Measure from "@/core/models/measure";
-import { type DuplicateRun, findDuplicateRuns } from "@/core/models/measureReview";
 import { expandRecording, findPosition, formatRecording } from "@/core/models/recording";
 import type Song from "@/core/models/song";
 
@@ -45,7 +45,7 @@ type Proposal = {
 
 function propose(run: DuplicateRun): Proposal[] {
   try {
-    const preview = props.song.previewDuplicatesAsRepeat(getIds(run.duplicates), getIds(run.originals));
+    const preview = previewDuplicatesAsRepeat(props.song, getIds(run.duplicates), getIds(run.originals));
     const position = findPosition(props.song.getTimeline(), { measure: run.duplicates[0]!.id, occurrence: 1 });
     const timeline = expandRecording(props.song.getMeasures(), preview.spans);
     return [{
@@ -77,7 +77,13 @@ function getActionLabel({ originals, occurrence }: Proposal): string {
 }
 
 async function accept({ run }: Proposal): Promise<void> {
-  await editor.playDuplicatesAsRepeat(getIds(run.duplicates), getIds(run.originals));
+  const duplicates = getIds(run.duplicates);
+  const originals = getIds(run.originals);
+  await editor.apply(
+    () => previewDuplicatesAsRepeat(props.song, duplicates, originals),
+    () => playDuplicatesAsRepeat(props.song, duplicates, originals),
+    "Could not play the measures as a repeat",
+  );
 }
 
 function keepSeparate({ key }: Proposal): void {

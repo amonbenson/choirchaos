@@ -5,6 +5,7 @@ import ToastService from "primevue/toastservice";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { reactive } from "vue";
 
+import { addMarker } from "@/core/models/markers";
 import type { SelectedRun } from "@/core/models/measureSelection";
 import type Song from "@/core/models/song";
 import { locationOf, makeMidiSong, makeMidiSongWithRepeat } from "@/test/fixtures";
@@ -59,7 +60,7 @@ describe("MarkerGroup", () => {
 
   it("names new markers with the next free rehearsal letter", async () => {
     const song = makeMidiSong();
-    await song.addMarker(locationOf(song, "1"), "A");
+    await song.editLayers({ markers: addMarker(song.getMarkers(), { at: locationOf(song, "1"), text: "A" }) });
     const wrapper = mountGroup(song, { first: 3, last: 3 });
 
     await addButton(wrapper).trigger("click");
@@ -70,8 +71,8 @@ describe("MarkerGroup", () => {
 
   it("shows only the markers of the selected occurrence", async () => {
     const song = makeMidiSongWithRepeat();
-    await song.addMarker(locationOf(song, "2"), "First");
-    await song.addMarker(locationOf(song, "2", 2, 2), "Second");
+    await song.editLayers({ markers: addMarker(song.getMarkers(), { at: locationOf(song, "2"), text: "First" }) });
+    await song.editLayers({ markers: addMarker(song.getMarkers(), { at: locationOf(song, "2", 2, 2), text: "Second" }) });
     const wrapper = mountGroup(song, { first: 4, last: 4 });
 
     expect(wrapper.findAll("input").map(input => input.attributes("aria-label"))).toEqual(["Name of marker Second"]);
@@ -80,7 +81,7 @@ describe("MarkerGroup", () => {
 
   it("renames a marker and keeps where it is", async () => {
     const song = makeMidiSong();
-    await song.addMarker(locationOf(song, "1", 2), "A");
+    await song.editLayers({ markers: addMarker(song.getMarkers(), { at: locationOf(song, "1", 2), text: "A" }) });
     const wrapper = mountGroup(song, { first: 1, last: 1 });
 
     const input = wrapper.find("input[aria-label='Name of marker A']");
@@ -93,7 +94,7 @@ describe("MarkerGroup", () => {
 
   it("keeps the name when the field is emptied or Escape is pressed", async () => {
     const song = makeMidiSong();
-    await song.addMarker(locationOf(song, "1"), "A");
+    await song.editLayers({ markers: addMarker(song.getMarkers(), { at: locationOf(song, "1"), text: "A" }) });
     const wrapper = mountGroup(song, { first: 1, last: 1 });
 
     const input = wrapper.find("input[aria-label='Name of marker A']");
@@ -109,7 +110,7 @@ describe("MarkerGroup", () => {
 
   it("deletes a marker", async () => {
     const song = makeMidiSong();
-    await song.addMarker(locationOf(song, "1"), "A");
+    await song.editLayers({ markers: addMarker(song.getMarkers(), { at: locationOf(song, "1"), text: "A" }) });
     const wrapper = mountGroup(song, { first: 1, last: 1 });
 
     await wrapper.find("button[aria-label='Delete marker A']").trigger("click");

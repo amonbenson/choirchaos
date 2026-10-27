@@ -1,7 +1,7 @@
 import { computed, type ComputedRef, inject, type InjectionKey, provide, type Ref, ref, shallowRef, watch } from "vue";
 
 import type Measure from "@/core/models/measure";
-import { changesPlayback, isSameLayout, type MeasureId, type MeasureLayout } from "@/core/models/measure";
+import { isSameLayout, type MeasureId, type MeasureLayout } from "@/core/models/measure";
 import { toMeasureEdit } from "@/core/models/measureDetection";
 import { type BoxTarget, getMeasuresBetween, getReadingOrder, type MeasureEditMode, type PlannedEdit } from "@/core/models/measureEditing";
 import { getAdjacentReviewItem, getReviewItemAfter, getReviewItems, isSameReviewItem, type ReviewItem } from "@/core/models/measureReview";
@@ -238,17 +238,11 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
     placeFrom.value = label;
   }
 
-  async function reloadPlayer(target: Song): Promise<void> {
-    const position = player.position;
-    await player.load(target);
-    player.seek(position);
-  }
-
   function resolveTarget(target: BoxTarget, added: readonly Measure[]): MeasureId | undefined {
     return "addition" in target ? added[target.addition]?.id : target.measure;
   }
 
-  /** Saves an edit once, reloads the player only when timing changed, and selects the edited boxes. */
+  /** Saves an edit once and selects the edited boxes. The player follows the save on its own, so this never waits for audio. */
   async function apply({ edit, boxes }: PlannedEdit): Promise<void> {
     const target = song.value;
     if (!target) {
@@ -260,9 +254,6 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
       const added = await target.applyMeasureEdit(edit);
       const ids = new Set(boxes.map(box => resolveTarget(box, added)));
       setSelection(measures.value.filter(measure => measure.layout && ids.has(measure.id)));
-      if (changesPlayback(edit)) {
-        await reloadPlayer(target);
-      }
     } finally {
       saving.value = false;
     }
@@ -312,9 +303,6 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
       await target.applyMeasureEdit(edit);
       detection.discard();
       clearSelection();
-      if (changesPlayback(edit)) {
-        await reloadPlayer(target);
-      }
     } finally {
       saving.value = false;
     }

@@ -13,9 +13,8 @@ import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
 import { formatSectionName, getSectionRun, type SectionMatch, type SelectedRun, toMeasureRange, withRun } from "@/core/models/measureSelection";
 import { formatSectionChip } from "@/core/models/scoreOverlays";
-import { createSection, type Section, type SectionKind, validateSections, type VampOut, type VampVocals } from "@/core/models/sections";
+import { createSection, replaceSections, type Section, type SectionKind, validateSections, type VampOut, type VampVocals } from "@/core/models/sections";
 import type Song from "@/core/models/song";
-import { usePlayerStore } from "@/stores/player";
 
 import InspectorGroup from "./InspectorGroup.vue";
 
@@ -51,7 +50,6 @@ const props = defineProps<{
 }>();
 
 const editor = injectMeasureEditor();
-const player = usePlayerStore();
 const { notifyError } = useNotify();
 const confirm = useConfirm();
 const ids = { passes: useId(), out: useId(), vocals: useId(), error: useId() };
@@ -88,7 +86,8 @@ function lowerFirst(text: string): string {
 }
 
 /** The resulting section list is checked as a whole, so an invalid change is explained instead of saved. */
-async function save(sections: readonly Section[], action: () => Promise<void>): Promise<void> {
+async function save(replaced: readonly Section[], added?: Section): Promise<void> {
+  const sections = replaceSections(props.song.getSections(), replaced, added);
   const [issue] = validateSections(measures.value, timeline.value, sections);
   error.value = issue?.reason;
   if (issue) {
@@ -96,24 +95,16 @@ async function save(sections: readonly Section[], action: () => Promise<void>): 
   }
 
   try {
-    await action();
-    player.syncWarp();
+    await props.song.editLayers({ sections });
   } catch (failure) {
     notifyError("Could not save the section", failure);
   }
 }
 
 async function replaceTarget(next: Section | undefined): Promise<void> {
-  const index = target.value?.index;
-  if (index === undefined) {
-    return;
-  }
-
-  const others = props.song.getSections().filter((_, i) => i !== index);
-  if (next) {
-    await save([...others, next], () => props.song.updateSection(index, next));
-  } else {
-    await save(others, () => props.song.removeSection(index));
+  const replaced = target.value?.section;
+  if (replaced) {
+    await save([replaced], next);
   }
 }
 
@@ -159,7 +150,7 @@ async function selectKind(choice: Choice): Promise<void> {
     return;
   }
 
-  await save([...props.song.getSections(), created], () => props.song.addSection(created));
+  await save([], created);
 }
 
 async function replaceOverlapping(): Promise<void> {
@@ -168,16 +159,7 @@ async function replaceOverlapping(): Promise<void> {
     return;
   }
 
-  // The first overlapped section is replaced in place, so removing the later ones never shifts its index.
-  const [kept, ...removed] = overlapping.value.map(match => match.index).sort((a, b) => a - b);
-  const replaced = new Set([kept, ...removed]);
-  await save([...props.song.getSections().filter((_, i) => !replaced.has(i)), created], async () => {
-    for (const index of removed.reverse()) {
-      await props.song.removeSection(index);
-    }
-
-    await props.song.updateSection(kept!, created);
-  });
+  await save(overlapping.value.map(match => match.section), created);
   pending.value = undefined;
 }
 

@@ -95,8 +95,3 @@ export function isEmptyMeasureEdit(edit: MeasureEdit): boolean {
   return edit.additions.length === 0 && edit.removals.length === 0 && edit.relabels.size === 0
     && edit.layouts.size === 0 && edit.beats.size === 0 && edit.unnumberedBoxes === undefined;
 }
-
-/** Labels and layouts are not part of the timeline, so only these changes make the player reload. */
-export function changesPlayback(edit: MeasureEdit): boolean {
-  return edit.additions.length > 0 || edit.removals.length > 0 || edit.beats.size > 0;
-}

@@ -53,13 +53,13 @@ Playback engine shared by both modes:
 
 - `unload()` aborts an in-progress load and resets all `current*` Properties, the timeline, the route and `mode`. Do not rely on `load()` to clear stale state. `WorkspaceView` unloads on unmount, since the engine is global and would keep playing on other pages.
 - In `syncStateAt`, call `backend.seek(pos)` BEFORE `backend.onTempoRestored(bpm)`.
-- `syncWarp()` re-times the timeline (audio) and re-resolves the sections (both modes) after warp or section edits. It keeps the pass of the section being played, does NOT touch `currentSegue` and does NOT seek the backend.
+- `syncWarp()` re-times the timeline (audio) and re-resolves the sections (both modes). `usePlayerSync` calls it after every saved layer change that keeps the timeline, and reloads the song instead when the timeline changed. It keeps the pass of the section being played, does NOT touch `currentSegue` and does NOT seek the backend.
 - End-of-song fires in the same step as the overshoot (`pos >= duration`).
 - Locations are `PlayerLocation { position, measure, occurrence, beat }`, beats 0-based. `currentLocation` and `finalLocation` are undefined while nothing is loaded.
 
 ## Warp Editing
 
-- Warp markers are keyed by `(measure, occurrence)`. `warpEditing.ts` keeps them in timeline order: new markers only go between their neighbours, dragging and nudging are clamped between them, and `Song.reassignWarpMarker()` only moves a marker to a free occurrence between them, since `WarpMap` requires strictly increasing marker times.
+- Warp markers are keyed by `(measure, occurrence)`. `warpEditing.ts` keeps them in timeline order: new markers only go between their neighbours, dragging and nudging are clamped between them, and `reassignWarpMarker()` only moves a marker to a free occurrence between them, since `WarpMap` requires strictly increasing marker times.
 - The timeline's `WaveformView` draws `mixdownChunks()` with peaks.js. Audio positions are milliseconds, peaks.js works in seconds.
 - peaks.js cannot start in a hidden container (a phone tab that is not shown), so `WaveformView` builds it once its container gets a size.
 - peaks.js caches every zoom level it resamples, so zoom only moves along `ZoomLadder` levels to keep the cache bounded. The base waveform has one sample per pixel (coarser for very long recordings), which allows zooming to single samples.

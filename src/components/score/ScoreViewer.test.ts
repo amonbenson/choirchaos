@@ -10,6 +10,7 @@ import type { MeasureId } from "@/core/models/measure";
 import Song from "@/core/models/song";
 import type { TimelinePosition } from "@/core/player/timeline";
 import type { PlayerLocation, PlayerSectionState } from "@/core/player/types";
+import { dbUpdate } from "@/pocketbase/db";
 import { usePlayerStore } from "@/stores/player";
 import { idOf, locationOf, makeAudioSong, makeMidiSongWithCut, makeMidiSongWithRepeat, makeMidiSongWithVamp } from "@/test/fixtures";
 
@@ -267,7 +268,7 @@ describe("ScoreViewer", () => {
         handle(wrapper, "First measure of vamp 2 to 3").dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
         await flushPromises();
         expect(song.getSections()[0]).toMatchObject({ from: locationOf(song, "0"), to: locationOf(song, "3", 3) });
-        expect(fakePlayer().syncWarp).toHaveBeenCalledTimes(2);
+        expect(dbUpdate).toHaveBeenCalledTimes(2);
         expect(editor.selection.value.map(measure => measure.label)).toEqual(["0", "1", "2", "3"]);
       });
 

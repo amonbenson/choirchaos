@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { idOf, makeAudioSongWithCut, makeAudioSongWithRepeat, makeMidiSong } from "@/test/fixtures";
 
-import Measure, { changesPlayback, isEmptyMeasureEdit, type MeasureEdit, type MeasureLayout } from "./measure";
+import { changesTiming, planMeasureEdit } from "./layers";
+import Measure, { isEmptyMeasureEdit, type MeasureEdit, type MeasureLayout } from "./measure";
 import {
   findExistingLabels,
   getCommonBeats,
@@ -72,6 +73,11 @@ function makeAudioSong(list: Measure[] = [], spans = list.length > 0 ? [{ from: 
   return new Song("song-id", "1", "Song", undefined, undefined, undefined, ["mix.mp3"], [], { measures: list, spans });
 }
 
+function changesTimingOf(list: Measure[], edit: MeasureEdit): boolean {
+  const layers = makeAudioSong(list).getLayers();
+  return changesTiming(layers, planMeasureEdit(layers, edit).layers);
+}
+
 function playedLabels(song: Song): string[] {
   return song.getTimeline().map(entry => song.findMeasure(entry.measure)!.label);
 }
@@ -125,7 +131,7 @@ describe("planRenumber", () => {
 
     expect(layoutsAfter(list, edit)).toEqual({ 1: undefined, 2: box(0.1, 0.2), 3: box(0.5, 0.2) });
     expect(boxes).toEqual([{ measure: "m2" }]);
-    expect(changesPlayback(edit)).toBe(false);
+    expect(changesTimingOf(list, edit)).toBe(false);
   });
 
   it("reports the measure in the way", () => {
@@ -192,7 +198,7 @@ describe("planRenumber", () => {
     expect(edit.additions).toEqual([]);
     expect(layoutsAfter(list, edit)).toEqual({ 1: box(0.1, 0.2), 2: box(0.3, 0.2) });
     expect(boxes).toEqual([{ measure: "m1" }, { measure: "m2" }]);
-    expect(changesPlayback(edit)).toBe(false);
+    expect(changesTimingOf(list, edit)).toBe(false);
   });
 
   it("accepts free text labels in audio songs", () => {
@@ -331,7 +337,7 @@ describe("bulk edits", () => {
 
     expect([...edit.layouts]).toEqual([["m1", undefined], ["m2", undefined]]);
     expect(edit.unnumberedBoxes).toEqual([unnumbered[1]]);
-    expect(changesPlayback(edit)).toBe(false);
+    expect(changesTimingOf(list, edit)).toBe(false);
   });
 
   it("keeps the boxes without a number when none is selected", () => {

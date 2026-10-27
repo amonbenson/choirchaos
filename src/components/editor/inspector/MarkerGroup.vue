@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import Button from "primevue/button";
 import InputText from "primevue/inputtext";
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, ref, toRaw } from "vue";
 
 import { useNotify } from "@/composables/useNotify";
 import { formatLocation, formatOrdinal, formatTimes } from "@/core/models/locationFormat";
-import type { Marker } from "@/core/models/markers";
+import { addMarker, type Marker, removeMarker, replaceMarker } from "@/core/models/markers";
 import type { SelectedRun } from "@/core/models/measureSelection";
 import { countOccurrences, type Location } from "@/core/models/recording";
 import type Song from "@/core/models/song";
@@ -39,11 +39,12 @@ const markerKeys = new WeakMap<Marker, number>();
 let nextMarkerKey = 0;
 
 function getMarkerKey(marker: Marker): number {
-  if (!markerKeys.has(marker)) {
-    markerKeys.set(marker, nextMarkerKey++);
+  const raw = toRaw(marker);
+  if (!markerKeys.has(raw)) {
+    markerKeys.set(raw, nextMarkerKey++);
   }
 
-  return markerKeys.get(marker)!;
+  return markerKeys.get(raw)!;
 }
 
 function describePlace(marker: Marker): string | undefined {
@@ -68,9 +69,10 @@ async function focusMarker(marker: Marker): Promise<void> {
   input?.select();
 }
 
-async function addMarker(): Promise<void> {
+async function addMarkerHere(): Promise<void> {
+  const marker = { at: { ...at.value }, text: getNextMarkerName() };
   try {
-    const marker = await props.song.addMarker(at.value, getNextMarkerName());
+    await props.song.editLayers({ markers: addMarker(props.song.getMarkers(), marker) });
     await focusMarker(marker);
   } catch (error) {
     notifyError("Could not add the marker", error);
@@ -84,16 +86,18 @@ async function rename(marker: Marker, input: HTMLInputElement): Promise<void> {
     return;
   }
 
+  const renamed = { at: { ...marker.at }, text };
+  markerKeys.set(renamed, getMarkerKey(marker));
   try {
-    await props.song.updateMarker(marker, marker.at, text);
+    await props.song.editLayers({ markers: replaceMarker(props.song.getMarkers(), marker, renamed) });
   } catch (error) {
     notifyError("Could not save the marker", error);
   }
 }
 
-async function removeMarker(marker: Marker): Promise<void> {
+async function deleteMarker(marker: Marker): Promise<void> {
   try {
-    await props.song.removeMarker(marker);
+    await props.song.editLayers({ markers: removeMarker(props.song.getMarkers(), marker) });
   } catch (error) {
     notifyError("Could not delete the marker", error);
   }
@@ -139,7 +143,7 @@ async function removeMarker(marker: Marker): Promise<void> {
             :aria-label="`Delete marker ${marker.text}`"
             text
             rounded
-            @click="removeMarker(marker)"
+            @click="deleteMarker(marker)"
           />
         </div>
         <span
@@ -156,7 +160,7 @@ async function removeMarker(marker: Marker): Promise<void> {
       severity="secondary"
       size="small"
       class="self-start"
-      @click="addMarker"
+      @click="addMarkerHere"
     />
   </InspectorGroup>
 </template>

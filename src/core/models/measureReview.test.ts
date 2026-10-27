@@ -4,7 +4,6 @@ import Measure, { isEmptyMeasureEdit, type MeasureLayout } from "./measure";
 import type { MeasureEditResult, PlannedEdit } from "./measureEditing";
 import {
   countReviewItems,
-  findDuplicateRuns,
   getAdjacentReviewItem,
   getReviewItemAfter,
   getReviewItems,
@@ -66,50 +65,6 @@ describe("review items", () => {
 
     expect(getReviewItemAfter(items, items[0]!)).toBe(items[1]);
     expect(getReviewItemAfter(items.slice(0, 1), items[0]!)).toBeUndefined();
-  });
-});
-
-describe("findDuplicateRuns", () => {
-  function labelsOf(measures: Measure[]): string[] {
-    return measures.map(measure => measure.label);
-  }
-
-  it("groups consecutive measures lying on consecutive earlier measures", () => {
-    const measures = [
-      new Measure("m1", "1", 4, box(0.1)),
-      new Measure("m2", "2", 4, box(0.3)),
-      new Measure("m3", "3", 4, box(0.5)),
-      new Measure("m4", "1a", 4, box(0.1)),
-      new Measure("m5", "2a", 4, flagged(0.3)),
-      new Measure("m6", "4", 4, box(0.7)),
-      new Measure("m7", "3a", 4, box(0.5)),
-      new Measure("m8", "5", 4),
-    ];
-
-    const runs = findDuplicateRuns(measures);
-
-    expect(runs.map(run => [labelsOf(run.duplicates), labelsOf(run.originals)])).toEqual([
-      [["1a", "2a"], ["1", "2"]],
-      [["3a"], ["3"]],
-    ]);
-  });
-
-  it("splits a run where the originals do not follow each other", () => {
-    const measures = [
-      new Measure("m1", "1", 4, box(0.1)),
-      new Measure("m2", "2", 4, box(0.3)),
-      new Measure("m3", "3", 4, box(0.5)),
-      new Measure("m4", "1a", 4, box(0.1)),
-      new Measure("m5", "3a", 4, box(0.5)),
-    ];
-
-    expect(findDuplicateRuns(measures).map(run => labelsOf(run.duplicates))).toEqual([["1a"], ["3a"]]);
-  });
-
-  it("finds nothing when boxes only overlap partly", () => {
-    const measures = [new Measure("m1", "1", 4, box(0.1)), new Measure("m2", "2", 4, box(0.12)), new Measure("m3", "3", 4)];
-
-    expect(findDuplicateRuns(measures)).toEqual([]);
   });
 });
 

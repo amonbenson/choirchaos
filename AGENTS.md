@@ -42,11 +42,11 @@ Before finishing a task, run `npm run lint:fix`, `npm run typecheck` and `npx vi
 |---|---|
 | `src/views/` | Routed pages |
 | `src/components/` | UI components in the folder of the area they appear in (`header/`, `show/`, `song/`, `player/`, `editor/`, `score/`), plus generic `base/` and `icons/` |
-| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useMeasureEditor` holds the song editor's selection and tool, `useRecordingEditor` and `useSyncEditor` save recording and sync changes |
+| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useMeasureEditor` holds the song editor's selection and tool, `useRecordingEditor` and `useSyncEditor` save recording and sync changes, `usePlayerSync` keeps the player in step with saved edits, `useSongHistory` binds undo and redo |
 | `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
 | `src/router/` | Routes and navigation guards |
 | `src/theme/` | The PrimeVue preset, the single place for the accent and surface palettes |
-| `src/core/models/` | Domain models (Show, Song, Track, Measure, markers, sections) and the pure logic around them: recording timeline, locations, setup status, measure editing, detection, review, score overlays and warp editing |
+| `src/core/models/` | Domain models (Show, Song, Track, Measure, markers, sections) and the pure logic around them: layer edits and their undo history, recording timeline, locations, setup status, measure editing, detection, review, score overlays and warp editing |
 | `src/core/import/` | Groups dropped files into songs by the number in their names |
 | `src/core/player/` | Playback engine with MIDI and audio backends |
 | `src/core/midi/` | MIDI event types, beat map import and the `WarpMap` from timeline positions to recording time |
@@ -72,16 +72,19 @@ Rules that hold everywhere:
 
 - A measure is identified by its stable `id` (`"m1"`, `"m2"`, ...), never by label or array index. Its `label` is the printed number, free text and display only, so relabeling never touches a reference.
 - `Song.getTimeline()` expands the recording into one entry per measure played. Its index is the timeline position. A location `{ measure, beat, occurrence }` is a 0-based beat of the `occurrence`-th time a measure plays.
-- Each layer is one JSON field in PocketBase (`score`, `recording`, `arrangement`), always read and written whole through one serializer per layer in `Song`. A change that touches several layers (removing measures, replacing the beat map) sends them in one request, which PocketBase applies atomically. The app has no handling for older formats.
-- A song with measures always has recording spans. Every mutation removes the references it leaves unresolved (markers, sections, sync points), since the e2e invariants reject them.
-- Recording changes (`setRecordingSpans()`, `playDuplicatesAsRepeat()`) first move references by timeline position through `remapReferences()`, keeping sync point times, and drop only what has no surviving position. The span helpers in `recording.ts` return normalized spans (`spansFromSequence()`), and the UI previews every change with `previewRecordingSpans()` before saving.
+- Each layer is one JSON field in PocketBase (`score`, `recording`, `arrangement`), always read and written whole through one serializer per layer in `layers.ts`. The app has no handling for older formats.
+- Every edit of the layers goes through `Song.editLayers()`. Callers compute the next lists with pure functions (`planMeasureEdit()` and `planRecordingChange()` in `layers.ts`, `replaceSections()`, `addMarker()`, `addWarpMarker()` and their siblings) and never mutate the song. `editLayers()` puts references in timeline order, validates the fields that changed (every reference once the timeline changed, so data stored before a rule only blocks edits of its own field), saves every changed layer in one request, which PocketBase applies atomically, and then fires `onLayersChange` with both snapshots and `timingChanged`. A failed save changes nothing in memory. Only file uploads with a beat map write the layers another way.
+- A song with measures always has recording spans. Every measure or recording change removes the references it leaves unresolved (markers, sections, sync points), since the e2e invariants reject them.
+- Recording changes (`planRecordingChange()`, used by `setRecordingSpans()` and the duplicate migration) first move references by timeline position through `remapReferences()`, keeping sync point times, and drop only what has no surviving position. The span helpers in `recording.ts` return normalized spans (`spansFromSequence()`), and the UI previews every change with `previewRecordingSpans()` before saving.
+- The player follows `onLayersChange` through `usePlayerSync`: it reloads at the same time when `timingChanged` (measure order, beats or recording), and otherwise only calls `syncWarp()`. Callers never reload the player, so UI state never waits for audio to load.
+- Undo (`songHistory.ts`) records every change as a pair of snapshots for the song open in the editor and writes one back through `restoreLayers()`, which is `editLayers()` marked as coming from the history. It covers the three layers and the segue, not files, details or tracks, and starts over when the song changes or the editor closes. It refuses, and drops the history, when the layers changed without it (a beat map upload) or the record's `updated` timestamp differs from the one `Song` remembers from its own last save, which means someone else saved. A failed save keeps the history.
 - A MIDI song's score and recording come from its beat map (`jsonFile`) through `scoreFromBeatMap()`, which reads repeated passes (`12-2`, `12R`) as the written measure `12`. The beat map stays the timing source, so MIDI recordings are read-only and a MIDI song never has sync points. Never store a MIDI file without its beat map.
 - `Numbering` (`src/core/utils/numbering.ts`) is only for song numbers within a show. `measureLabel.ts` parses measure labels only to suggest the label of a new box.
 
 ## Score Editing
 
 - A box is a measure's layout on the score, and the label typed for it says which measure it shows. MIDI songs only have the measures of their beat map, so editing them only moves boxes. Audio songs own their measures: placing a box on a label nobody has creates the measure at the box's reading-order position, or relabels the box's old measure (keeping its ID and references) if that one would be left without a box.
-- `measureEditing.ts` plans every box action as a `PlannedEdit`: one `MeasureEdit` for `Song.applyMeasureEdit()`, plus the boxes it places as `BoxTarget`s (an existing ID, or the index of an addition, since new measures get their ID only when saved). An addition's `index` is its score index after the edit. `useMeasureEditor.apply()` saves the edit, selects those boxes and reloads the player only when `changesPlayback()`. Removal cleanup and span maintenance happen in `Song`, never in planning.
+- `measureEditing.ts` plans every box action as a `PlannedEdit`: one `MeasureEdit` for `Song.applyMeasureEdit()`, plus the boxes it places as `BoxTarget`s (an existing ID, or the index of an addition, since new measures get their ID only when saved). An addition's `index` is its score index after the edit. `useMeasureEditor.apply()` saves the edit and selects those boxes. Removal cleanup and span maintenance happen in `planMeasureEdit()`, never in `measureEditing.ts`.
 - Reading order (page, row, left to right) decides range selection, renumbering, a new box's default label and where a new measure goes in the score. Boxes share a row when one's vertical center lies inside the other. Consecutive labels follow `suggestLabel()`: the next measure of the score in MIDI songs, the next whole number in audio songs.
 - A box in the way is a conflict the user resolves (swap, or shift the following boxes). Planning never resolves one on its own.
 - Measures are selected and compared by ID. Unnumbered boxes are compared by position (`isSameLayout()`), and an edit that resolves some sends the whole remaining list.
@@ -135,6 +138,7 @@ Rehearsers (viewers) only play songs back. Editors (editors and owners) also set
 | `pi-bookmark` | A marker |
 | `pi-map-marker` | A sync point |
 | `pi-trash` | Delete or remove |
+| `pi-undo` | Undo, and mirrored (`-scale-x-100`) Redo |
 | `pi-arrow-up-left` | The score's Select tool |
 | `pi-arrows-alt` | The score's Move tool |
 | `pi-stop` | The score's Draw tool |

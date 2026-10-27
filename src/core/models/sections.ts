@@ -137,3 +137,8 @@ export function validateSections(measures: readonly Measure[], timeline: Timelin
 export function compareSections(timeline: Timeline, a: Section, b: Section): number {
   return compareLocations(timeline, a.from, b.from);
 }
+
+/** The sections without `replaced`, plus `added`. Sections are found by identity, so one write can replace several. */
+export function replaceSections(sections: readonly Section[], replaced: readonly Section[], added?: Section): Section[] {
+  return [...sections.filter(section => !replaced.includes(section)), ...added ? [added] : []];
+}

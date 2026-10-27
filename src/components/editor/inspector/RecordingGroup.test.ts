@@ -10,13 +10,10 @@ import { reactive } from "vue";
 import type { SelectedRun } from "@/core/models/measureSelection";
 import { formatRecording } from "@/core/models/recording";
 import type Song from "@/core/models/song";
+import { dbUpdate } from "@/pocketbase/db";
 import { idOf, makeAudioSong, makeAudioSongWithBakedVamp, makeAudioSongWithRepeat, makeMidiSongWithRepeat } from "@/test/fixtures";
 
 import RecordingGroup from "./RecordingGroup.vue";
-
-const player = vi.hoisted(() => ({ position: 0, load: (async () => {}) as (song: unknown) => Promise<void>, seek: (() => {}) as (position: number) => void }));
-
-vi.mock("@/stores/player", () => ({ usePlayerStore: () => player }));
 
 const confirmation = vi.hoisted(() => ({ accept: true, require: (() => {}) as (options: { accept: () => void; reject: () => void }) => void }));
 
@@ -58,8 +55,6 @@ describe("RecordingGroup", () => {
     localStorage.clear();
     setActivePinia(createPinia());
     vi.useFakeTimers();
-    player.load = vi.fn(async () => {});
-    player.seek = vi.fn();
     confirmation.require = vi.fn(options => confirmation.accept ? options.accept() : options.reject());
     confirmation.accept = true;
   });
@@ -77,7 +72,7 @@ describe("RecordingGroup", () => {
     expect(wrapper.text()).toContain("After 3, 2nd time, continue at");
   });
 
-  it("removes a recorded pass, saves and reloads the player", async () => {
+  it("removes a recorded pass and saves it", async () => {
     const song = makeAudioSongWithRepeat();
     const wrapper = mountGroup(song, { first: 1, last: 2 });
 
@@ -85,7 +80,7 @@ describe("RecordingGroup", () => {
 
     expect(recordingOf(song)).toBe("1-3, 2-3, 4");
     expect(confirmation.require).not.toHaveBeenCalled();
-    expect(player.load).toHaveBeenCalledWith(song);
+    expect(dbUpdate).toHaveBeenCalledOnce();
     expect(wrapper.find("[role='status']").text()).toBe("The recording now plays 6 measures.");
   });
 
@@ -109,7 +104,7 @@ describe("RecordingGroup", () => {
       message: expect.stringContaining("the sync point at 2, 2nd time"),
     }));
     expect(recordingOf(song)).toBe("1-2, 2 x2, 2-4");
-    expect(player.load).not.toHaveBeenCalled();
+    expect(dbUpdate).not.toHaveBeenCalled();
     expect((wrapper.find("input[role='spinbutton']").element as HTMLInputElement).value).toBe("4");
   });
 

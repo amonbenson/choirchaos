@@ -24,7 +24,7 @@ import {
   getSectionOverlays,
   type OverlayRun,
 } from "@/core/models/scoreOverlays";
-import { type SectionKind, validateSections } from "@/core/models/sections";
+import { replaceSections, type SectionKind, validateSections } from "@/core/models/sections";
 import Song from "@/core/models/song";
 import { getSyncedOccurrences } from "@/core/models/warpEditing";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
@@ -1058,7 +1058,8 @@ async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
   const measures = song.getMeasures();
   const timeline = song.getTimeline();
   const moved = withRun(measures, timeline, target.section, run);
-  const [issue] = validateSections(measures, timeline, song.getSections().map((section, i) => i === target.index ? moved : section));
+  const sections = replaceSections(song.getSections(), [target.section], moved);
+  const [issue] = validateSections(measures, timeline, sections);
   if (issue) {
     notifyError("Could not move the section", new Error(issue.reason));
     return;
@@ -1066,8 +1067,7 @@ async function moveSection(run: SelectedRun, end: RangeEnd): Promise<void> {
 
   const hadFocus = !!document.activeElement?.closest(`[data-range-handle="${end}"]`);
   try {
-    await song.updateSection(target.index, moved);
-    player.syncWarp();
+    await song.editLayers({ sections });
     editor.selectSection(song.getSections().findIndex(section => getSectionRun(timeline, section)?.first === run.first));
     if (hadFocus) {
       await nextTick();
