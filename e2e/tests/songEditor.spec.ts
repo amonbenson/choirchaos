@@ -25,21 +25,14 @@ async function storedMeasures(admin: { collection: (name: string) => { getOne: (
 }
 
 // The loading overlay covers the score until the player is ready, which takes a while for MIDI songs.
-async function dragOnScore(page: Page, from: [number, number], to: [number, number], options: { shift?: boolean } = {}): Promise<void> {
+async function dragOnScore(page: Page, from: [number, number], to: [number, number]): Promise<void> {
   await expect(page.getByRole("button", { name: "Play / Pause" })).toBeEnabled({ timeout: 30_000 });
   await expect(page.getByText(/^Loading (audio data|PDF)/)).toHaveCount(0);
   const box = (await page.getByRole("group", { name: "Page 1", exact: true }).boundingBox())!;
-  if (options.shift) {
-    await page.keyboard.down("Shift");
-  }
-
   await page.mouse.move(box.x + box.width * from[0], box.y + box.height * from[1]);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * to[0], box.y + box.height * to[1], { steps: 5 });
   await page.mouse.up();
-  if (options.shift) {
-    await page.keyboard.up("Shift");
-  }
 }
 
 test.describe("measure editing", () => {
@@ -62,7 +55,7 @@ test.describe("measure editing", () => {
     expect(errors).toEqual([]);
   });
 
-  test("shift-click selects a range whose boxes are removed in one step", async ({ page, admin, factory, loginAs }) => {
+  test("shift-click selects a range that is deleted in one step", async ({ page, admin, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "audio" }));
@@ -72,9 +65,31 @@ test.describe("measure editing", () => {
     await page.getByRole("button", { name: "Measure 2", exact: true }).click();
     await page.getByRole("button", { name: "Measure 3", exact: true }).click({ modifiers: ["Shift"] });
     await expect(editorPanel(page).getByRole("heading", { name: "Measures 2 to 3" })).toBeVisible();
-    await page.getByRole("button", { name: "Remove boxes" }).click();
+    await page.getByRole("button", { name: "Delete measures 2 to 3" }).click();
+    const dialog = page.getByRole("alertdialog", { name: "Delete measures" });
+    await expect(dialog).toContainText("deleted from the song and the score");
+    await dialog.getByRole("button", { name: "Delete", exact: true }).click();
 
-    await expect.poll(async () => (await storedMeasures(admin, song.id)).filter(m => !m.layout).map(m => m.label)).toEqual(["2", "3"]);
+    await expect.poll(async () => (await storedMeasures(admin, song.id)).map(m => m.label)).toEqual(["1", "4"]);
+    await expect(editorPanel(page).getByRole("heading", { name: "Song setup" })).toBeVisible();
+  });
+
+  test("deleting a measure of a MIDI song only takes it off the score", async ({ page, admin, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "midi" }));
+    await loginAs(owner);
+    await openEditor(page, show, song);
+
+    await page.getByRole("button", { name: "Measure 2", exact: true }).click();
+    await page.keyboard.press("Delete");
+    const dialog = page.getByRole("alertdialog", { name: "Delete measure" });
+    await expect(dialog).toContainText("Not on the score");
+    await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+
+    await expect.poll(async () => (await storedMeasures(admin, song.id)).filter(m => !m.layout).map(m => m.label)).toEqual(["2"]);
+    expect((await storedMeasures(admin, song.id)).map(m => m.label)).toEqual(["1", "2", "3", "4"]);
+    await expect(editorPanel(page).getByRole("button", { name: "Place measure 2" })).toBeVisible();
   });
 
   test("beats of several measures are changed with one save", async ({ page, admin, factory, loginAs }) => {
@@ -93,14 +108,14 @@ test.describe("measure editing", () => {
     await expect.poll(async () => (await storedMeasures(admin, song.id)).filter(m => m.beats === 3).map(m => m.label)).toEqual(["1", "2"]);
   });
 
-  test("measures are added as a range", async ({ page, admin, factory, loginAs }) => {
+  test("an audio song without a score adds measures by number", async ({ page, admin, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
-    const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "audio" }));
+    const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "audio", withPdf: false }));
     await loginAs(owner);
     await openEditor(page, show, song);
 
-    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await page.getByRole("button", { name: "Add measures", exact: true }).click();
     await page.getByRole("textbox", { name: "Measures", exact: true }).fill("10..12");
     await page.getByRole("button", { name: "Add 3 measures" }).click();
 
@@ -121,34 +136,83 @@ test.describe("measure editing", () => {
     await dragOnScore(page, [0.1, 0.2], [0.9, 0.3]);
 
     const panel = editorPanel(page);
-    await panel.getByLabel("Measures in this box").fill("2");
+    await panel.getByLabel("How many measures").fill("2");
     await expect(panel.getByLabel("First number")).toHaveValue("1");
     await panel.getByRole("button", { name: "Place", exact: true }).click();
 
+    await expect(panel.getByRole("button", { name: "Done" })).toBeVisible();
+    await expect(panel.getByText(/is already on the score/)).toHaveCount(0);
     await expect.poll(async () => (await storedMeasures(admin, song.id)).filter(m => m.layout).map(m => m.label))
       .toEqual(["1", "2"]);
+
+    await page.keyboard.press("Escape");
+    await expect(panel.getByRole("heading", { name: "Song setup" })).toBeVisible();
   });
 
-  for (const { way, shift } of [{ way: "the Select tool", shift: false }, { way: "Shift held", shift: true }]) {
-    test(`dragging with ${way} selects the boxes it touches`, async ({ page, factory, loginAs }) => {
-      const owner = await factory.createUser();
-      const show = await factory.createShow(owner);
-      const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "midi" }));
-      await loginAs(owner);
-      await openEditor(page, show, song);
+  test("new measures are drawn from the setup overview and keep drawing until done", async ({ page, admin, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const bundle = await buildSongBundle(MINIMAL, { mode: "audio" });
+    bundle.fields.score = withoutBoxes(bundle.fields.score);
+    bundle.fields.score.measures = bundle.fields.score.measures.slice(0, 1);
+    bundle.fields.recording.spans = [{ from: bundle.fields.score.measures[0]!.id, to: bundle.fields.score.measures[0]!.id }];
+    bundle.fields.recording.warpMarkers = bundle.fields.recording.warpMarkers.slice(0, 1);
+    bundle.fields.arrangement.markers = [];
+    bundle.fields.arrangement.sections = [];
+    const song = await factory.createSong(owner, show, bundle);
+    const errors = collectPageErrors(page);
+    await loginAs(owner);
+    await openEditor(page, show, song);
 
-      if (!shift) {
-        await page.getByRole("button", { name: "Select", exact: true }).click();
-      }
+    const panel = editorPanel(page);
+    await panel.getByRole("button", { name: "Add measures", exact: true }).click();
+    await expect(panel.getByRole("heading", { name: "Add measures" })).toBeVisible();
+    await dragOnScore(page, [0.1, 0.2], [0.3, 0.3]);
+    await panel.getByLabel("How many measures").fill("1");
+    await panel.getByLabel("First number").fill("5");
+    await panel.getByRole("button", { name: "Place", exact: true }).click();
+    await expect(panel.getByRole("button", { name: "Done" })).toBeVisible();
+    await expect(panel.getByText(/is already on the score/)).toHaveCount(0);
 
-      await dragOnScore(page, [0.01, 0.01], [0.99, 0.99], { shift });
+    await dragOnScore(page, [0.4, 0.2], [0.6, 0.3]);
+    await expect(panel.getByLabel("First number")).toHaveValue("6");
+    await panel.getByRole("button", { name: "Place", exact: true }).click();
+    await panel.getByRole("button", { name: "Done" }).click();
 
-      const placed = song.score.measures.filter((m: SongMeasure) => m.layout).length;
-      await expect(page.getByRole("button", { name: /^Measure /, pressed: true })).toHaveCount(placed);
-      await expect(editorPanel(page)).toContainText("from the beat map");
-      await expect(page.getByRole("button", { name: "Delete measures" })).toHaveCount(0);
-    });
-  }
+    await expect.poll(async () => (await storedMeasures(admin, song.id)).filter(m => m.layout).map(m => m.label)).toEqual(["5", "6"]);
+    await expect(page.getByRole("button", { name: "Measure 6", exact: true })).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test("dragging pans the score without touching the selection, and a click on empty space clears it", async ({ page, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "midi" }));
+    await loginAs(owner);
+    await openEditor(page, show, song);
+
+    const first = page.getByRole("button", { name: "Measure 1", exact: true });
+    const second = page.getByRole("button", { name: "Measure 2", exact: true });
+    await expect(page.getByRole("button", { name: "Play / Pause" })).toBeEnabled({ timeout: 30_000 });
+    await first.click();
+    await second.click({ modifiers: ["ControlOrMeta"] });
+    await expect(page.getByRole("button", { name: /^Measure /, pressed: true })).toHaveCount(2);
+
+    const before = (await second.boundingBox())!;
+    await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(before.x + before.width / 2 + 80, before.y + before.height / 2 + 40, { steps: 8 });
+    await page.mouse.up();
+
+    const after = (await second.boundingBox())!;
+    expect(after.x - before.x).toBeCloseTo(80, -1);
+    await expect(page.getByRole("button", { name: /^Measure /, pressed: true })).toHaveCount(2);
+
+    const score = (await page.getByRole("region", { name: "Score" }).boundingBox())!;
+    await page.mouse.click(score.x + score.width * 0.05, score.y + score.height * 0.9);
+    await expect(page.getByRole("button", { name: /^Measure /, pressed: true })).toHaveCount(0);
+    await expect(editorPanel(page).getByRole("heading", { name: "Song setup" })).toBeVisible();
+  });
 });
 
 test.describe("markers", () => {
@@ -161,18 +225,20 @@ test.describe("markers", () => {
     await openEditor(page, show, song);
 
     await page.getByRole("button", { name: "Measure 3", exact: true }).click();
-    const group = editorPanel(page).getByRole("region", { name: "Marker" });
-    await group.getByRole("button", { name: "Add marker at 3" }).click();
-    const name = group.getByLabel("Name of marker A");
+    const panel = editorPanel(page);
+    await panel.getByRole("region", { name: "Markers" }).getByRole("button", { name: "Add marker at 3" }).click();
+    await expect(panel.getByRole("heading", { name: "Marker A" })).toBeVisible();
+    const name = panel.getByRole("textbox", { name: "Name" });
     await expect(name).toBeFocused();
     await name.fill("Chorus");
     await name.press("Enter");
     await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).arrangement.markers)
       .toEqual([{ at: { measure: measureId(song.score, "3"), beat: 0 }, text: "Chorus" }]);
+    await expect(panel.getByRole("heading", { name: "Marker Chorus" })).toBeVisible();
 
-    await group.getByRole("button", { name: "Delete marker Chorus" }).click();
+    await panel.getByRole("button", { name: "Delete marker Chorus" }).click();
     await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).arrangement.markers).toEqual([]);
-    await expect(group.getByRole("button", { name: "Add marker at 3" })).toBeVisible();
+    await expect(panel.getByRole("heading", { name: "Song setup" })).toBeVisible();
     expect(errors).toEqual([]);
   });
 

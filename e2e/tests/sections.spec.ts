@@ -31,43 +31,48 @@ test.describe("sections", () => {
 
     await page.goto(`/show/${show.id}/song/${song.id}/edit`);
     await waitForPlayer(page);
-    const rehearsal = page.getByRole("region", { name: "Editor panel" }).getByRole("region", { name: "Rehearsal" });
+    const panel = page.getByRole("region", { name: "Editor panel" });
+    const create = panel.getByRole("region", { name: "Section" });
 
     await select(page, "1", "2");
-    await rehearsal.getByRole("button", { name: "Repeat", exact: true }).click();
+    await create.getByRole("button", { name: "Repeat", exact: true }).click();
     const repeat: SongSection = { kind: "repeat", from: locationAt(score, "1"), to: locationAt(score, "2", 3), passes: 2 };
     await expect.poll(() => storedSections(admin, song.id)).toEqual([repeat]);
-    await rehearsal.getByLabel("Passes").fill("3");
-    await rehearsal.getByLabel("Passes").press("Enter");
+    await expect(panel.getByRole("heading", { name: "Repeat 1 to 2" })).toBeVisible();
+    await panel.getByLabel("Passes").fill("3");
+    await panel.getByLabel("Passes").press("Enter");
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }]);
 
     await select(page, "3");
-    await rehearsal.getByRole("button", { name: "Cut", exact: true }).click();
+    await create.getByRole("button", { name: "Cut", exact: true }).click();
     const cut: SongSection = { kind: "cut", from: locationAt(score, "3"), to: locationAt(score, "3", 3) };
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut]);
 
     await select(page, "4");
-    await rehearsal.getByRole("button", { name: "Vamp", exact: true }).click();
+    await create.getByRole("button", { name: "Vamp", exact: true }).click();
     const vamp: SongSection = { kind: "vamp", from: locationAt(score, "4"), to: locationAt(score, "4", 3), out: "onEnd", vocals: "all" };
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut, vamp]);
-    await expect(rehearsal.getByLabel("Passes")).toHaveCount(0);
-    await rehearsal.getByRole("combobox", { name: "Out" }).click();
+    await expect(panel.getByLabel("Passes")).toHaveCount(0);
+    await panel.getByRole("combobox", { name: "Out" }).click();
     await page.getByRole("option", { name: "Any measure" }).click();
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut, { ...vamp, out: "anyBar" }]);
 
     await select(page, "2", "3");
-    await expect(rehearsal).toContainText("These measures overlap Repeat 1 to 2 and Cut 3.");
-    await rehearsal.getByRole("button", { name: "Vamp", exact: true }).click();
-    await rehearsal.getByRole("button", { name: "Cancel" }).click();
-    await expect(rehearsal.getByRole("button", { name: "Replace with vamp" })).toHaveCount(0);
+    await create.getByRole("button", { name: "Vamp", exact: true }).click();
+    const replace = page.getByRole("alertdialog", { name: "Replace sections" });
+    await expect(replace).toContainText("These measures overlap repeat 1 to 2 and cut 3. Replace them with a vamp?");
+    await replace.getByRole("button", { name: "Cancel" }).click();
+    expect(await storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut, { ...vamp, out: "anyBar" }]);
 
     await select(page, "4");
-    await rehearsal.getByRole("button", { name: "As recorded" }).click();
+    await create.getByRole("button", { name: "Select vamp 4" }).click();
+    await panel.getByRole("button", { name: "Remove section" }).click();
     await page.getByRole("alertdialog", { name: "Remove section" }).getByRole("button", { name: "Remove" }).click();
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut]);
 
     await select(page, "1");
-    await expect(rehearsal).toContainText("Part of Repeat 1 to 2");
+    await expect(create).toContainText("Part of Repeat 1 to 2");
+    await create.getByRole("button", { name: "Select repeat 1 to 2" }).click();
     const last = page.getByRole("slider", { name: "Last measure of repeat 1 to 2" });
     await last.focus();
     await last.press("ArrowLeft");

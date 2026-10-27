@@ -106,6 +106,6 @@ defineExpose({ confirmCurrent });
     <span
       v-if="currentReviewItem"
       class="text-xs text-muted-color pointer-coarse:hidden"
-    >Enter confirms, typing corrects the number, Delete removes the box.</span>
+    >Enter confirms, typing corrects the number, Delete removes it.</span>
   </div>
 </template>

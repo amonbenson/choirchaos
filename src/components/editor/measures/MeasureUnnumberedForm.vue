@@ -95,7 +95,7 @@ defineExpose({ place, remove });
         size="small"
         variant="simple"
       >
-        Measure {{ result.conflict.label }} already has a box.
+        Measure {{ result.conflict.label }} is already on the score.
       </Message>
       <Button
         :label="`Shift ${result.conflict.label} and later by +1`"

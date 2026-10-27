@@ -1,18 +1,14 @@
 <script setup lang="ts">
 import { useElementSize } from "@vueuse/core";
-import Button from "primevue/button";
-import Menu from "primevue/menu";
-import type { MenuItem } from "primevue/menuitem";
-import { computed, ref, useId, useTemplateRef, watch } from "vue";
+import { computed, useId, useTemplateRef, watch } from "vue";
 
 import { SECTION_COLORS, SECTION_CONTRAST_TEXT } from "@/components/score/sectionColors";
-import { injectMeasureEditor } from "@/composables/useMeasureEditor";
-import { useRecordingEditor } from "@/composables/useRecordingEditor";
+import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { formatLocation, formatOccurrence, formatOrdinal, formatTimes } from "@/core/models/locationFormat";
-import type { Marker } from "@/core/models/markers";
 import type { MeasureId } from "@/core/models/measure";
-import { findPosition, findRecordedPasses, getRecordingStretches, type RecordingStretch } from "@/core/models/recording";
+import { findRecordedPasses, getRecordingStretches, type RecordingStretch } from "@/core/models/recording";
 import { describeSection, formatSectionChip } from "@/core/models/scoreOverlays";
+import { isMarkerSelected, isPassSelected, isSectionSelected } from "@/core/models/selection";
 import type Song from "@/core/models/song";
 import { getBeatTick, getStartTick } from "@/core/player/timeline";
 import { usePlayerStore } from "@/stores/player";
@@ -31,11 +27,8 @@ const AUTO_SCROLL_MARGIN = 0.1;
 type Block = { left: number; width: number };
 
 const player = usePlayerStore();
-const editor = injectMeasureEditor();
-const recordingEditor = useRecordingEditor(() => props.song);
+const { selection, selectAndSeek } = injectEditorSelection();
 const viewport = useTemplateRef<HTMLElement>("viewport");
-const passMenu = ref<InstanceType<typeof Menu>>();
-const passMenuItems = ref<MenuItem[]>([]);
 const { width: viewportWidth } = useElementSize(viewport);
 const laneIds = { markers: useId(), sections: useId(), recording: useId(), measures: useId() };
 
@@ -45,7 +38,6 @@ const contentWidth = computed(() => props.view
   ? viewportWidth.value
   : Math.max(viewportWidth.value, timeline.value.length * MIN_CELL_WIDTH_PX));
 const pixelsPerTick = computed(() => contentWidth.value / Math.max(1, range.value.end - range.value.start));
-const editable = computed(() => props.song.isRecordingEditable());
 
 function toX(tick: number): number {
   return (tick - range.value.start) * pixelsPerTick.value;
@@ -68,26 +60,22 @@ function isVisible({ left, width }: Block): boolean {
 
 const label = (id: MeasureId): string => props.song.findMeasure(id)?.label ?? "?";
 
-const selectedRun = computed(() => editor.selectedRun.value);
-
 const cells = computed(() => timeline.value.map(position => ({
   position: position.position,
   label: label(position.measure),
   occurrence: position.occurrence,
   name: formatOccurrence(label(position.measure), position.occurrence),
   block: toBlock(getStartTick(position), position.endTick),
-  selected: !!selectedRun.value && position.position >= selectedRun.value.first && position.position <= selectedRun.value.last,
 })));
 
 const markers = computed(() => props.song.getMarkers().flatMap((marker) => {
   const tick = player.getLocationTick(marker.at);
-  const position = findPosition(props.song.getTimeline(), marker.at);
-  if (tick === undefined || position === undefined) {
+  if (tick === undefined) {
     return [];
   }
 
   const name = `Marker ${marker.text} at ${formatLocation(props.song, marker.at)}`;
-  return [{ marker, left: toX(tick), name, selected: selectedRun.value?.first === position }];
+  return [{ marker, left: toX(tick), name, selected: isMarkerSelected(selection.value, marker) }];
 }));
 
 const sections = computed(() => props.song.getSections().flatMap((section, index) => {
@@ -100,11 +88,12 @@ const sections = computed(() => props.song.getSections().flatMap((section, index
 
   return [{
     index,
+    section,
     kind: section.kind,
     text: formatSectionChip(section),
     name: describeSection(props.song.getMeasures(), section),
     block: toBlock(getBeatTick(first, section.from.beat), getBeatTick(last, section.to.beat + 1)),
-    selected: editor.selectedSection.value?.index === index,
+    selected: isSectionSelected(selection.value, section),
   }];
 }));
 
@@ -121,7 +110,7 @@ const stretches = computed(() => getRecordingStretches(props.song.getMeasures(),
     text: formatStretch(stretch, false),
     name: formatStretch(stretch, true),
     block: toBlock(getStartTick(first), last.endTick),
-    selected: selectedRun.value?.first === stretch.first && selectedRun.value.last === stretch.last,
+    selected: isPassSelected(selection.value, index),
   }];
 }));
 
@@ -147,59 +136,6 @@ function formatStretch(stretch: RecordingStretch, long: boolean): string {
 
 function hasText(block: Block): boolean {
   return block.width >= MIN_TEXT_WIDTH_PX;
-}
-
-// Measures without a box cannot be selected, since the selection is the boxes on the score.
-function selectPositions(first: number, last: number): void {
-  const ids = new Set(props.song.getTimeline().slice(first, last + 1).map(entry => entry.measure));
-  editor.setSelection(editor.measures.value.filter(measure => measure.layout && ids.has(measure.id)));
-}
-
-function selectPosition(position: number): void {
-  selectPositions(position, position);
-  player.seekPosition(position);
-}
-
-function selectMarker(marker: Marker): void {
-  const position = findPosition(props.song.getTimeline(), marker.at);
-  if (position !== undefined) {
-    selectPositions(position, position);
-  }
-
-  player.seekLocation(marker.at);
-}
-
-function selectStretch(stretch: RecordingStretch): void {
-  selectPositions(stretch.first, stretch.last);
-  player.seekPosition(stretch.first);
-}
-
-function moveSpan(index: number, offset: number): void {
-  const spans = [...props.song.getRecording()];
-  const [moved] = spans.splice(index, 1);
-  spans.splice(index + offset, 0, moved!);
-  recordingEditor.setSpans(spans);
-}
-
-function removeSpan(index: number): void {
-  recordingEditor.setSpans(props.song.getRecording().filter((_, i) => i !== index));
-}
-
-function openPassMenu(event: Event, index: number): void {
-  const count = props.song.getRecording().length;
-  passMenuItems.value = [
-    { label: "Move earlier", icon: "pi pi-arrow-left", disabled: index === 0, command: () => moveSpan(index, -1) },
-    { label: "Move later", icon: "pi pi-arrow-right", disabled: index === count - 1, command: () => moveSpan(index, 1) },
-    { label: "Remove pass", icon: "pi pi-trash", disabled: count === 1, command: () => removeSpan(index) },
-  ];
-  passMenu.value?.show(event);
-}
-
-function onPassContextMenu(event: MouseEvent, index: number): void {
-  if (editable.value) {
-    event.preventDefault();
-    openPassMenu(event, index);
-  }
 }
 
 // Keeps the playhead in view while the lanes scroll on their own.
@@ -259,7 +195,7 @@ watch(playheadX, (x) => {
               :class="item.selected ? 'bg-primary/15' : ''"
               :aria-label="item.name"
               :aria-pressed="item.selected"
-              @click="selectMarker(item.marker)"
+              @click="selectAndSeek({ kind: 'marker', marker: item.marker })"
             >
               <i
                 class="pi pi-bookmark text-[0.625rem]"
@@ -291,7 +227,7 @@ watch(playheadX, (x) => {
               ]"
               :aria-label="item.name"
               :aria-pressed="item.selected"
-              @click="editor.selectSection(item.index)"
+              @click="selectAndSeek({ kind: 'section', from: item.section.from })"
             >
               <span v-if="hasText(item.block)">{{ item.text }}</span>
             </button>
@@ -305,7 +241,7 @@ watch(playheadX, (x) => {
           <li
             v-for="item in stretches"
             :key="item.stretch.first"
-            class="group absolute top-0 h-6"
+            class="absolute top-0 h-6"
             :style="blockStyle(item.block)"
           >
             <button
@@ -316,26 +252,10 @@ watch(playheadX, (x) => {
                 : 'border-surface-300 bg-surface-0 hover:bg-surface-100 dark:border-surface-600 dark:bg-surface-900 dark:hover:bg-surface-800'"
               :aria-label="item.name"
               :aria-pressed="item.selected"
-              @click="selectStretch(item.stretch)"
-              @contextmenu="onPassContextMenu($event, item.index)"
+              @click="selectAndSeek({ kind: 'pass', index: item.index })"
             >
-              <span
-                v-if="hasText(item.block)"
-                :class="editable ? 'pr-5' : ''"
-              >{{ item.text }}</span>
+              <span v-if="hasText(item.block)">{{ item.text }}</span>
             </button>
-            <Button
-              v-if="editable"
-              icon="pi pi-ellipsis-v"
-              severity="secondary"
-              size="small"
-              text
-              :aria-label="`More actions for ${item.name}`"
-              aria-haspopup="menu"
-              class="absolute! top-0 right-0 h-6! w-5! p-0!"
-              :class="item.selected || item.block.width >= 3 * MIN_TEXT_WIDTH_PX ? '' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'"
-              @click="openPassMenu($event, item.index)"
-            />
           </li>
         </ul>
 
@@ -354,11 +274,9 @@ watch(playheadX, (x) => {
             >
               <button
                 type="button"
-                class="size-full overflow-hidden border-l border-surface-200 text-center whitespace-nowrap tabular-nums focus-visible:outline-2 focus-visible:outline-primary dark:border-surface-700"
-                :class="cell.selected ? 'bg-primary/20 font-semibold text-color' : 'text-muted-color hover:bg-surface-100 dark:hover:bg-surface-800'"
+                class="size-full overflow-hidden border-l border-surface-200 text-center whitespace-nowrap text-muted-color tabular-nums hover:bg-surface-100 focus-visible:outline-2 focus-visible:outline-primary dark:border-surface-700 dark:hover:bg-surface-800"
                 :aria-label="cell.name"
-                :aria-pressed="cell.selected"
-                @click="selectPosition(cell.position)"
+                @click="player.seekPosition(cell.position)"
               >
                 <template v-if="hasText(cell.block)">
                   {{ cell.label }}<sup
@@ -379,11 +297,5 @@ watch(playheadX, (x) => {
         />
       </div>
     </div>
-
-    <Menu
-      ref="passMenu"
-      :model="passMenuItems"
-      popup
-    />
   </div>
 </template>

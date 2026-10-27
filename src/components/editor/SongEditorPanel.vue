@@ -7,14 +7,23 @@ import CollapsiblePanel from "@/components/base/CollapsiblePanel.vue";
 import MeasureDetectionForm from "@/components/editor/measures/MeasureDetectionForm.vue";
 import MeasureNewBoxForm from "@/components/editor/measures/MeasureNewBoxForm.vue";
 import MeasureReviewBar from "@/components/editor/measures/MeasureReviewBar.vue";
-import MeasureUnnumberedForm from "@/components/editor/measures/MeasureUnnumberedForm.vue";
+import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import type { SongHistoryControls } from "@/composables/useSongHistory";
-import { countOccurrences, findBackToBackPasses } from "@/core/models/recording";
+import { formatLocation, formatOccurrence, formatTimes } from "@/core/models/locationFormat";
+import type { MeasureId } from "@/core/models/measure";
+import { countOccurrences } from "@/core/models/recording";
+import { formatSectionName } from "@/core/models/scoreOverlays";
 import type Song from "@/core/models/song";
+import { formatSyncTime } from "@/core/models/warpEditing";
 
-import SelectionInspector from "./inspector/SelectionInspector.vue";
+import BoxesInspector from "./inspector/BoxesInspector.vue";
+import MarkerInspector from "./inspector/MarkerInspector.vue";
+import MeasuresInspector from "./inspector/MeasuresInspector.vue";
+import PassInspector from "./inspector/PassInspector.vue";
+import SectionInspector from "./inspector/SectionInspector.vue";
 import SetupOverview from "./inspector/SetupOverview.vue";
+import SyncPointInspector from "./inspector/SyncPointInspector.vue";
 
 const props = defineProps<{
   song: Song | undefined;
@@ -26,7 +35,9 @@ const emit = defineEmits<{
 }>();
 
 const editor = injectMeasureEditor();
-const { selection, selectionCount, selectedBox, selectedBoxes, selectedRun, pendingBox, tool, detection, reviewItems, currentReviewItem } = editor;
+const { pendingBox, drawing, placeFrom, detection, reviewItems, currentReviewItem } = editor;
+const selection = injectEditorSelection();
+const { selected, run } = selection;
 const titleId = useId();
 
 // Below lg the panel is a bottom sheet over the score, which stays out of the way until needed.
@@ -34,9 +45,10 @@ const isSheet = useBreakpoints(breakpointsTailwind).smaller("lg");
 const collapsed = ref(true);
 
 const detecting = computed(() => !!detection.progress.value);
-const isWorkingOnMeasures = computed(() => selectionCount.value > 0 || !!pendingBox.value || tool.value === "draw" || detecting.value);
+const hasSelection = computed(() => selected.value.kind !== "none");
+const isWorking = computed(() => hasSelection.value || !!pendingBox.value || drawing.value || detecting.value);
 
-watch(isWorkingOnMeasures, (working) => {
+watch(isWorking, (working) => {
   if (working) {
     collapsed.value = false;
   }
@@ -46,72 +58,82 @@ function formatCount(count: number): string {
   return count === 1 ? "once" : `${count} times`;
 }
 
-function labelAt(position: number): string {
-  const entry = props.song?.getTimeline()[position];
-  return (entry && props.song?.findMeasure(entry.measure)?.label) ?? "?";
+function label(id: MeasureId): string {
+  return props.song?.findMeasure(id)?.label ?? "?";
 }
 
-const title = computed(() => {
+type Heading = { title: string; subtitle?: string };
+
+/** What the panel works on, and a line that tells more about it. */
+function getHeading(): Heading {
+  const song = props.song;
+  const current = selected.value;
   if (detection.running.value) {
-    return "Detecting";
+    return { title: "Detecting" };
   }
 
   if (detection.plan.value) {
-    return "Detection result";
+    return { title: "Detection result" };
   }
 
   if (pendingBox.value) {
-    return "New box";
+    return { title: "New measures" };
   }
 
-  if (selectedBox.value) {
-    return "Box without a number";
+  if (drawing.value) {
+    return { title: "Add measures" };
   }
 
-  if (selectedBoxes.value.length > 0) {
-    return `${selectionCount.value} boxes`;
+  if (!song) {
+    return { title: "Song setup" };
   }
 
-  if (selection.value.length === 1) {
-    return `Measure ${selection.value[0]!.label}`;
+  switch (current.kind) {
+    case "measures": {
+      const [first] = current.measures;
+      if (current.measures.length === 1) {
+        const plays = countOccurrences(song.getTimeline(), first!.id);
+        return { title: `Measure ${first!.label}`, subtitle: plays === 0 ? "The recording never plays it" : `The recording plays it ${formatCount(plays)}` };
+      }
+
+      const value = run.value;
+      return value
+        ? { title: `Measures ${first!.label} to ${current.measures.at(-1)!.label}`, subtitle: `${value.last - value.first + 1} measures` }
+        : { title: `${current.measures.length} measures`, subtitle: "Not consecutive in the recording" };
+    }
+
+    case "boxes":
+      return { title: current.boxes.length === 1 ? "Box without a number" : `${current.boxes.length} boxes without a number` };
+    case "section":
+      return { title: formatSectionName(song.getMeasures(), current.section), subtitle: "Section" };
+    case "marker":
+      return { title: `Marker ${current.marker.text}`, subtitle: `At ${formatLocation(song, current.marker.at)}` };
+    case "syncPoint":
+      return { title: `Sync point at ${formatLocation(song, current.warpMarker)}`, subtitle: `Starts at ${formatSyncTime(current.warpMarker.time)}` };
+    case "pass": {
+      const { span, occurrence, after } = current.stretch;
+      const range = span.from === span.to ? label(span.from) : `${label(span.from)} to ${label(span.to)}`;
+      const times = countOccurrences(song.getTimeline(), span.from) > 1 ? `, ${formatTimes(occurrence)}` : "";
+      return { title: `Recording pass ${range}${times}`, subtitle: after ? `After ${formatOccurrence(label(after.measure), after.occurrence)}` : "The start of the recording" };
+    }
+
+    case "none":
+      return { title: "Song setup", subtitle: "Nothing selected" };
   }
+}
 
-  if (selectedRun.value) {
-    return `Measures ${labelAt(selectedRun.value.first)} to ${labelAt(selectedRun.value.last)}`;
-  }
+const heading = computed(getHeading);
 
-  return selection.value.length > 1 ? `${selection.value.length} measures` : "Song setup";
-});
+const announcement = computed(() => hasSelection.value ? `${heading.value.title} selected` : "");
 
-const subtitle = computed(() => {
-  const song = props.song;
-  const run = selectedRun.value;
-  if (!song || detecting.value || pendingBox.value || selectedBoxes.value.length > 0) {
-    return undefined;
-  }
+const showReviewBar = computed(() => !detecting.value && !pendingBox.value && !drawing.value && reviewItems.value.length > 0
+  && (!hasSelection.value || !!currentReviewItem.value));
 
-  if (selection.value.length === 1) {
-    const plays = countOccurrences(song.getTimeline(), selection.value[0]!.id);
-    return plays === 0 ? "The recording never plays it" : `The recording plays it ${formatCount(plays)}`;
-  }
-
-  if (run) {
-    const timeline = song.getTimeline();
-    const recorded = findBackToBackPasses(timeline, { from: timeline[run.first]!, to: timeline[run.last]! }).length;
-    return `${run.last - run.first + 1} measures, recorded ${formatCount(recorded)}`;
-  }
-
-  return selection.value.length > 1 ? "Not consecutive in the recording" : "Nothing selected";
-});
-
-const announcement = computed(() => selectionCount.value > 0 ? `${title.value} selected` : "");
-
-const showReviewBar = computed(() => !detecting.value && !pendingBox.value && reviewItems.value.length > 0
-  && (selectionCount.value === 0 || !!currentReviewItem.value));
+type Removable = { remove: () => void };
 
 const reviewBar = useTemplateRef<InstanceType<typeof MeasureReviewBar>>("reviewBar");
-const selectionInspector = useTemplateRef<InstanceType<typeof SelectionInspector>>("selectionInspector");
-const unnumberedForm = useTemplateRef<InstanceType<typeof MeasureUnnumberedForm>>("unnumberedForm");
+const boxesInspector = useTemplateRef<InstanceType<typeof BoxesInspector>>("boxesInspector");
+const inspector = useTemplateRef<Removable>("inspector");
 
 const TYPED_CHARACTER = /^[0-9a-z]$/i;
 
@@ -121,7 +143,7 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 function focusNumberField(): void {
-  const field = document.getElementById(selectedBox.value ? "box-number" : "measure-number");
+  const field = document.getElementById(selected.value.kind === "boxes" ? "box-number" : "measure-number");
   if (field instanceof HTMLInputElement) {
     field.focus();
     field.select();
@@ -131,8 +153,8 @@ function focusNumberField(): void {
 function onReviewKey(event: KeyboardEvent): void {
   if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement)) {
     event.preventDefault();
-    if (selectedBox.value) {
-      unnumberedForm.value?.place();
+    if (boxesInspector.value) {
+      boxesInspector.value.place();
     } else {
       reviewBar.value?.confirmCurrent();
     }
@@ -142,18 +164,14 @@ function onReviewKey(event: KeyboardEvent): void {
   }
 }
 
-// Keys work on the score selection, so they only act while no field has the focus.
+// Keys work on the selection, so they only act while no field has the focus.
 useEventListener("keydown", (event: KeyboardEvent) => {
   if (isTyping(event.target) || event.ctrlKey || event.metaKey || event.altKey || detecting.value) {
     return;
   }
 
   if (event.key === "Delete") {
-    if (selectedBox.value) {
-      unnumberedForm.value?.remove();
-    } else {
-      selectionInspector.value?.removeBoxes();
-    }
+    (boxesInspector.value ?? inspector.value)?.remove();
   } else if (currentReviewItem.value) {
     onReviewKey(event);
   }
@@ -185,12 +203,12 @@ useEventListener("keydown", (event: KeyboardEvent) => {
               :id="titleId"
               class="m-0 truncate text-lg font-bold"
             >
-              {{ title }}
+              {{ heading.title }}
             </h2>
             <span
-              v-if="subtitle"
+              v-if="heading.subtitle"
               class="truncate text-sm text-muted-color"
-            >{{ subtitle }}</span>
+            >{{ heading.subtitle }}</span>
           </div>
           <Button
             v-tooltip.bottom="'Undo'"
@@ -215,14 +233,14 @@ useEventListener("keydown", (event: KeyboardEvent) => {
             @click.stop="history.redo()"
           />
           <Button
-            v-if="selectionCount > 0"
+            v-if="hasSelection"
             icon="pi pi-times"
             severity="secondary"
             size="small"
             text
             rounded
             aria-label="Clear selection"
-            @click.stop="editor.clearSelection()"
+            @click.stop="selection.clear()"
           />
         </div>
         <span
@@ -244,15 +262,57 @@ useEventListener("keydown", (event: KeyboardEvent) => {
             v-if="pendingBox"
             :layout="pendingBox"
           />
-          <MeasureUnnumberedForm
-            v-else-if="selectedBox"
-            ref="unnumberedForm"
-            :box="selectedBox"
-          />
-          <SelectionInspector
-            v-else-if="selectionCount > 0"
-            ref="selectionInspector"
+          <div
+            v-else-if="drawing"
+            class="flex flex-col gap-3"
+          >
+            <span class="text-sm">
+              Drag a box around one or more measures on the score.
+              <template v-if="placeFrom">The next box starts at measure {{ placeFrom }}.</template>
+            </span>
+            <Button
+              label="Done"
+              severity="secondary"
+              size="small"
+              class="self-start"
+              @click="editor.stopDrawing()"
+            />
+          </div>
+          <MeasuresInspector
+            v-else-if="selected.kind === 'measures'"
+            ref="inspector"
             :song="song"
+            :measures="selected.measures"
+          />
+          <BoxesInspector
+            v-else-if="selected.kind === 'boxes'"
+            ref="boxesInspector"
+            :boxes="selected.boxes"
+          />
+          <SectionInspector
+            v-else-if="selected.kind === 'section'"
+            ref="inspector"
+            :song="song"
+            :section="selected.section"
+          />
+          <MarkerInspector
+            v-else-if="selected.kind === 'marker'"
+            ref="inspector"
+            :song="song"
+            :marker="selected.marker"
+          />
+          <SyncPointInspector
+            v-else-if="selected.kind === 'syncPoint'"
+            ref="inspector"
+            :song="song"
+            :warp-marker="selected.warpMarker"
+          />
+          <PassInspector
+            v-else-if="selected.kind === 'pass'"
+            ref="inspector"
+            :song="song"
+            :index="selected.index"
+            :stretch="selected.stretch"
           />
           <SetupOverview
             v-else

@@ -5,8 +5,9 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { h, reactive, type Ref, ref, type SetupContext } from "vue";
 
 import Draggable from "@/components/base/Draggable.vue";
-import { type MeasureEditor, provideMeasureEditor, useMeasureEditor } from "@/composables/useMeasureEditor";
+import { provideSongEditor, type SongEditor } from "@/composables/useSongEditor";
 import type { MeasureId } from "@/core/models/measure";
+import { selectMeasures } from "@/core/models/selection";
 import Song from "@/core/models/song";
 import type { TimelinePosition } from "@/core/player/timeline";
 import type { PlayerLocation, PlayerSectionState } from "@/core/player/types";
@@ -26,6 +27,7 @@ const player = vi.hoisted(() => ({
   currentSection: undefined as PlayerSectionState | undefined,
   measureTrackIndices: new Map<MeasureId, Set<number>>(),
   seekPosition: vi.fn(),
+  seekLocation: vi.fn(),
   syncWarp: vi.fn(),
   load: vi.fn(),
 }));
@@ -78,20 +80,28 @@ function playAt(position: number, ticksIn = 0): void {
   state.position = position * TICKS_PER_POSITION + ticksIn;
 }
 
-function mountViewer(song: Song, editMode = false): { wrapper: VueWrapper; editor: MeasureEditor } {
+function mountViewer(song: Song, editMode = false): SongEditor & { wrapper: VueWrapper } {
   const reactiveSong = reactive(song) as Song;
   fakePlayer().timeline = resolveTimeline(song);
-  let editor!: MeasureEditor;
+  let context!: SongEditor;
   const host = {
     setup() {
-      editor = useMeasureEditor(ref<Song | undefined>(reactiveSong) as Ref<Song | undefined>, ref(editMode));
-      provideMeasureEditor(editor);
+      context = provideSongEditor(ref<Song | undefined>(reactiveSong) as Ref<Song | undefined>, ref(editMode));
       return () => h(ScoreViewer, { song: reactiveSong, editMode });
     },
   };
 
   const wrapper = mount(host, { global: { plugins: [PrimeVue, ToastService] } });
-  return { wrapper, editor };
+  return { wrapper, ...context };
+}
+
+function selectedLabels({ selection }: SongEditor): string[] {
+  const current = selection.selected.value;
+  return current.kind === "measures" ? current.measures.map(measure => measure.label) : [];
+}
+
+function click(element: Element, init: MouseEventInit = {}): void {
+  element.dispatchEvent(new MouseEvent("click", { bubbles: true, ...init }));
 }
 
 function box(wrapper: VueWrapper, label: string): VueWrapper["element"] {
@@ -137,15 +147,15 @@ describe("ScoreViewer", () => {
       expect(box(wrapper, "3").getAttribute("aria-current")).toBeNull();
     });
 
-    it("jumps to the occurrence of a clicked measure that is closest to the playback", async () => {
+    it("enters a clicked measure at its first pass, wherever the playback is", async () => {
       const song = makeMidiSongWithRepeat();
       const { wrapper } = mountViewer(song);
       playAt(7);
       await flushPromises();
 
-      (box(wrapper, "2") as HTMLElement).click();
+      click(box(wrapper, "2"));
 
-      expect(fakePlayer().seekPosition).toHaveBeenCalledWith(6);
+      expect(fakePlayer().seekLocation).toHaveBeenCalledWith({ measure: idOf(song, "2"), occurrence: 1, beat: 0 });
     });
 
     it("highlights measures where a highlighted track plays", async () => {
@@ -213,28 +223,90 @@ describe("ScoreViewer", () => {
       expect(box(wrapper, "2").textContent?.trim()).toBe("2");
     });
 
-    it("selects a clicked measure and moves the playhead to its nearest occurrence", async () => {
+    it("selects a clicked measure and enters it at its first pass", async () => {
       const song = makeMidiSongWithRepeat();
-      const { wrapper, editor } = mountViewer(song, true);
+      const context = mountViewer(song, true);
       playAt(7);
       await flushPromises();
 
-      (box(wrapper, "2") as HTMLElement).click();
+      click(box(context.wrapper, "2"));
 
-      expect(editor.selection.value.map(measure => measure.label)).toEqual(["2"]);
-      expect(fakePlayer().seekPosition).toHaveBeenCalledWith(6);
+      expect(selectedLabels(context)).toEqual(["2"]);
+      expect(fakePlayer().seekLocation).toHaveBeenCalledWith({ measure: idOf(song, "2"), occurrence: 1, beat: 0 });
     });
 
-    it("does not move the playhead when a ctrl-click takes a measure out of the selection", async () => {
+    it("toggles with ctrl-click and moves the playhead only to measures it adds", async () => {
       const song = makeMidiSongWithRepeat();
-      const { wrapper, editor } = mountViewer(song, true);
-      editor.setSelection([song.findMeasure(idOf(song, "1"))!, song.findMeasure(idOf(song, "2"))!]);
+      const context = mountViewer(song, true);
+      context.selection.select(selectMeasures([idOf(song, "1"), idOf(song, "2")]));
       await flushPromises();
 
-      box(wrapper, "2").dispatchEvent(new MouseEvent("click", { ctrlKey: true, bubbles: true }));
+      click(box(context.wrapper, "2"), { ctrlKey: true });
+      expect(selectedLabels(context)).toEqual(["1"]);
+      expect(fakePlayer().seekLocation).not.toHaveBeenCalled();
 
-      expect(editor.selection.value.map(measure => measure.label)).toEqual(["1"]);
-      expect(fakePlayer().seekPosition).not.toHaveBeenCalled();
+      click(box(context.wrapper, "3"), { metaKey: true });
+      expect(selectedLabels(context)).toEqual(["1", "3"]);
+      expect(fakePlayer().seekLocation).toHaveBeenCalledOnce();
+    });
+
+    it("selects a range in reading order with shift-click", async () => {
+      const song = makeMidiSongWithRepeat();
+      const context = mountViewer(song, true);
+
+      click(box(context.wrapper, "3"));
+      click(box(context.wrapper, "1"), { shiftKey: true });
+
+      expect(selectedLabels(context)).toEqual(["1", "2", "3"]);
+    });
+
+    it("selects one kind at a time", async () => {
+      const song = makeMidiSongWithVamp();
+      const context = mountViewer(song, true);
+      context.selection.select({ kind: "section", from: song.getSections()[0]!.from });
+      await flushPromises();
+
+      click(box(context.wrapper, "2"), { ctrlKey: true });
+
+      expect(context.selection.selection.value).toEqual(selectMeasures([idOf(song, "2")]));
+    });
+
+    it("clears the selection with a click on empty space, but not with a modifier", async () => {
+      const song = makeMidiSongWithRepeat();
+      const context = mountViewer(song, true);
+      click(box(context.wrapper, "2"));
+      const page = context.wrapper.find("[role='group'][aria-label='Page 1']").element;
+
+      click(page, { shiftKey: true });
+      expect(selectedLabels(context)).toEqual(["2"]);
+
+      click(page);
+      expect(context.selection.selection.value).toEqual({ kind: "none" });
+    });
+
+    it("draws a box only while drawing, and Escape steps back from it", async () => {
+      const song = makeAudioSong();
+      const context = mountViewer(song, true);
+      expect(context.wrapper.find(".cursor-crosshair").exists()).toBe(false);
+
+      context.editor.startDrawing();
+      await flushPromises();
+      const layer = context.wrapper.find(".cursor-crosshair").element as HTMLElement;
+      // jsdom has no pointer capture.
+      layer.setPointerCapture = vi.fn();
+      const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 100));
+      layer.dispatchEvent(new PointerEvent("pointerdown", { clientX: 10, clientY: 10, buttons: 1, pointerId: 1 }));
+      layer.dispatchEvent(new PointerEvent("pointermove", { clientX: 40, clientY: 20, buttons: 1, pointerId: 1 }));
+      layer.dispatchEvent(new PointerEvent("pointerup", { clientX: 40, clientY: 20, buttons: 0, pointerId: 1 }));
+
+      rect.mockRestore();
+      expect(context.editor.pendingBox.value).toEqual({ page: 0, x: 0.1, y: 0.1, width: expect.closeTo(0.3), height: expect.closeTo(0.1) });
+
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      expect(context.editor.pendingBox.value).toBeUndefined();
+      expect(context.editor.drawing.value).toBe(true);
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      expect(context.editor.drawing.value).toBe(false);
     });
 
     describe("section range handles", () => {
@@ -242,11 +314,10 @@ describe("ScoreViewer", () => {
         return wrapper.find(`[role='slider'][aria-label='${name}']`).element;
       }
 
-      it("appear on the section the selection belongs to and name its ends", async () => {
+      it("appear on the selected section and name its ends", async () => {
         const song = makeMidiSongWithRepeat();
-        const { wrapper, editor } = mountViewer(song, true);
-        playAt(5);
-        editor.selectOnly(song.findMeasure(idOf(song, "3"))!);
+        const { wrapper, selection } = mountViewer(song, true);
+        selection.select({ kind: "section", from: song.getSections()[0]!.from });
         await flushPromises();
 
         const last = handle(wrapper, "Last measure of repeat 2 to 3");
@@ -257,8 +328,8 @@ describe("ScoreViewer", () => {
 
       it("move the section by one measure with the arrow keys", async () => {
         const song = makeMidiSongWithVamp();
-        const { wrapper, editor } = mountViewer(song, true);
-        editor.selectSection(0);
+        const { wrapper, selection } = mountViewer(song, true);
+        selection.select({ kind: "section", from: song.getSections()[0]!.from });
         await flushPromises();
 
         handle(wrapper, "Last measure of vamp 2").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
@@ -269,13 +340,13 @@ describe("ScoreViewer", () => {
         await flushPromises();
         expect(song.getSections()[0]).toMatchObject({ from: locationOf(song, "0"), to: locationOf(song, "3", 3) });
         expect(dbUpdate).toHaveBeenCalledTimes(2);
-        expect(editor.selection.value.map(measure => measure.label)).toEqual(["0", "1", "2", "3"]);
+        expect(selection.selection.value).toEqual({ kind: "section", from: locationOf(song, "0") });
       });
 
-      it("are not shown without a section to edit", async () => {
+      it("are not shown while the measures of a section are selected", async () => {
         const song = makeMidiSongWithVamp();
-        const { wrapper, editor } = mountViewer(song, true);
-        editor.selectOnly(song.findMeasure(idOf(song, "1"))!);
+        const { wrapper, selection } = mountViewer(song, true);
+        selection.select(selectMeasures([idOf(song, "2")]));
         await flushPromises();
 
         expect(wrapper.find("[role='slider']").exists()).toBe(false);
@@ -303,11 +374,12 @@ describe("ScoreViewer", () => {
     it("saves a resize as one layout edit once the drag ends", async () => {
       const song = makeMidiSongWithRepeat();
       const apply = vi.spyOn(song, "applyMeasureEdit").mockResolvedValue([]);
-      const { wrapper, editor } = mountViewer(song, true);
+      const context = mountViewer(song, true);
+      const { wrapper } = context;
       const measure = song.findMeasure(idOf(song, "2"))!;
       const neighbour = song.findMeasure(idOf(song, "3"))!;
       const before = { measure: { ...measure.layout! }, neighbour: { ...neighbour.layout! } };
-      editor.selectOnly(measure);
+      context.selection.select(selectMeasures([measure.id]));
       await flushPromises();
 
       const right = wrapper.findAllComponents(Draggable)[1]!;
@@ -326,7 +398,7 @@ describe("ScoreViewer", () => {
       expect(edit.layouts.get(neighbour.id)?.x).toBeCloseTo(before.neighbour.x + 0.1);
       expect(edit.layouts.get(neighbour.id)?.width).toBeCloseTo(before.neighbour.width - 0.1);
       expect([...edit.layouts.keys()]).toEqual([measure.id, neighbour.id]);
-      expect(editor.selection.value.map(selected => selected.id)).toEqual([measure.id]);
+      expect(context.selection.selection.value).toEqual(selectMeasures([measure.id]));
     });
   });
 });

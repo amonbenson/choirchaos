@@ -8,7 +8,7 @@ import { waitForPlayer } from "../harness/playback";
 const REPEATED: SongBundleOptions = { mode: "audio", repeats: [{ from: "1", to: "2", passes: 2 }] };
 
 test.describe("inspector", () => {
-  test("a click on the score moves the playhead and selects the occurrence it lands on", async ({ page, admin, factory, loginAs }) => {
+  test("a click on the score selects the measure at its first pass, and the pass picker moves to another", async ({ page, admin, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const bundle = await buildSongBundle(MINIMAL, REPEATED);
@@ -27,16 +27,22 @@ test.describe("inspector", () => {
     await expect(panel).toContainText("The recording plays it 2 times");
     await expect(page.getByRole("button", { name: "Measure 2", exact: true })).toHaveAttribute("aria-current", "location");
     await expect(position).toHaveAttribute("aria-valuetext", /^2, 1st time/);
-    const times = panel.getByRole("group", { name: "Time (follows the playhead)" });
+    const times = panel.getByRole("group", { name: "Pass, follows the playhead" });
     await expect(times.getByRole("button", { name: "1st time" })).toHaveAttribute("aria-pressed", "true");
 
     await times.getByRole("button", { name: "2nd time" }).click();
     await expect(position).toHaveAttribute("aria-valuetext", /^2, 2nd time/);
     await expect(times.getByRole("button", { name: "2nd time" })).toHaveAttribute("aria-pressed", "true");
 
-    await panel.getByRole("region", { name: "Marker" }).getByRole("button", { name: "Add marker at 2, 2nd time" }).click();
+    await panel.getByRole("region", { name: "Markers" }).getByRole("button", { name: "Add marker at 2, 2nd time" }).click();
     await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).arrangement.markers)
       .toEqual([{ at: locationAt(bundle.fields.score, "2", 0, 2), text: "A" }]);
+    await expect(panel.getByRole("heading", { name: "Marker A" })).toBeVisible();
+
+    // Wherever the playhead is, a click enters a repeated measure at its first pass.
+    await page.getByRole("button", { name: "Measure 4", exact: true }).click();
+    await page.getByRole("button", { name: "Measure 1", exact: true }).click();
+    await expect(position).toHaveAttribute("aria-valuetext", /^1, 1st time/);
 
     await page.getByRole("button", { name: "Clear selection" }).click();
     await expect(panel.getByRole("heading", { name: "Song setup" })).toBeVisible();
@@ -71,8 +77,10 @@ test.describe("inspector", () => {
     await page.goto(`/show/${show.id}/song/${song.id}`);
     await waitForPlayer(page);
     await page.getByRole("button", { name: "Measure 3", exact: true }).click();
-
     await expect(page.getByRole("slider", { name: "Position" })).toHaveAttribute("aria-valuetext", /^3/);
+    await page.getByRole("button", { name: "Measure 2", exact: true }).click();
+    await expect(page.getByRole("slider", { name: "Position" })).toHaveAttribute("aria-valuetext", /^2, 1st time/);
+
     await expect(page.getByRole("button", { name: "Measure 3", exact: true })).not.toHaveAttribute("aria-pressed");
     await expect(page.getByRole("region", { name: "Editor panel" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Details", exact: true })).toHaveCount(0);

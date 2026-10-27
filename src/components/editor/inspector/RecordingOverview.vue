@@ -1,26 +1,23 @@
 <script setup lang="ts">
-import Button from "primevue/button";
-import { computed, ref, useId } from "vue";
+import { computed, useId } from "vue";
 
+import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { formatOccurrence, formatTimes } from "@/core/models/locationFormat";
 import type { MeasureId } from "@/core/models/measure";
 import { countOccurrences, getRecordingStretches, type RecordingStretch } from "@/core/models/recording";
 import type Song from "@/core/models/song";
 
-import InspectorGroup from "./InspectorGroup.vue";
-import RecordingTextForm from "./RecordingTextForm.vue";
+import InspectorSection from "./InspectorSection.vue";
 
 const props = defineProps<{
   song: Song;
 }>();
 
+const selection = injectEditorSelection();
 const listId = useId();
-const editingText = ref(false);
 
 const timeline = computed(() => props.song.getTimeline());
-const editable = computed(() => props.song.isRecordingEditable());
 const stretches = computed(() => getRecordingStretches(props.song.getMeasures(), props.song.getRecording()));
-const summary = computed(() => timeline.value.length === 1 ? "1 measure" : `${timeline.value.length} measures`);
 
 const label = (id: MeasureId): string => props.song.findMeasure(id)?.label ?? "?";
 
@@ -39,11 +36,7 @@ function formatAfter({ after }: RecordingStretch): string | undefined {
 </script>
 
 <template>
-  <InspectorGroup
-    id="recording"
-    title="Recording"
-    :summary="summary"
-  >
+  <InspectorSection title="Recording">
     <span
       :id="listId"
       class="text-xs text-muted-color"
@@ -53,42 +46,25 @@ function formatAfter({ after }: RecordingStretch): string | undefined {
       :aria-labelledby="listId"
     >
       <li
-        v-for="stretch in stretches"
+        v-for="(stretch, index) in stretches"
         :key="stretch.first"
-        class="flex items-baseline gap-3 py-0.5 text-sm"
       >
-        <strong class="min-w-16">{{ formatRange(stretch) }}</strong>
-        <span
-          v-if="formatPass(stretch)"
-          class="text-muted-color"
-        >{{ formatPass(stretch) }}</span>
-        <span
-          v-if="formatAfter(stretch)"
-          class="ml-auto text-xs text-muted-color"
-        >{{ formatAfter(stretch) }}</span>
+        <button
+          type="button"
+          class="flex w-full items-baseline gap-3 rounded px-2 py-0.5 text-left text-sm hover:bg-surface-100 focus-visible:outline-2 focus-visible:outline-primary dark:hover:bg-surface-800"
+          @click="selection.selectAndSeek({ kind: 'pass', index })"
+        >
+          <strong class="min-w-16">{{ formatRange(stretch) }}</strong>
+          <span
+            v-if="formatPass(stretch)"
+            class="text-muted-color"
+          >{{ formatPass(stretch) }}</span>
+          <span
+            v-if="formatAfter(stretch)"
+            class="ml-auto text-xs text-muted-color"
+          >{{ formatAfter(stretch) }}</span>
+        </button>
       </li>
     </ol>
-
-    <template v-if="editable">
-      <RecordingTextForm
-        v-if="editingText"
-        :song="song"
-        @close="editingText = false"
-      />
-      <template v-else>
-        <span class="text-xs text-muted-color">Select measures on the score to record them more than once or to jump elsewhere after them.</span>
-        <Button
-          label="Edit as text"
-          severity="secondary"
-          size="small"
-          class="self-start"
-          @click="editingText = true"
-        />
-      </template>
-    </template>
-    <span
-      v-else
-      class="text-xs text-muted-color"
-    >A MIDI song plays its beat map, so its recording cannot be changed here.</span>
-  </InspectorGroup>
+  </InspectorSection>
 </template>
