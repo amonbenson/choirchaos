@@ -15,6 +15,7 @@ import BabySvenja from "@/components/icons/BabySvenja.vue";
 import MarkerPanel from "@/components/player/MarkerPanel.vue";
 import MixerPanel from "@/components/player/MixerPanel.vue";
 import VampCard from "@/components/player/VampCard.vue";
+import MeasureGrid from "@/components/score/MeasureGrid.vue";
 import ScoreViewer from "@/components/score/ScoreViewer.vue";
 import SongDetailsDialog from "@/components/song/SongDetailsDialog.vue";
 import { type ShortcutAction, useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
@@ -64,7 +65,7 @@ const history = useSongHistory(song, editMode);
 // over the score and the timeline, which gets a tab of its own since it needs the width.
 const tabs = computed(() => [
   ...(editMode.value || !hasMarkers.value ? [] : [{ value: "markers", label: "Markers" } as const]),
-  { value: "pdf", label: "PDF" } as const,
+  { value: "pdf", label: "Score" } as const,
   ...(showTimeline.value ? [{ value: "timeline", label: "Timeline" } as const] : []),
   { value: "mixer", label: "Mixer" } as const,
 ]);
@@ -426,6 +427,13 @@ const pdfLoading = ref(false);
             :edit-mode="editMode"
             :covered-bottom="scoreCoveredBottom"
             @pdf-loading="pdfLoading = $event"
+          />
+          <MeasureGrid
+            v-if="song && !song.pdfFile && song.getMeasures().length > 0"
+            class="absolute inset-0 bg-surface"
+            :song="song"
+            :edit-mode="editMode"
+            :covered-bottom="scoreCoveredBottom"
           />
         </div>
         <!-- The dark theme's message background is translucent and would wash out over the white score. -->

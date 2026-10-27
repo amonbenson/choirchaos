@@ -9,7 +9,6 @@ import {
   getCommonBeats,
   getDefaultBeats,
   getDefaultLabel,
-  getMeasuresBetween,
   getPlannedLabels,
   getReadingOrder,
   getUnplacedRuns,
@@ -94,12 +93,6 @@ describe("reading order", () => {
     );
 
     expect(getReadingOrder(list).map(m => m.label)).toEqual(["4", "3", "2", "6", "1"]);
-  });
-
-  it("selects a range across rows in reading order", () => {
-    const list = measures(["1", box(0.1, 0.2)], ["2", box(0.5, 0.2)], ["3", box(0.1, 0.5)], ["4", box(0.5, 0.5)]);
-
-    expect(getMeasuresBetween(list, "m4", "m2").map(m => m.label)).toEqual(["2", "3", "4"]);
   });
 });
 

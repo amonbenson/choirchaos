@@ -1,7 +1,7 @@
 import type { Marker } from "./markers";
 import type Measure from "./measure";
 import { isSameLayout, type MeasureId, type MeasureLayout } from "./measure";
-import { getMeasuresBetween, getReadingOrder } from "./measureEditing";
+import { getReadingOrder } from "./measureEditing";
 import {
   getRecordingStretches,
   type Location,
@@ -83,14 +83,28 @@ export function toggleMeasure(selection: Selection, id: MeasureId): Selection {
   return selectMeasures(ids, id);
 }
 
-/** Every placed measure from the anchor to `id` in reading order. Without measures selected it selects `id` alone. */
-export function selectMeasureRange(measures: readonly Measure[], selection: Selection, id: MeasureId): Selection {
+/**
+ * The measures a user can select, in the order a range walks them. A song with a score shows its
+ * measures as boxes, read in reading order. A song without one shows every measure in score order.
+ */
+export function getSelectableMeasures(song: Song): Measure[] {
+  return song.pdfFile ? getReadingOrder(song.getMeasures()) : [...song.getMeasures()];
+}
+
+/** Every selectable measure from the anchor to `id`. Without measures selected it selects `id` alone. */
+export function selectMeasureRange(selectable: readonly Measure[], selection: Selection, id: MeasureId): Selection {
   if (selection.kind !== "measures") {
     return selectMeasures([id]);
   }
 
-  const range = getMeasuresBetween(measures, selection.anchor, id).map(measure => measure.id);
-  return range.length > 0 ? selectMeasures(range, selection.anchor) : selectMeasures([id]);
+  const a = selectable.findIndex(measure => measure.id === selection.anchor);
+  const b = selectable.findIndex(measure => measure.id === id);
+  if (a === -1 || b === -1) {
+    return selectMeasures([id]);
+  }
+
+  const range = selectable.slice(Math.min(a, b), Math.max(a, b) + 1).map(measure => measure.id);
+  return selectMeasures(range, selection.anchor);
 }
 
 export function toggleBox(selection: Selection, box: MeasureLayout): Selection {
@@ -109,7 +123,7 @@ export function isSameMarker(a: Marker, b: Marker): boolean {
 }
 
 function resolveMeasures(song: Song, ids: readonly MeasureId[]): SelectedObjects {
-  const measures = getReadingOrder(song.getMeasures().filter(measure => measure.layout && ids.includes(measure.id)));
+  const measures = getSelectableMeasures(song).filter(measure => ids.includes(measure.id));
   return measures.length > 0 ? { kind: "measures", measures } : NO_SELECTION;
 }
 

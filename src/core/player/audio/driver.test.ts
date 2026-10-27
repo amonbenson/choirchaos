@@ -58,8 +58,6 @@ async function decodeMp3(filename: string): Promise<{ buffer: AudioBuffer; ctx: 
   return { buffer, ctx };
 }
 
-// ── detectChunks ─────────────────────────────────────────────────────────────
-
 describe("detectChunks", () => {
   let ctx: AudioContext;
 
@@ -158,9 +156,6 @@ describe("detectChunks", () => {
       expect(end).toBeLessThanOrEqual(buf.length);
     }
   });
-
-  // ── real MP3 files ──────────────────────────────────────────────────────────
-
   it(
     "vocal track: produces multiple chunks covering substantially less than the full duration",
     async () => {
@@ -193,9 +188,6 @@ describe("detectChunks", () => {
     60_000,
   );
 });
-
-// ── AudioDriver ───────────────────────────────────────────────────────────────
-
 describe("AudioDriver", () => {
   let ctx: AudioContext;
 
@@ -219,16 +211,11 @@ describe("AudioDriver", () => {
     });
   }
 
-  // ── factory ─────────────────────────────────────────────────────────────────
-
   it("create() resolves to an AudioDriver instance", async () => {
     const player = await makePlayer();
     expect(player).toBeDefined();
     player.dispose();
   });
-
-  // ── position tracking ────────────────────────────────────────────────────────
-
   it("getPosition() starts at 0 before play", async () => {
     const player = await makePlayer();
     expect(player.getPosition()).toBe(0);
@@ -259,9 +246,6 @@ describe("AudioDriver", () => {
     expect(player.getPosition()).toBeCloseTo(0.4, 1);
     player.dispose();
   });
-
-  // ── gain ─────────────────────────────────────────────────────────────────────
-
   it("setGain accepts values in [0, 1] without throwing", async () => {
     const player = await makePlayer();
     expect(() => player.setGain(0, 0)).not.toThrow();
@@ -269,9 +253,6 @@ describe("AudioDriver", () => {
     expect(() => player.setGain(0, 1)).not.toThrow();
     player.dispose();
   });
-
-  // ── tempo / pitch ─────────────────────────────────────────────────────────────
-
   it("setTempo does not throw", async () => {
     const player = await makePlayer();
     expect(() => player.setTempo(1.2)).not.toThrow();
@@ -291,9 +272,6 @@ describe("AudioDriver", () => {
     player.pause();
     player.dispose();
   });
-
-  // ── scheduleSeek ──────────────────────────────────────────────────────────────
-
   it("scheduleSeek while not playing updates position immediately", async () => {
     const player = await makePlayer();
     player.scheduleSeek(0.7);
@@ -325,9 +303,6 @@ describe("AudioDriver", () => {
     player.pause();
     player.dispose();
   });
-
-  // ── audio output ──────────────────────────────────────────────────────────────
-
   it("passes a mono chunk signal through to the output", async () => {
     const offlineCtx = new OfflineAudioContext(2, SAMPLE_RATE, SAMPLE_RATE);
     const chunkBuf = offlineCtx.createBuffer(1, SAMPLE_RATE, SAMPLE_RATE);
@@ -396,9 +371,6 @@ describe("AudioDriver", () => {
     expect(computeRms(firstHalf)).toBeLessThan(0.01);
     player.dispose();
   });
-
-  // ── dispose ───────────────────────────────────────────────────────────────────
-
   it("dispose does not throw", async () => {
     const player = await makePlayer();
     expect(() => player.dispose()).not.toThrow();

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useResizeObserver } from "@vueuse/core";
 import p5 from "p5";
 import { onBeforeUnmount, onMounted, ref, shallowRef, toRef, watch } from "vue";
 
@@ -13,6 +14,9 @@ export type ViewInsets = { top: number; bottom: number };
 /** A page in view, in fractions of the overlay. */
 export type VisiblePage = { x: number; y: number; width: number; height: number; pageNumber: number };
 
+// Below this many pages in view each page is drawn at full resolution, above it from its low resolution copy.
+const MAX_FULL_RESOLUTION_PAGES = 7;
+
 const props = withDefaults(defineProps<{
   url: string | undefined;
   /** Whether dragging pans. Overlays that use drags for themselves turn it off. */
@@ -22,34 +26,24 @@ const props = withDefaults(defineProps<{
 }>(), { pannable: true, insets: () => ({ top: 0, bottom: 0 }) });
 
 const emit = defineEmits<{
-  setup: [payload: { s: p5 }];
-  drawPageOverlay: [payload: { s: p5; p: number; transform: PageTransform }];
-  mousePressed: [payload: { s: p5; transform: PageTransform }];
-  mouseReleased: [payload: { s: p5; transform: PageTransform }];
-  mouseMoved: [payload: { s: p5; transform: PageTransform; x: number; y: number }];
   loadingChange: [loading: boolean];
 }>();
 
 const wrapper = ref<HTMLDivElement | undefined>();
 const container = ref<HTMLDivElement | undefined>();
 
-const p5Instance = shallowRef<p5 | undefined>();
 const sketch = shallowRef<P5Sketch | undefined>();
-
-const overlayInstance = shallowRef<p5 | undefined>();
-const overlaySketch = shallowRef<P5Sketch | undefined>();
 
 const transform = shallowRef(new PageTransform({ x: 100, y: 100 }, 750));
 const visiblePages = shallowRef<VisiblePage[]>([]);
 
-const { pages, documentStatus } = usePdfPages(toRef(props, "url"), { onUpdate: redrawAll });
+const { pages, documentStatus } = usePdfPages(toRef(props, "url"), { onUpdate: redraw });
 
 watch([documentStatus, pages], ([status, currentPages]) => {
   const firstPageReady = currentPages[0]?.status === "ready";
   emit("loadingChange", status === "loading" || (status === "ready" && !firstPageReady));
 }, { immediate: true });
 
-const isGrabbing = ref(false);
 const viewUserModified = ref(false);
 
 watch(() => props.url, () => {
@@ -57,18 +51,24 @@ watch(() => props.url, () => {
 });
 
 usePanZoom(wrapper, transform.value, {
-  onRedraw: redrawAll,
+  onRedraw: redraw,
   canPan: () => props.pannable,
   onInteract: () => {
     viewUserModified.value = true;
   },
 });
 
-function setup(): void {
-  const s = sketch.value!;
-  s.noLoop();
-  handleResize();
-  emit("setup", { s });
+function rangeArray([start, end]: [number, number]): number[] {
+  return Array.from({ length: end - start }, (_, i) => i + start);
+}
+
+/** The pages in view as fractions of the canvas, which the overlays above the score are laid out in. */
+function updateVisiblePages(s: p5, pageRange: [number, number]): void {
+  visiblePages.value = rangeArray(pageRange).map((p) => {
+    const { x, y } = transform.value.pageToScreen({ x: 0, y: 0, p });
+    const { x: width, y: height } = transform.value.pageToScreen({ x: 1, y: 1, p }, true);
+    return { pageNumber: p, x: x / s.width, y: y / s.height, width: width / s.width, height: height / s.height };
+  });
 }
 
 function draw(): void {
@@ -76,24 +76,17 @@ function draw(): void {
   s.clear();
 
   const pageRange = transform.value.getVisiblePageRange(s.width, pages.value.length);
+  updateVisiblePages(s, pageRange);
 
   for (let p = pageRange[0]; p < pageRange[1]; p++) {
     transform.value.pushPageTransform(s, p);
 
     const page = pages.value[p];
-    if (!page) {
-      s.pop();
-      continue;
-    }
-
-    if (page.status === "ready") {
+    if (page?.status === "ready") {
       const ctx = s.drawingContext as CanvasRenderingContext2D;
-      if (pageRange[1] - pageRange[0] < 7) {
-        ctx.drawImage(page.bitmap!, 0, 0, 1, 1);
-      } else {
-        ctx.drawImage(page.bitmapLow!, 0, 0, 1, 1);
-      }
-    } else {
+      const bitmap = pageRange[1] - pageRange[0] < MAX_FULL_RESOLUTION_PAGES ? page.bitmap! : page.bitmapLow!;
+      ctx.drawImage(bitmap, 0, 0, 1, 1);
+    } else if (page) {
       s.fill(255);
       s.noStroke();
       s.rect(0, 0, 1, 1);
@@ -103,56 +96,12 @@ function draw(): void {
   }
 }
 
-function redrawPages(): void {
+function redraw(): void {
   sketch.value?.redraw();
-}
-
-function redrawOverlay(): void {
-  overlaySketch.value?.redraw();
-}
-
-function redrawAll(): void {
-  sketch.value?.redraw();
-  overlaySketch.value?.redraw();
-}
-
-function setupOverlay(): void {
-  const s = overlaySketch.value!;
-  s.noLoop();
-  handleResize();
-  emit("setup", { s });
-}
-
-function rangeArray([start, end]: [number, number]): number[] {
-  return Array.from({ length: end - start }, (_, i) => i + start);
-}
-
-function drawOverlay(): void {
-  const s = overlaySketch.value!;
-  s.clear();
-
-  const pageRange = transform.value.getVisiblePageRange(s.width, pages.value.length);
-  visiblePages.value = rangeArray(pageRange).map((p) => {
-    const { x, y } = transform.value.pageToScreen({ x: 0, y: 0, p });
-    const { x: width, y: height } = transform.value.pageToScreen({ x: 1, y: 1, p }, true);
-    return {
-      pageNumber: p,
-      x: x / s.width,
-      y: y / s.height,
-      width: width / s.width,
-      height: height / s.height,
-    };
-  });
-
-  for (let p = pageRange[0]; p < pageRange[1]; p++) {
-    transform.value.pushPageTransform(s, p);
-    emit("drawPageOverlay", { s, p, transform: transform.value });
-    s.pop();
-  }
 }
 
 function handleResize(): void {
-  if (!(container.value && sketch.value && sketch.value.canvas && overlaySketch.value)) {
+  if (!(container.value && sketch.value?.canvas)) {
     return;
   }
 
@@ -162,7 +111,6 @@ function handleResize(): void {
   const h = container.value.clientHeight;
 
   sketch.value.resizeCanvas(w, h);
-  overlaySketch.value.resizeCanvas(w, h);
 
   if (!viewUserModified.value && w > 0 && h > 0) {
     fitZoom(0);
@@ -172,76 +120,23 @@ function handleResize(): void {
   }
 }
 
-// ── Mouse event API ───────────────────────────────────────────────────────────
-// These propagate pointer events to parent components. Pan/zoom handling is in
-// usePanZoom; these listeners exist solely to emit the interaction events.
-
-function isOnCanvas(target: EventTarget | null): boolean {
-  return target === sketch.value?.canvas || target === overlaySketch.value?.canvas;
-}
-
-function containerPos(clientX: number, clientY: number): { x: number; y: number } {
-  const rect = container.value!.getBoundingClientRect();
-  return { x: clientX - rect.left, y: clientY - rect.top };
-}
-
-function onPointerDownForEmit(e: PointerEvent): void {
-  if (e.pointerType !== "mouse" || !isOnCanvas(e.target)) {
-    return;
-  }
-
-  emit("mousePressed", { s: overlaySketch.value!, transform: transform.value });
-}
-
-function onPointerUpForEmit(e: PointerEvent): void {
-  if (e.pointerType !== "mouse") {
-    return;
-  }
-
-  emit("mouseReleased", { s: overlaySketch.value!, transform: transform.value });
-}
-
-function onPointerMoveForEmit(e: PointerEvent): void {
-  if (e.pointerType !== "mouse") {
-    return;
-  }
-
-  const pos = containerPos(e.clientX, e.clientY);
-  emit("mouseMoved", { s: overlaySketch.value!, transform: transform.value, x: pos.x, y: pos.y });
-}
-
+// p5 only renders. Pointer, touch and wheel input go through usePanZoom, since p5's own mouse events drift on touch devices.
 onMounted(() => {
-  // P5 instances are used for rendering only — all interaction is handled by
-  // native pointer/touch/wheel listeners (in usePanZoom and below) to avoid
-  // p5's mouse-event synthesis causing drift on touch devices.
-  p5Instance.value = new p5((s) => {
+  new p5((s) => {
     sketch.value = s;
-    s.setup = setup;
+    s.setup = () => {
+      s.noLoop();
+      handleResize();
+    };
+
     s.draw = draw;
   }, container.value);
-
-  overlayInstance.value = new p5((s) => {
-    overlaySketch.value = s;
-    s.setup = setupOverlay;
-    s.draw = drawOverlay;
-  }, container.value);
-
-  container.value!.addEventListener("pointerdown", onPointerDownForEmit);
-  container.value!.addEventListener("pointermove", onPointerMoveForEmit);
-  container.value!.addEventListener("pointerup", onPointerUpForEmit);
-  container.value!.addEventListener("pointercancel", onPointerUpForEmit);
-
-  const resizeObserver = new ResizeObserver(handleResize);
-  resizeObserver.observe(container.value!);
 });
 
+useResizeObserver(container, handleResize);
+
 onBeforeUnmount(() => {
-  container.value?.removeEventListener("pointerdown", onPointerDownForEmit);
-  container.value?.removeEventListener("pointermove", onPointerMoveForEmit);
-  container.value?.removeEventListener("pointerup", onPointerUpForEmit);
-  container.value?.removeEventListener("pointercancel", onPointerUpForEmit);
-  overlayInstance.value?.remove();
-  p5Instance.value?.remove();
+  sketch.value?.remove();
 });
 
 /** The vertical band between the insets, or the whole height when the insets leave no room. */
@@ -292,7 +187,7 @@ function moveToLocation(target: PageCoordinate, options: MoveToLocationOptions =
 }
 
 function fitZoom(page: number): void {
-  // Use container dimensions instead of s.width/s.height — p5's _renderer (which
+  // Use container dimensions instead of s.width/s.height: p5's _renderer (which
   // backs those getters) may not exist yet when fitZoom is called during setup.
   const w = container.value?.clientWidth ?? 0;
   const h = container.value?.clientHeight ?? 0;
@@ -306,21 +201,10 @@ function fitZoom(page: number): void {
   transform.value.zoom = Math.min(zoomByWidth, zoomByHeight);
 
   moveToLocation({ p: page, x: 0.5, y: 0.5 });
-  redrawAll();
+  redraw();
 }
 
-function zoomToPage(page: number): void {
-  fitZoom(page);
-}
-
-defineExpose({
-  redrawPages: redrawPages,
-  redrawOverlay: redrawOverlay,
-  redrawAll: redrawAll,
-  isLocationVisible: isLocationVisible,
-  moveToLocation: moveToLocation,
-  zoomToPage: zoomToPage,
-});
+defineExpose({ redraw, isLocationVisible, moveToLocation, zoomToPage: fitZoom });
 </script>
 
 <template>
@@ -330,13 +214,9 @@ defineExpose({
   >
     <div
       ref="container"
-      class="pdf-canvas-container ansolute size-full overflow-hidden"
+      class="absolute size-full overflow-hidden *:absolute *:inset-0 *:touch-none"
       aria-hidden="true"
-      :class="pannable ? (isGrabbing ? 'cursor-grabbing' : 'cursor-grab') : ''"
-      @mousedown="isGrabbing = true"
-      @mouseup="isGrabbing = false"
-      @mouseleave="isGrabbing = false"
-      @focusout="isGrabbing = false"
+      :class="pannable ? 'cursor-grab active:cursor-grabbing' : ''"
     />
 
     <slot
@@ -345,11 +225,3 @@ defineExpose({
     />
   </div>
 </template>
-
-<style scoped>
-.pdf-canvas-container > * {
-  position: absolute;
-  inset: 0;
-  touch-action: none;
-}
-</style>

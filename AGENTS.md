@@ -42,7 +42,7 @@ Before finishing a task, run `npm run lint:fix`, `npm run typecheck` and `npx vi
 |---|---|
 | `src/views/` | Routed pages |
 | `src/components/` | UI components in the folder of the area they appear in (`header/`, `show/`, `song/`, `player/`, `editor/`, `score/`), plus generic `base/` and `icons/` |
-| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useEditorSelection` holds the song editor's typed selection, `useMeasureEditor` drawing, placing and reviewing boxes (`provideSongEditor` sets up both), `useRecordingEditor` and `useSyncEditor` save recording and sync changes, `usePlayerSync` keeps the player in step with saved edits, `useSongHistory` binds undo and redo, `useTimelineAxis` is the timeline's shared zoom and scroll |
+| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useEditorSelection` holds the song editor's typed selection, `useMeasureEditor` drawing, placing and reviewing boxes (`provideSongEditor` sets up both), `useRecordingEditor` and `useSyncEditor` save recording and sync changes, `usePlayerSync` keeps the player in step with saved edits, `useSongHistory` binds undo and redo, `useTimelineAxis` is the timeline's shared zoom and scroll, `usePanZoom` the score's, `useConfirmDestructive` asks before destructive actions |
 | `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
 | `src/router/` | Routes and navigation guards |
 | `src/theme/` | The PrimeVue preset, the single place for the accent and surface palettes |
@@ -51,7 +51,7 @@ Before finishing a task, run `npm run lint:fix`, `npm run typecheck` and `npx vi
 | `src/core/player/` | Playback engine with MIDI and audio backends |
 | `src/core/midi/` | MIDI event types, beat map import and the `WarpMap` from timeline positions to recording time |
 | `src/core/pdf/` | PDF rendering in a Web Worker, automatic measure detection |
-| `src/core/utils/` | `Property`/`Emitter` events, song numbering, `Updater`, `ZoomLadder` and small helpers |
+| `src/core/utils/` | `Property`/`Emitter` events, song numbering, `Updater`, `ZoomLadder` and small helpers such as `lowerFirst()` |
 | `src/pocketbase/` | PocketBase client, auth, DB access |
 | `src/test/` | Shared unit test setup, fixtures and helpers |
 | `e2e/` | Playwright tests against a Dockerized backend, plus test data generators |
@@ -137,15 +137,20 @@ Rehearsers (viewers) only play songs back. Editors (editors and owners) also set
 | `pi-sparkles` | Automatic measure detection |
 | `pi-bookmark` | A marker |
 | `pi-map-marker` | A sync point |
-| `pi-trash` | Delete or remove |
+| `pi-trash` | Delete an object of the show or song (a song, a measure, a section, a marker, a sync point, a recording pass, boxes without a number) |
+| `pi-times` | Close, cancel, clear the selection, or take an item out of a list (a file, a track, a member, a shortcut, the cover) |
+| `pi-plus` | Create or add |
+| `pi-file-pdf`, `pi-sliders-h`, `pi-map`, `pi-volume-up` | A score PDF, a MIDI file, a beat map and an audio recording |
+| `pi-home` | The home page, where the app logo is not at hand (the 404 page) |
 | `pi-undo` | Undo, and mirrored (`-scale-x-100`) Redo |
 
 ### Conventions
 
 - Only components that know nothing about shows, songs or playback go into `base/`. A component shared by two areas lives with the one that owns the action.
+- Repeated UI is one component: a label next to its control is a `base/FieldRow`, a number stepper a `base/StepperInput`, and a delete action in the inspector a `RemoveButton`. Look for an existing one before writing markup that another file already has.
 - Use PrimeVue components styled with Tailwind utilities. For missing behaviour, prefer a library (vueuse, peaks.js) over hand-written pointer, scroll or drag handling.
 - Reorderable lists use `useSortable` from `@vueuse/integrations` with a drag handle. In `onUpdate`, undo Sortable's DOM move and change the model instead, so Vue keeps owning the DOM. Every drag handle needs a non-drag alternative (menu and arrow keys, see `SongDetailsForm`).
-- No `prompt()`/`confirm()`. Destructive confirmations use PrimeVue's `useConfirm()`, errors use `useNotify()` toasts.
+- No `prompt()`/`confirm()`. Destructive confirmations use `useConfirmDestructive()`, which wraps PrimeVue's `useConfirm()` and resolves whether the user went ahead. Errors use `useNotify()` toasts.
 - Dark mode is class-based (`.dark`), and Tailwind's `dark:` variant follows that class. Check every visual change in both modes. Canvases cannot read CSS variables, so they resolve colors through `useCanvasColors()`, which also tells them to redraw when the theme changes.
 - Every color is defined once, so a new theme or accent only swaps definitions. The accent (`primary`) and surface palettes come from the PrimeVue preset in `src/theme/preset.ts`. Every other color with a meaning (section kinds, sync points, review, boxes without a number, highlighted tracks, score chips, scrims, attention and danger text) is a semantic token in `src/main.css` with its `.dark` override next to it. Components use `primary`, `surface-*`, PrimeVue's tokens and component severities, or these tokens, never a Tailwind palette color or hex value. Tokens drawn on the score have no dark override, since the score page stays white.
 - Section and sync point colors come from `score/sectionColors.ts` and `editor/warp/syncColors.ts`, which map kinds to token classes and variables.

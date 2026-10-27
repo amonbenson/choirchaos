@@ -34,9 +34,6 @@ export function usePanZoom(
       didGesture = false;
     }
   }, { capture: true });
-
-  // ── Mouse ──────────────────────────────────────────────────────────────────
-
   let lastPos: { x: number; y: number } | undefined;
   let startPos: { x: number; y: number } | undefined;
   let movedBeyondTap = false;
@@ -102,9 +99,6 @@ export function usePanZoom(
     startPos = undefined;
     movedBeyondTap = false;
   });
-
-  // ── Wheel ──────────────────────────────────────────────────────────────────
-
   useEventListener(container, "wheel", (e: WheelEvent) => {
     e.preventDefault();
     const pos = containerPos(e.clientX, e.clientY);
@@ -119,8 +113,6 @@ export function usePanZoom(
 
     onRedraw();
   }, { passive: false });
-
-  // ── Touch ──────────────────────────────────────────────────────────────────
   // touch-action: none on the wrapper prevents browser scroll/zoom without
   // needing preventDefault here, which allows synthetic click events to fire
   // naturally on tapped HTML elements.

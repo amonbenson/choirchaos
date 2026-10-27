@@ -22,6 +22,8 @@ import {
 } from "@/core/models/warpEditing";
 import { usePlayerStore } from "@/stores/player";
 
+import RemoveButton from "./RemoveButton.vue";
+
 const props = defineProps<{
   song: Song;
   warpMarker: StoredWarpMarker;
@@ -212,13 +214,8 @@ defineExpose({ remove });
       </div>
     </div>
 
-    <Button
+    <RemoveButton
       label="Remove sync point"
-      icon="pi pi-trash"
-      severity="danger"
-      size="small"
-      class="self-start"
-      text
       :aria-label="`Remove sync point at ${place}`"
       @click="remove"
     />

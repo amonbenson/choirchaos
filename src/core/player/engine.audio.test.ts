@@ -137,16 +137,10 @@ describe("PlayerEngine – audio mode", () => {
     await ctx.close();
     vi.clearAllMocks();
   });
-
-  // ── status lifecycle ──────────────────────────────────────────────────────
-
   it("reaches ready status after load in audio mode", () => {
     expect(player.getStatus()).toBe("ready");
     expect(player.getMode()).toBe("audio");
   });
-
-  // ── timeline ──────────────────────────────────────────────────────────────
-
   it("times positions with the default warp spacing without markers", () => {
     expect(player.getTimeline().map(p => p.beatTicks[0])).toEqual([0, 2000, 4000, 6000]);
     expect(player.getFinalLocation()).toMatchObject({ position: 0, beat: 3 });
@@ -160,9 +154,6 @@ describe("PlayerEngine – audio mode", () => {
     expect(player.getLocationTick(locationOf(song, "2", 1, 3))).toBe(750 + 62.5);
     expect(player.getFinalLocation()).toEqual({ position: 6, measure: idOf(song, "4"), occurrence: 1, beat: 3 });
   });
-
-  // ── tempo ─────────────────────────────────────────────────────────────────
-
   it("takes the tempo from the beats between sync points", async () => {
     const song = makeAudioSong();
     vi.spyOn(song, "getWarpMarkers").mockReturnValue([
@@ -192,9 +183,6 @@ describe("PlayerEngine – audio mode", () => {
 
     expect(player.getCurrentTempo()).toBe(240);
   });
-
-  // ── position tracking ─────────────────────────────────────────────────────
-
   it("syncs position from audioPlayer.position (seconds → ticks/ms)", () => {
     player.play();
     stepAt(0.5);
@@ -220,16 +208,10 @@ describe("PlayerEngine – audio mode", () => {
 
     expect(player.getCurrentLocation()).toEqual({ position: 1, measure: idOf(song, "2"), occurrence: 1, beat: 2 });
   });
-
-  // ── seek ──────────────────────────────────────────────────────────────────
-
   it("seek delegates to audioPlayer.seek in seconds", () => {
     player.seek(500);
     expect(ap.seek).toHaveBeenCalledWith(0.5);
   });
-
-  // ── gain sync ─────────────────────────────────────────────────────────────
-
   it("propagates track gain changes to audioPlayer.setGain each step", () => {
     player.getCurrentSong()!.setTrackGain(0, 0.5);
     player.play();
@@ -237,9 +219,6 @@ describe("PlayerEngine – audio mode", () => {
 
     expect(ap.setGain).toHaveBeenCalledWith(0, 0.5);
   });
-
-  // ── end of song ───────────────────────────────────────────────────────────
-
   it("pauses when audioPlayer position reaches or exceeds duration", () => {
     player.play();
     stepAt(BUFFER_SECONDS + 0.1);
@@ -268,8 +247,6 @@ describe("PlayerEngine – audio mode", () => {
 
     expect(segueEmitted).toHaveBeenCalledOnce();
   });
-
-  // ── vamp recorded once ────────────────────────────────────────────────────
   // Vamp on measure "2" from 250 ms to 500 ms.
 
   describe("vamp recorded once", () => {
@@ -312,9 +289,6 @@ describe("PlayerEngine – audio mode", () => {
       expect(playThrough(3)).toEqual([0, 1, 1, 1, 2, 3]);
     });
   });
-
-  // ── baked passes ──────────────────────────────────────────────────────────
-
   describe("baked vamp", () => {
     // Measure "2" is recorded four times: positions 1 to 4, from 250 ms to 1250 ms.
 
@@ -354,9 +328,6 @@ describe("PlayerEngine – audio mode", () => {
     await reload(makeAudioSongWithCut());
     expect(playThrough()).toEqual([0, 3]);
   });
-
-  // ── syncWarp ──────────────────────────────────────────────────────────────
-
   it("syncWarp re-times the timeline without seeking", async () => {
     const song = makeAudioSongWithVamp();
     await reload(song);
@@ -397,8 +368,6 @@ describe("PlayerEngine – audio mode", () => {
 
     expect(player.getCurrentSection()).toBeUndefined();
   });
-
-  // ── vamp out ──────────────────────────────────────────────────────────────
   // Vamp on measures "2" and "3" (250 ms to 750 ms) until released. The barline inside is at 500 ms,
   // and beats are 62.5 ms apart.
 
@@ -455,8 +424,6 @@ describe("PlayerEngine – audio mode", () => {
 
     expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25, 0);
   });
-
-  // ── vamp vocals ───────────────────────────────────────────────────────────
   // Accompaniment is track 0 and Vocals track 1. The vamp on measure "2" (250 ms to 500 ms) is recorded
   // once, so its midpoint at 375 ms splits entering from exiting material. Where
   // muting changes at the midpoint, the engine stops a step there, so crossing it takes an extra step.

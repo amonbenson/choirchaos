@@ -9,10 +9,10 @@ import type { MenuItem } from "primevue/menuitem";
 import Message from "primevue/message";
 import Select from "primevue/select";
 import SelectButton from "primevue/selectbutton";
-import { useConfirm } from "primevue/useconfirm";
 import { computed, nextTick, reactive, ref, useTemplateRef, watch } from "vue";
 
 import FileSlot from "@/components/base/FileSlot.vue";
+import { useDeleteSong } from "@/composables/useDeleteSong";
 import { useNotify } from "@/composables/useNotify";
 import { RECORDING_FILE_ACCEPT } from "@/core/import/songImport";
 import type Show from "@/core/models/show";
@@ -32,7 +32,7 @@ const emit = defineEmits<{
   cancel: [];
 }>();
 
-const confirm = useConfirm();
+const deleteSongAfterAsking = useDeleteSong();
 const { notifyError } = useNotify();
 
 const PLAYBACK_OPTIONS: { label: string; value: PlaybackMode }[] = [
@@ -134,27 +134,11 @@ async function save(): Promise<void> {
   }
 }
 
-function deleteSong(): void {
+async function deleteSong(): Promise<void> {
   const song = props.song;
-  if (!song) {
-    return;
+  if (song && await deleteSongAfterAsking(props.show, song)) {
+    emit("deleted", song);
   }
-
-  confirm.require({
-    header: "Delete song",
-    message: `Song ${song.number} "${song.title}" will be deleted permanently, including its score and recordings.`,
-    icon: "pi pi-exclamation-triangle",
-    rejectProps: { label: "Cancel", severity: "secondary", text: true },
-    acceptProps: { label: "Delete song", severity: "danger" },
-    accept: async () => {
-      try {
-        await props.show.deleteSong(song);
-        emit("deleted", song);
-      } catch (error) {
-        notifyError("Could not delete the song", error);
-      }
-    },
-  });
 }
 </script>
 

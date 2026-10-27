@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import Button from "primevue/button";
 import Checkbox from "primevue/checkbox";
-import InputNumber from "primevue/inputnumber";
 import ProgressBar from "primevue/progressbar";
 import { computed } from "vue";
 
+import FieldRow from "@/components/base/FieldRow.vue";
+import StepperInput from "@/components/base/StepperInput.vue";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
 import { hasMeasureDetectionChanges } from "@/core/models/measureDetection";
@@ -150,25 +151,19 @@ async function apply(): Promise<void> {
           class="text-sm"
         >Add measures the song does not have yet</label>
       </div>
-      <div
+      <FieldRow
         v-if="createMissing"
-        class="flex items-center justify-between gap-2 pl-7"
+        v-slot="{ id }"
+        label="Beats per new measure"
+        class="pl-7"
       >
-        <label
-          for="detect-beats"
-          class="text-sm"
-        >Beats per new measure</label>
-        <InputNumber
+        <StepperInput
           v-model="beats"
-          input-id="detect-beats"
+          :input-id="id"
           :min="1"
           :max="32"
-          show-buttons
-          button-layout="horizontal"
-          size="small"
-          input-class="w-12 text-center"
         />
-      </div>
+      </FieldRow>
     </template>
     <span
       v-else

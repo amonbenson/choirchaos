@@ -3,6 +3,7 @@ import Button from "primevue/button";
 import InputText from "primevue/inputtext";
 import { computed } from "vue";
 
+import FieldRow from "@/components/base/FieldRow.vue";
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { useNotify } from "@/composables/useNotify";
 import { formatLocation, formatOrdinal } from "@/core/models/locationFormat";
@@ -10,6 +11,8 @@ import { type Marker, removeMarker, replaceMarker } from "@/core/models/markers"
 import type { Location } from "@/core/models/recording";
 import type Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
+
+import RemoveButton from "./RemoveButton.vue";
 
 const props = defineProps<{
   song: Song;
@@ -76,13 +79,13 @@ defineExpose({ remove });
 
 <template>
   <div class="flex flex-col gap-4">
-    <div class="flex items-center justify-between gap-4">
-      <label
-        for="marker-name"
-        class="text-sm"
-      >Name</label>
+    <FieldRow
+      v-slot="{ id }"
+      label="Name"
+      input-id="marker-name"
+    >
       <InputText
-        id="marker-name"
+        :id="id"
         :model-value="marker.text"
         class="w-40"
         size="small"
@@ -90,7 +93,7 @@ defineExpose({ remove });
         @keydown.enter="rename($event.target as HTMLInputElement)"
         @keydown.esc="($event.target as HTMLInputElement).value = marker.text"
       />
-    </div>
+    </FieldRow>
 
     <div class="flex flex-col gap-2">
       <dl class="m-0 flex items-center justify-between gap-4 text-sm">
@@ -109,13 +112,8 @@ defineExpose({ remove });
       />
     </div>
 
-    <Button
+    <RemoveButton
       label="Delete marker"
-      icon="pi pi-trash"
-      severity="danger"
-      size="small"
-      text
-      class="self-start"
       :aria-label="`Delete marker ${marker.text}`"
       @click="remove"
     />

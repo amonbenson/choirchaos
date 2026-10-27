@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import Button from "primevue/button";
 import Message from "primevue/message";
-import { useConfirm } from "primevue/useconfirm";
 import { computed, ref, watch } from "vue";
 
 import { SECTION_COLORS } from "@/components/score/sectionColors";
+import { useConfirmDestructive } from "@/composables/useConfirmDestructive";
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { useNotify } from "@/composables/useNotify";
 import type { RecordedPass } from "@/core/models/recording";
 import { formatSectionName } from "@/core/models/scoreOverlays";
 import { createSection, findSectionsAt, holdsRun, replaceSections, type Section, type SectionKind, toMeasureRange, validateSections } from "@/core/models/sections";
 import type Song from "@/core/models/song";
+import { lowerFirst } from "@/core/utils/text";
 
 import InspectorSection from "./InspectorSection.vue";
 
@@ -26,7 +27,7 @@ const props = defineProps<{
 }>();
 
 const selection = injectEditorSelection();
-const confirm = useConfirm();
+const confirmDestructive = useConfirmDestructive();
 const { notifyError } = useNotify();
 const error = ref<string>();
 
@@ -43,10 +44,6 @@ const holderName = computed(() => holder.value && formatSectionName(measures.val
 watch(() => [props.run.first, props.run.last], () => {
   error.value = undefined;
 });
-
-function lowerFirst(text: string): string {
-  return text.charAt(0).toLowerCase() + text.slice(1);
-}
 
 /** The new section list is checked as a whole, so an invalid change is explained instead of saved. */
 async function save(replaced: readonly Section[], created: Section): Promise<void> {
@@ -65,24 +62,19 @@ async function save(replaced: readonly Section[], created: Section): Promise<voi
   }
 }
 
-function create(kind: SectionKind): void {
+async function create(kind: SectionKind): Promise<void> {
   const { from, to } = toMeasureRange(measures.value, timeline.value, props.run);
   const created = createSection(kind, from, to);
   const replaced = matches.value;
-  if (replaced.length === 0) {
-    save([], created);
-    return;
-  }
-
   const names = replaced.map(section => lowerFirst(formatSectionName(measures.value, section))).join(" and ");
-  confirm.require({
+  const confirmed = replaced.length === 0 || await confirmDestructive({
     header: "Replace sections",
     message: `These measures overlap ${names}. Replace ${replaced.length === 1 ? "it" : "them"} with a ${kind}?`,
-    icon: "pi pi-exclamation-triangle",
-    rejectProps: { label: "Cancel", severity: "secondary", text: true },
-    acceptProps: { label: "Replace", severity: "danger" },
-    accept: () => save(replaced, created),
+    accept: "Replace",
   });
+  if (confirmed) {
+    await save(replaced, created);
+  }
 }
 </script>
 

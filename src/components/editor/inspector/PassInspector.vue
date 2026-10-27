@@ -4,10 +4,11 @@ import { computed, ref, watch } from "vue";
 
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { useRecordingEditor } from "@/composables/useRecordingEditor";
-import type { RecordingStretch } from "@/core/models/recording";
+import { findStretchAt, getRecordingStretches, moveSpan, type RecordingStretch, removeSpan } from "@/core/models/recording";
 import type Song from "@/core/models/song";
 
 import RecordingTextForm from "./RecordingTextForm.vue";
+import RemoveButton from "./RemoveButton.vue";
 
 const props = defineProps<{
   song: Song;
@@ -28,18 +29,22 @@ watch(() => props.index, () => {
   editingText.value = false;
 });
 
-/** Moves the pass and keeps it selected at its new place. */
-async function move(offset: number): Promise<void> {
-  const spans = [...props.song.getRecording()];
-  const [moved] = spans.splice(props.index, 1);
-  spans.splice(props.index + offset, 0, moved!);
-  if (await recording.setSpans(spans)) {
-    selection.select({ kind: "pass", index: props.index + offset });
+/**
+ * Swaps the pass with the one before (-1) or after (1) it and keeps it selected. A pass that then
+ * continues its new neighbour merges with it, so the selection follows the position it starts at.
+ */
+async function move(offset: -1 | 1): Promise<void> {
+  const measures = props.song.getMeasures();
+  const spans = props.song.getRecording();
+  const neighbour = getRecordingStretches(measures, spans)[props.index + offset]!;
+  const start = props.stretch.first + offset * (neighbour.last - neighbour.first + 1);
+  if (await recording.setSpans(moveSpan(measures, spans, props.index, offset))) {
+    selection.select({ kind: "pass", index: findStretchAt(getRecordingStretches(measures, props.song.getRecording()), start) });
   }
 }
 
 async function remove(): Promise<void> {
-  if (count.value > 1 && await recording.setSpans(props.song.getRecording().filter((_, i) => i !== props.index))) {
+  if (count.value > 1 && await recording.setSpans(removeSpan(props.song.getMeasures(), props.song.getRecording(), props.index))) {
     selection.clear();
   }
 }
@@ -86,13 +91,8 @@ defineExpose({ remove });
         @click="editingText = true"
       />
 
-      <Button
+      <RemoveButton
         label="Remove pass"
-        icon="pi pi-trash"
-        severity="danger"
-        size="small"
-        text
-        class="self-start"
         :disabled="count === 1 || saving"
         @click="remove"
       />

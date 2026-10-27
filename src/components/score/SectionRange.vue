@@ -9,11 +9,13 @@ import type { RecordedPass } from "@/core/models/recording";
 import { formatSectionName, getBarCenterOffset } from "@/core/models/scoreOverlays";
 import { findNearestPosition, replaceSections, type Section, validateSections, withRun } from "@/core/models/sections";
 import type Song from "@/core/models/song";
+import { lowerFirst } from "@/core/utils/text";
 
 import type { VisiblePage } from "./PdfViewer.vue";
 import ScoreBox from "./ScoreBox.vue";
 import ScorePage from "./ScorePage.vue";
 import { SECTION_COLORS } from "./sectionColors";
+import SectionRangeHandle from "./SectionRangeHandle.vue";
 
 const props = defineProps<{
   song: Song;
@@ -41,13 +43,12 @@ const shownRun = computed(() => dragged.value?.run ?? props.run);
 
 const handles = computed<RangeHandle[]>(() => {
   const name = formatSectionName(props.song.getMeasures(), props.section);
-  const subject = name.charAt(0).toLowerCase() + name.slice(1);
   return (["first", "last"] as const).flatMap((end) => {
     const position = end === "first" ? shownRun.value.first : shownRun.value.last;
     const entry = props.song.getTimeline()[position];
     const layout = entry && props.song.findMeasure(entry.measure)?.layout;
     const label = end === "first" ? "First" : "Last";
-    return entry && layout ? [{ end, position, layout, name: `${label} measure of ${subject}`, valueText: formatLocation(props.song, entry) }] : [];
+    return entry && layout ? [{ end, position, layout, name: `${label} measure of ${lowerFirst(name)}`, valueText: formatLocation(props.song, entry) }] : [];
   });
 });
 
@@ -70,39 +71,29 @@ function movedRun(run: RecordedPass, end: RangeEnd, position: number): RecordedP
   return end === "first" ? { first: position, last: run.last } : { first: run.first, last: position };
 }
 
-function measureUnder(event: PointerEvent): MeasureId | undefined {
-  return document.elementsFromPoint(event.clientX, event.clientY)
+function measureAt({ x, y }: { x: number; y: number }): MeasureId | undefined {
+  return document.elementsFromPoint(x, y)
     .map(element => element.closest<HTMLElement>("[data-measure]")?.dataset.measure)
     .find(id => id !== undefined);
 }
 
-function onPointerDown(event: PointerEvent, end: RangeEnd): void {
-  if (event.button !== 0) {
-    return;
-  }
-
-  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  dragged.value = { end, run: props.run };
-}
-
 /** The handle snaps to the box under the pointer, at the occurrence closest to where it started. */
-function onPointerMove(event: PointerEvent): void {
-  const drag = dragged.value;
-  const measure = drag && measureUnder(event);
-  if (!drag || !measure) {
+function onDrag(end: RangeEnd, point: { x: number; y: number }): void {
+  const measure = measureAt(point);
+  if (!measure) {
     return;
   }
 
   const timeline = props.song.getTimeline();
-  const position = drag.end === "first"
+  const position = end === "first"
     ? findNearestPosition(timeline, measure, props.run.first, 0, props.run.last)
     : findNearestPosition(timeline, measure, props.run.last, props.run.first, timeline.length - 1);
   if (position !== undefined) {
-    dragged.value = { ...drag, run: movedRun(props.run, drag.end, position) };
+    dragged.value = { end, run: movedRun(props.run, end, position) };
   }
 }
 
-async function onPointerUp(): Promise<void> {
+async function onDrop(): Promise<void> {
   const drag = dragged.value;
   dragged.value = undefined;
   if (drag) {
@@ -140,11 +131,13 @@ function onKeydown(event: KeyboardEvent, end: RangeEnd): void {
   }
 }
 
-const handleElements = new Map<RangeEnd, HTMLElement>();
+type Focusable = { focus: () => void; hasFocus: () => boolean };
 
-function setHandleElement(end: RangeEnd, element: Element | null): void {
-  if (element instanceof HTMLElement) {
-    handleElements.set(end, element);
+const handleElements = new Map<RangeEnd, Focusable>();
+
+function setHandleElement(end: RangeEnd, handle: Focusable | null): void {
+  if (handle) {
+    handleElements.set(end, handle);
   } else {
     handleElements.delete(end);
   }
@@ -167,7 +160,7 @@ async function moveSection(run: RecordedPass, end: RangeEnd): Promise<void> {
   }
 
   // The handle may land on another page, which renders it anew.
-  const hadFocus = document.activeElement === handleElements.get(end);
+  const hadFocus = handleElements.get(end)?.hasFocus() ?? false;
   try {
     await props.song.editLayers({ sections });
     editorSelection.select({ kind: "section", from: moved.from });
@@ -196,33 +189,24 @@ async function moveSection(run: RecordedPass, end: RangeEnd): Promise<void> {
       :class="SECTION_COLORS[section.kind].outline"
     />
 
-    <div
+    <SectionRangeHandle
       v-for="handle of onPage(handles, page, item => item.layout)"
       :key="handle.end"
-      :ref="element => setHandleElement(handle.end, element as Element | null)"
-      class="pointer-events-auto absolute flex h-6 w-5 -translate-1/2 cursor-ew-resize touch-none items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:outline-primary"
+      :ref="instance => setHandleElement(handle.end, instance as Focusable | null)"
       :style="handleStyle(handle)"
-      role="slider"
-      tabindex="0"
       :aria-label="handle.name"
-      aria-orientation="horizontal"
       :aria-valuemin="1"
       :aria-valuemax="song.getTimeline().length"
       :aria-valuenow="handle.position + 1"
       :aria-valuetext="handle.valueText"
-      @pointerdown.stop="onPointerDown($event, handle.end)"
-      @pointermove="onPointerMove"
-      @pointerup="onPointerUp"
-      @pointercancel="dragged = undefined"
-      @click.stop
-      @touchstart.stop
-      @touchmove.stop
+      @drag="onDrag(handle.end, $event)"
+      @drop="onDrop"
       @keydown="onKeydown($event, handle.end)"
     >
       <span
         class="pointer-events-none h-4 w-2 rounded-sm ring-2 ring-surface-0 dark:ring-surface-900"
         :class="SECTION_COLORS[section.kind].background"
       />
-    </div>
+    </SectionRangeHandle>
   </ScorePage>
 </template>

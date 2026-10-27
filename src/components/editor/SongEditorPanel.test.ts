@@ -14,7 +14,7 @@ import { selectMeasures } from "@/core/models/selection";
 import type Song from "@/core/models/song";
 import { dbUpdate } from "@/pocketbase/db";
 import { usePlayerStore } from "@/stores/player";
-import { idOf, locationOf, makeAudioSongWithRepeat, makeMidiSong, makeMidiSongWithRepeat } from "@/test/fixtures";
+import { idOf, locationOf, makeAudioSong, makeAudioSongWithRepeat, makeMidiSong, makeMidiSongWithRepeat } from "@/test/fixtures";
 
 import SongEditorPanel from "./SongEditorPanel.vue";
 
@@ -365,6 +365,20 @@ describe("SongEditorPanel", () => {
       await flushPromises();
 
       expect(mounted.song.getRecording()[0]).toEqual(spans[1]);
+      expect(mounted.selection.selection.value).toEqual({ kind: "pass", index: 0 });
+    });
+
+    it("selects the pass it merges with", async () => {
+      const mounted = mountPanel(makeAudioSong());
+      const id = (label: string): string => idOf(mounted.song, label);
+      await mounted.song.setRecordingSpans([{ from: id("1"), to: id("1") }, { from: id("3"), to: id("4") }, { from: id("2"), to: id("2") }]);
+      mounted.selection.select({ kind: "pass", index: 2 });
+      await flushPromises();
+
+      await button(mounted.wrapper, "Move earlier").trigger("click");
+      await flushPromises();
+
+      expect(mounted.song.getRecording()).toEqual([{ from: id("1"), to: id("4") }]);
       expect(mounted.selection.selection.value).toEqual({ kind: "pass", index: 0 });
     });
   });

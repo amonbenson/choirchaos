@@ -18,9 +18,6 @@ import { useSettingsStore } from "@/stores/settings";
 
 const visible = defineModel<boolean>({ default: false });
 const settings = useSettingsStore();
-
-// --- Appearance --------------------------------------------------------------
-
 const TRANSPORT_BUTTON_LABELS: Record<TransportButtonKey, string> = {
   measure: "Measure",
   transposition: "Transpose",
@@ -53,9 +50,6 @@ const transportButtons = computed({
     settings.update({ appearance: { transportButtonVisible: updated as any } });
   },
 });
-
-// --- Keyboard shortcuts ------------------------------------------------------
-
 const ACTION_LABELS: Record<ShortcutAction, string> = {
   playPause: "Play / Pause",
   previousMeasure: "Previous Measure",

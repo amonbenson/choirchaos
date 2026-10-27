@@ -30,8 +30,6 @@ function getPdfjsAssetUrl(directory: string): string {
   return new URL(`${directory}/`, pdfjsAssetsUrl).href;
 }
 
-// ── Message types (exported for use in pdfRenderer.ts) ───────────────────────
-
 // WorkerRequest is WorkerInMessage without the id field, defined as a proper
 // union so callers can pass variant-specific properties (e.g. `page`) without
 // TypeScript collapsing them via Omit<union, key>.
@@ -46,17 +44,11 @@ export type WorkerOutMessage
   = | { type: "loaded"; id: number; numPages: number }
     | { type: "rendered"; id: number; bitmap: ImageBitmap; bitmapLow: ImageBitmap }
     | { type: "error"; id: number; error: string };
-
-// ── Constants ────────────────────────────────────────────────────────────────
-
 const SCALE_HIGH = 2.0;
 const SCALE_LOW = 0.5;
 
 const RENDER_MAX_ATTEMPTS = 3;
 const RENDER_RETRY_DELAY_MS = 500;
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
 // createImageBitmap() is preferred over OffscreenCanvas.transferToImageBitmap()
 // for two reasons:
 //   1. It keeps pixel data in CPU memory and avoids GPU context-loss issues that
@@ -135,8 +127,6 @@ async function renderWithRetry(
   throw lastError;
 }
 
-// ── Document cache ───────────────────────────────────────────────────────────
-
 const docCache = new Map<string, Promise<PDFDocumentProxy>>();
 
 function getDoc(url: string): Promise<PDFDocumentProxy> {
@@ -155,8 +145,6 @@ function getDoc(url: string): Promise<PDFDocumentProxy> {
 
   return docCache.get(url)!;
 }
-
-// ── Message handler ──────────────────────────────────────────────────────────
 
 // DedicatedWorkerGlobalScope is in the "webworker" lib, which conflicts with the
 // project's "dom" lib. Define only what we need here instead.

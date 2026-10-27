@@ -3,7 +3,7 @@ import { createRubberBandNode } from "rubberband-web";
 
 import type { AudioChunk } from "./chunkDetector";
 
-// Processor is served from public/ — copied there by the postinstall script.
+// Processor is served from public/, where the postinstall script copies it.
 // BASE_URL handles deployments at subpaths correctly.
 const processorUrl = `${import.meta.env.BASE_URL}rubberband-processor.js`;
 
@@ -13,7 +13,7 @@ const ANALYSER_GAIN = Math.pow(10, 10 / 20);
 const ANALYSER_ATTACK = 0.9;
 const ANALYSER_RELEASE = 0.97;
 
-// Must match MIDI's AUDIO_CLOCK_OFFSET — visual position leads audio by the same margin.
+// Must match MIDI's AUDIO_CLOCK_OFFSET, so the visual position leads audio by the same margin.
 const AUDIO_LOOKAHEAD = 0.1;
 // Bridges render-quantum gaps: old sources fade out, new ones fade in over this window.
 const SEEK_CROSSFADE = 0.02;

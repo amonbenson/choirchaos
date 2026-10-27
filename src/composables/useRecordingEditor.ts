@@ -1,4 +1,3 @@
-import { useConfirm } from "primevue/useconfirm";
 import { type Ref, ref } from "vue";
 
 import type { DroppedReferences, RecordingPreview } from "@/core/models/layers";
@@ -7,7 +6,9 @@ import type { MeasureId } from "@/core/models/measure";
 import type { RecordingSpan } from "@/core/models/recording";
 import { formatSectionName } from "@/core/models/scoreOverlays";
 import type Song from "@/core/models/song";
+import { lowerFirst } from "@/core/utils/text";
 
+import { useConfirmDestructive } from "./useConfirmDestructive";
 import { useNotify } from "./useNotify";
 
 function formatMeasureCount(count: number): string {
@@ -20,10 +21,6 @@ export function describeLength(song: Song, preview: RecordingPreview): string {
   return preview.length === before
     ? `The recording keeps playing ${formatMeasureCount(before)}.`
     : `The recording will play ${formatMeasureCount(preview.length)} instead of ${before}.`;
-}
-
-function lowerFirst(text: string): string {
-  return text.charAt(0).toLowerCase() + text.slice(1);
 }
 
 /** The references a change would remove, named with the song as it is before the change, e.g. "the sync point at 20, 4th time". */
@@ -55,7 +52,7 @@ export type RecordingEditor = {
  * sync points, markers or sections is only saved once the user confirms it.
  */
 export function useRecordingEditor(getSong: () => Song): RecordingEditor {
-  const confirm = useConfirm();
+  const confirmDestructive = useConfirmDestructive();
   const { notifyError } = useNotify();
   const saving = ref(false);
   const status = ref("");
@@ -66,17 +63,10 @@ export function useRecordingEditor(getSong: () => Song): RecordingEditor {
       return Promise.resolve(true);
     }
 
-    return new Promise((resolve) => {
-      confirm.require({
-        header: "Change the recording",
-        message: `${describeLength(song, preview)} The new recording no longer plays some places that are referenced, so this removes ${dropped.join(", ")}.`,
-        icon: "pi pi-exclamation-triangle",
-        rejectProps: { label: "Cancel", severity: "secondary", text: true },
-        acceptProps: { label: "Change recording", severity: "danger" },
-        accept: () => resolve(true),
-        reject: () => resolve(false),
-        onHide: () => resolve(false),
-      });
+    return confirmDestructive({
+      header: "Change the recording",
+      message: `${describeLength(song, preview)} The new recording no longer plays some places that are referenced, so this removes ${dropped.join(", ")}.`,
+      accept: "Change recording",
     });
   }
 

@@ -7,9 +7,6 @@ import { DEFAULT_TRACK_MIXER, isDefaultTrackMixer, MixerSettings, type TrackMixe
 import { PlaybackSettings } from "./playback";
 import { ShortcutSettings } from "./shortcuts";
 import { PanelVisibleSettings, WorkspaceSettings } from "./workspace";
-
-// --- Root settings class -----------------------------------------------------
-
 class Settings extends SettingsBase {
   constructor(
     public readonly workspace: WorkspaceSettings = new WorkspaceSettings(),
@@ -21,20 +18,15 @@ class Settings extends SettingsBase {
     super();
   }
 }
-
-// --- Versioning --------------------------------------------------------------
 //
 // Increment SETTINGS_VERSION when making breaking changes to the Settings
 // shape. Stored settings from a different version are discarded entirely and
 // replaced with defaults.
 //
-// For additive changes (new fields with defaults), keep the version as-is —
+// For additive changes (new fields with defaults), keep the version as it is,
 // fromPartial fills in missing keys automatically.
 
 const SETTINGS_VERSION = 1;
-
-// --- Persistence -------------------------------------------------------------
-
 const STORAGE_KEY = "choirchaosSettings";
 
 function loadSettings(): Settings {
@@ -53,8 +45,6 @@ function loadSettings(): Settings {
 function saveSettings(settings: Settings): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: SETTINGS_VERSION, ...settings }));
 }
-
-// --- Store -------------------------------------------------------------------
 
 export const useSettingsStore = defineStore("settings", () => {
   const current: Ref<Settings> = ref(loadSettings());
@@ -105,9 +95,6 @@ export const useSettingsStore = defineStore("settings", () => {
     clear,
   };
 });
-
-// --- Re-exports for consumers ------------------------------------------------
-
 export { AppearanceSettings, type TransportButtonKey, TransportButtonSettings } from "./appearance";
 export type { DataOf, DeepPartial } from "./base";
 export { MixerSettings, type TrackMixerEntry } from "./mixer";

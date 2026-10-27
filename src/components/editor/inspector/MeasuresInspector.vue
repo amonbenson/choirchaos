@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import Button from "primevue/button";
-import { useConfirm } from "primevue/useconfirm";
 import { computed, useId } from "vue";
 
 import MeasureNumberForm from "@/components/editor/measures/MeasureNumberForm.vue";
+import { useConfirmDestructive } from "@/composables/useConfirmDestructive";
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
@@ -11,12 +11,14 @@ import { formatOrdinal, formatTimes } from "@/core/models/locationFormat";
 import type Measure from "@/core/models/measure";
 import { planDeleteMeasures, planRemoveBoxes } from "@/core/models/measureEditing";
 import type Song from "@/core/models/song";
+import { upperFirst } from "@/core/utils/text";
 import { usePlayerStore } from "@/stores/player";
 
 import MeasureMarkerForm from "./MeasureMarkerForm.vue";
 import MeasureRecordingForm from "./MeasureRecordingForm.vue";
 import MeasureSectionForm from "./MeasureSectionForm.vue";
 import MeasureSyncForm from "./MeasureSyncForm.vue";
+import RemoveButton from "./RemoveButton.vue";
 
 const props = defineProps<{
   song: Song;
@@ -28,7 +30,7 @@ const player = usePlayerStore();
 const editor = injectMeasureEditor();
 const { mode, saving } = editor;
 const { runs, run } = injectEditorSelection();
-const confirm = useConfirm();
+const confirmDestructive = useConfirmDestructive();
 const { notifyError } = useNotify();
 const passesId = useId();
 
@@ -46,28 +48,28 @@ const names = computed(() => {
 
 /** MIDI songs keep the measures of their beat map, so deleting only takes them off the score. */
 const deleteMessage = computed(() => {
-  const subject = names.value.charAt(0).toUpperCase() + names.value.slice(1);
+  const subject = upperFirst(names.value);
   return mode.value === "audio"
     ? `${subject} will be deleted from the song and the score, together with their markers, sections and sync points.`
     : `${subject} will be taken off the score. The beat map keeps playing them, so they stay in the song and show under "Not on the score", where they can be placed again.`;
 });
 
-function remove(): void {
+async function remove(): Promise<void> {
   const targets = [...props.measures];
-  confirm.require({
+  const confirmed = await confirmDestructive({
     header: targets.length === 1 ? "Delete measure" : "Delete measures",
     message: deleteMessage.value,
-    icon: "pi pi-exclamation-triangle",
-    rejectProps: { label: "Cancel", severity: "secondary", text: true },
-    acceptProps: { label: "Delete", severity: "danger" },
-    accept: async () => {
-      try {
-        await editor.apply(mode.value === "audio" ? planDeleteMeasures(targets) : planRemoveBoxes(targets));
-      } catch (error) {
-        notifyError("Could not delete the measures", error);
-      }
-    },
+    accept: "Delete",
   });
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await editor.apply(mode.value === "audio" ? planDeleteMeasures(targets) : planRemoveBoxes(targets));
+  } catch (error) {
+    notifyError("Could not delete the measures", error);
+  }
 }
 
 defineExpose({ remove });
@@ -130,13 +132,8 @@ defineExpose({ remove });
       class="text-sm text-muted-color"
     >Select measures that play one after another to repeat, vamp or cut them.</span>
 
-    <Button
+    <RemoveButton
       label="Delete"
-      icon="pi pi-trash"
-      severity="danger"
-      size="small"
-      text
-      class="self-start"
       :aria-label="`Delete ${names}`"
       :disabled="saving"
       @click="remove"
