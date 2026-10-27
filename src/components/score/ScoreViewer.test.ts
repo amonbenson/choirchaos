@@ -53,7 +53,7 @@ vi.mock("@/pocketbase/db", () => ({
 vi.mock("./PdfViewer.vue", () => ({
   default: {
     setup(_: unknown, { slots, expose }: SetupContext) {
-      expose({ redrawOverlay: () => {}, redrawAll: () => {}, zoomToPage: () => {}, isLocationVisible: () => true });
+      expose({ redraw: () => {}, zoomToPage: () => {}, isLocationVisible: () => true });
       return () => slots.default?.({ visiblePages: [{ pageNumber: 0, x: 0, y: 0, width: 1, height: 1 }] });
     },
   },

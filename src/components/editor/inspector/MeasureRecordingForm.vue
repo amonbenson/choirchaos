@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { useDebounceFn } from "@vueuse/core";
-import InputNumber from "primevue/inputnumber";
 import Select from "primevue/select";
 import { computed, ref, useId, watch } from "vue";
 
+import FieldRow from "@/components/base/FieldRow.vue";
+import StepperInput from "@/components/base/StepperInput.vue";
 import { useRecordingEditor } from "@/composables/useRecordingEditor";
 import { formatLocation, formatOccurrence } from "@/core/models/locationFormat";
 import type { MeasureId } from "@/core/models/measure";
@@ -22,7 +23,7 @@ const props = defineProps<{
 
 const editor = useRecordingEditor(() => props.song);
 const { saving, status } = editor;
-const ids = { count: useId(), countHint: useId(), jump: useId() };
+const countHintId = useId();
 
 const timeline = computed(() => props.song.getTimeline());
 const range = computed(() => ({ from: timeline.value[props.run.first]!, to: timeline.value[props.run.last]! }));
@@ -68,23 +69,18 @@ async function onJumpChange(to: MeasureId): Promise<void> {
 
 <template>
   <InspectorSection title="Recording">
-    <div class="flex items-center justify-between gap-2">
-      <label
-        :for="ids.count"
-        class="text-sm"
-      >Recorded</label>
+    <FieldRow
+      v-slot="{ id }"
+      label="Recorded"
+    >
       <div class="flex items-center gap-3">
-        <InputNumber
+        <StepperInput
           :model-value="count"
-          :input-id="ids.count"
+          :input-id="id"
           :min="1"
           :max="MAX_RECORDED_COUNT"
           :disabled="saving"
-          show-buttons
-          button-layout="horizontal"
-          size="small"
-          input-class="w-10 text-center"
-          :aria-describedby="ids.countHint"
+          :aria-describedby="countHintId"
           @update:model-value="onCountChange"
         />
         <span
@@ -92,17 +88,16 @@ async function onJumpChange(to: MeasureId): Promise<void> {
           aria-hidden="true"
         >{{ count === 1 ? "time" : "times" }}</span>
       </div>
-    </div>
+    </FieldRow>
     <span
-      :id="ids.countHint"
+      :id="countHintId"
       class="text-xs text-muted-color"
     >Raise this when the backing track itself plays these measures more than once in a row.</span>
 
-    <div class="flex items-center justify-between gap-2">
-      <span
-        :id="ids.jump"
-        class="text-sm"
-      >After {{ afterText }}, continue at</span>
+    <FieldRow
+      v-slot="{ id, labelId }"
+      :label="`After ${afterText}, continue at`"
+    >
       <Select
         :model-value="next?.measure"
         class="w-36 shrink-0"
@@ -114,14 +109,15 @@ async function onJumpChange(to: MeasureId): Promise<void> {
         filter
         auto-filter-focus
         :disabled="saving"
-        :aria-labelledby="ids.jump"
+        :label-id="id"
+        :aria-labelledby="labelId"
         @update:model-value="onJumpChange"
       >
         <template #value="{ value, placeholder }">
           {{ value === next?.measure && nextText ? nextText : value ? label(value) : placeholder }}
         </template>
       </Select>
-    </div>
+    </FieldRow>
 
     <span
       class="text-xs text-muted-color empty:hidden"

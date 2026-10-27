@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { useDebounceFn } from "@vueuse/core";
 import Button from "primevue/button";
-import InputNumber from "primevue/inputnumber";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import { computed, ref, watch } from "vue";
 
+import FieldRow from "@/components/base/FieldRow.vue";
+import StepperInput from "@/components/base/StepperInput.vue";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
 import type Measure from "@/core/models/measure";
@@ -174,21 +175,17 @@ function onBeatsChange(value: number | null): void {
       </div>
     </form>
 
-    <div class="flex items-center justify-between gap-4">
-      <label
-        for="measure-beats"
-        class="text-sm"
-      >Beats</label>
-      <InputNumber
+    <FieldRow
+      v-slot="{ id }"
+      label="Beats"
+      input-id="measure-beats"
+    >
+      <StepperInput
         v-if="mode === 'audio'"
         :model-value="beats"
-        input-id="measure-beats"
+        :input-id="id"
         :min="1"
         :max="32"
-        show-buttons
-        button-layout="horizontal"
-        size="small"
-        input-class="w-12 text-center"
         placeholder="Mixed"
         @update:model-value="onBeatsChange"
       />
@@ -196,6 +193,6 @@ function onBeatsChange(value: number | null): void {
         v-else
         class="text-sm text-muted-color"
       >{{ commonBeats ?? "Mixed" }}, from the beat map</span>
-    </div>
+    </FieldRow>
   </div>
 </template>

@@ -1,8 +1,20 @@
 import { computed, type ComputedRef, inject, type InjectionKey, provide, type Ref, ref, type ShallowRef, shallowRef, watch } from "vue";
 
+import type { MeasureId } from "@/core/models/measure";
 import type { RecordedPass } from "@/core/models/recording";
 import { findPosition } from "@/core/models/recording";
-import { findMeasureRuns, NO_SELECTION, pickRun, resolveSelection, type SelectedObjects, type Selection } from "@/core/models/selection";
+import {
+  findMeasureRuns,
+  getSelectableMeasures,
+  NO_SELECTION,
+  pickRun,
+  resolveSelection,
+  type SelectedObjects,
+  type Selection,
+  selectMeasureRange,
+  selectMeasures,
+  toggleMeasure,
+} from "@/core/models/selection";
 import type Song from "@/core/models/song";
 import { usePlayerStore } from "@/stores/player";
 
@@ -19,8 +31,26 @@ export type EditorSelection = {
   select: (next: Selection) => void;
   /** Selects an object and moves the playhead to where it starts, as a click on it in the timeline does. */
   selectAndSeek: (next: Selection) => void;
+  /** Selects a clicked measure alone, toggles it, or selects the range from the last one clicked. */
+  clickMeasure: (id: MeasureId, intent: ClickIntent) => void;
+  selectAllMeasures: () => void;
   clear: () => void;
 };
+
+export type ClickIntent = "select" | "toggle" | "range";
+
+/** On touch a long press starts multi-select, after which taps toggle. With a mouse, Ctrl/Cmd toggles and Shift selects a range. */
+export function getClickIntent(event: MouseEvent, pointerType: string, touchMultiSelect: boolean): ClickIntent {
+  if (pointerType !== "mouse") {
+    return touchMultiSelect ? "toggle" : "select";
+  }
+
+  if (event.shiftKey) {
+    return "range";
+  }
+
+  return event.ctrlKey || event.metaKey ? "toggle" : "select";
+}
 
 /**
  * The song editor's selection, shared by the score, the inspector and the timeline. It starts over
@@ -85,6 +115,19 @@ export function useEditorSelection(song: Ref<Song | undefined>, editMode: Ref<bo
     seekTo(selected.value);
   }
 
+  function clickMeasure(id: MeasureId, intent: ClickIntent): void {
+    const current = selection.value;
+    if (intent === "range") {
+      select(selectMeasureRange(song.value ? getSelectableMeasures(song.value) : [], current, id));
+    } else {
+      select(intent === "toggle" ? toggleMeasure(current, id) : selectMeasures([id]));
+    }
+  }
+
+  function selectAllMeasures(): void {
+    select(selectMeasures(song.value ? getSelectableMeasures(song.value).map(measure => measure.id) : []));
+  }
+
   function clear(): void {
     select(NO_SELECTION);
   }
@@ -92,7 +135,7 @@ export function useEditorSelection(song: Ref<Song | undefined>, editMode: Ref<bo
   watch(song, clear);
   watch(editMode, clear);
 
-  return { selection, selected, runs, run, touchMultiSelect, select, selectAndSeek, clear };
+  return { selection, selected, runs, run, touchMultiSelect, select, selectAndSeek, clickMeasure, selectAllMeasures, clear };
 }
 
 const EDITOR_SELECTION: InjectionKey<EditorSelection> = Symbol("editorSelection");

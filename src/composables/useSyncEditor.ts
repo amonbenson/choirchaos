@@ -1,4 +1,3 @@
-import { useConfirm } from "primevue/useconfirm";
 import { type ShallowRef, shallowRef } from "vue";
 
 import { formatLocation } from "@/core/models/locationFormat";
@@ -7,6 +6,7 @@ import type Song from "@/core/models/song";
 import { addWarpMarker, findWarpMarker, isSameOccurrence, moveWarpMarker, reassignWarpMarker, removeWarpMarker } from "@/core/models/warpEditing";
 import { usePlayerStore } from "@/stores/player";
 
+import { useConfirmDestructive } from "./useConfirmDestructive";
 import { useNotify } from "./useNotify";
 
 // Audio mode ticks are milliseconds, warp markers are stored in seconds.
@@ -33,7 +33,7 @@ export type SyncEditor = {
  */
 export function useSyncEditor(getSong: () => Song | undefined): SyncEditor {
   const player = usePlayerStore();
-  const confirm = useConfirm();
+  const confirmDestructive = useConfirmDestructive();
   const { notifyError } = useNotify();
   const pending = shallowRef<StoredWarpMarker>();
   let draining: Promise<void> | undefined;
@@ -100,17 +100,10 @@ export function useSyncEditor(getSong: () => Song | undefined): SyncEditor {
   }
 
   function confirmRemoval(song: Song, occurrence: Occurrence): Promise<boolean> {
-    return new Promise((resolve) => {
-      confirm.require({
-        header: "Remove sync point",
-        message: `Remove the sync point at ${formatLocation(song, occurrence)}? The measures around it will follow the neighbouring sync points.`,
-        icon: "pi pi-exclamation-triangle",
-        rejectProps: { label: "Cancel", severity: "secondary", text: true },
-        acceptProps: { label: "Remove", severity: "danger" },
-        accept: () => resolve(true),
-        reject: () => resolve(false),
-        onHide: () => resolve(false),
-      });
+    return confirmDestructive({
+      header: "Remove sync point",
+      message: `Remove the sync point at ${formatLocation(song, occurrence)}? The measures around it will follow the neighbouring sync points.`,
+      accept: "Remove",
     });
   }
 

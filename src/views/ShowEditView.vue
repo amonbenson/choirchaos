@@ -7,7 +7,6 @@ import Menu from "primevue/menu";
 import type { MenuItem } from "primevue/menuitem";
 import Panel from "primevue/panel";
 import ProgressSpinner from "primevue/progressspinner";
-import { useConfirm } from "primevue/useconfirm";
 import { computed, ref, useTemplateRef, watch } from "vue";
 import { type RouteLocationNamedRaw, useRouter } from "vue-router";
 
@@ -18,6 +17,7 @@ import ShareDialog from "@/components/show/ShareDialog.vue";
 import NewSongDialog from "@/components/song/NewSongDialog.vue";
 import SongImportDialog from "@/components/song/SongImportDialog.vue";
 import SongSetupStatus from "@/components/song/SongSetupStatus.vue";
+import { useDeleteSong } from "@/composables/useDeleteSong";
 import { useNotify } from "@/composables/useNotify";
 import { RECORDING_FILE_ACCEPT } from "@/core/import/songImport";
 import type Song from "@/core/models/song";
@@ -33,7 +33,7 @@ const props = defineProps<{
 const auth = useAuthStore();
 const showStore = useShowStore();
 const router = useRouter();
-const confirm = useConfirm();
+const deleteSong = useDeleteSong();
 const { notifyError } = useNotify();
 
 const VISIBILITY_SUMMARY = {
@@ -145,28 +145,11 @@ function continueSetup(song: Song): void {
   router.push({ ...songRoute(song, "song-edit"), query: next && isFileStep(next.id) ? { details: "1" } : {} });
 }
 
-function confirmDeleteSong(song: Song): void {
-  confirm.require({
-    header: "Delete song",
-    message: `Song ${song.number} "${song.title}" will be deleted permanently, including its score and recordings.`,
-    icon: "pi pi-exclamation-triangle",
-    rejectProps: { label: "Cancel", severity: "secondary", text: true },
-    acceptProps: { label: "Delete song", severity: "danger" },
-    accept: async () => {
-      try {
-        await show.value?.deleteSong(song);
-      } catch (error) {
-        notifyError("Could not delete the song", error);
-      }
-    },
-  });
-}
-
 function openSongMenu(event: Event, song: Song): void {
   songMenuItems.value = [
     { label: "Edit", icon: "pi pi-pencil", command: () => router.push(songRoute(song, "song-edit")) },
     { separator: true },
-    { label: "Delete song", icon: "pi pi-trash", command: () => confirmDeleteSong(song) },
+    { label: "Delete song", icon: "pi pi-trash", command: () => show.value && deleteSong(show.value, song) },
   ];
   songMenu.value.toggle(event);
 }

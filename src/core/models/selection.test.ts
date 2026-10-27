@@ -6,6 +6,7 @@ import { addMarker } from "./markers";
 import { createEmptyMeasureEdit } from "./measure";
 import {
   findMeasureRuns,
+  getSelectableMeasures,
   isBoxSelected,
   isSectionSelected,
   NO_SELECTION,
@@ -48,6 +49,17 @@ describe("selecting measures", () => {
       ids: ids(song, "1", "2", "3"),
       anchor: idOf(song, "3"),
     });
+  });
+
+  it("walks boxes in reading order, and every measure in score order without a score", () => {
+    const song = makeMidiSong();
+    song.getMeasures()[0]!.layout = { page: 1, x: 0.1, y: 0.1, width: 0.1, height: 0.1 };
+    song.getMeasures()[2]!.layout = undefined;
+
+    expect(getSelectableMeasures(song).map(measure => measure.label)).toEqual(["0", "1", "2", "3", "4"]);
+    song.pdfFile = "score.pdf";
+    expect(getSelectableMeasures(song).map(measure => measure.label)).toEqual(["1", "3", "4", "0"]);
+    expect(resolveSelection(song, selectMeasures(ids(song, "2")))).toEqual(NO_SELECTION);
   });
 
   it("starts over when another kind is selected", () => {

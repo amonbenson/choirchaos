@@ -90,4 +90,25 @@ test.describe("sections", () => {
     expect(sequenceOf(samples, "section").filter(section => section.startsWith("Repeat"))).toEqual(["Repeat 1/3", "Repeat 2/3", "Repeat 3/3"]);
     expect(errors).toEqual([]);
   });
+
+  test("a song without a score lists its measures, which select like boxes", async ({ page, admin, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const bundle = await buildSongBundle(MINIMAL, { mode: "audio", withPdf: false });
+    const song = await factory.createSong(owner, show, bundle);
+    await loginAs(owner);
+
+    await page.goto(`/show/${show.id}/song/${song.id}/edit`);
+    await waitForPlayer(page);
+    const panel = page.getByRole("region", { name: "Editor panel" });
+    const measures = page.getByRole("list", { name: "Measures" });
+
+    await select(page, "2", "3");
+    await expect(measures.getByRole("button", { name: "Measure 3" })).toHaveAttribute("aria-pressed", "true");
+    await expect(panel.getByRole("heading", { name: "Measures 2 to 3" })).toBeVisible();
+    await panel.getByRole("region", { name: "Section" }).getByRole("button", { name: "Vamp", exact: true }).click();
+
+    const vamp: SongSection = { kind: "vamp", from: locationAt(bundle.fields.score, "2"), to: locationAt(bundle.fields.score, "3", 3), out: "onEnd", vocals: "all" };
+    await expect.poll(() => storedSections(admin, song.id)).toEqual([vamp]);
+  });
 });

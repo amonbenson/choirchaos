@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import Button from "primevue/button";
 import { useTemplateRef } from "vue";
 
 import MeasureUnnumberedForm from "@/components/editor/measures/MeasureUnnumberedForm.vue";
@@ -7,6 +6,8 @@ import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
 import type { MeasureLayout } from "@/core/models/measure";
 import { planRemoveBoxes } from "@/core/models/measureEditing";
+
+import RemoveButton from "./RemoveButton.vue";
 
 const props = defineProps<{
   boxes: MeasureLayout[];
@@ -50,13 +51,8 @@ defineExpose({ remove, place });
     class="flex flex-col gap-3"
   >
     <span class="text-sm text-muted-color">The detector could not read the numbers of these boxes. Number them one at a time, or remove them.</span>
-    <Button
+    <RemoveButton
       label="Remove boxes"
-      icon="pi pi-trash"
-      severity="danger"
-      size="small"
-      text
-      class="self-start"
       :disabled="saving"
       @click="remove"
     />

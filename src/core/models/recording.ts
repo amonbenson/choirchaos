@@ -245,6 +245,24 @@ function normalizeSpans(measures: readonly Measure[], spans: readonly RecordingS
   return spansFromSequence(getIds(measures), getSequence(expandRecording(measures, spans)));
 }
 
+/** Moves the span at `index` by `offset` places. Spans that then continue each other merge. */
+export function moveSpan(measures: readonly Measure[], spans: readonly RecordingSpan[], index: number, offset: number): RecordingSpan[] {
+  const moved = [...spans];
+  const [span] = moved.splice(index, 1);
+  moved.splice(index + offset, 0, span!);
+  return normalizeSpans(measures, moved);
+}
+
+/** Removes the span at `index`. Its neighbours merge when they continue each other. */
+export function removeSpan(measures: readonly Measure[], spans: readonly RecordingSpan[], index: number): RecordingSpan[] {
+  return normalizeSpans(measures, spans.filter((_, i) => i !== index));
+}
+
+/** The index of the stretch that plays timeline position `position`. */
+export function findStretchAt(stretches: readonly RecordingStretch[], position: number): number {
+  return stretches.findIndex(stretch => stretch.first <= position && position <= stretch.last);
+}
+
 export const MAX_RECORDED_COUNT = 100;
 
 function isRecordedCount(count: number): boolean {

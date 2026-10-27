@@ -78,9 +78,6 @@ describe("PlayerEngine – MIDI mode", () => {
     await ctx.close();
     vi.clearAllMocks();
   });
-
-  // ── status lifecycle ──────────────────────────────────────────────────────
-
   it("reaches ready status after load", () => {
     expect(player.getStatus()).toBe("ready");
   });
@@ -124,9 +121,6 @@ describe("PlayerEngine – MIDI mode", () => {
     await expect(player.load(makeMidiSongWithBakedVamp())).rejects.toThrow("The beat map has 5 measures, but the recording plays 8.");
     expect(player.getStatus()).toBe("idle");
   });
-
-  // ── timeline ──────────────────────────────────────────────────────────────
-
   it("exposes the timed timeline and the final location", () => {
     const song = player.getCurrentSong()!;
     expect(player.getTimeline().map(p => p.beatTicks[0])).toEqual([0, 480, 2400, 4320, 6240]);
@@ -142,9 +136,6 @@ describe("PlayerEngine – MIDI mode", () => {
     expect(player.getLocationTick({ measure: idOf(song, "2"), occurrence: 1, beat: 2 })).toBe(TICKS.measure2 + 960);
     expect(player.getPositionTick(3)).toBe(TICKS.measure3);
   });
-
-  // ── seek ──────────────────────────────────────────────────────────────────
-
   it("seek to measure 2 sets the current location", () => {
     player.seek(TICKS.measure2 + 500);
     expect(player.getCurrentLocation()).toEqual({ position: 2, measure: idOf(player.getCurrentSong()!, "2"), occurrence: 1, beat: 1 });
@@ -164,9 +155,6 @@ describe("PlayerEngine – MIDI mode", () => {
   it("duration ends where the terminal measure starts", () => {
     expect(player.getDuration()).toBe(TICKS.duration);
   });
-
-  // ── note events ───────────────────────────────────────────────────────────
-
   it("emits note events for instrument track when stepping past tick 480", () => {
     const notes: NoteEvent[] = [];
     player.onNote(e => notes.push(e));
@@ -197,18 +185,12 @@ describe("PlayerEngine – MIDI mode", () => {
     player.seek(TICKS.measure2);
     expect(notes).toHaveLength(0);
   });
-
-  // ── tempo change ──────────────────────────────────────────────────────────
-
   it("updates currentTempo when a TEMPO event is stepped through", () => {
     expect(player.getCurrentTempo()).toBe(120);
     player.play();
     stepPast(updater, player, TICKS.measure3 + 10);
     expect(player.getCurrentTempo()).toBe(140);
   });
-
-  // ── playback controls ─────────────────────────────────────────────────────
-
   it("emits playingChanged true on play and false on pause", () => {
     const events: boolean[] = [];
     player.onPlayingChange(v => events.push(v));
@@ -239,9 +221,6 @@ describe("PlayerEngine – MIDI mode", () => {
     stepPast(updater, player, TICKS.duration);
     expect(positions).toEqual([0, 1, 2, 3, 4]);
   });
-
-  // ── vamp recorded once ────────────────────────────────────────────────────
-
   describe("vamp recorded once", () => {
     beforeEach(async () => {
       await reload(makeMidiSongWithVamp());
@@ -356,9 +335,6 @@ describe("PlayerEngine – MIDI mode", () => {
     expect(allNotes.filter(n => n.pitch === 65).length).toBeGreaterThan(0);
     expect(queuedPitches()).not.toContain(65);
   });
-
-  // ── baked vamp ────────────────────────────────────────────────────────────
-
   describe("baked vamp", () => {
     // Measure "2" is recorded four times, at positions 2 to 5.
 
@@ -467,9 +443,6 @@ describe("PlayerEngine – MIDI mode", () => {
       expect(queuedPitches()).toContain(67);
     });
   });
-
-  // ── repeat and cut ────────────────────────────────────────────────────────
-
   describe("repeat", () => {
     // Measures "2" and "3" are recorded three times, at positions 2 to 7.
 
@@ -515,9 +488,6 @@ describe("PlayerEngine – MIDI mode", () => {
 
     expect(positions).toEqual([0, 1, 4]);
   });
-
-  // ── segue ─────────────────────────────────────────────────────────────────
-
   it("emits segue when reaching the end with segue enabled", async () => {
     const song = makeMidiSong();
     vi.spyOn(song, "hasSegue").mockReturnValue(true);

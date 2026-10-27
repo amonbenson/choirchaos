@@ -10,11 +10,13 @@ import {
   findBackToBackPasses,
   findPosition,
   findRecordedPasses,
+  findStretchAt,
   findUnplayedMeasures,
   formatRecording,
   getRecordingStretches,
   type Location,
   mapPositions,
+  moveSpan,
   type Occurrence,
   type OccurrenceRange,
   parseRecording,
@@ -22,6 +24,7 @@ import {
   remapLocation,
   remapReferences,
   removeMeasureFromSpans,
+  removeSpan,
   serializeLocation,
   setJump,
   setRecordedCount,
@@ -331,6 +334,22 @@ describe("getRecordingStretches", () => {
       { span: { from: "2", to: "3" }, first: 3, last: 4, occurrence: 2, after: at("3") },
       { span: { from: "4", to: "6" }, first: 5, last: 7, occurrence: 1, after: at("3", 2) },
     ]);
+  });
+});
+
+describe("moving and removing spans", () => {
+  it("merges spans that continue each other afterwards", () => {
+    const recording = spans(["1", "1"], ["3", "4"], ["2", "2"]);
+
+    expect(moveSpan(SCORE.slice(0, 4), recording, 2, -1)).toEqual(spans(["1", "4"]));
+    expect(moveSpan(SCORE.slice(0, 4), recording, 0, 1)).toEqual(spans(["3", "4"], ["1", "2"]));
+    expect(removeSpan(SCORE, spans(["1", "2"], ["5", "5"], ["3", "4"]), 1)).toEqual(spans(["1", "4"]));
+  });
+
+  it("finds the stretch that plays a position", () => {
+    const stretches = getRecordingStretches(SCORE, spans(["1", "3"], ["2", "3"]));
+
+    expect([0, 2, 3, 4, 5].map(position => findStretchAt(stretches, position))).toEqual([0, 0, 1, 1, -1]);
   });
 });
 

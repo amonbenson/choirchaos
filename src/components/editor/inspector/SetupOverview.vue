@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import Button from "primevue/button";
-import InputNumber from "primevue/inputnumber";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Popover from "primevue/popover";
 import { computed, ref, useId } from "vue";
 
+import FieldRow from "@/components/base/FieldRow.vue";
+import StepperInput from "@/components/base/StepperInput.vue";
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
-import { findExistingLabels, getReadingOrder, getUnplacedRuns, type MeasureRun, planAddMeasures } from "@/core/models/measureEditing";
+import { findExistingLabels, getUnplacedRuns, type MeasureRun, planAddMeasures } from "@/core/models/measureEditing";
 import { parseLabelList } from "@/core/models/measureLabel";
-import { selectMeasures } from "@/core/models/selection";
 import type Song from "@/core/models/song";
 import { getSongSetup, isFileStep, type SetupStep } from "@/core/models/songSetup";
 
@@ -37,6 +37,8 @@ const setup = computed(() => getSongSetup(props.song));
 const placedCount = computed(() => measures.value.filter(measure => measure.layout).length);
 const unplacedRuns = computed(() => getUnplacedRuns(measures.value));
 const hasBoxes = computed(() => placedCount.value > 0 || unnumberedBoxes.value.length > 0);
+/** Without a score the measures are listed in its place, where they are selected like boxes. */
+const listsMeasures = computed(() => !props.song.pdfFile && measures.value.length > 0);
 /** Measures are drawn on the score. Only audio songs without one add them by number. */
 const addsByNumber = computed(() => !props.song.pdfFile && mode.value === "audio");
 const nextFileStep = computed(() => setup.value.next && isFileStep(setup.value.next.id) ? setup.value.next : undefined);
@@ -75,10 +77,6 @@ function addMeasuresClicked(event: Event): void {
 
   newMeasures.value = "";
   addPopover.value.toggle(event);
-}
-
-function selectAll(): void {
-  selection.select(selectMeasures(getReadingOrder(measures.value).map(measure => measure.id)));
 }
 
 async function addMeasures(): Promise<void> {
@@ -167,20 +165,20 @@ async function addMeasures(): Promise<void> {
         @click="editor.detection.start()"
       />
       <Button
-        v-if="hasBoxes"
+        v-if="hasBoxes || listsMeasures"
         label="Select all"
         class="mouse:hidden"
         severity="secondary"
         size="small"
         text
-        @click="selectAll"
+        @click="selection.selectAllMeasures()"
       />
     </div>
 
     <span
-      v-if="hasBoxes"
+      v-if="hasBoxes || listsMeasures"
       class="text-sm text-muted-color"
-    >Click a measure on the score to edit it, ctrl-click to add more and shift-click to select a range. Drag to move the score.</span>
+    >Click a measure {{ listsMeasures ? "in the list" : "on the score" }} to edit it, ctrl-click to add more and shift-click to select a range.<template v-if="!listsMeasures"> Drag to move the score.</template></span>
     <span
       v-else-if="measures.length === 0 && addsByNumber"
       class="text-sm"
@@ -256,22 +254,17 @@ async function addMeasures(): Promise<void> {
             class="text-xs text-muted-color"
           >Single numbers like 4 or 4a, ranges like 1..32, separated by commas.</span>
         </div>
-        <div class="flex items-center justify-between gap-2">
-          <label
-            for="new-measure-beats"
-            class="text-sm font-medium"
-          >Beats per measure</label>
-          <InputNumber
+        <FieldRow
+          v-slot="{ id }"
+          label="Beats per measure"
+        >
+          <StepperInput
             v-model="newMeasureBeats"
-            input-id="new-measure-beats"
+            :input-id="id"
             :min="1"
             :max="32"
-            show-buttons
-            button-layout="horizontal"
-            size="small"
-            input-class="w-12 text-center"
           />
-        </div>
+        </FieldRow>
         <Button
           type="submit"
           :label="parsedNewMeasures ? `Add ${parsedNewMeasures.length} ${parsedNewMeasures.length === 1 ? 'measure' : 'measures'}` : 'Add measures'"

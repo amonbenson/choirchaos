@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import Button from "primevue/button";
-import InputNumber from "primevue/inputnumber";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import { computed, ref, watch } from "vue";
 
+import StepperInput from "@/components/base/StepperInput.vue";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
 import type { MeasureLayout } from "@/core/models/measure";
@@ -73,15 +73,11 @@ function cancel(): void {
         for="new-box-count"
         class="text-sm"
       >How many measures</label>
-      <InputNumber
+      <StepperInput
         v-model="pendingCount"
         input-id="new-box-count"
         :min="1"
         :max="64"
-        show-buttons
-        button-layout="horizontal"
-        size="small"
-        input-class="w-12 text-center"
         :allow-empty="false"
         autofocus
       />
@@ -103,15 +99,11 @@ function cancel(): void {
           for="new-box-beats"
           class="text-sm"
         >Beats</label>
-        <InputNumber
+        <StepperInput
           v-model="beats"
           input-id="new-box-beats"
           :min="1"
           :max="32"
-          show-buttons
-          button-layout="horizontal"
-          size="small"
-          input-class="w-12 text-center"
           :allow-empty="false"
         />
       </template>

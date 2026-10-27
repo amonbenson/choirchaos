@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { useDebounceFn } from "@vueuse/core";
-import Button from "primevue/button";
-import InputNumber from "primevue/inputnumber";
 import Message from "primevue/message";
 import Select from "primevue/select";
 import SelectButton from "primevue/selectbutton";
-import { useConfirm } from "primevue/useconfirm";
 import { computed, ref, useId, watch } from "vue";
 
+import FieldRow from "@/components/base/FieldRow.vue";
+import StepperInput from "@/components/base/StepperInput.vue";
+import { useConfirmDestructive } from "@/composables/useConfirmDestructive";
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { useNotify } from "@/composables/useNotify";
 import { formatSectionName } from "@/core/models/scoreOverlays";
@@ -23,6 +23,9 @@ import {
   withRun,
 } from "@/core/models/sections";
 import type Song from "@/core/models/song";
+import { lowerFirst } from "@/core/utils/text";
+
+import RemoveButton from "./RemoveButton.vue";
 
 const KIND_OPTIONS: { value: SectionKind; label: string }[] = [
   { value: "repeat", label: "Repeat" },
@@ -53,8 +56,8 @@ const props = defineProps<{
 
 const selection = injectEditorSelection();
 const { notifyError } = useNotify();
-const confirm = useConfirm();
-const ids = { passes: useId(), out: useId(), vocals: useId(), error: useId() };
+const confirmDestructive = useConfirmDestructive();
+const errorId = useId();
 
 const measures = computed(() => props.song.getMeasures());
 const timeline = computed(() => props.song.getTimeline());
@@ -110,16 +113,15 @@ function onPassesChange(value: number | null): void {
   }
 }
 
-function remove(): void {
-  const subject = name.value.charAt(0).toLowerCase() + name.value.slice(1);
-  confirm.require({
+async function remove(): Promise<void> {
+  const confirmed = await confirmDestructive({
     header: "Remove section",
-    message: `Remove ${subject}? These measures will play as recorded.`,
-    icon: "pi pi-exclamation-triangle",
-    rejectProps: { label: "Cancel", severity: "secondary", text: true },
-    acceptProps: { label: "Remove", severity: "danger" },
-    accept: () => replace(undefined),
+    message: `Remove ${lowerFirst(name.value)}? These measures will play as recorded.`,
+    accept: "Remove",
   });
+  if (confirmed) {
+    await replace(undefined);
+  }
 }
 
 defineExpose({ remove });
@@ -140,67 +142,60 @@ defineExpose({ remove });
       @update:model-value="changeKind"
     />
 
-    <div
+    <FieldRow
       v-if="section.kind === 'repeat'"
-      class="flex items-center justify-between gap-2"
+      v-slot="{ id }"
+      label="Passes"
     >
-      <label
-        :for="ids.passes"
-        class="text-sm"
-      >Passes</label>
-      <InputNumber
+      <StepperInput
         :model-value="passes"
-        :input-id="ids.passes"
+        :input-id="id"
         :min="1"
         :max="99"
-        show-buttons
-        button-layout="horizontal"
-        size="small"
-        input-class="w-10 text-center"
         :invalid="!!error"
-        :aria-describedby="error ? ids.error : undefined"
+        :aria-describedby="error ? errorId : undefined"
         @update:model-value="onPassesChange"
       />
-    </div>
+    </FieldRow>
 
     <template v-if="section.kind === 'vamp'">
-      <div class="flex items-center justify-between gap-2">
-        <span
-          :id="ids.out"
-          class="text-sm"
-        >Out</span>
+      <FieldRow
+        v-slot="{ id, labelId }"
+        label="Out"
+      >
         <Select
           :model-value="section.out"
+          :label-id="id"
           class="w-48"
           size="small"
           :options="OUT_OPTIONS"
           option-label="label"
           option-value="value"
-          :aria-labelledby="ids.out"
+          :aria-labelledby="labelId"
           @update:model-value="update({ out: $event })"
         />
-      </div>
-      <div class="flex items-center justify-between gap-2">
-        <span
-          :id="ids.vocals"
-          class="text-sm"
-        >Vocals</span>
+      </FieldRow>
+      <FieldRow
+        v-slot="{ id, labelId }"
+        label="Vocals"
+      >
         <Select
           :model-value="section.vocals"
+          :label-id="id"
           class="w-48"
           size="small"
           :options="VOCALS_OPTIONS"
           option-label="label"
           option-value="value"
-          :aria-labelledby="ids.vocals"
+          :aria-labelledby="labelId"
           @update:model-value="update({ vocals: $event })"
         />
-      </div>
+      </FieldRow>
     </template>
 
     <Message
       v-if="error"
-      :id="ids.error"
+      :id="errorId"
       severity="error"
       size="small"
       variant="simple"
@@ -210,13 +205,8 @@ defineExpose({ remove });
 
     <span class="text-xs text-muted-color">Drag the handles at the ends of the section on the score to change its range.</span>
 
-    <Button
+    <RemoveButton
       label="Remove section"
-      icon="pi pi-trash"
-      severity="danger"
-      size="small"
-      text
-      class="self-start"
       @click="remove"
     />
   </div>

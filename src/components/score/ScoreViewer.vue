@@ -2,13 +2,13 @@
 import { onLongPress, useEventListener } from "@vueuse/core";
 import { computed, ref, shallowRef, watch } from "vue";
 
-import { injectEditorSelection } from "@/composables/useEditorSelection";
+import { type ClickIntent, getClickIntent, injectEditorSelection } from "@/composables/useEditorSelection";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
 import { formatTimes } from "@/core/models/locationFormat";
 import type { Marker } from "@/core/models/markers";
 import Measure, { type MeasureId, type MeasureLayout, needsReview } from "@/core/models/measure";
-import { type BoxEdge, getReadingOrder, planLayouts, resizeBox } from "@/core/models/measureEditing";
+import { type BoxEdge, planLayouts, resizeBox } from "@/core/models/measureEditing";
 import { countOccurrences } from "@/core/models/recording";
 import {
   type BoxOverlays,
@@ -23,7 +23,6 @@ import {
   isBoxSelected,
   isMeasureSelected,
   isSectionSelected,
-  selectMeasureRange,
   selectMeasures,
   toggleBox,
   toggleMeasure,
@@ -171,10 +170,6 @@ const playingBox = computed<PlayingBox | undefined>(() => {
   return { progress, occurrence: repeated ? formatTimes(location.occurrence) : undefined };
 });
 
-watch(() => player.position, () => {
-  pdfViewer.value?.redrawOverlay();
-});
-
 // Arrangement
 
 const playingSection = computed(() => player.ready ? player.currentSection : undefined);
@@ -237,12 +232,7 @@ function selectObject(object: { section: Section } | { marker: Marker }): void {
 watch(() => props.song, () => {
   if (props.song) {
     pdfViewer.value?.zoomToPage(0);
-    pdfViewer.value?.redrawAll();
   }
-});
-
-watch(highlightedTracks, () => {
-  pdfViewer.value?.redrawOverlay();
 });
 
 // Keeping boxes in view
@@ -317,7 +307,7 @@ function scrollToLayout(layout: MeasureLayout): void {
     );
   }
 
-  pdfViewer.value.redrawAll();
+  pdfViewer.value.redraw();
 }
 
 // Keys
@@ -338,7 +328,7 @@ useEventListener("keydown", (event: KeyboardEvent) => {
 
   if (isSelectAll(event) && !previewing.value) {
     event.preventDefault();
-    editorSelection.select(selectMeasures(getReadingOrder(editor.measures.value).map(measure => measure.id)));
+    editorSelection.selectAllMeasures();
   } else if (event.key === "Escape") {
     stepBack();
   }
@@ -359,8 +349,6 @@ function stepBack(): void {
 // A drag pans the score, and the viewer swallows the click that ends it, so only real clicks get here.
 // Clicks on boxes stop at the box, so the overlay only gets clicks on empty space.
 
-type ClickIntent = "select" | "toggle" | "range";
-
 let lastPointerType: string = "mouse";
 let suppressNextClick = false;
 
@@ -368,17 +356,8 @@ function rememberPointerType(event: PointerEvent): void {
   lastPointerType = event.pointerType;
 }
 
-/** On touch a long press starts multi-select, after which taps toggle. With a mouse, Ctrl/Cmd toggles and Shift selects a range. */
-function getClickIntent(event: MouseEvent): ClickIntent {
-  if (lastPointerType !== "mouse") {
-    return touchMultiSelect.value ? "toggle" : "select";
-  }
-
-  if (event.shiftKey) {
-    return "range";
-  }
-
-  return event.ctrlKey || event.metaKey ? "toggle" : "select";
+function getIntent(event: MouseEvent): ClickIntent {
+  return getClickIntent(event, lastPointerType, touchMultiSelect.value);
 }
 
 /** A repeated measure is always entered at its first pass. Other passes are reached through the inspector or the timeline. */
@@ -399,14 +378,7 @@ function onBoxClick(event: MouseEvent, measure: Measure): void {
   }
 
   lastClicked = { measureId: measure.id };
-  const intent = getClickIntent(event);
-  if (intent === "range") {
-    editorSelection.select(selectMeasureRange(editor.measures.value, selection.value, measure.id));
-  } else if (intent === "toggle") {
-    editorSelection.select(toggleMeasure(selection.value, measure.id));
-  } else {
-    editorSelection.select(selectMeasures([measure.id]));
-  }
+  editorSelection.clickMeasure(measure.id, getIntent(event));
 
   if (isMeasureSelected(selection.value, measure.id)) {
     seekMeasure(measure);
@@ -420,7 +392,7 @@ function onUnnumberedClick(event: MouseEvent, box: MeasureLayout): void {
   }
 
   lastClicked = { box };
-  editorSelection.select(getClickIntent(event) === "select" ? { kind: "boxes", boxes: [box] } : toggleBox(selection.value, box));
+  editorSelection.select(getIntent(event) === "select" ? { kind: "boxes", boxes: [box] } : toggleBox(selection.value, box));
 }
 
 /** A click on empty space clears the selection, unless a modifier asks to add to it. */

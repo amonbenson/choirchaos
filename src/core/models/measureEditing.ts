@@ -120,18 +120,6 @@ export function getReadingOrder(measures: readonly Measure[]): Measure[] {
   return sortInReadingOrder(measures, measure => measure.layout);
 }
 
-/** All placed measures from one to the other in reading order, both included. */
-export function getMeasuresBetween(measures: readonly Measure[], from: MeasureId, to: MeasureId): Measure[] {
-  const ordered = getReadingOrder(measures);
-  const a = ordered.findIndex(measure => measure.id === from);
-  const b = ordered.findIndex(measure => measure.id === to);
-  if (a === -1 || b === -1) {
-    return [];
-  }
-
-  return ordered.slice(Math.min(a, b), Math.max(a, b) + 1);
-}
-
 function getNeighbours(
   measures: readonly Measure[],
   layout: MeasureLayout,
