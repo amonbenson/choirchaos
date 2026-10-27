@@ -9,10 +9,8 @@ export type MarkerColors = {
 const LABEL_FONT_SIZE = 11;
 const LABEL_PADDING = 4;
 const LINE_WIDTH = 2;
-// Wider than the visible line so markers are easy to grab with a mouse or a finger.
-const HIT_WIDTH = 14;
 
-/** A vertical line with a label chip at the top, drawn in the theme's colors. */
+/** A vertical line with a label chip at the top, drawn in the theme's colors. The timeline handles the pointer. */
 class LabelledPointMarker implements PointMarker {
   private line?: Konva.Line;
   private label?: Konva.Label;
@@ -29,7 +27,6 @@ class LabelledPointMarker implements PointMarker {
       points: this.getLinePoints(),
       stroke: this.colors.background,
       strokeWidth: LINE_WIDTH,
-      hitStrokeWidth: HIT_WIDTH,
     });
 
     this.tag = new Konva.Tag({ fill: this.colors.background, cornerRadius: 4 });
@@ -48,11 +45,6 @@ class LabelledPointMarker implements PointMarker {
 
     konvaGroup.add(this.line);
     konvaGroup.add(this.label);
-
-    if (this.options.draggable) {
-      konvaGroup.on("mouseenter", () => this.setCursor("ew-resize"));
-      konvaGroup.on("mouseleave", () => this.setCursor(""));
-    }
   }
 
   public fitToView(): void {
@@ -66,9 +58,7 @@ class LabelledPointMarker implements PointMarker {
     }
   }
 
-  public destroy(): void {
-    this.setCursor("");
-  }
+  public destroy(): void {}
 
   private getLinePoints(): number[] {
     return [0, 0, 0, this.options.layer.getHeight()];
@@ -76,13 +66,6 @@ class LabelledPointMarker implements PointMarker {
 
   private centerLabel(): void {
     this.label?.offsetX(Math.round((this.label.width() ?? 0) / 2));
-  }
-
-  private setCursor(cursor: string): void {
-    const container = this.line?.getStage()?.container();
-    if (container) {
-      container.style.cursor = cursor;
-    }
   }
 }
 
