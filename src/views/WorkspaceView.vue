@@ -19,6 +19,8 @@ import ScoreViewer from "@/components/score/ScoreViewer.vue";
 import SongDetailsDialog from "@/components/song/SongDetailsDialog.vue";
 import { type ShortcutAction, useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
 import { provideMeasureEditor, useMeasureEditor } from "@/composables/useMeasureEditor";
+import { usePlayerSync } from "@/composables/usePlayerSync";
+import { useSongHistory } from "@/composables/useSongHistory";
 import { formatSectionPass } from "@/core/models/scoreOverlays";
 import type Song from "@/core/models/song";
 import { hasUnsyncedAudio } from "@/core/models/songSetup";
@@ -55,6 +57,8 @@ const isTimelineOpen = computed(() => showTimeline.value && settings.current.wor
 const showSyncNotice = computed(() => !!song.value && hasUnsyncedAudio(song.value) && !isTimelineOpen.value);
 
 provideMeasureEditor(useMeasureEditor(song, editMode));
+usePlayerSync(song);
+const history = useSongHistory(song, editMode);
 
 // Rehearsers have nothing to do with an empty markers panel. Below lg the song editor's panel is a bottom sheet
 // over the score and the timeline, which gets a tab of its own since it needs the width.
@@ -388,6 +392,7 @@ const pdfLoading = ref(false);
           class="pointer-events-auto absolute inset-x-0 bottom-0 max-h-1/2 min-h-0 lg:inset-0 lg:max-h-none"
           :class="isStartPanelOpen ? 'lg:opacity-100' : 'lg:pointer-events-none lg:opacity-0'"
           :song="song"
+          :history="history"
           @open-details="openSongDetails"
         />
         <MarkerPanel

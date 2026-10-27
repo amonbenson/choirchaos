@@ -4,7 +4,7 @@ import { type ShallowRef, shallowRef } from "vue";
 import { formatLocation } from "@/core/models/locationFormat";
 import type { Occurrence, StoredWarpMarker } from "@/core/models/recording";
 import type Song from "@/core/models/song";
-import { findWarpMarker, isSameOccurrence } from "@/core/models/warpEditing";
+import { addWarpMarker, findWarpMarker, isSameOccurrence, moveWarpMarker, reassignWarpMarker, removeWarpMarker } from "@/core/models/warpEditing";
 import { usePlayerStore } from "@/stores/player";
 
 import { useNotify } from "./useNotify";
@@ -28,8 +28,8 @@ export type SyncEditor = {
 };
 
 /**
- * Saves sync point changes the same way from the timeline and the inspector, and re-times the player
- * after each one. At most one save runs at a time, so nudges never arrive out of order.
+ * Saves sync point changes the same way from the timeline and the inspector. At most one save runs at a
+ * time, so nudges never arrive out of order.
  */
 export function useSyncEditor(getSong: () => Song | undefined): SyncEditor {
   const player = usePlayerStore();
@@ -55,15 +55,14 @@ export function useSyncEditor(getSong: () => Song | undefined): SyncEditor {
     return findWarpMarker(getSong()?.getWarpMarkers() ?? [], occurrence)?.time;
   }
 
-  async function run(action: (song: Song) => Promise<void>, failure: string): Promise<void> {
+  async function run(change: (song: Song) => readonly StoredWarpMarker[], failure: string): Promise<void> {
     const song = getSong();
     if (!song) {
       return;
     }
 
     try {
-      await action(song);
-      player.syncWarp();
+      await song.editLayers({ warpMarkers: change(song) });
     } catch (error) {
       notifyError(failure, error);
     }
@@ -72,7 +71,7 @@ export function useSyncEditor(getSong: () => Song | undefined): SyncEditor {
   async function drain(): Promise<void> {
     while (pending.value) {
       const move = pending.value;
-      await run(song => song.moveWarpMarker(move, move.time), "Could not move the sync point");
+      await run(song => moveWarpMarker(song.getWarpMarkers(), move, move.time), "Could not move the sync point");
       if (pending.value === move) {
         pending.value = undefined;
       }
@@ -88,7 +87,7 @@ export function useSyncEditor(getSong: () => Song | undefined): SyncEditor {
   }
 
   function add(occurrence: Occurrence, time: number): Promise<void> {
-    return run(song => song.addWarpMarker({ measure: occurrence.measure, occurrence: occurrence.occurrence, time }), "Could not add the sync point");
+    return run(song => addWarpMarker(song.getTimeline(), song.getWarpMarkers(), { measure: occurrence.measure, occurrence: occurrence.occurrence, time }), "Could not add the sync point");
   }
 
   function syncToPlayhead(occurrence: Occurrence): Promise<void> {
@@ -97,7 +96,7 @@ export function useSyncEditor(getSong: () => Song | undefined): SyncEditor {
   }
 
   function reassign(from: Occurrence, to: Occurrence): Promise<void> {
-    return run(song => song.reassignWarpMarker(from, to), "Could not move the sync point to another measure");
+    return run(song => reassignWarpMarker(song.getTimeline(), song.getWarpMarkers(), from, to), "Could not move the sync point to another measure");
   }
 
   function confirmRemoval(song: Song, occurrence: Occurrence): Promise<boolean> {
@@ -122,7 +121,7 @@ export function useSyncEditor(getSong: () => Song | undefined): SyncEditor {
     }
 
     await draining;
-    await run(target => target.removeWarpMarker(occurrence), "Could not remove the sync point");
+    await run(target => removeWarpMarker(target.getWarpMarkers(), occurrence), "Could not remove the sync point");
     return true;
   }
 

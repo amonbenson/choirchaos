@@ -224,3 +224,49 @@ export function parseSyncTime(text: string): number | undefined {
 
   return seconds < SECONDS_PER_MINUTE ? Number(match[1]) * SECONDS_PER_MINUTE + seconds : undefined;
 }
+
+function assertFreeOccurrence(timeline: Timeline, warpMarkers: readonly StoredWarpMarker[], occurrence: Occurrence): void {
+  if (findPosition(timeline, occurrence) === undefined) {
+    throw new Error(`Measure ${occurrence.measure} is not played ${occurrence.occurrence} times.`);
+  }
+
+  if (findWarpMarker(warpMarkers, occurrence)) {
+    throw new Error(`Measure ${occurrence.measure} already has a warp marker.`);
+  }
+}
+
+export function addWarpMarker(timeline: Timeline, warpMarkers: readonly StoredWarpMarker[], marker: StoredWarpMarker): StoredWarpMarker[] {
+  assertFreeOccurrence(timeline, warpMarkers, marker);
+  return [...warpMarkers, { ...marker }];
+}
+
+export function moveWarpMarker(warpMarkers: readonly StoredWarpMarker[], occurrence: Occurrence, time: number): StoredWarpMarker[] {
+  return warpMarkers.map(marker => isSameOccurrence(marker, occurrence) ? { ...marker, time } : marker);
+}
+
+/**
+ * Gives a warp marker to another occurrence and keeps its time, which rescues the sync after a
+ * recording change moved a measure. The target must lie between the marker's neighbours.
+ */
+export function reassignWarpMarker(timeline: Timeline, warpMarkers: readonly StoredWarpMarker[], from: Occurrence, to: Occurrence): StoredWarpMarker[] {
+  const marker = findWarpMarker(warpMarkers, from);
+  if (!marker) {
+    throw new Error(`Measure ${from.measure} has no warp marker on its occurrence ${from.occurrence}.`);
+  }
+
+  if (isSameOccurrence(from, to)) {
+    return [...warpMarkers];
+  }
+
+  assertFreeOccurrence(timeline, warpMarkers, to);
+  const others = warpMarkers.filter(other => other !== marker);
+  if (!canPlaceWarpMarker(timeline, others, to, marker.time, Infinity)) {
+    throw new Error(`Measure ${to.measure} does not lie between the neighbouring warp markers.`);
+  }
+
+  return [...others, { measure: to.measure, occurrence: to.occurrence, time: marker.time }];
+}
+
+export function removeWarpMarker(warpMarkers: readonly StoredWarpMarker[], occurrence: Occurrence): StoredWarpMarker[] {
+  return warpMarkers.filter(marker => !isSameOccurrence(marker, occurrence));
+}

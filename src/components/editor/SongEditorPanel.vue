@@ -9,6 +9,7 @@ import MeasureNewBoxForm from "@/components/editor/measures/MeasureNewBoxForm.vu
 import MeasureReviewBar from "@/components/editor/measures/MeasureReviewBar.vue";
 import MeasureUnnumberedForm from "@/components/editor/measures/MeasureUnnumberedForm.vue";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
+import type { SongHistoryControls } from "@/composables/useSongHistory";
 import { countOccurrences, findBackToBackPasses } from "@/core/models/recording";
 import type Song from "@/core/models/song";
 
@@ -17,6 +18,7 @@ import SetupOverview from "./inspector/SetupOverview.vue";
 
 const props = defineProps<{
   song: Song | undefined;
+  history: SongHistoryControls;
 }>();
 
 const emit = defineEmits<{
@@ -190,6 +192,28 @@ useEventListener("keydown", (event: KeyboardEvent) => {
               class="truncate text-sm text-muted-color"
             >{{ subtitle }}</span>
           </div>
+          <Button
+            v-tooltip.bottom="'Undo'"
+            icon="pi pi-undo"
+            severity="secondary"
+            size="small"
+            text
+            rounded
+            aria-label="Undo"
+            :disabled="!history.canUndo.value"
+            @click.stop="history.undo()"
+          />
+          <Button
+            v-tooltip.bottom="'Redo'"
+            icon="pi pi-undo -scale-x-100"
+            severity="secondary"
+            size="small"
+            text
+            rounded
+            aria-label="Redo"
+            :disabled="!history.canRedo.value"
+            @click.stop="history.redo()"
+          />
           <Button
             v-if="selectionCount > 0"
             icon="pi pi-times"

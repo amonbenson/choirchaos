@@ -9,12 +9,14 @@ import { h, reactive } from "vue";
 
 import { type MeasureEditor, provideMeasureEditor } from "@/composables/useMeasureEditor";
 import { findSectionsAt, type SelectedRun } from "@/core/models/measureSelection";
+import { replaceSections } from "@/core/models/sections";
 import type Song from "@/core/models/song";
+import { dbUpdate } from "@/pocketbase/db";
 import { locationOf, makeMidiSong, makeMidiSongWithRepeat, makeMidiSongWithVamp } from "@/test/fixtures";
 
 import RehearsalGroup from "./RehearsalGroup.vue";
 
-const player = vi.hoisted(() => ({ syncWarp: (() => {}) as () => void }));
+const player = vi.hoisted(() => ({}));
 
 vi.mock("@/stores/player", async () => {
   const { reactive } = await import("vue");
@@ -74,7 +76,6 @@ describe("RehearsalGroup", () => {
   beforeEach(() => {
     localStorage.clear();
     setActivePinia(createPinia());
-    player.syncWarp = vi.fn();
     confirmation.require = vi.fn(options => confirmation.accept && options.accept());
     confirmation.accept = true;
   });
@@ -92,12 +93,12 @@ describe("RehearsalGroup", () => {
     await choose(wrapper, "Repeat");
 
     expect(song.getSections()).toEqual([{ kind: "repeat", from: locationOf(song, "1"), to: locationOf(song, "2", 3), passes: 2 }]);
-    expect(player.syncWarp).toHaveBeenCalledOnce();
+    expect(dbUpdate).toHaveBeenCalledOnce();
   });
 
   it("makes the section on the occurrence that is selected", async () => {
     const song = makeMidiSongWithRepeat();
-    await song.removeSection(0);
+    await song.editLayers({ sections: replaceSections(song.getSections(), [song.getSections()[0]!]) });
     const wrapper = mountGroup(song, { first: 4, last: 5 });
 
     await choose(wrapper, "Cut");
@@ -117,7 +118,7 @@ describe("RehearsalGroup", () => {
     await flushPromises();
 
     expect(song.getSections()[0]).toMatchObject({ kind: "repeat", from: locationOf(song, "2"), passes: 5 });
-    expect(player.syncWarp).toHaveBeenCalledOnce();
+    expect(dbUpdate).toHaveBeenCalledOnce();
   });
 
   it("selects the whole section it belongs to", async () => {
@@ -158,7 +159,7 @@ describe("RehearsalGroup", () => {
 
     expect(confirmation.require).toHaveBeenCalledWith(expect.objectContaining({ message: "Remove vamp 2? These measures will play as recorded." }));
     expect(song.getSections()).toEqual([]);
-    expect(player.syncWarp).toHaveBeenCalledOnce();
+    expect(dbUpdate).toHaveBeenCalledOnce();
   });
 
   it("keeps the section when the removal is cancelled", async () => {
@@ -169,7 +170,7 @@ describe("RehearsalGroup", () => {
     await choose(wrapper, "As recorded");
 
     expect(song.getSections()).toMatchObject([{ kind: "vamp" }]);
-    expect(player.syncWarp).not.toHaveBeenCalled();
+    expect(dbUpdate).not.toHaveBeenCalled();
   });
 
   it("names an overlapped section and replaces it only when asked", async () => {
@@ -183,6 +184,7 @@ describe("RehearsalGroup", () => {
     await wrapper.findAll("button").find(button => button.text() === "Replace with cut")!.trigger("click");
     await flushPromises();
     expect(song.getSections()).toEqual([{ kind: "cut", from: locationOf(song, "1"), to: locationOf(song, "2", 3) }]);
+    expect(dbUpdate).toHaveBeenCalledOnce();
   });
 
   it("explains a section that cannot be played instead of saving it", async () => {
@@ -193,6 +195,6 @@ describe("RehearsalGroup", () => {
 
     expect(song.getSections()).toEqual([]);
     expect(wrapper.text()).toContain("A section must start before it ends.");
-    expect(player.syncWarp).not.toHaveBeenCalled();
+    expect(dbUpdate).not.toHaveBeenCalled();
   });
 });

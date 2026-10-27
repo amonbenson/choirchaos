@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import Measure, { changesPlayback, createEmptyMeasureEdit, isEmptyMeasureEdit, nextMeasureIds } from "./measure";
+import Measure, { createEmptyMeasureEdit, isEmptyMeasureEdit, nextMeasureIds } from "./measure";
 
 const LAYOUT = { page: 0, x: 0.1, y: 0.2, width: 0.1, height: 0.1 };
 
@@ -23,14 +23,5 @@ describe("MeasureEdit", () => {
   it("is empty without changes", () => {
     expect(isEmptyMeasureEdit(createEmptyMeasureEdit())).toBe(true);
     expect(isEmptyMeasureEdit({ ...createEmptyMeasureEdit(), unnumberedBoxes: [] })).toBe(false);
-  });
-
-  it("changes playback only when measures are added, removed or change their beats", () => {
-    const edit = createEmptyMeasureEdit;
-
-    expect(changesPlayback({ ...edit(), relabels: new Map([["m1", "2"]]), layouts: new Map([["m1", LAYOUT]]) })).toBe(false);
-    expect(changesPlayback({ ...edit(), removals: ["m1"] })).toBe(true);
-    expect(changesPlayback({ ...edit(), beats: new Map([["m1", 3]]) })).toBe(true);
-    expect(changesPlayback({ ...edit(), additions: [{ label: "1", beats: 4, index: 0 }] })).toBe(true);
   });
 });

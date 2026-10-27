@@ -8,6 +8,7 @@ import { nextTick, reactive } from "vue";
 
 import type { SelectedRun } from "@/core/models/measureSelection";
 import type Song from "@/core/models/song";
+import { addWarpMarker } from "@/core/models/warpEditing";
 import { dbUpdate } from "@/pocketbase/db";
 import { idOf, makeAudioSongWithRepeat } from "@/test/fixtures";
 
@@ -120,7 +121,6 @@ describe("SyncGroup", () => {
 
     expect(syncTimeOf(song, "3")).toBeCloseTo(0.6);
     expect(dbUpdate).toHaveBeenCalledTimes(2);
-    expect(player.syncWarp).toHaveBeenCalledTimes(2);
   });
 
   it("brings the playhead back when a nudge moves the measure away from it", async () => {
@@ -185,7 +185,6 @@ describe("SyncGroup", () => {
     await flushPromises();
 
     expect(syncTimeOf(song, "2", 2)).toBe(0.75);
-    expect(player.syncWarp).toHaveBeenCalled();
   });
 
   it("only syncs to the playhead between the neighbouring sync points", () => {
@@ -247,8 +246,8 @@ describe("SyncGroup", () => {
 
   it("says when every pass has a sync point", async () => {
     const song = makeSong();
-    await song.addWarpMarker({ measure: idOf(song, "2"), occurrence: 2, time: 0.75 });
-    await song.addWarpMarker({ measure: idOf(song, "2"), occurrence: 3, time: 1.25 });
+    await song.editLayers({ warpMarkers: addWarpMarker(song.getTimeline(), song.getWarpMarkers(), { measure: idOf(song, "2"), occurrence: 2, time: 0.75 }) });
+    await song.editLayers({ warpMarkers: addWarpMarker(song.getTimeline(), song.getWarpMarkers(), { measure: idOf(song, "2"), occurrence: 3, time: 1.25 }) });
 
     expect(mountGroup(song, { first: 2, last: 2 }).text()).toContain("4 sync points, every pass covered");
   });

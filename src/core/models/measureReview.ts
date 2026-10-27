@@ -66,46 +66,6 @@ export function getReviewItemAfter(items: readonly ReviewItem[], current: Review
   return next && !isSameReviewItem(next, current) ? next : undefined;
 }
 
-/**
- * Consecutive measures whose boxes lie exactly on the boxes of other consecutive measures earlier in the
- * score. Such duplicates usually fake a repeat, so the review proposes playing them as another pass of the
- * originals (`Song.playDuplicatesAsRepeat()`). The i-th duplicate lies on the i-th original.
- */
-export type DuplicateRun = {
-  duplicates: Measure[];
-  originals: Measure[];
-};
-
-function findOriginal(measures: readonly Measure[], index: number): number {
-  const layout = measures[index]!.layout;
-  return layout ? measures.findIndex((other, i) => i < index && other.layout && isSameLayout(other.layout, layout)) : -1;
-}
-
-function continuesRun(measures: readonly Measure[], run: DuplicateRun | undefined, index: number, original: number): boolean {
-  return run !== undefined && run.duplicates.at(-1) === measures[index - 1] && run.originals.at(-1) === measures[original - 1];
-}
-
-export function findDuplicateRuns(measures: readonly Measure[]): DuplicateRun[] {
-  const runs: DuplicateRun[] = [];
-
-  measures.forEach((measure, index) => {
-    const original = findOriginal(measures, index);
-    if (original === -1) {
-      return;
-    }
-
-    const run = runs.at(-1);
-    if (continuesRun(measures, run, index, original)) {
-      run!.duplicates.push(measure);
-      run!.originals.push(measures[original]!);
-    } else {
-      runs.push({ duplicates: [measure], originals: [measures[original]!] });
-    }
-  });
-
-  return runs;
-}
-
 /** Accepts the boxes as detected. */
 export function planConfirm(measures: readonly Measure[]): PlannedEdit {
   const edit = createEmptyMeasureEdit();
