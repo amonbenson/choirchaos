@@ -55,7 +55,7 @@ export const useSettingsStore = defineStore("settings", () => {
     // Cross-group side effect: reset per-track mixer state when the track
     // grouping mode changes, since old keys would refer to the wrong tracks.
     if (patch.appearance?.mergeAccompaniment !== undefined) {
-      current.value = current.value.update({ mixer: { tracks: {} } });
+      current.value = current.value.update({ mixer: { shows: {} } });
     }
 
     saveSettings(current.value);
@@ -65,20 +65,25 @@ export const useSettingsStore = defineStore("settings", () => {
     update({ workspace: { panelVisible: { [panel]: !current.value.workspace.panelVisible[panel] } } });
   }
 
-  function getTrackMixer(trackTitle: string): TrackMixerEntry {
-    return current.value.mixer.tracks[trackTitle] ?? { ...DEFAULT_TRACK_MIXER };
+  function getTrackMixer(showId: string, trackTitle: string): TrackMixerEntry {
+    return current.value.mixer.shows[showId]?.[trackTitle] ?? { ...DEFAULT_TRACK_MIXER };
   }
 
-  function updateTrackMixer(trackTitle: string, patch: Partial<TrackMixerEntry>): void {
-    const updated = { ...(current.value.mixer.tracks[trackTitle] ?? DEFAULT_TRACK_MIXER), ...patch };
-    const tracks = { ...current.value.mixer.tracks };
+  function updateTrackMixer(showId: string, trackTitle: string, patch: Partial<TrackMixerEntry>): void {
+    const tracks = { ...current.value.mixer.shows[showId] };
+    const updated = { ...(tracks[trackTitle] ?? DEFAULT_TRACK_MIXER), ...patch };
     if (isDefaultTrackMixer(updated)) {
       delete tracks[trackTitle];
     } else {
       tracks[trackTitle] = updated;
     }
 
-    update({ mixer: { tracks } });
+    const shows = { ...current.value.mixer.shows, [showId]: tracks };
+    if (Object.keys(tracks).length === 0) {
+      delete shows[showId];
+    }
+
+    update({ mixer: { shows } });
   }
 
   function clear(): void {
@@ -97,7 +102,7 @@ export const useSettingsStore = defineStore("settings", () => {
 });
 export { AppearanceSettings, type ArrangementKey, ArrangementVisibleSettings, type TransportButtonKey, TransportButtonSettings } from "./appearance";
 export type { DataOf, DeepPartial } from "./base";
-export { MixerSettings, type TrackMixerEntry } from "./mixer";
+export { MixerSettings, type ShowMixer, type TrackMixerEntry } from "./mixer";
 export { PlaybackSettings } from "./playback";
 export { ShortcutSettings } from "./shortcuts";
 export { PanelVisibleSettings, WorkspaceSettings } from "./workspace";

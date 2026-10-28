@@ -32,6 +32,7 @@ const player = usePlayerStore();
 const settingsStore = useSettingsStore();
 
 const props = defineProps<{
+  showId: string;
   song: Song | undefined;
   editMode: boolean;
 }>();
@@ -71,7 +72,7 @@ function trackName(track: Track | MergedTrack): string {
 
 function setTrackMute(track: Track | MergedTrack): void {
   const next = !track.mixer.mute;
-  settingsStore.updateTrackMixer(track.title, { mute: next });
+  settingsStore.updateTrackMixer(props.showId, track.title, { mute: next });
 
   if (track instanceof MergedTrack) {
     track.applyToEach(setTrackMute);
@@ -82,7 +83,7 @@ function setTrackMute(track: Track | MergedTrack): void {
 
 function setTrackSolo(track: Track | MergedTrack): void {
   const next = !track.mixer.solo;
-  settingsStore.updateTrackMixer(track.title, { solo: next });
+  settingsStore.updateTrackMixer(props.showId, track.title, { solo: next });
 
   if (track instanceof MergedTrack) {
     track.applyToEach(setTrackSolo);
@@ -93,7 +94,7 @@ function setTrackSolo(track: Track | MergedTrack): void {
 
 function setTrackHighlight(track: Track | MergedTrack): void {
   const next = !track.mixer.highlight;
-  settingsStore.updateTrackMixer(track.title, { highlight: next });
+  settingsStore.updateTrackMixer(props.showId, track.title, { highlight: next });
 
   if (track instanceof MergedTrack) {
     track.applyToEach(setTrackHighlight);
@@ -103,7 +104,7 @@ function setTrackHighlight(track: Track | MergedTrack): void {
 }
 
 function setTrackGain(track: Track | MergedTrack, value: number): void {
-  settingsStore.updateTrackMixer(track.title, { gain: value });
+  settingsStore.updateTrackMixer(props.showId, track.title, { gain: value });
 
   if (track instanceof MergedTrack) {
     track.applyToEach(setTrackGain, value);
@@ -138,14 +139,14 @@ function trackAmplitude(track: Track | MergedTrack): number {
 }
 
 // Tracks are replaced when the song details are saved, so the stored mixer settings are applied again.
-watch(() => [props.song, ...(props.song?.tracks ?? [])], () => {
+watch(() => [props.showId, props.song, ...(props.song?.tracks ?? [])], () => {
   const song = props.song;
   if (!song) {
     return;
   }
 
   for (const metaTrack of Object.values(tracksByClassification.value).flat()) {
-    const stored = settingsStore.getTrackMixer(metaTrack.title);
+    const stored = settingsStore.getTrackMixer(props.showId, metaTrack.title);
 
     const tracks = metaTrack instanceof MergedTrack ? metaTrack.tracks : [metaTrack];
     for (const track of tracks) {

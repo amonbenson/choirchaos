@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vite
 import type { StoredWarpMarker } from "@/core/models/recording";
 import type { Section } from "@/core/models/sections";
 import type Song from "@/core/models/song";
+import { DEFAULT_TRACK_GAIN } from "@/core/models/track";
 import type { SyncPoints } from "@/core/models/warpEditing";
 import type { VampOut, VampVocals } from "@/core/player/types";
 import {
@@ -464,7 +465,7 @@ describe("PlayerEngine – audio mode", () => {
   ])("vocals=$vocals: $name is muted: $muted", async ({ vocals, seconds, release, muted }) => {
     await stepVocalVamp(vocals, seconds, release);
 
-    expect(ap.setGain).toHaveBeenCalledWith(0, 1);
+    expect(ap.setGain).toHaveBeenCalledWith(0, DEFAULT_TRACK_GAIN);
     if (muted) {
       expect(ap.setGain).toHaveBeenCalledWith(1, 0);
     } else {

@@ -503,6 +503,7 @@ const pdfLoading = ref(false);
           :class="[
             settings.current.workspace.panelVisible.mixer ? 'lg:opacity-100' : 'lg:opacity-0',
           ]"
+          :show-id="showId"
           :song="song"
           :edit-mode="editMode"
           @open-song-details="openSongDetails"
