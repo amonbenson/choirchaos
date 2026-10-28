@@ -16,8 +16,14 @@ function backendProxy(backendUrl: string): Record<string, ProxyOptions> {
 }
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const viteEnv = loadEnv(mode, process.cwd());
+  // Open tabs compare this with the deployed version.json to notice that a newer build is out.
+  const buildId = new Date().toISOString();
+  if (command === "build") {
+    process.env.VITE_BUILD_ID = buildId;
+  }
+
   // Other devices only get AudioWorklet (rubberband) over HTTPS, and an HTTPS page cannot reach
   // an HTTP backend, so the app talks to PocketBase on its own origin through the proxy.
   const https = mode === "https";
@@ -55,6 +61,13 @@ export default defineConfig(({ mode }) => {
           for (const directory of PDFJS_ASSET_DIRECTORIES) {
             cpSync(`node_modules/pdfjs-dist/${directory}`, `public/pdfjs/${directory}`, { recursive: true });
           }
+        },
+      },
+      {
+        name: "emit-build-version",
+        apply: "build",
+        generateBundle() {
+          this.emitFile({ type: "asset", fileName: "version.json", source: JSON.stringify({ build: buildId }) });
         },
       },
       vue(),
