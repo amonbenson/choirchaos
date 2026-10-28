@@ -13,6 +13,7 @@ const props = defineProps<{
   song: Song;
 }>();
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const selection = injectEditorSelection();
 
 const status = computed(() => getSyncStatus(
@@ -43,6 +44,7 @@ function formatStretch({ first, last }: RecordedPass): string {
 
 type StatusIssue = { key: string; text: string; position: number };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const issues = computed<StatusIssue[]>(() => [
   ...status.value.unsyncedPasses.map(pass => ({
     key: `pass-${pass.first}`,
@@ -79,7 +81,7 @@ const summary = computed(() => {
         />
         <span>{{ summary }}</span>
       </li>
-      <li
+      <!-- <li
         v-for="issue in issues"
         :key="issue.key"
         class="flex items-start gap-2"
@@ -95,7 +97,7 @@ const summary = computed(() => {
         >
           {{ issue.text }}
         </button>
-      </li>
+      </li> -->
     </ul>
     <span class="text-xs text-muted-color">Move the playhead to where a measure starts, select the measure and sync it, or add sync points in the timeline.</span>
   </InspectorSection>
