@@ -142,12 +142,19 @@ describe("Vamp over a recorded repeat with a cut incomplete pass", () => {
     expect(jumpTargets(timeline, route, start(timeline, P1), 3)).toEqual([P2, P2, P2]);
   });
 
-  it("plays on into the last recorded pass after a release and then skips the incomplete pass", () => {
+  it("moves into the last recorded pass at the next beat after a late release and then skips the incomplete pass", () => {
     const route = new Route(timeline, sections(), { vampsEnabled: true });
     const released: RouteState = { section: 0, pass: 2, released: true };
     const pastMidpoint = start(timeline, P2 + 3, 1);
-    // The last recorded pass directly follows, so the only jump is the cut.
-    expect(jumpTargets(timeline, route, pastMidpoint, 2, released)).toEqual([SECOND_ENDING]);
+    // Released in the last measure of the pass, it finishes that measure in the last recorded pass, never another full pass.
+    expect(jumpTargets(timeline, route, pastMidpoint, 2, released)).toEqual([P3 + 3, SECOND_ENDING]);
+  });
+
+  it("makes the looped pass the last one when released past its midpoint, switching at the next barline", () => {
+    const route = new Route(timeline, sections(), { vampsEnabled: true });
+    const released: RouteState = { section: 0, pass: 2, released: true };
+    const thirdMeasure = start(timeline, P2 + 2, 1);
+    expect(jumpTargets(timeline, route, thirdMeasure, 2, released)).toEqual([P3 + 3, SECOND_ENDING]);
   });
 
   it("jumps into the last recorded pass at a barline when released before the midpoint", () => {

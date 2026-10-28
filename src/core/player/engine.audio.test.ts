@@ -297,15 +297,15 @@ describe("PlayerEngine – audio mode", () => {
       expect(playThrough(5)).toEqual([0, 1, 2, 3, 3, 3, 4, 5, 6]);
     });
 
-    it("finishes the pass and then crossfades to the last recorded pass after a release", async () => {
+    it("crossfades to the same beat of the last recorded pass at the next beat after a release", async () => {
       await reload(makeAudioSongWithBakedVamp());
       player.play();
       stepAt(0.3);
       player.releaseVamp();
       stepAt(0.5);
 
-      // The first recorded pass is one measure, so its only barline lies before the release.
-      expect(ap.scheduleSeek).toHaveBeenCalledWith(1.0, 0);
+      // The first recorded pass is one measure, so no barline is left. Its next beat at 312.5 ms maps to the last pass.
+      expect(ap.scheduleSeek).toHaveBeenCalledWith(1.0625, 0);
       expect(player.getCurrentSection()).toEqual({ section: 0, kind: "vamp", pass: 1, passes: 1, recordedPasses: 4, released: true });
     });
   });

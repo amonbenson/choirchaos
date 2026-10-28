@@ -312,15 +312,20 @@ export default class Route {
     return this.retarget(state, tick, current, lastRecorded);
   }
 
-  /** The last pass while another recording plays: jump at a barline up to the midpoint, otherwise finish it and play the last recording in full. */
+  /**
+   * The pass playing when the last pass is decided is the last one, so no further pass is added. It continues
+   * in the last recording, whose ending leads on, at its next barline, or at its next beat when no barline is
+   * left, and only leaves at its own end when no beat is left either.
+   */
   private retarget(state: RouteState, tick: Tick, current: PassRange, lastRecorded: PassRange): RouteJump {
-    const midpoint = (current.start + current.end) / 2;
-    const barline = tick <= midpoint ? this.findBarline(Math.max(tick, current.start), midpoint) : undefined;
-    if (barline !== undefined) {
-      return { at: barline, to: this.mapTick(barline, current, lastRecorded), next: state };
+    const from = Math.max(tick, current.start);
+    const barline = this.findBarline(from, current.end);
+    const line = barline !== undefined && barline < current.end ? barline : this.findLineBetween(from, current.end, "beat");
+    if (line === undefined) {
+      return this.exit(current.end, lastRecorded.end);
     }
 
-    return { at: current.end, to: lastRecorded.start, next: state };
+    return { at: line, to: this.mapTick(line, current, lastRecorded), next: state };
   }
 
   /** The first barline in `[from, to]`. */

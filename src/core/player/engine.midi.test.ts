@@ -373,7 +373,7 @@ describe("PlayerEngine – MIDI mode", () => {
       expect(player.getCurrentTempo()).toBe(140);
     });
 
-    it("finishes the pass after a release past its first barline and then plays the last recorded pass", async () => {
+    it("moves to the last recorded pass at the next beat after a release, without playing another pass", async () => {
       await reload(makeMidiSongWithBakedVamp(), BEAT_MAP_LABELS.bakedVamp);
       const positions = recordPositions(player);
 

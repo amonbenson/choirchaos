@@ -90,7 +90,7 @@ describe("Releasing a vamp on the first pass", () => {
 
   it.each([
     { out: "onEnd", when: "before the midpoint", tick: P2 + BEAT, jumps: [[midpoint, P3 + POSITION_TICKS], [P4, ENDING]] },
-    { out: "onEnd", when: "after the midpoint", tick: midpoint + BEAT, jumps: [[P4, ENDING]] },
+    { out: "onEnd", when: "after the midpoint", tick: midpoint + BEAT, jumps: [[midpoint + 2 * BEAT, P3 + POSITION_TICKS + 2 * BEAT], [P4, ENDING]] },
     { out: "onEnd", when: "on a barline", tick: P2, jumps: [[P2, P3], [P4, ENDING]] },
     { out: "anyBar", when: "before the midpoint", tick: P2 + BEAT, jumps: [[midpoint, ENDING]] },
     { out: "anyBar", when: "after the midpoint", tick: midpoint + BEAT, jumps: [[P3, ENDING]] },

@@ -129,8 +129,12 @@ describe("Route mid-pass last pass", () => {
     expect(route.nextJump(released, 400)).toEqual({ at: 400, to: 2000, next: released });
   });
 
-  it("finishes the pass and plays the last one in full when released past the midpoint", () => {
-    expect(route.nextJump(released, 900)).toEqual({ at: 1200, to: 2000, next: released });
+  it("jumps at the next beat when no barline is left in the pass, so no further pass plays", () => {
+    expect(route.nextJump(released, 900)).toEqual({ at: 1000, to: 2600, next: released });
+  });
+
+  it("leaves at the end of the pass when the release comes in its last beat", () => {
+    expect(route.nextJump(released, 1150)).toEqual({ at: 1200, to: 2800, next: undefined });
   });
 
   it("leaves the section after the last recorded pass", () => {
