@@ -1,6 +1,7 @@
 import type { NoteEvent } from "../midi/events";
 import type { Tick, TimeSignature } from "../midi/types";
 import type Song from "../models/song";
+import type AudioClock from "./audioClock";
 import type { TimelinePosition } from "./timeline";
 import type { SystemEvents } from "./types";
 
@@ -28,6 +29,7 @@ export abstract class PlayerBackend {
 
   constructor(
     protected readonly context: AudioContext,
+    protected readonly clock: AudioClock,
     protected readonly masterInput: AudioNode,
     protected readonly systemEvents: SystemEvents,
     protected readonly callbacks: BackendCallbacks,
@@ -55,6 +57,12 @@ export abstract class PlayerBackend {
 
   /** Called when the engine jumps the position by `offset` ticks to `newPosition` (a section pass or cut). */
   abstract onPositionJump(offset: Tick, newPosition: Tick): void;
+
+  /**
+   * Called every step with the next jump ahead, if any, so a backend can schedule it before the engine
+   * reaches it. MIDI needs nothing: it holds back the notes before a limit.
+   */
+  prepareJump(_jump: { at: Tick; to: Tick } | undefined): void {}
 
   /** Called after a seek so the backend can re-anchor its tempo clock to `bpm`. */
   abstract onTempoRestored(bpm: number): void;

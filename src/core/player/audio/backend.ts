@@ -5,6 +5,7 @@ import type { Tick } from "../../midi/types";
 import WarpMap from "../../midi/warp";
 import type Song from "../../models/song";
 import { resolveUrl } from "../../utils/file";
+import type AudioClock from "../audioClock";
 import { type BackendCallbacks, type LoadResult, PlayerBackend, type StepResult } from "../backend";
 import { buildAudioTempoEvents, resolveAudioTimeline, type TimelinePosition } from "../timeline";
 import type { SystemEvents } from "../types";
@@ -30,11 +31,12 @@ export default class AudioBackend extends PlayerBackend {
 
   constructor(
     context: AudioContext,
+    clock: AudioClock,
     masterInput: AudioNode,
     systemEvents: SystemEvents,
     callbacks: BackendCallbacks,
   ) {
-    super(context, masterInput, systemEvents, callbacks);
+    super(context, clock, masterInput, systemEvents, callbacks);
   }
 
   getTrackChunks(): AudioChunk[][] {
@@ -122,6 +124,7 @@ export default class AudioBackend extends PlayerBackend {
     this.audioDriver?.dispose();
     this.audioDriver = await AudioDriver.create(
       this.context,
+      this.clock,
       this.trackChunks,
       {
         tracks: song.tracks.map(t => ({
@@ -168,8 +171,16 @@ export default class AudioBackend extends PlayerBackend {
     return { p0: currentPosition, p1, deltaTimeConsumed: deltaTime };
   }
 
-  onPositionJump(_offset: Tick, newPosition: Tick): void {
-    this.audioDriver?.scheduleSeek(newPosition / MILLISECONDS_PER_SECOND, 0);
+  onPositionJump(offset: Tick, newPosition: Tick): void {
+    this.audioDriver?.jump((newPosition - offset) / MILLISECONDS_PER_SECOND, newPosition / MILLISECONDS_PER_SECOND);
+  }
+
+  override prepareJump(jump: { at: Tick; to: Tick } | undefined): void {
+    if (jump) {
+      this.audioDriver?.prepareJump(jump.at / MILLISECONDS_PER_SECOND, jump.to / MILLISECONDS_PER_SECOND);
+    } else {
+      this.audioDriver?.cancelJump();
+    }
   }
 
   onTempoRestored(bpm: number): void {

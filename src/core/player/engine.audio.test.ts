@@ -37,7 +37,9 @@ type MockAudioDriver = {
   play: MockFn;
   pause: MockFn;
   seek: MockFn;
-  scheduleSeek: MockFn;
+  jump: MockFn;
+  prepareJump: MockFn;
+  cancelJump: MockFn;
   setGain: MockFn;
   setTempo: MockFn;
   setPitch: MockFn;
@@ -49,21 +51,23 @@ function withWarpMarkers(warpMarkers: StoredWarpMarker[]): SyncPoints {
   return { warpMarkers, endSyncTime: undefined };
 }
 
-/** A driver mock whose position only moves when the test sets it, and follows crossfade seeks. */
+/** A driver mock whose position only moves when the test sets it, and follows jumps. */
 function makeMockAP(): MockAudioDriver {
   const ap: MockAudioDriver = {
     getPosition: vi.fn().mockReturnValue(0),
     play: vi.fn(),
     pause: vi.fn(),
     seek: vi.fn(),
-    scheduleSeek: vi.fn(),
+    jump: vi.fn(),
+    prepareJump: vi.fn(),
+    cancelJump: vi.fn(),
     setGain: vi.fn(),
     setTempo: vi.fn(),
     setPitch: vi.fn(),
     connect: vi.fn(),
     dispose: vi.fn(),
   };
-  ap.scheduleSeek.mockImplementation((pos: number) => ap.getPosition.mockReturnValue(pos));
+  ap.jump.mockImplementation((_from: number, to: number) => ap.getPosition.mockReturnValue(to));
   return ap;
 }
 
@@ -86,7 +90,7 @@ async function loadSong(player: PlayerEngine, ctx: AudioContext, ap: MockAudioDr
 
   // The initial seek to 0 would pollute call counts.
   ap.seek.mockClear();
-  ap.scheduleSeek.mockClear();
+  ap.jump.mockClear();
 }
 
 describe("PlayerEngine – audio mode", () => {
@@ -266,7 +270,7 @@ describe("PlayerEngine – audio mode", () => {
       stepAt(0.3);
       stepAt(0.5);
 
-      expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25, 0);
+      expect(ap.jump).toHaveBeenCalledWith(0.5, 0.25);
       expect(ap.seek).not.toHaveBeenCalled();
       expect(player.getPosition()).toBe(250);
       expect(player.getCurrentSection()).toMatchObject({ pass: 2, passes: undefined });
@@ -276,18 +280,32 @@ describe("PlayerEngine – audio mode", () => {
       stepAt(0.3);
       stepAt(0.51);
 
-      expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25, 0);
+      expect(ap.jump).toHaveBeenCalledWith(expect.any(Number), 0.25);
     });
 
     it("leaves without a jump at the end of a released pass", () => {
       stepAt(0.3);
       stepAt(0.5);
       player.releaseVamp();
-      ap.scheduleSeek.mockClear();
+      ap.jump.mockClear();
       stepAt(0.5);
 
-      expect(ap.scheduleSeek).not.toHaveBeenCalled();
+      expect(ap.jump).not.toHaveBeenCalled();
       expect(player.getCurrentSection()).toBeUndefined();
+    });
+
+    it("announces the loop to the driver before reaching it", () => {
+      stepAt(0.3);
+
+      expect(ap.prepareJump).toHaveBeenLastCalledWith(0.5, 0.25);
+    });
+
+    it("takes back the announced loop when the vamp is released", () => {
+      stepAt(0.3);
+      player.releaseVamp();
+      stepAt(0.35);
+
+      expect(ap.cancelJump).toHaveBeenCalled();
     });
 
     it("plays the vamp until released", () => {
@@ -312,7 +330,7 @@ describe("PlayerEngine – audio mode", () => {
       stepAt(0.5);
 
       // The first recorded pass is one measure, so no barline is left. Its next beat at 312.5 ms maps to the last pass.
-      expect(ap.scheduleSeek).toHaveBeenCalledWith(1.0625, 0);
+      expect(ap.jump).toHaveBeenCalledWith(expect.any(Number), 1.0625);
       expect(player.getCurrentSection()).toEqual({ section: 0, kind: "vamp", pass: 1, passes: 1, recordedPasses: 4, released: true });
     });
   });
@@ -383,18 +401,18 @@ describe("PlayerEngine – audio mode", () => {
     player.play();
     stepAt(0.3);
     player.releaseVamp();
-    ap.scheduleSeek.mockClear();
+    ap.jump.mockClear();
   }
 
   it("onEnd: a released vamp plays through the barline and leaves at its end", async () => {
     await enterVampOut("onEnd");
 
     stepAt(0.5);
-    expect(ap.scheduleSeek).not.toHaveBeenCalled();
+    expect(ap.jump).not.toHaveBeenCalled();
     expect(player.getCurrentSection()).toBeDefined();
 
     stepAt(0.75);
-    expect(ap.scheduleSeek).not.toHaveBeenCalled();
+    expect(ap.jump).not.toHaveBeenCalled();
     expect(player.getCurrentSection()).toBeUndefined();
   });
 
@@ -402,7 +420,7 @@ describe("PlayerEngine – audio mode", () => {
     await enterVampOut("anyBar");
 
     stepAt(0.52);
-    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.75, 0);
+    expect(ap.jump).toHaveBeenCalledWith(expect.any(Number), 0.75);
     expect(player.getCurrentSection()).toBeUndefined();
   });
 
@@ -410,7 +428,7 @@ describe("PlayerEngine – audio mode", () => {
     await enterVampOut("anyBeat");
 
     stepAt(0.32);
-    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.75, 0);
+    expect(ap.jump).toHaveBeenCalledWith(expect.any(Number), 0.75);
     expect(player.getCurrentSection()).toBeUndefined();
   });
 
@@ -420,7 +438,7 @@ describe("PlayerEngine – audio mode", () => {
     stepAt(0.3);
     stepAt(0.75);
 
-    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25, 0);
+    expect(ap.jump).toHaveBeenCalledWith(expect.any(Number), 0.25);
     expect(player.getCurrentSection()).toMatchObject({ pass: 2, passes: undefined, released: false });
   });
 
@@ -429,7 +447,7 @@ describe("PlayerEngine – audio mode", () => {
     player.resetVamp();
     stepAt(0.75);
 
-    expect(ap.scheduleSeek).toHaveBeenCalledWith(0.25, 0);
+    expect(ap.jump).toHaveBeenCalledWith(expect.any(Number), 0.25);
   });
   // Accompaniment is track 0 and Vocals track 1. The vamp on measure "2" (250 ms to 500 ms) is recorded
   // once, so its midpoint at 375 ms splits entering from exiting material. Where

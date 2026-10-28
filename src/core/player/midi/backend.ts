@@ -6,6 +6,7 @@ import type { MTIMidiJson } from "../../midi/mtiJson";
 import type { Tick } from "../../midi/types";
 import type Song from "../../models/song";
 import { resolveUrl } from "../../utils/file";
+import type AudioClock from "../audioClock";
 import { type BackendCallbacks, type LoadResult, PlayerBackend, type StepResult } from "../backend";
 import { findPositionAt, resolveMidiTimeline, type TimelinePosition } from "../timeline";
 import type { SystemEvents, TrackEvents } from "../types";
@@ -22,6 +23,8 @@ export default class MidiBackend extends PlayerBackend {
   private currentBpm = 120;
 
   private audioClockReference: { seconds: number; ticks: number } = { seconds: 0, ticks: 0 };
+  // The audio clock time of the current step and the tick playing then. Notes are queued relative to both.
+  private audioClockTime = 0;
   private audioClockTickPosition = 0;
   // Tracks the most recently committed position so resetAudioClockReference
   // always anchors to the correct tick value, even when called mid-step.
@@ -38,11 +41,12 @@ export default class MidiBackend extends PlayerBackend {
 
   constructor(
     context: AudioContext,
+    clock: AudioClock,
     masterInput: AudioNode,
     systemEvents: SystemEvents,
     callbacks: BackendCallbacks,
   ) {
-    super(context, masterInput, systemEvents, callbacks);
+    super(context, clock, masterInput, systemEvents, callbacks);
   }
 
   getPpqn(): number {
@@ -60,7 +64,7 @@ export default class MidiBackend extends PlayerBackend {
 
   private resetAudioClockReference(): void {
     // Anchor the audio clock to the last known position so that the next step calculates time from there
-    this.audioClockReference = { seconds: this.context.currentTime, ticks: this.lastKnownPosition };
+    this.audioClockReference = { seconds: this.clock.now(), ticks: this.lastKnownPosition };
   }
 
   private updateTickDuration(): void {
@@ -222,7 +226,8 @@ export default class MidiBackend extends PlayerBackend {
 
     // Derive the audio-clock tick position from real elapsed time so scheduling
     // stays accurate even when step() is called at irregular intervals.
-    const timeSinceReference = this.context.currentTime - this.audioClockReference.seconds;
+    this.audioClockTime = this.clock.now();
+    const timeSinceReference = this.audioClockTime - this.audioClockReference.seconds;
     this.audioClockTickPosition = this.audioClockReference.ticks + timeSinceReference / this.tickDuration;
     this.releaseHeldNotes(currentPosition, limit);
 
@@ -313,7 +318,7 @@ export default class MidiBackend extends PlayerBackend {
       this.context,
       this.masterInput,
       window[instrument],
-      this.context.currentTime + start,
+      this.audioClockTime + start,
       pitch,
       duration,
       volume,

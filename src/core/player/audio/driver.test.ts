@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { computeRms } from "@/test/fixtures";
 
+import AudioClock from "../audioClock";
 import { type AudioChunk, detectChunks } from "./chunkDetector";
 import AudioDriver from "./driver";
 
@@ -205,7 +206,7 @@ describe("AudioDriver", () => {
   }
 
   async function makePlayer(chunks: AudioChunk[][] = [makeChunks()]): Promise<AudioDriver> {
-    return AudioDriver.create(ctx, chunks, {
+    return AudioDriver.create(ctx, new AudioClock(ctx), chunks, {
       tracks: chunks.map(() => ({})),
       onAmplitudes: () => {},
     });
@@ -272,34 +273,25 @@ describe("AudioDriver", () => {
     player.pause();
     player.dispose();
   });
-  it("scheduleSeek while not playing updates position immediately", async () => {
+  it("jump while not playing moves the position", async () => {
     const player = await makePlayer();
-    player.scheduleSeek(0.7);
+    player.jump(0, 0.7);
     expect(player.getPosition()).toBe(0.7);
     player.dispose();
   });
 
-  it("scheduleSeek while playing reports new position immediately", async () => {
-    const player = await makePlayer();
-    player.play();
-    player.scheduleSeek(0.4);
-    expect(player.getPosition()).toBe(0.4);
-    player.pause();
-    player.dispose();
-  });
-
-  it("scheduleSeek into a silent gap between chunks does not throw", async () => {
+  it("jump into a silent gap between chunks does not throw", async () => {
     // Two chunks: 0–1s and 3–4s, with a 2s gap in between.
     const chunks: AudioChunk[][] = [[
       makeMonoChunk(ctx, 0, 1),
       makeMonoChunk(ctx, SAMPLE_RATE * 3, 1),
     ]];
-    const player = await AudioDriver.create(ctx, chunks, {
+    const player = await AudioDriver.create(ctx, new AudioClock(ctx), chunks, {
       tracks: [{}],
       onAmplitudes: () => {},
     });
     player.play();
-    expect(() => player.scheduleSeek(1.5)).not.toThrow();
+    expect(() => player.jump(0, 1.5)).not.toThrow();
     player.pause();
     player.dispose();
   });
@@ -313,6 +305,7 @@ describe("AudioDriver", () => {
 
     const player = await AudioDriver.create(
       offlineCtx as unknown as AudioContext,
+      new AudioClock(offlineCtx),
       [[{ sampleOffset: 0, audioBuffer: chunkBuf }]],
       { tracks: [{}], onAmplitudes: () => {} },
     );
@@ -334,6 +327,7 @@ describe("AudioDriver", () => {
 
     const player = await AudioDriver.create(
       offlineCtx as unknown as AudioContext,
+      new AudioClock(offlineCtx),
       [[{ sampleOffset: 0, audioBuffer: chunkBuf }]],
       { tracks: [{}], onAmplitudes: () => {} },
     );
@@ -360,6 +354,7 @@ describe("AudioDriver", () => {
 
     const player = await AudioDriver.create(
       offlineCtx as unknown as AudioContext,
+      new AudioClock(offlineCtx),
       [[{ sampleOffset: Math.floor(sr * 0.5), audioBuffer: chunkBuf }]],
       { tracks: [{}], onAmplitudes: () => {} },
     );
@@ -371,6 +366,84 @@ describe("AudioDriver", () => {
     expect(computeRms(firstHalf)).toBeLessThan(0.01);
     player.dispose();
   });
+  describe("jumps", () => {
+    // Each sample holds its own time in the recording, so the output tells which time plays when.
+    async function makeTimedPlayer(): Promise<{ player: AudioDriver; render: () => Promise<Float32Array> }> {
+      const offlineCtx = new OfflineAudioContext(2, SAMPLE_RATE / 2, SAMPLE_RATE);
+      const buffer = offlineCtx.createBuffer(1, SAMPLE_RATE, SAMPLE_RATE);
+      buffer.getChannelData(0).forEach((_, i, data) => data[i] = i / SAMPLE_RATE);
+      const player = await AudioDriver.create(
+        offlineCtx as unknown as AudioContext,
+        new AudioClock(offlineCtx),
+        [[{ sampleOffset: 0, audioBuffer: buffer }]],
+        { tracks: [{}], onAmplitudes: () => {} },
+      );
+      player.connect(offlineCtx.destination);
+      player.play();
+      return { player, render: async () => (await offlineCtx.startRendering()).getChannelData(0) };
+    }
+
+    function playedAt(output: Float32Array, seconds: number): number {
+      return output[Math.round(seconds * SAMPLE_RATE)]!;
+    }
+
+    it("lands a prepared jump exactly where the recording reaches it", async () => {
+      const { player, render } = await makeTimedPlayer();
+      player.prepareJump(0.25, 0.6);
+
+      const output = await render();
+
+      expect(playedAt(output, 0.2)).toBeCloseTo(0.2, 2);
+      expect(playedAt(output, 0.35)).toBeCloseTo(0.7, 2);
+      player.dispose();
+    });
+
+    it("keeps the prepared timing when the jump is made", async () => {
+      const { player, render } = await makeTimedPlayer();
+      player.prepareJump(0.25, 0.6);
+      player.jump(0.25, 0.6);
+
+      const output = await render();
+
+      expect(playedAt(output, 0.2)).toBeCloseTo(0.2, 2);
+      expect(playedAt(output, 0.35)).toBeCloseTo(0.7, 2);
+      expect(player.getPosition()).toBeCloseTo(0.6 + 0.5 - 0.25, 2);
+      player.dispose();
+    });
+
+    it("plays on when a prepared jump is cancelled", async () => {
+      const { player, render } = await makeTimedPlayer();
+      player.prepareJump(0.25, 0.6);
+      player.cancelJump();
+
+      const output = await render();
+
+      expect(playedAt(output, 0.35)).toBeCloseTo(0.35, 2);
+      player.dispose();
+    });
+
+    it("replaces a prepared jump whose target changed", async () => {
+      const { player, render } = await makeTimedPlayer();
+      player.prepareJump(0.25, 0.6);
+      player.prepareJump(0.25, 0.8);
+
+      const output = await render();
+
+      expect(playedAt(output, 0.35)).toBeCloseTo(0.9, 2);
+      player.dispose();
+    });
+
+    it("waits with a jump beyond the lookahead", async () => {
+      const { player, render } = await makeTimedPlayer();
+      player.prepareJump(0.45, 0.8);
+
+      const output = await render();
+
+      expect(playedAt(output, 0.48)).toBeCloseTo(0.48, 2);
+      player.dispose();
+    });
+  });
+
   it("dispose does not throw", async () => {
     const player = await makePlayer();
     expect(() => player.dispose()).not.toThrow();

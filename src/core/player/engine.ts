@@ -7,6 +7,7 @@ import { Emitter, type Emitters, Property } from "../utils/events";
 import { SetIntervalUpdater, type UpdateCallback, type Updater } from "../utils/updater";
 import AudioBackend from "./audio/backend";
 import type { AudioChunk } from "./audio/chunkDetector";
+import AudioClock from "./audioClock";
 import { PlayerBackend } from "./backend";
 import MidiBackend from "./midi/backend";
 import Route, { type RouteJump, type RouteState } from "./route";
@@ -114,6 +115,7 @@ export default class PlayerEngine {
 
   private updater: Updater;
   private audioContext: AudioContext;
+  private clock: AudioClock;
   private masterInput?: AudioNode;
   private chainOutput?: GainNode;
   private backend?: PlayerBackend;
@@ -123,12 +125,13 @@ export default class PlayerEngine {
 
   constructor(audioContext?: AudioContext, updaterFactory?: (callback: UpdateCallback) => Updater) {
     this.audioContext = audioContext ?? new AudioContext({ latencyHint: "playback" });
+    this.clock = new AudioClock(this.audioContext);
     this.updater = updaterFactory
       ? updaterFactory(delta => this.handleStep(delta))
       : new SetIntervalUpdater(delta => this.handleStep(delta), {
           interval: STEP_DURATION,
           maximumLag: 5.0,
-          timeProvider: () => this.audioContext?.currentTime ?? 0,
+          timeProvider: () => this.clock.now(),
         });
     this.setupAudioContextMonitoring();
   }
@@ -422,8 +425,8 @@ export default class PlayerEngine {
 
     // Setup the backend (either midi or audio mode)
     this.backend = this.mode.get() === "midi"
-      ? new MidiBackend(this.audioContext, this.masterInput!, this.systemEvents, callbacks)
-      : new AudioBackend(this.audioContext, this.masterInput!, this.systemEvents, callbacks);
+      ? new MidiBackend(this.audioContext, this.clock, this.masterInput!, this.systemEvents, callbacks)
+      : new AudioBackend(this.audioContext, this.clock, this.masterInput!, this.systemEvents, callbacks);
 
     // Set the current playback speed and transposition immediately
     this.backend.onPlaybackSpeedChanged(this.playbackSpeed.get());
@@ -542,6 +545,23 @@ export default class PlayerEngine {
    * Collects the state changes up to the next real jump. The backend stops at the jump, and also where
    * muting vocals changes, so notes on a pass boundary get the new pass's vocals.
    */
+  /** The next jump that moves the position, passing the state changes before it. */
+  private findNextJump(position: Tick): RouteJump | undefined {
+    let state = this.routeState;
+    let tick = position;
+    for (let i = 0; i < MAX_TRANSITIONS_PER_PLAN; i++) {
+      const next = this.route.nextJump(state, tick);
+      if (!next || next.to !== next.at) {
+        return next;
+      }
+
+      state = next.next;
+      tick = next.at;
+    }
+
+    return undefined;
+  }
+
   private planStep(position: Tick): StepPlan {
     const transitions: RouteJump[] = [];
     let state = this.routeState;
@@ -658,6 +678,7 @@ export default class PlayerEngine {
     this.position.set(Math.max(0, Math.min(this.duration.get(), pos)));
     this.syncLocation(pos);
     this.syncSection();
+    this.backend.prepareJump(this.findNextJump(pos));
   }
 
   private syncLocation(pos: Tick): void {

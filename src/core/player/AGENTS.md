@@ -12,9 +12,10 @@ Both modes share the engine:
 | `timeline.ts` | Times `song.getTimeline()` into `TimelinePosition[]`, location and tick lookups |
 | `route.ts` | Pure section logic: passes, jumps, vocal muting |
 | `backend.ts` | Backend interface |
+| `audioClock.ts` | `AudioClock`: smooth `currentTime` for stepping and scheduling |
 | `midi/backend.ts` | `MidiBackend`: schedules notes through `webaudiofont` |
 | `audio/backend.ts` | `AudioBackend`: decodes, owns the `WarpMap`, mutes vocals |
-| `audio/driver.ts` | `AudioDriver`: Web Audio graph, chunk scheduling, crossfade seeks |
+| `audio/driver.ts` | `AudioDriver`: Web Audio graph, segments of chunks, scheduled jumps |
 | `audio/chunkDetector.ts` | `detectChunks()` strips silence |
 | `audio/mixdown.ts` | Mono mix of all tracks for the waveform |
 | `src/stores/player.ts` | Pinia wrapper exposing engine state via `useEvent()` |
@@ -46,6 +47,8 @@ Both modes share the engine:
 - `backend.step()`'s `limit` is where the engine may jump. `MidiBackend` holds back notes within `AUDIO_CLOCK_OFFSET` before it and queues them next step unless a jump came first.
 - MIDI consumes step time exactly, so the loop keeps stepping after a stop (dropping it would shrink the lookahead).
 - After a jump, `restoreTempoAt()` re-anchors the MIDI clock across tempo changes.
+- After every step the engine announces the next jump through `backend.prepareJump()`, so audio can schedule it before the engine notices it was reached.
+- Time comes from the engine's one `AudioClock`, never `context.currentTime` directly: Firefox on Android moves `currentTime` only every ~0.1 s and Firefox rounds it, which would make steps leap and notes land late. It must work in Chrome, Firefox and Safari, desktop and mobile.
 
 ## Engine Invariants
 
@@ -66,8 +69,10 @@ Both modes share the engine:
 ## Audio
 
 - `AudioDriver` takes one array of mono `AudioChunk`s per track; `sampleOffset` is the chunk's start in the file.
-- `scheduleSeek()` crossfades (route jumps), `seek()` cuts hard (user seeks).
-- `AUDIO_LOOKAHEAD` (`audio/driver.ts`) must equal `AUDIO_CLOCK_OFFSET` (`midi/backend.ts`); the visual position leads audio by it.
+- A segment is one continuous run through the recording; seeks, jumps and tempo changes replace it. `seek()` cuts hard (user seeks), `jump()` crossfades (route jumps).
+- `prepareJump()` schedules a jump's crossfade where the playing segment reaches it, once within `JUMP_LOOKAHEAD`, and replaces or cancels it while nothing of it is rendered. Until `jump()` commits it, `getPosition()` runs on past the jump's start, so the engine still reaches it.
+- Stop every source once: Safari throws on a second `stop()`.
+- MIDI notes play `AUDIO_CLOCK_OFFSET` after the engine queues them, so the MIDI position leads audio by it; the audio position is what plays.
 - `MAX_CONCURRENT_DECODE_BYTES` bounds decoding memory for mobile; never replace it with an unbounded `Promise.all`.
 
 ## Testing
@@ -77,6 +82,6 @@ Fixtures (`src/test/fixtures.ts`): 120 BPM, ppqn 480, position 0 a 1-beat pickup
 - `stepPast(updater, player, tick)` adds the extra step end-of-song and segue need; `stepUntil(updater, condition)` waits for state; record `onCurrentLocationChange` for play order.
 - Route tests use `src/test/route.ts`: `makeTimeline()`, the section builders (`vamp`, `repeat`, `cut`, `at`), `playPositions()` and `followJumps()`. `route.passes.test.ts` covers sections on single passes, `route.bakedRepeat.test.ts` a real recording with an incomplete last pass.
 
-**Audio tests** (`engine.audio.test.ts`) mock `AudioDriver`: `makeMockAP()` lets `scheduleSeek` move the position; `loadSong()` clears the initial seek. Positions are 0.25 s apart, so repeat and baked vamp layouts need the 2 s buffer. Where muting changes inside a step the engine stops there, costing an extra step.
+**Audio tests** (`engine.audio.test.ts`) mock `AudioDriver`: `makeMockAP()` lets `jump` move the position; `loadSong()` clears the initial seek. Positions are 0.25 s apart, so repeat and baked vamp layouts need the 2 s buffer. Where muting changes inside a step the engine stops there, costing an extra step.
 
 **Silent traps:** `setSegueEnabled()` does nothing before `load()` (spy on `song.hasSegue()`). `setGain(1, 0)` means vocals muted; clear the spy before the asserted step.
