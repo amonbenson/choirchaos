@@ -6,7 +6,6 @@
 
 @theme {
   --color-surface: var(--p-content-background);
-  --color-surface-alt: var(--p-content-hover-background);
 
   /* Section kinds on the score, the playbar and the editor. Text on them uses section-contrast. */
   --color-section-repeat: var(--color-sky-700);

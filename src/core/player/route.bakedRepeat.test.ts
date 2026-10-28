@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import type Measure from "@/core/models/measure";
-import type { Location, StoredWarpMarker, Timeline } from "@/core/models/recording";
+import type { StoredWarpMarker } from "@/core/models/recording";
 import { type Section, validateSections, type VampOut } from "@/core/models/sections";
+import { cut, followJumps, repeat, toTimeline, vamp } from "@/test/route";
 
 import WarpMap from "../midi/warp";
 import Route, { type RouteState } from "./route";
@@ -41,15 +42,6 @@ function repeatBars(times: number): string[] {
   return Array.from({ length: times }, () => ["70", "71", "72", "73"]).flat();
 }
 
-function toTimeline(labels: readonly string[]): Timeline {
-  const occurrences = new Map<string, number>();
-  return labels.map((measure, position) => {
-    const occurrence = (occurrences.get(measure) ?? 0) + 1;
-    occurrences.set(measure, occurrence);
-    return { position, measure, occurrence };
-  });
-}
-
 function toMeasures(labels: readonly string[]): Measure[] {
   return [...new Set(labels)].map(id => ({ id, label: id, beats: 4 }) as unknown as Measure);
 }
@@ -58,20 +50,9 @@ function resolve(labels: readonly string[], syncPoints: readonly StoredWarpMarke
   return resolveAudioTimeline(toTimeline(labels), toMeasures(labels), syncPoints, new WarpMap());
 }
 
-function at(measure: string, beat = 0, occurrence = 1): Location {
-  return { measure, beat, occurrence };
-}
-
-function vamp(occurrence = 1, out: VampOut = "onEnd"): Section {
-  return { kind: "vamp", from: at("70", 0, occurrence), to: at("73", 3, occurrence), out, vocals: "all" };
-}
-
-function repeat(passes: number, occurrence = 1): Section {
-  return { kind: "repeat", from: at("70", 0, occurrence), to: at("73", 3, occurrence), passes };
-}
-
-function cut(from: string, to: string, occurrence: number): Section {
-  return { kind: "cut", from: at(from, 0, occurrence), to: at(to, 3, occurrence) };
+/** A vamp over the passes of 70 to 73, starting in pass `occurrence`. */
+function vampOn(occurrence = 1, out: VampOut = "onEnd"): Section {
+  return vamp("70", "73", { occurrence, out });
 }
 
 /** The incomplete fourth pass. */
@@ -81,32 +62,13 @@ function seconds(tick: number): number {
   return tick / MS;
 }
 
-function positionAt(timeline: TimelinePosition[], tick: number): number | undefined {
-  return findPositionAt(timeline, tick)?.position;
-}
-
 function start(timeline: TimelinePosition[], position: number, beat = 0): number {
   return timeline[position]!.beatTicks[beat]!;
 }
 
-/** Follows the route from `tick` and lists the position of every real jump's target, at most `count`. */
+/** The positions the real jumps land on, following the route from `tick`. */
 function jumpTargets(timeline: TimelinePosition[], route: Route, tick: number, count: number, state = route.stateAt(tick)): number[] {
-  const targets: number[] = [];
-  for (let i = 0; i < 50 && targets.length < count; i++) {
-    const jump = route.nextJump(state, tick);
-    if (!jump) {
-      break;
-    }
-
-    if (jump.to !== jump.at) {
-      targets.push(positionAt(timeline, jump.to)!);
-    }
-
-    tick = jump.to;
-    state = jump.next;
-  }
-
-  return targets;
+  return followJumps(route, tick, count, state).map(([, to]) => findPositionAt(timeline, to)!.position);
 }
 
 describe("Pass timing of a recorded repeat", () => {
@@ -126,7 +88,7 @@ describe("Pass timing of a recorded repeat", () => {
 
 describe("Vamp over a recorded repeat with a cut incomplete pass", () => {
   const timeline = resolve(AUDIO, SYNC_POINTS);
-  const sections = (out: VampOut = "onEnd"): Section[] => [vamp(1, out), CUT_INCOMPLETE_PASS];
+  const sections = (out: VampOut = "onEnd"): Section[] => [vampOn(1, out), CUT_INCOMPLETE_PASS];
 
   it("is a valid arrangement", () => {
     expect(validateSections(toMeasures(AUDIO), toTimeline(AUDIO), sections())).toEqual([]);
@@ -187,12 +149,12 @@ describe("Sections on different passes of a recorded repeat", () => {
   });
 
   it("cuts several passes when the cut spans them", () => {
-    const route = new Route(timeline, [{ kind: "cut", from: at("70"), to: at("73", 3, 2) }], { vampsEnabled: true });
+    const route = new Route(timeline, [cut("70", "73", 1, 2)], { vampsEnabled: true });
     expect(jumpTargets(timeline, route, 0, 5)).toEqual([P3]);
   });
 
   it("allows a cut on the first pass and a vamp from the second pass on", () => {
-    const sections = [cut("70", "73", 1), vamp(2)];
+    const sections = [cut("70", "73", 1), vampOn(2)];
     expect(validateSections(measures, recording, sections)).toEqual([]);
 
     const route = new Route(timeline, sections, { vampsEnabled: true });
@@ -200,7 +162,7 @@ describe("Sections on different passes of a recorded repeat", () => {
   });
 
   it("stops a vamp's recorded passes where another section starts", () => {
-    const sections = [vamp(1), cut("70", "73", 3)];
+    const sections = [vampOn(1), cut("70", "73", 3)];
     expect(validateSections(measures, recording, sections)).toEqual([]);
 
     const route = new Route(timeline, sections, { vampsEnabled: true });
@@ -208,7 +170,7 @@ describe("Sections on different passes of a recorded repeat", () => {
   });
 
   it("stops a repeat's recorded passes where another section starts", () => {
-    const sections = [repeat(2), vamp(3)];
+    const sections = [repeat("70", "73", 2), vampOn(3)];
     expect(validateSections(measures, recording, sections)).toEqual([]);
 
     const route = new Route(timeline, sections, { vampsEnabled: true });
@@ -217,7 +179,7 @@ describe("Sections on different passes of a recorded repeat", () => {
   });
 
   it("still rejects two sections on the same pass", () => {
-    const [issue] = validateSections(measures, recording, [vamp(2), cut("71", "72", 2)]);
+    const [issue] = validateSections(measures, recording, [vampOn(2), cut("71", "72", 2)]);
     expect(issue?.reason).toBe("Sections must not overlap.");
   });
 });

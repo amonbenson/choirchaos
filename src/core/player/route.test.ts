@@ -1,27 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { Location } from "@/core/models/recording";
-import type { Section, VampOut, VampVocals } from "@/core/models/sections";
-import { BEAT_TICKS, BEATS, makeTimeline, playPositions, POSITION_TICKS } from "@/test/route";
+import type { VampVocals } from "@/core/models/sections";
+import { BEAT_TICKS, cut, makeTimeline, playPositions, POSITION_TICKS, repeat, vamp } from "@/test/route";
 
 import Route, { type RouteState, type VocalRole } from "./route";
 import { findPositionAt } from "./timeline";
-
-function at(measure: string, beat = 0, occurrence = 1): Location {
-  return { measure, beat, occurrence };
-}
-
-function vamp(from: string, to: string, options: { out?: VampOut; vocals?: VampVocals } = {}): Section {
-  return { kind: "vamp", from: at(from), to: at(to, BEATS - 1), out: options.out ?? "onEnd", vocals: options.vocals ?? "all" };
-}
-
-function repeat(from: string, to: string, passes: number): Section {
-  return { kind: "repeat", from: at(from), to: at(to, BEATS - 1), passes };
-}
-
-function cut(from: string, to: string): Section {
-  return { kind: "cut", from: at(from), to: at(to, BEATS - 1) };
-}
 
 // Measure "2" recorded four times back to back (B = 4), at positions 1 to 4.
 const BAKED = ["1", "2", "2", "2", "2", "3"];

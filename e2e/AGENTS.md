@@ -1,95 +1,93 @@
 # E2E Tests — Agent Guide
 
-Extends the root `AGENTS.md`, whose rules apply here too.
+Extends the root `AGENTS.md`.
 
-Playwright tests run the compiled frontend in Chromium against a real PocketBase backend in Docker. They cover what jsdom cannot run: Web Audio, AudioWorklets, pdf.js workers and canvas.
-
-## Commands
+Playwright runs the built frontend in Chromium against a real PocketBase in Docker, covering what jsdom cannot: Web Audio, AudioWorklets, pdf.js workers, canvas.
 
 ```bash
-npm run test:e2e                         # build frontend, start backends, run all e2e tests
-npm run test:e2e -- e2e/tests/foo.spec.ts # single file
-E2E_SKIP_BUILD=1 npm run test:e2e        # reuse the last frontend build (only test files changed)
-npm run e2e:serve                        # seeded backend + Vite dev server for manual checks
-npm run e2e:scores [-- <presetId>]       # regenerate committed score PDFs (needs MuseScore 4)
-npx playwright show-trace <trace.zip>    # inspect a failed test
+npm run test:e2e                          # build, start backends, run all
+npm run test:e2e -- e2e/tests/foo.spec.ts # one file
+E2E_SKIP_BUILD=1 npm run test:e2e         # reuse the last build (only tests changed)
+npm run e2e:serve                         # seeded backend + Vite dev server
+npm run e2e:scores [-- <presetId>]        # regenerate committed score PDFs (MuseScore 4)
+npx playwright show-trace <trace.zip>     # inspect a failure
 ```
 
-Requirements: Docker running, and Chromium installed once with `npx playwright install chromium`. CI runs the same command.
+Needs Docker and, once, `npx playwright install chromium`. CI runs the same.
 
 ## How a Run Works
 
-1. `globalSetup.ts` builds the frontend into `e2e/.cache/dist` and the backend image, once per run.
-2. Each Playwright worker starts its own PocketBase container (Testcontainers, data in tmpfs) and its own `vite preview` server on a random port.
-3. The frontend is built with `VITE_PB_URL="/"`. The preview server proxies `/api` and `/_` to its worker's backend, so one build serves any number of backends and parallel runs never collide.
-4. Before every test, all app collections are truncated. After every passing test, the invariants in `harness/state.ts` check the whole database, so a test that leaves it inconsistent fails.
+1. `globalSetup.ts` builds the frontend (`e2e/.cache/dist`) and the backend image once per run.
+2. Each worker starts its own PocketBase container (Testcontainers, tmpfs) and `vite preview` on a random port.
+3. The frontend is built with `VITE_PB_URL="/"`; each preview proxies `/api` and `/_` to its backend, so one build serves parallel backends.
+4. All app collections are truncated before each test; after each passing test the invariants in `harness/state.ts` check the whole database.
 
-The backend is built from `BACKEND_REPOSITORY` at `BACKEND_COMMIT` (`config.ts`). Bump the commit whenever the frontend needs newer migrations or hooks. To test unpushed backend changes, set `E2E_BACKEND_SOURCE=../choirchaos-pb` (a local checkout, rebuilt on every run).
+The backend is built from `BACKEND_REPOSITORY` at `BACKEND_COMMIT` (`config.ts`); bump it when the frontend needs newer migrations or hooks. `E2E_BACKEND_SOURCE=../choirchaos-pb` tests an unpushed local checkout.
 
 ## Writing Tests
 
-Import `test` and `expect` from `harness/fixtures.ts`, never from `@playwright/test`. Otherwise the reset and invariant fixtures do not run.
+Import `test` and `expect` from `harness/fixtures.ts`, never `@playwright/test`, or reset and invariants do not run.
 
 | Fixture | Use |
 |---|---|
-| `admin` | PocketBase SDK as superuser. Bypasses access rules. Use it to arrange and to assert state. |
-| `factory` | `createUser`, `clientFor(user)`, `createShow(owner)`, `createSong(actor, show, bundle)`. Shows and songs are created as the given user, so access rules apply. |
-| `loginAs(user)` | Seeds the SDK auth store in the page. Call before the first `page.goto()`. |
-| `snapshot()` | All app records. Compare before and after a failed operation to prove nothing changed. |
-| `invariants` | Option. Override with `test.use({ invariants: [...] })` only for tests that deliberately create broken data. |
-| `page`, `baseURL` | Standard Playwright. `page.goto("/")` hits the worker's frontend. |
+| `admin` | Superuser SDK, bypasses rules; arrange and assert state |
+| `factory` | `createUser`, `clientFor(user)`, `createShow(owner)`, `createSong(actor, show, bundle)`, created as that user so rules apply |
+| `loginAs(user)` | Seeds the page's auth store; call before the first `page.goto()` |
+| `snapshot()` | All app records, to prove a failed operation changed nothing |
+| `invariants` | Override with `test.use({ invariants: [...] })` only for deliberately broken data |
+| `page`, `baseURL` | Standard Playwright; `page.goto("/")` hits the worker's frontend |
 
-- When a feature adds a cross-record or cross-field rule, add it to `DEFAULT_INVARIANTS` in `harness/state.ts`, so every test checks it. It already checks every data invariant of the song layers (root guide, Song Model), plus that a MIDI song's recording plays as many measures as its beat map has bars. The harness keeps its own copy of these rules and imports nothing from `src/`, so an app bug cannot hide in both. `harness.spec.ts` checks the harness itself.
-- Prefer asserting backend state through `admin` over asserting UI text. Assert stored references by measure ID, never by label: `measureId(score, "3")` and `locationAt(score, "3", beat, occurrence)` from `generators/song.ts` build them from a bundle's or record's `score`.
-- To test review flows without running detection, arrange `layout.review` on measures and `score.unnumberedBoxes` through the bundle fields. `withoutBoxes(score)` removes every box.
-- The app opens file dialogs from buttons without a permanent `<input type=file>`, so upload through `chooseFiles()` in `harness/page.ts`, which uses Playwright's file chooser event.
-- Vue reports render errors through `console.error`, not as page errors. Use `collectPageErrors()`, which listens to both, to assert that a flow is error-free.
+- New cross-record or cross-field rules go into `DEFAULT_INVARIANTS` (`harness/state.ts`). It checks every song layer invariant (root guide, Song Model) and that a MIDI recording plays as many measures as its beat map has bars. The harness keeps its own copy of these rules and imports nothing from `src/`, so an app bug cannot hide in both; `harness.spec.ts` tests the harness.
+- Prefer asserting backend state via `admin` over UI text, and references by ID, never label: `measureId(score, "3")`, `locationAt(score, "3", beat, occurrence)` (`generators/song.ts`).
+- Arrange review flows through bundle fields (`layout.review`, `score.unnumberedBoxes`); `withoutBoxes(score)` removes all boxes.
+- Upload with `chooseFiles()` (`harness/page.ts`, file chooser event); the app has no permanent `<input type=file>`.
+- Vue reports render errors via `console.error`, not page errors: use `collectPageErrors()`.
 
 ### Finding Elements
 
-Locate elements by role and accessible name (`getByRole`, `getByLabel`), never by test ids or CSS. When an element has no usable name, give it one in the app instead of adding a test hook.
+By role and name (`getByRole`, `getByLabel`), never test ids or CSS. An element without a usable name gets one in the app.
 
 | Area | Roles and names |
 |---|---|
-| Show page | Song rows are `row`s named by their cells. Members are `listitem`s of the list "People with access". |
-| Score | Each page is a `group` "Page N". Boxes are buttons "Measure <label>" or "Box without a number", `aria-pressed` while selected, and the playing box has `aria-current="location"`. Detection previews are images "Detected measure <label>" or "Detected box without a number". A drag pans and a click on empty space clears the selection. While drawing, a drag that starts on a page draws a box. A song without a PDF shows the list "Measures" instead, whose buttons "Measure <label>" select and seek like boxes. |
-| Score overlays | A section's first chip is a button named after it ("Repeat 14 to 15, 3 times", while playing "Repeat 14 to 15, pass 1 of 3"), and marker chips are buttons "Marker C" ("Marker D, 1st time" when the measure repeats). Both select their object in the editor (`aria-pressed`) and seek while rehearsing. A recorded repeat is an image "Measures 19 to 20 recorded 4 times", a jump an image "After 2, the recording continues at 4" (text "to 4"), and a click on either reaches the box. Each box's accessible description lists its overlays, including "Sync point" (`toHaveAccessibleDescription`). |
-| Header | The "Position" slider's `aria-valuetext` names the measure and playing section ("20, 1st time, Vamp pass 1"). The section button shows "Vamp 2" or "Repeat 1/3". Song details are the dialog "Song details", opened by the button "Details". |
-| Inspector | The region "Editor panel", titled by a heading that names the selection ("Measure 2", "Measures 2 to 3", "Repeat 1 to 2", "Marker A", "Sync point at 3", "Recording pass 1 to 4, 1st time", "Add measures", "Song setup"), with the buttons "Undo", "Redo" and "Clear selection" next to it. The measures panel has regions "Section" (buttons "Repeat", "Vamp", "Cut", or "Select repeat 1 to 2"), "Markers" ("Add marker at 3"), "Recording" and "Audio sync", the pass buttons ("2nd time") in the group "Pass, follows the playhead", and "Delete measure 2", confirmed in the alertdialog "Delete measure(s)". A new section over others asks in the alertdialog "Replace sections". The section panel has the segmented "Kind", "Passes", the comboboxes "Out" and "Vocals", and "Remove section" (alertdialog "Remove section"). The marker panel has the textbox "Name", "Move to playhead" and "Delete marker A". Section range handles are sliders ("Last measure of repeat 1 to 2", "... of vamp 1, 1st time to 2, 2nd time" across passes) on the score and in the timeline's Sections lane, so scope them to the region "Score" or "Timeline". Drawing ends with "Done", and a drawn box asks "How many measures" and "First number". |
-| Recording | For selected measures, the spinbutton "Recorded" and a `role="status"` line naming the new length. With nothing selected: the list "The order the backing track plays the measures in", whose buttons select a pass, and the list "Duplicate boxes" ("Play as 2nd time of 1 to 2"). A selected pass has "Move earlier", "Move later", "Remove pass" and "Edit as text" (textbox "Recording as text"). A change that drops references opens the alertdialog "Change the recording". |
-| Audio sync | For selected measures, "Select sync point at 3" or "Sync to playhead". A selected sync point has the textbox "Starts at", "Nudge earlier"/"Nudge later", "Sync to playhead", "Move to another measure" (combobox "Which measure starts at ...") and "Remove sync point at 3". With nothing selected the region "Audio sync" holds the sync status ("every pass covered"). |
-| Timeline | The region "Timeline" (editors only, match it `exact`, since the panel's content is a region named after its "Collapse timeline" header), with lane lists "Markers", "Sections", "Recording" and "Measures", which only hold the items inside the view. Measure cells are buttons named by label and occurrence ("2, 2nd time", never "Measure ...", which score boxes use) that only seek. Markers, sections and passes are buttons that select their object. A pass that plays measures again without a sync point at its start adds ", no sync point at its start" to its name, and the setup checklist then has a hint with a button "Go to 1, 2nd time". A drag anywhere scrubs the playhead, one on a sync point moves it. "Zoom in", "Zoom out" and "Fit to view" sit in the panel header, outside the region. The waveform is an image "Waveform" exposing `data-zoom-scale` (samples per pixel) and `data-sample-rate`, so tests can convert sync point times to pixels, starting from its left edge while the song fits the view. |
+| Show page | Song rows are `row`s named by their cells. Members are `listitem`s of "People with access". |
+| Score | Pages are `group`s "Page N". Boxes are buttons "Measure <label>" or "Box without a number" (`aria-pressed` when selected; the playing one `aria-current="location"`). Detection previews are images "Detected measure <label>" / "Detected box without a number". A drag pans, a click on empty space clears; while drawing a drag on a page draws. Without a PDF, the list "Measures" holds buttons "Measure <label>" that select and seek like boxes. |
+| Score overlays | A section's first chip is a button named after it ("Repeat 14 to 15, 3 times"; playing: "..., pass 1 of 3"), marker chips buttons "Marker C" ("Marker D, 1st time" for repeated measures); both select in the editor (`aria-pressed`) and seek while rehearsing. Recorded repeats are images "Measures 19 to 20 recorded 4 times", jumps images "After 2, the recording continues at 4" (text "to 4"); clicks on them reach the box. Box descriptions list their overlays, including "Sync point" (`toHaveAccessibleDescription`). |
+| Header | Slider "Position" with `aria-valuetext` naming measure and section ("20, 1st time, Vamp pass 1"). Section button "Vamp 2" / "Repeat 1/3". Button "Details" opens dialog "Song details". |
+| Inspector | Region "Editor panel", headed by the selection ("Measure 2", "Measures 2 to 3", "Repeat 1 to 2", "Marker A", "Sync point at 3", "Recording pass 1 to 4, 1st time", "Add measures", "Song setup"), with "Undo", "Redo", "Clear selection". Measures: regions "Section" ("Repeat", "Vamp", "Cut" or "Select repeat 1 to 2"), "Markers" ("Add marker at 3"), "Recording", "Audio sync"; pass buttons ("2nd time") in group "Pass, follows the playhead"; "Delete measure 2" (alertdialog "Delete measure(s)"); overlap asks in alertdialog "Replace sections". Section: segmented "Kind", "Passes", comboboxes "Out" and "Vocals", "Remove section" (alertdialog). Marker: textbox "Name", "Move to playhead", "Delete marker A". Range handles are sliders ("Last measure of repeat 1 to 2", across passes "... of vamp 1, 1st time to 2, 2nd time") on the score and in the timeline: scope to region "Score" or "Timeline". Drawing ends with "Done"; a drawn box asks "How many measures" and "First number". |
+| Recording | Selected measures: spinbutton "Recorded", `role="status"` with the new length. Nothing selected: list "The order the backing track plays the measures in" (buttons select passes), list "Duplicate boxes" ("Play as 2nd time of 1 to 2"). A pass: "Move earlier", "Move later", "Remove pass", "Edit as text" (textbox "Recording as text"). Dropping references opens alertdialog "Change the recording". |
+| Audio sync | Selected measures: "Select sync point at 3" or "Sync to playhead". A sync point: textbox "Starts at", "Nudge earlier"/"Nudge later", "Sync to playhead", "Move to another measure" (combobox "Which measure starts at ..."), "Remove sync point at 3". Nothing selected: region "Audio sync" with the status ("every pass covered"). |
+| Timeline | Region "Timeline" (editors; match `exact`, the panel content is also a region named "Collapse timeline ..."), lane lists "Markers", "Sections", "Recording", "Measures" holding only items in view. Measure cells are buttons "2, 2nd time" (never "Measure ...") that only seek; markers, sections, passes select. A pass without a sync point at its start adds ", no sync point at its start" to its name, and the checklist then has a button "Go to 1, 2nd time". A drag scrubs, one on a sync point moves it. "Zoom in", "Zoom out", "Fit to view" sit in the panel header, outside the region. The waveform is image "Waveform" with `data-zoom-scale` (samples per pixel) and `data-sample-rate` for converting sync point times to pixels from its left edge while the song fits. |
 
-The inspector's section buttons share names with the header's section button, so scope them to the editor panel and clear the selection (Escape) before reading playback.
+Inspector section buttons share names with the header's section button: scope to the editor panel and clear the selection (Escape) before reading playback.
 
 ### Playback Tests
 
-`recordPlayback()` in `harness/playback.ts` reads the player the way a user sees it. Until a condition holds, it samples the header's "Current measure" and section button, the "Position" slider (recording milliseconds in audio mode, MIDI ticks in MIDI mode) and the highlighted box in one `page.evaluate()`, so a sample never mixes two moments of playback. `sequenceOf()` collapses the samples into the measures or passes in playing order. Bars of a second or more keep this reliable, so playback specs use fast specs without a PDF (`withPdf: false`) unless they check boxes.
+`recordPlayback()` (`harness/playback.ts`) samples, in one `page.evaluate()` until a condition holds, the header's "Current measure" and section button, the "Position" slider (ms in audio, ticks in MIDI) and the highlighted box, so samples never mix two moments. `sequenceOf()` collapses them into measures or passes in playing order. Bars of a second or more keep this reliable, so playback specs use fast specs without a PDF (`withPdf: false`) unless they check boxes.
 
 ## Test Data Generators
 
-A `ScoreSpec` (`generators/score/types.ts`, presets in `presets.ts`) is expanded by `buildTimeline()` into bars and notes using a seeded RNG. Every artefact is derived from that one timeline, so they always agree:
+`buildTimeline()` expands a `ScoreSpec` (`generators/score/types.ts`, presets in `presets.ts`) into bars and notes with a seeded RNG; every artefact derives from that timeline:
 
 | Output | Function | Notes |
 |---|---|---|
-| MusicXML, `.mscz`, PDF, measure layout | `scripts/generateScores.ts` | Needs MuseScore. Output is committed in `assets/scores/<id>/` |
-| MIDI | `toMidiFile()` | One named track per part. The player matches song tracks by MIDI track name |
-| Recording | `recordTimeline()` | The printed timeline played with `RecordedRepeat`s (written repeats, baked vamps). MIDI, beat map and audio are rendered from it |
-| MTI beat map JSON | `toMtiJson()` | Names repeated passes `N-k` or with `R` suffixes (`repeats[].labels`). Ends with beat 1 of a terminal bar, which gives the last bar its length |
-| MP3 stems | `renderPartStem()` + `encodeMp3()` | Additive synth, deterministic. `renderClickTrack()` for sync checks |
-| WAV | `encodeWav()` | Converted to MP3 by the backend like any other recording |
-| Song record fields and files | `buildSongBundle(spec, { mode, repeats })` | `mode`: `"midi"`, `"audio"` or `"none"`. `withPdf: false` skips the committed PDF. Writes `score` (IDs `m1..mn` in score order), `recording` (spans compressed like the app's beat map import, a warp marker per recorded bar in audio mode) and `arrangement` (rehearsal marks as markers, spec vamps as vamp sections) |
+| MusicXML, `.mscz`, PDF, layout | `scripts/generateScores.ts` | Needs MuseScore; committed in `assets/scores/<id>/` |
+| MIDI | `toMidiFile()` | One named track per part; the player matches tracks by name |
+| Recording | `recordTimeline()` | The timeline played with `RecordedRepeat`s (written repeats, baked vamps); MIDI, beat map and audio render from it |
+| MTI beat map | `toMtiJson()` | Passes named `N-k` or with `R` suffixes; ends with beat 1 of a terminal bar |
+| MP3 stems | `renderPartStem()` + `encodeMp3()` | Deterministic additive synth |
+| WAV | `encodeWav()` | Converted to MP3 by the backend |
+| Song fields and files | `buildSongBundle(spec, { mode, repeats })` | `mode` `"midi"`, `"audio"` or `"none"`; `withPdf: false` skips the PDF. Writes `score` (`m1..mn`), `recording` (compressed like the beat map import, one warp marker per recorded bar in audio) and `arrangement` (rehearsal marks as markers, spec vamps as vamps) |
 
-- MIDI, JSON and audio are generated on the fly in tests. Only PDFs are committed, because generating them needs MuseScore.
-- `layout.json` stores a hash of the MusicXML and `assets/conductor.mss`. `loadScoreAssets()` throws when a preset changed without regenerating. Run `npm run e2e:scores -- <id>` and commit the result.
-- Do not reuse a preset's `seed` for a different preset. Changing `timeline.ts` changes every preset's notes, so it also requires regenerating all score assets.
+- Only PDFs are committed (they need MuseScore); MIDI, JSON and audio are generated in tests.
+- `layout.json` hashes the MusicXML and `assets/conductor.mss`; `loadScoreAssets()` throws on a changed preset until `npm run e2e:scores -- <id>` is run and committed.
+- Never reuse a preset's `seed`. Changing `timeline.ts` changes every preset, so regenerate all assets.
 
 ## Traps
 
-- PocketBase renames uploaded files (`name_<random>.ext`). `createSong()` uploads first and then writes tracks with the stored names, like the frontend does. Do the same in new helpers.
-- `songs` has no list rule, so regular users can only read songs through `shows?expand=songs_via_show` or by id.
-- The backend transcodes every recording, so compare stored audio by duration, never by content.
-- The MIDI player downloads instruments for `webaudiofont` from the internet at load time. MIDI playback tests need network access or a `page.route()` stub.
-- MuseScore's `.mpos` coordinates scale with the image export resolution. `convertWithMuseScore()` pins `--image-resolution`. Keep `MPOS_UNITS_PER_INCH` in sync with it.
-- `e2e:serve` binds ports 8091 and 5174 unless `E2E_SERVE_BACKEND_PORT` and `E2E_SERVE_FRONTEND_PORT` say otherwise. Right after a previous run stops, Testcontainers may need a few seconds to release the backend port.
-- `testcontainers` is pinned to 11.x because 12.x requires Node 22.22+, and the project still supports Node 20. The `uuid` override in `package.json` patches its dockerode dependency.
+- PocketBase renames uploads (`name_<random>.ext`): `createSong()` uploads first, then writes tracks with stored names. Do the same in new helpers.
+- `songs` has no list rule: users read songs via `shows?expand=songs_via_show` or by id.
+- The backend transcodes recordings: compare stored audio by duration, never content.
+- MIDI playback downloads `webaudiofont` instruments at load: tests need network or a `page.route()` stub.
+- MuseScore's `.mpos` coordinates scale with export resolution: `convertWithMuseScore()` pins `--image-resolution`, keep `MPOS_UNITS_PER_INCH` in sync.
+- `e2e:serve` binds 8091 and 5174 (`E2E_SERVE_BACKEND_PORT`, `E2E_SERVE_FRONTEND_PORT`); right after a run, Testcontainers may hold the port a few seconds.
+- `testcontainers` stays on 11.x (12.x needs Node 22.22+, the project supports Node 20); the `uuid` override in `package.json` patches its dockerode dependency.

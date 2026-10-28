@@ -1,6 +1,6 @@
 # Choir Chaos
 
-A web-based rehearsal platform for musical ensembles, loosely based on [ChordChaos](https://chordchaos.com/) and similar proprietary tools. Editors organize shows into songs and upload sheet music PDFs with MIDI or audio files. They mark the measures on the score (with automatic measure detection), sync audio recordings on a timeline, describe the repeats the recording already contains, and arrange vamps, repeats and cuts directly on the score. Rehearsers play songs back with multi-track mixing, the arrangement, segues and real-time time-stretching. Shows can be private, unlisted or public, with owner, editor and viewer roles.
+A web-based rehearsal platform for musical ensembles, loosely based on [ChordChaos](https://chordchaos.com/) and similar proprietary tools. Editors organize shows into songs and upload sheet music PDFs with MIDI or audio files. They mark the measures on the score (with automatic measure detection), sync audio recordings on a timeline, describe the repeats the recording already contains, and arrange vamps, repeats and cuts on the score and the timeline, with undo. Rehearsers play songs back with multi-track mixing, the arrangement, segues and real-time time-stretching. Shows can be private, unlisted or public, with owner, editor and viewer roles.
 
 ## Technology Stack
 
@@ -16,6 +16,7 @@ src/
 ├── stores/         # Pinia stores
 ├── router/         # Routes and navigation guards
 ├── pocketbase/     # PocketBase client and DB access
+├── theme/          # PrimeVue preset (accent and surface palettes)
 └── core/           # Framework-free models, playback engine, MIDI, PDF rendering, utilities
 e2e/                # Playwright end-to-end tests
 ```

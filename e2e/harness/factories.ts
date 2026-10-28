@@ -2,7 +2,7 @@ import type PocketBase from "pocketbase";
 import type { RecordModel } from "pocketbase";
 
 import { DEFAULT_USER_PASSWORD } from "../config";
-import type { SongBundle, SongFields } from "../generators/song";
+import type { SongBundle } from "../generators/song";
 import { createClient } from "./backend";
 
 export type TestUser = {
@@ -34,14 +34,6 @@ export type Factory = {
   createShow: (owner: TestUser, options?: CreateShowOptions) => Promise<RecordModel>;
   createSong: (actor: TestUser, show: RecordModel, bundle: SongBundle) => Promise<RecordModel>;
 };
-
-/** Empty values for the song JSON fields, in the shape the frontend expects. */
-export const EMPTY_SONG_FIELDS: Omit<SongFields, "number" | "title"> = Object.freeze({
-  tracks: [],
-  score: { measures: [], unnumberedBoxes: [] },
-  recording: { spans: [], warpMarkers: [] },
-  arrangement: { markers: [], sections: [], segue: false },
-});
 
 function toFormData(fields: Record<string, unknown>, files: Record<string, File | File[] | undefined>): FormData {
   const form = new FormData();

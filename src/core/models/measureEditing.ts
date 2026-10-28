@@ -568,9 +568,3 @@ export function normalizeLayout(layout: MeasureLayout): MeasureLayout {
     height: Math.abs(layout.height),
   };
 }
-
-export function intersects(a: MeasureLayout, b: MeasureLayout): boolean {
-  return a.page === b.page
-    && a.x < b.x + b.width && b.x < a.x + a.width
-    && a.y < b.y + b.height && b.y < a.y + a.height;
-}

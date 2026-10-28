@@ -1,5 +1,5 @@
 // Wheel deltas arrive in pixels, lines or pages depending on browser and device. Firefox on macOS
-// reports lines, which used to make every wheel tick a huge zoom step.
+// reports lines, which would make every wheel tick a huge zoom step without scaling them to pixels.
 const LINE_HEIGHT_PX = 16;
 const PAGE_HEIGHT_PX = 800;
 

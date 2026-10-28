@@ -1,189 +1,167 @@
 # choirchaos — Agent Guide
 
-Choir rehearsal web app: a PDF score synchronized with real-time MIDI or multi-track audio playback.
+Choir rehearsal web app: a PDF score synchronized with MIDI or multi-track audio playback. Vue 3, Vite, TypeScript, Pinia, PrimeVue, Tailwind v4, PocketBase, Web Audio, `webaudiofont`, `rubberband-web`, `pdfjs-dist`, `measure-detection`.
 
-**Stack:** Vue 3, Vite, TypeScript, Pinia, PrimeVue, Tailwind v4, PocketBase, Web Audio API, `webaudiofont`, `rubberband-web`, `pdfjs-dist`, `measure-detection`.
-
-Three nested guides cover their folders: `src/views/AGENTS.md` (pages and the song editor), `src/core/player/AGENTS.md` (playback engine) and `e2e/AGENTS.md` (end-to-end tests). Read the nested guide before working in its folder.
-
----
+Nested guides, read before working in their folder: `src/views/AGENTS.md` (pages, song editor), `src/core/player/AGENTS.md` (playback engine), `e2e/AGENTS.md` (end-to-end tests).
 
 ## Rules
 
-- Never copy content from `tmp/exampleMidi/`. It is proprietary and serves as a format reference only.
-- Never format code by hand. Run `npm run lint:fix`.
-- No `_` prefixes. TypeScript access modifiers enforce privacy. `_` is only for ignored callback args.
-- No TypeScript getters. Use `get*()`/`is*()` methods for public read access.
-- Avoid comments. Prefer clear names and named constants/functions. When a comment is needed, explain why, not what, and use no special characters (emojis, arrows, decorative lines).
-- Avoid nesting. Prefer early returns and extracted functions.
-- After larger edits, re-read the whole file as one unit to make sure it reads coherently.
-- Work on a branch and open a PR against `main`. PRs are squash-merged, and commit subjects are short and imperative ("Add global vamp enable/disable toggle"). Never push to `main` directly: every push to `main` deploys to production.
+- Never copy content from `tmp/exampleMidi/` (proprietary, format reference only).
+- Never format by hand: `npm run lint:fix`.
+- No `_` prefixes (use access modifiers; `_` only for ignored callback args). No TypeScript getters: use `get*()`/`is*()`.
+- Avoid comments. If needed, explain why, not what, without special characters (emojis, arrows, decorative lines).
+- Prefer early returns and extracted functions over nesting.
+- Changes are embedded into existing code, not bolted on. After larger edits, re-read the whole file.
+- Work on a branch, PR against `main` (squash-merged, short imperative subjects). Never push to `main`: it deploys to production.
 
 ## Commands
 
 ```bash
-npm run dev                  # dev server at http://localhost:5173
-npm run lint:fix             # eslint with autofix
-npm run typecheck            # vue-tsc --build
-npx vitest run               # all unit tests
-npx vitest run <path>        # single test file
-npm run build                # typecheck + production build
-npm run test:e2e             # end-to-end tests (needs Docker)
-npm run e2e:serve            # seeded local backend + frontend for manual checks
+npm run dev          # dev server, http://localhost:5173
+npm run lint:fix     # eslint with autofix
+npm run typecheck    # vue-tsc --build
+npx vitest run       # unit tests (add a path for one file); never `npm test`, which watches forever
+npm run build        # typecheck + production build
+npm run test:e2e     # end-to-end tests (Docker)
+npm run e2e:serve    # seeded backend + frontend for manual checks
 ```
 
-Do not use `npm test`. It starts vitest in watch mode and never exits.
-
-Before finishing a task, run `npm run lint:fix`, `npm run typecheck` and `npx vitest run`. If the change touches backend access, uploads, routing or another user flow, also run `npm run test:e2e`. CI runs all of these plus the build.
+Before finishing: `lint:fix`, `typecheck`, `vitest run`, plus `test:e2e` when backend access, uploads, routing or a user flow changed. CI also builds.
 
 ## Layout
 
 | Path | Contents |
 |---|---|
 | `src/views/` | Routed pages |
-| `src/components/` | UI components in the folder of the area they appear in (`header/`, `show/`, `song/`, `player/`, `editor/`, `score/`), plus generic `base/` and `icons/` |
-| `src/composables/` | Reactive logic. `event.ts` bridges core events into Vue. `useEditorSelection` holds the song editor's typed selection, `useMeasureEditor` drawing, placing and reviewing boxes (`provideSongEditor` sets up both), `useRecordingEditor` and `useSyncEditor` save recording and sync changes, `usePlayerSync` keeps the player in step with saved edits, `useSongHistory` binds undo and redo, `useTimelineAxis` is the timeline's shared zoom and scroll, `useSectionRange` the section range handles of the score and the timeline, `usePanZoom` the score's, `useConfirmDestructive` asks before destructive actions |
-| `src/stores/` | Pinia stores. `settings/` holds persisted user settings, one file per category |
-| `src/router/` | Routes and navigation guards |
-| `src/theme/` | The PrimeVue preset, the single place for the accent and surface palettes |
-| `src/core/models/` | Domain models (Show, Song, Track, Measure, markers, sections) and the pure logic around them: layer edits and their undo history, recording timeline, locations, setup status, measure editing, detection, review, score overlays and warp editing |
-| `src/core/import/` | Groups dropped files into songs by the number in their names |
-| `src/core/player/` | Playback engine with MIDI and audio backends |
-| `src/core/midi/` | MIDI event types, beat map import and the `WarpMap` from timeline positions to recording time |
-| `src/core/pdf/` | PDF rendering in a Web Worker, automatic measure detection |
-| `src/core/utils/` | `Property`/`Emitter` events, song numbering, `Updater`, `ZoomLadder` and small helpers such as `lowerFirst()` |
-| `src/pocketbase/` | PocketBase client, auth, DB access |
-| `src/test/` | Shared unit test setup, fixtures and helpers |
-| `e2e/` | Playwright tests against a Dockerized backend, plus test data generators |
+| `src/components/` | Components by area (`header/`, `show/`, `song/`, `player/`, `editor/`, `score/`), plus generic `base/` and `icons/` |
+| `src/composables/` | Reactive logic: `useEvent()` (core events into Vue), the editor's `useEditorSelection`, `useMeasureEditor` (drawing, placing, review; both set up by `provideSongEditor`), `useRecordingEditor`, `useSyncEditor`, `usePlayerSync`, `useSongHistory`, `useTimelineAxis`, `usePanZoom`, `useConfirmDestructive` |
+| `src/stores/` | Pinia stores, persisted settings in `settings/` (one file per category) |
+| `src/router/` | Routes and guards |
+| `src/theme/` | PrimeVue preset: the only place for accent and surface palettes |
+| `src/core/models/` | Domain models and their pure logic: layers and undo, recording, locations, sections, selection, setup status, measure editing, detection, review, score overlays, warp editing |
+| `src/core/import/` | Groups dropped files into songs by number |
+| `src/core/player/` | Playback engine (MIDI and audio backends) |
+| `src/core/midi/` | MIDI events, beat map import, `WarpMap` (timeline position to recording time) |
+| `src/core/pdf/` | PDF rendering in a worker, measure detection |
+| `src/core/utils/` | `Property`/`Emitter`, song `Numbering`, `Updater`, `ZoomLadder`, small helpers |
+| `src/pocketbase/` | Client, auth, DB access |
+| `src/test/` | Unit test setup, fixtures, helpers |
+| `e2e/` | Playwright tests and test data generators |
 
-`src/core/` is framework-free TypeScript. Vue and Pinia code consumes core state through `useEvent()`, which needs an active Vue effect scope. Reactive core state uses `Property<T>` (fires `on*Change`; a `Property<void>` fires with `fire(undefined)`), fire-and-forget events use `Emitter<T>`. Both live in `src/core/utils/events.ts` and return a `Disposable` on subscription.
-
----
+`src/core/` is framework-free. Vue reads it through `useEvent()` (needs an effect scope). State is a `Property<T>` (`on*Change`; `Property<void>` fires with `fire(undefined)`), one-off events an `Emitter<T>`; both return a `Disposable`.
 
 ## Song Model
 
-A song has three layers, each referencing the one below only by measure ID:
+Three layers, each referencing the one below only by measure ID:
+- **Score:** printed measures in written order, with their boxes on the PDF.
+- **Recording:** inclusive measure ID spans in the order the backing track plays them, plus sync points (warp markers).
+- **Arrangement:** markers, cut/repeat/vamp sections, segue.
 
-- **Score:** the printed measures in written order, with their boxes on the PDF.
-- **Recording:** the order the backing track plays the score's measures in, as inclusive measure ID spans, plus the audio sync points (warp markers).
-- **Arrangement:** markers, cut, repeat and vamp sections, and the segue.
-
-Rules that hold everywhere:
-
-- A measure is identified by its stable `id` (`"m1"`, `"m2"`, ...), never by label or array index. Its `label` is the printed number, free text and display only, so relabeling never touches a reference.
-- `Song.getTimeline()` expands the recording into one entry per measure played. Its index is the timeline position. A location `{ measure, beat, occurrence }` is a 0-based beat of the `occurrence`-th time a measure plays.
-- Each layer is one JSON field in PocketBase (`score`, `recording`, `arrangement`), always read and written whole through one serializer per layer in `layers.ts`. The app has no handling for older formats.
-- Every edit of the layers goes through `Song.editLayers()`. Callers compute the next lists with pure functions (`planMeasureEdit()` and `planRecordingChange()` in `layers.ts`, `replaceSections()`, `addMarker()`, `addWarpMarker()` and their siblings) and never mutate the song. `editLayers()` puts references in timeline order, validates the fields that changed (every reference once the timeline changed, so data stored before a rule only blocks edits of its own field), saves every changed layer in one request, which PocketBase applies atomically, and then fires `onLayersChange` with both snapshots and `timingChanged`. A failed save changes nothing in memory. Only file uploads with a beat map write the layers another way.
-- A song with measures always has recording spans. Every measure or recording change removes the references it leaves unresolved (markers, sections, sync points), since the e2e invariants reject them.
-- Recording changes (`planRecordingChange()`, used by `setRecordingSpans()` and the duplicate migration) first move references by timeline position through `remapReferences()`, keeping sync point times, and drop only what has no surviving position. The span helpers in `recording.ts` return normalized spans (`spansFromSequence()`), and the UI previews every change with `previewRecordingSpans()` before saving.
-- The player follows `onLayersChange` through `usePlayerSync`: it reloads at the same time when `timingChanged` (measure order, beats or recording), and otherwise only calls `syncWarp()`. Callers never reload the player, so UI state never waits for audio to load.
-- Undo (`songHistory.ts`) records every change as a pair of snapshots for the song open in the editor and writes one back through `restoreLayers()`, which is `editLayers()` marked as coming from the history. It covers the three layers and the segue, not files, details or tracks, and starts over when the song changes or the editor closes. It refuses, and drops the history, when the layers changed without it (a beat map upload) or the record's `updated` timestamp differs from the one `Song` remembers from its own last save, which means someone else saved. A failed save keeps the history.
-- A section lives on one pass: its `from` and `to` carry occurrences. `getSectionPasses()` in `sections.ts` is the only place that decides which recorded passes a section plays (a cut exactly its range, a repeat or vamp also the following repetitions up to where another section starts), and the route, validation and every overlay use it. Never compute a section's passes on your own.
-- A MIDI song's score and recording come from its beat map (`jsonFile`) through `scoreFromBeatMap()`, which reads repeated passes (`12-2`, `12R`) as the written measure `12`. The beat map stays the timing source, so MIDI recordings are read-only and a MIDI song never has sync points. Never store a MIDI file without its beat map.
-- `Numbering` (`src/core/utils/numbering.ts`) is only for song numbers within a show. `measureLabel.ts` parses measure labels only to suggest the label of a new box.
+Invariants:
+- Measures are identified by stable `id` (`m1`, `m2`, ...). `label` is free display text, so relabeling never touches references.
+- `Song.getTimeline()` has one entry per measure played; its index is the timeline position. A location `{ measure, beat, occurrence }` is a 0-based beat of a measure's `occurrence`-th play.
+- Each layer is one PocketBase JSON field (`score`, `recording`, `arrangement`), always read and written whole through its serializer in `layers.ts`. No handling for older formats.
+- Every layer edit goes through `Song.editLayers()`. Callers compute the next lists with pure functions (`planMeasureEdit()`, `planRecordingChange()`, `replaceSections()`, `addMarker()`, `addWarpMarker()`, ...) and never mutate the song. `editLayers()` orders references, validates the changed fields (all references once the timeline changed, so older stored data only blocks edits of its own field), saves all changed layers in one atomic request and fires `onLayersChange` with both snapshots and `timingChanged`. A failed save changes nothing. Only uploads with a beat map write layers otherwise.
+- A song with measures has recording spans. Every measure or recording change drops the references it leaves unresolved (e2e invariants reject them).
+- Recording changes (`planRecordingChange()`, used by `setRecordingSpans()` and the duplicate migration) move references by timeline position through `remapReferences()`, keeping sync point times, and drop only what has no surviving position. Span helpers return normalized spans (`spansFromSequence()`); the UI previews with `previewRecordingSpans()`.
+- `usePlayerSync` follows `onLayersChange`: reload at the same time when `timingChanged`, otherwise `syncWarp()`. Callers never touch the player, so UI never waits for audio.
+- Undo (`songHistory.ts`) stores snapshot pairs for the song open in the editor and restores through `restoreLayers()`. It covers the three layers and the segue (not files, details, tracks) and resets when the song changes or the editor closes. It refuses and drops the history when the layers changed outside it (beat map upload) or the record's `updated` differs from `Song`'s last save (someone else saved). A failed save keeps it.
+- A MIDI song's score and recording come from its beat map (`jsonFile`) via `scoreFromBeatMap()`, which reads passes `12-2`, `12R` as measure `12`. The beat map stays the timing source: MIDI recordings are read-only and have no sync points. Never store a MIDI file without its beat map.
+- `Numbering` is only for song numbers; `measureLabel.ts` only suggests labels for new boxes.
 
 ## Score Editing
 
-- A box is a measure's layout on the score, and the label typed for it says which measure it shows. MIDI songs only have the measures of their beat map, so editing them only moves boxes. Audio songs own their measures: placing a box on a label nobody has creates the measure at the box's reading-order position, or relabels the box's old measure (keeping its ID and references) if that one would be left without a box.
-- `measureEditing.ts` plans every box action as a `PlannedEdit`: one `MeasureEdit` for `Song.applyMeasureEdit()`, plus the boxes it places as `BoxTarget`s (an existing ID, or the index of an addition, since new measures get their ID only when saved). An addition's `index` is its score index after the edit. `useMeasureEditor.apply()` saves the edit and selects those boxes. Removal cleanup and span maintenance happen in `planMeasureEdit()`, never in `measureEditing.ts`.
-- Reading order (page, row, left to right) decides range selection, renumbering, a new box's default label and where a new measure goes in the score. Boxes share a row when one's vertical center lies inside the other. Consecutive labels follow `suggestLabel()`: the next measure of the score in MIDI songs, the next whole number in audio songs.
-- A box in the way is a conflict the user resolves (swap, or shift the following boxes). Planning never resolves one on its own.
-- Measures are selected and compared by ID. Unnumbered boxes are compared by position (`isSameLayout()`), and an edit that resolves some sends the whole remaining list.
+- A box is a measure's layout; its typed label says which measure it shows. MIDI songs only have beat map measures, so editing moves boxes. Audio songs own their measures: a box on an unused label creates the measure at its reading-order position, or relabels its old measure (keeping ID and references) if that would be left without a box.
+- `measureEditing.ts` plans each box action as a `PlannedEdit`: one `MeasureEdit` for `Song.applyMeasureEdit()` plus the placed boxes as `BoxTarget`s (an existing ID, or an addition's index in the score after the edit, since IDs are assigned on save). `useMeasureEditor.apply()` saves and selects them. Removal cleanup and span maintenance live in `planMeasureEdit()`.
+- Reading order (page, row, left to right; boxes share a row when one's vertical center lies inside the other) decides range selection, renumbering, default labels and where new measures go. `suggestLabel()`: next score measure in MIDI songs, next whole number in audio songs.
+- A box in the way is a conflict the user resolves (swap or shift); planning never resolves it.
+- Measures compare by ID, unnumbered boxes by position (`isSameLayout()`); an edit resolving some sends the whole remaining list.
 
 ### Measure Detection
 
-- Detection never writes directly. `planMeasureDetection()` builds a plan that is previewed until the user applies or discards it, and `toMeasureEdit()` turns it into one `MeasureEdit`. Detected numbers match labels without regard to case. Only text that parses as a measure number creates a measure, and in MIDI songs detection never adds measures.
-- Applying keeps what detection was unsure about: low-confidence boxes get `review: true` in their layout, and boxes without a usable number go into `score.unnumberedBoxes`. Leftovers on top of an existing box are dropped, so detecting twice does not pile them up. Confirming or renumbering a box clears its review flag (boxes only shifted out of the way keep it), and numbering an unnumbered box makes it that measure's layout. While any review item is open, `songSetup` does not report the song as ready.
-- Detection layouts use the same page fractions and 0-based pages as `MeasureLayout` and are stored unchanged.
-- The `measure-detection` package, its ONNX models and the onnxruntime WASM binaries are tens of megabytes. Keep every import of them behind the dynamic import in `measureDetector.ts`. `vite.config.ts` excludes both packages from dependency pre-bundling, which would break their worker and WASM loading in the dev server. `pdfjs-dist` must satisfy the `measure-detection` peer range, since the app passes its own `PDFDocumentProxy` in.
+- Detection never writes: `planMeasureDetection()` is previewed until applied (`toMeasureEdit()`) or discarded. Numbers match labels case-insensitively. Only parseable measure numbers create measures, never in MIDI songs.
+- Unsure results stay marked: low confidence sets `layout.review`, boxes without a usable number go to `score.unnumberedBoxes`, leftovers on an existing box are dropped (detecting twice adds nothing). Confirming or renumbering clears `review` (boxes only shifted aside keep it); numbering an unnumbered box makes it that measure's layout. Open review items keep `songSetup` from "ready".
+- Detection layouts share `MeasureLayout`'s page fractions and 0-based pages.
+- `measure-detection`, its ONNX models and the onnxruntime WASM are tens of MB: import them only through the dynamic import in `measureDetector.ts`. `vite.config.ts` excludes both from pre-bundling (it breaks their worker and WASM loading). `pdfjs-dist` must satisfy `measure-detection`'s peer range, since the app passes its own `PDFDocumentProxy`.
 
 ## Backend
 
-PocketBase lives in the separate repository `choirchaos-pb`. The app reads its URL from `VITE_PB_URL` in `.env`.
-
-- Updating a multi-file field (such as `audioFiles`) under its plain name replaces every stored file. Use `audioFiles+` to append and `audioFiles-` to remove.
-- `pb_hooks/audio.pb.js` converts every uploaded recording to MP3, so stored names keep the upload's base name but always end in `.mp3`. Never match stored files to uploads by extension: `Song.uploadAudioFiles()` maps them by upload order. A file that cannot be decoded fails the whole request.
-- Users can only read their own user record, so member names and email lookups go through `pb_hooks/members.pb.js` (`Show.getMembers()`/`addMember()`). Role changes and removals use the regular show update, which only the owner may do.
-
----
+PocketBase lives in `choirchaos-pb`; the URL is `VITE_PB_URL` in `.env`.
+- Writing a multi-file field (`audioFiles`) by its plain name replaces all files. Use `audioFiles+` / `audioFiles-`.
+- `pb_hooks/audio.pb.js` converts uploads to MP3 (same base name, `.mp3`). Map stored files to uploads by order (`Song.uploadAudioFiles()`), never by extension. An undecodable file fails the request.
+- Users only read their own user record: member names and email lookups use `pb_hooks/members.pb.js` (`Show.getMembers()`/`addMember()`). Role changes and removals are regular show updates (owner only).
 
 ## UI
 
-Rehearsers (viewers) only play songs back. Editors (editors and owners) also set up shows, songs, measures, markers, sections and audio sync. Every page, the song editor included, must work on phones, tablets and desktops.
+Rehearsers (viewers) only play songs. Editors (editors, owners) also set up shows, songs, measures, markers, sections and audio sync. Every page, the editor included, works on phones, tablets and desktops.
 
 ### Design Principles
 
-1. **Rehearsers never see editing.** No edit control, hint or empty state that asks for editing is shown to someone who cannot edit.
-2. **Each element type has one kind of job.** Links, list rows and breadcrumb items navigate. Pickers choose what the current page shows and keep the page. Buttons run an action or open a dialog or popover, and their labels never end with "...". Segmented controls and toggle buttons switch a tool, option or mode and look pressed while active. Never make a navigation look like a mode switch or the other way round. A click on the score always moves the playhead, and in the editor it also selects.
-3. **One meaning per icon, app-wide** (see the table below). Icon-only buttons are reserved for universally known controls (transport, close, overflow). Everything else carries a text label where the layout has room, and always an `aria-label`.
-4. **State that matters lives in the URL.** Reloading or going back keeps the user where they were. Editing a song is a route, not a flag.
-5. **Every action has one home.** Secondary entry points open the same dialog or page and keep its label. Only empty states and status hints may name the step instead, e.g. "Add playback".
-6. **Do not duplicate information.** A canvas (the score in written order, the timeline in played order) is the list of its objects. Side panels show the selection's properties or what the canvas cannot show.
-7. **Select, then act.** One kind of object is selected at a time (measures, boxes without a number, a section, a marker, a sync point or a recording pass), and the panel next to a canvas shows only what applies to it. It edits the whole selection at once and shows mixed values as empty. Selected measures are edited in the pass at the playhead.
-8. **Automation proposes, the user decides, leftovers stay visible.** Automatic results are previewed where they will appear, and anything still to check stays marked on the object until resolved.
-9. **Empty states and status hints name the next step** and contain the control that does it.
-10. **The top bar always says where you are.** Every page starts with `HeaderBar`, whose breadcrumb leads to every parent, so no page needs a back button. Dialogs have one obvious exit ("Cancel"). Destructive actions are confirmed, everything else saves without asking.
-11. **The account menu is for the account only** (preferences, signing out).
-12. **Keep the canvas readable.** Score overlays are small, and handles appear only where the user is working. Every object of the arrangement is visible where it lives (section bars and chips, recorded repeats, markers), never only in a list. Color is never the only carrier: a chip or the box description always names the kind.
+1. **Rehearsers never see editing**: no edit control, hint or editing empty state.
+2. **One job per element type.** Links, list rows and crumbs navigate; pickers choose what the page shows; buttons act or open a dialog/popover (labels never end in "..."); segmented controls and toggles switch a mode and look pressed. A click on the score always moves the playhead and in the editor also selects.
+3. **One meaning per icon** (table below). Icon-only buttons only for universally known controls (transport, close, overflow); everything else has a text label where room allows, always an `aria-label`.
+4. **State that matters lives in the URL**, so reload and back keep the place. Editing a song is a route.
+5. **Every action has one home.** Secondary entry points open the same dialog or page under the same label; only empty states and hints may name the step ("Add playback").
+6. **No duplicated information.** A canvas (score in written order, timeline in played order) is the list of its objects; panels show the selection or what the canvas cannot.
+7. **Select, then act.** One kind of object is selected at a time (measures, boxes without a number, a section, a marker, a sync point, a recording pass); the panel shows only what applies, edits the whole selection and shows mixed values as empty. Measures are edited in the pass at the playhead.
+8. **Automation proposes, the user decides**: results are previewed in place, leftovers stay marked until resolved.
+9. **Empty states and hints name the next step** and contain its control.
+10. **The top bar says where you are**: every page starts with `HeaderBar`, whose breadcrumb reaches every parent (no back buttons). Dialogs exit with "Cancel". Destructive actions are confirmed, everything else saves immediately.
+11. **The account menu is for the account only** (preferences, sign out).
+12. **Keep the canvas readable**: small overlays, handles only where the user works, every arrangement object visible where it lives (never only in a list), color never the only carrier.
 
 | Icon | Meaning |
 |---|---|
 | App logo | Home |
 | `pi-pencil` | The "Edit" toggle, or opening a song in the editor |
-| `pi-check` | A confirmed or ready state |
-| `pi-file-edit` | The song details (number, title, files, tracks) |
+| `pi-check` | Confirmed or ready |
+| `pi-file-edit` | Song details (number, title, files, tracks) |
 | `pi-play` | Play |
 | `pi-sliders-v` | Personal preferences |
 | `pi-ellipsis-v` | More actions for this item |
 | `pi-sparkles` | Automatic measure detection |
-| `pi-bookmark` | A marker |
-| `pi-map-marker` | A sync point |
-| `pi-trash` | Delete an object of the show or song (a song, a measure, a section, a marker, a sync point, a recording pass, boxes without a number) |
-| `pi-times` | Close, cancel, clear the selection, or take an item out of a list (a file, a track, a member, a shortcut, the cover) |
+| `pi-bookmark` | Marker |
+| `pi-map-marker` | Sync point |
+| `pi-trash` | Delete an object of the show or song (song, measure, section, marker, sync point, recording pass, boxes without a number) |
+| `pi-times` | Close, cancel, clear the selection, or take an item out of a list (file, track, member, shortcut, cover) |
 | `pi-plus` | Create or add |
-| `pi-file-pdf`, `pi-sliders-h`, `pi-map`, `pi-volume-up` | A score PDF, a MIDI file, a beat map and an audio recording |
-| `pi-home` | The home page, where the app logo is not at hand (the 404 page) |
-| `pi-undo` | Undo, and mirrored (`-scale-x-100`) Redo |
+| `pi-file-pdf`, `pi-sliders-h`, `pi-map`, `pi-volume-up` | Score PDF, MIDI file, beat map, audio recording |
+| `pi-home` | Home where the logo is not at hand (404 page) |
+| `pi-undo` | Undo; mirrored (`-scale-x-100`) Redo |
 
 ### Conventions
 
-- Only components that know nothing about shows, songs or playback go into `base/`. A component shared by two areas lives with the one that owns the action.
-- Repeated UI is one component: a label next to its control is a `base/FieldRow`, a number stepper a `base/StepperInput`, and a delete action in the inspector a `RemoveButton`. Look for an existing one before writing markup that another file already has.
-- Use PrimeVue components styled with Tailwind utilities. For missing behaviour, prefer a library (vueuse, peaks.js) over hand-written pointer, scroll or drag handling.
-- Reorderable lists use `useSortable` from `@vueuse/integrations` with a drag handle. In `onUpdate`, undo Sortable's DOM move and change the model instead, so Vue keeps owning the DOM. Every drag handle needs a non-drag alternative (menu and arrow keys, see `SongDetailsForm`).
-- No `prompt()`/`confirm()`. Destructive confirmations use `useConfirmDestructive()`, which wraps PrimeVue's `useConfirm()` and resolves whether the user went ahead. Errors use `useNotify()` toasts.
-- Dark mode is class-based (`.dark`), and Tailwind's `dark:` variant follows that class. Check every visual change in both modes. Canvases cannot read CSS variables, so they resolve colors through `useCanvasColors()`, which also tells them to redraw when the theme changes.
-- Every color is defined once, so a new theme or accent only swaps definitions. The accent (`primary`) and surface palettes come from the PrimeVue preset in `src/theme/preset.ts`. Every other color with a meaning (section kinds, sync points, review, boxes without a number, highlighted tracks, score chips, scrims, attention and danger text) is a semantic token in `src/main.css` with its `.dark` override next to it. Components use `primary`, `surface-*`, PrimeVue's tokens and component severities, or these tokens, never a Tailwind palette color or hex value. Tokens drawn on the score have no dark override, since the score page stays white.
-- Section and sync point colors come from `score/sectionColors.ts` and `editor/warp/syncColors.ts`, which map kinds to token classes and variables.
-- `ScoreViewer` draws the score from the pure geometry and texts in `core/models/scoreOverlays.ts`. Every box goes through `ScoreBox`, which places it and holds its badges in the corners at one shared inset, and every short label on the score is a `ScoreBadge` (measure numbers, "2nd time", recorded repeats, jumps, markers, section chips, "?"). Box states are outlines, never borders, so selecting or hovering never moves a badge. Badges above the boxes stack in lanes (`getLaneOffset()`), so sections on the same boxes never cover each other.
-- Badges are the only overlays that take pointer events. Section and marker badges are buttons that select their object in the editor and move the playhead while rehearsing, like the timeline. Every other badge leaves the click to its box. Each box's `aria-describedby` still names all its overlays.
-- Locations are shown through `locationFormat.ts`. Markers and location inputs name every occurrence of a measure that plays more than once ("12, 1st time"), while sync points and section names add it only from the second time on, where the first occurrence is the obvious one. A section across passes names both ends ("14, 1st time to 15, 2nd time").
-- A MIDI track's title links it to its MIDI data by name, so MIDI tracks cannot be renamed.
+- `base/` only holds components that know nothing of shows, songs or playback. A component shared by two areas lives with the area that owns the action.
+- Repeated UI is one component: `base/FieldRow` (label and control), `base/StepperInput`, `RemoveButton` (inspector delete). Reuse before writing markup another file already has.
+- PrimeVue components styled with Tailwind. For missing behaviour prefer a library (vueuse, peaks.js) over hand-written pointer, scroll or drag code.
+- Reorderable lists: `useSortable` (`@vueuse/integrations`) with a drag handle; in `onUpdate` undo Sortable's DOM move and change the model. Every drag has a non-drag alternative (menu, arrow keys; see `SongDetailsForm`).
+- No `prompt()`/`confirm()`: destructive confirmations use `useConfirmDestructive()`, errors `useNotify()` toasts.
+- Dark mode is the `.dark` class (Tailwind `dark:` follows it); check both modes. Canvases resolve colors through `useCanvasColors()`, which also triggers redraws on theme change.
+- Every color is defined once. Accent (`primary`) and surface palettes come from `src/theme/preset.ts`; every other meaningful color (section kinds, sync points, review, boxes without a number, highlighted tracks, score chips, scrims, attention, danger) is a token in `src/main.css` with its `.dark` override. Never a Tailwind palette color or hex value. Score tokens have no dark override (the page stays white). `score/sectionColors.ts` and `editor/warp/syncColors.ts` map kinds to token classes.
+- `ScoreViewer` draws from the pure geometry and texts in `scoreOverlays.ts`. Every box is a `ScoreBox` (badges in its corners at one inset) and every short label a `ScoreBadge`. Box states are outlines, never borders, so badges never move. Badges above boxes stack in lanes (`getLaneOffset()`).
+- Badges are the only overlays taking pointer events: section and marker badges are buttons that select in the editor and seek while rehearsing; others pass the click to their box. Each box's `aria-describedby` names all its overlays.
+- Locations are shown through `locationFormat.ts`: markers and location inputs name every occurrence of a repeated measure ("12, 1st time"); sync points and section names only from the second.
+- MIDI track titles link to their MIDI data by name, so MIDI tracks cannot be renamed.
 
 ### Accessibility
 
-Every change keeps the app usable with a screen reader and keyboard. Prefer native elements and PrimeVue components over ARIA, since no ARIA is better than wrong ARIA.
-
-- Every control has an accessible name: its visible text, a `<label for>`/`input-id`, `aria-labelledby` pointing at a visible heading, or `aria-label` when nothing visible fits. Names say what the control acts on when the same control repeats ("Remove Solo", not "Remove") and contain the visible text.
-- Decorative icons and graphics get `aria-hidden="true"` (`<i class="pi ...">`, SVGs in `icons/`, canvases). PrimeVue's own icon props are hidden globally in `main.ts`. An icon that is the only carrier of a meaning gets `role="img"` and an `aria-label` instead.
-- Never put `aria-label` on a plain `div` or `span`. Give it a role first, or label something else.
-- Pass PrimeVue labels as `aria-label`/`aria-labelledby` on the component. `Select`, `InputNumber`, `Slider`, `ToggleSwitch` and `SelectButton` forward them to the focusable element.
-- Expose state: `aria-pressed` on toggle buttons, `aria-expanded` on disclosures, `aria-current="page"` on the current breadcrumb, `aria-live` or `role="status"` on text that changes without focus moving.
-- Group repeated items as lists or tables, and name regions and lists (`aria-labelledby` on a visible title), so tests and screen readers can scope to them. Use Tailwind's `sr-only` for text only screen readers need.
-- Tests find elements the way users do (`getByRole` with a name). An element a test cannot reach that way lacks a name, so fix the app, not the test.
-
----
+Keep everything usable by screen reader and keyboard. Prefer native elements and PrimeVue over ARIA (no ARIA beats wrong ARIA).
+- Every control has a name: visible text, `<label for>`/`input-id`, `aria-labelledby` to a visible heading, else `aria-label`. Repeated controls name their target ("Remove Solo") and contain the visible text.
+- Decorative icons and canvases get `aria-hidden="true"` (PrimeVue icon props are hidden globally in `main.ts`). An icon that alone carries meaning gets `role="img"` and a label. Never `aria-label` a plain `div`/`span`.
+- Pass labels to PrimeVue components as `aria-label`/`aria-labelledby`; `Select`, `InputNumber`, `Slider`, `ToggleSwitch` and `SelectButton` forward them.
+- Expose state: `aria-pressed` on toggles, `aria-expanded` on disclosures, `aria-current="page"` on the current crumb, `aria-live`/`role="status"` on text that changes without focus.
+- Group repeated items as lists or tables and name regions and lists, so tests and screen readers can scope. `sr-only` for screen-reader-only text.
+- Tests find elements by role and name. If a test cannot, fix the app.
 
 ## Testing
 
-- Unit tests need no PocketBase. Mock `axios` and build songs with `src/test/fixtures.ts`. Reuse it and `src/test/updater.ts` instead of writing new helpers.
-- `src/test/setup.ts` globally mocks `rubberband-web` and `midi-json-parser` and polyfills `AudioContext` (without an output device, since CI has none) and `WebAudioFontPlayer`. Do not re-mock them per file or import `AudioContext` from `node-web-audio-api`. Override per test with `vi.mocked(parseArrayBuffer).mockResolvedValueOnce(...)`.
-- In `afterEach`, use `vi.clearAllMocks()`, not `vi.resetAllMocks()`, which wipes the return values of the global mock factories.
+- Unit tests need no PocketBase: mock `axios`, build songs with `src/test/fixtures.ts`, reuse it and `src/test/updater.ts`.
+- `src/test/setup.ts` globally mocks `rubberband-web` and `midi-json-parser` and polyfills `AudioContext` (no output device; CI has none) and `WebAudioFontPlayer`. Never re-mock them or import `AudioContext` from `node-web-audio-api`; override per test with `vi.mocked(...).mockResolvedValueOnce(...)`.
+- In `afterEach` use `vi.clearAllMocks()`, never `vi.resetAllMocks()` (it wipes the global mock factories' return values).
 
 ## Keeping the Guides Current
 
-`AGENTS.md` is the only agent instruction format in this repo. Do not add `CLAUDE.md`, `GEMINI.md`, `.cursorrules` or similar copies: a root `CLAUDE.md` would make Claude Code ignore the nested guides.
-
-- The guides describe the current state, not its history. Rewrite or delete outdated statements instead of adding to them, and prefer a shorter guide over a longer one.
-- Put knowledge in the most specific guide that fits. Give a subsystem its own `AGENTS.md` once it collects enough non-obvious knowledge, and link it at the top of this file.
-- Write what an agent cannot easily learn from the code: why, invariants, traps. Do not copy values or type shapes that live in code.
+`AGENTS.md` is the only agent instruction format. Never add `CLAUDE.md` or similar copies: a root `CLAUDE.md` makes Claude Code ignore the nested guides.
+- Describe the current state, not history. Rewrite or delete outdated text; shorter is better.
+- Put knowledge in the most specific guide; give a subsystem its own guide once it collects enough, and link it at the top.
+- Write what the code does not show: why, invariants, traps. Never copy values or types that live in code.

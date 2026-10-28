@@ -1,6 +1,3 @@
-type UpdateProvider = "setTimeout" | "requestAnimationFrame";
-export type UpdateProviderOption = UpdateProvider | "auto";
-
 export type UpdateCallback = (delta: number) => void;
 export type TimeProvider = () => number;
 

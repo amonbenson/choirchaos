@@ -13,7 +13,7 @@ import {
 } from "./recording";
 import { findSection, type Section } from "./sections";
 import type Song from "./song";
-import { findWarpMarker, isSameOccurrence } from "./warpEditing";
+import { findWarpMarker } from "./warpEditing";
 
 /**
  * What the song editor works on. Exactly one kind is selected at a time, so the inspector shows one
@@ -30,8 +30,6 @@ export type Selection
     | { kind: "marker"; marker: Marker }
     | { kind: "syncPoint"; occurrence: Occurrence }
     | { kind: "pass"; index: number };
-
-export type SelectionKind = Selection["kind"];
 
 /** A selection with its objects looked up in the song. Objects that no longer exist leave nothing selected. */
 export type SelectedObjects
@@ -63,10 +61,6 @@ export function isMarkerSelected(selection: Selection, marker: Marker): boolean 
 
 export function isSectionSelected(selection: Selection, section: Section): boolean {
   return selection.kind === "section" && findSection([section], selection.from) !== undefined;
-}
-
-export function isSyncPointSelected(selection: Selection, occurrence: Occurrence): boolean {
-  return selection.kind === "syncPoint" && isSameOccurrence(selection.occurrence, occurrence);
 }
 
 export function isPassSelected(selection: Selection, index: number): boolean {

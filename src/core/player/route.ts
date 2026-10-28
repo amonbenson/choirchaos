@@ -302,7 +302,7 @@ export default class Route {
 
     const exitLine = this.getEarlyExitLine(routeSection, state);
     if (exitLine) {
-      return this.exit(this.findLineBetween(tick, current.end, exitLine) ?? current.end, lastRecorded.end);
+      return this.exit(this.findLine(exitLine, tick, current.end, false) ?? current.end, lastRecorded.end);
     }
 
     if (isLastRecorded) {
@@ -314,13 +314,12 @@ export default class Route {
 
   /**
    * The pass playing when the last pass is decided is the last one, so no further pass is added. It continues
-   * in the last recording, whose ending leads on, at its next barline, or at its next beat when no barline is
-   * left, and only leaves at its own end when no beat is left either.
+   * in the last recording, whose ending leads on, at its next barline (at once on a barline), or at its next
+   * beat when no barline is left, and only leaves at its own end when no beat is left either.
    */
   private retarget(state: RouteState, tick: Tick, current: PassRange, lastRecorded: PassRange): RouteJump {
     const from = Math.max(tick, current.start);
-    const barline = this.findBarline(from, current.end);
-    const line = barline !== undefined && barline < current.end ? barline : this.findLineBetween(from, current.end, "beat");
+    const line = this.findLine("bar", from, current.end, true) ?? this.findLine("beat", from, current.end, false);
     if (line === undefined) {
       return this.exit(current.end, lastRecorded.end);
     }
@@ -328,28 +327,12 @@ export default class Route {
     return { at: line, to: this.mapTick(line, current, lastRecorded), next: state };
   }
 
-  /** The first barline in `[from, to]`. */
-  private findBarline(from: Tick, to: Tick): Tick | undefined {
+  /** The first barline or beat from `from` (or strictly after it) and before `before`. */
+  private findLine(kind: LineKind, from: Tick, before: Tick, includeFrom: boolean): Tick | undefined {
     for (let p = findPositionAt(this.timeline, from)!.position; p < this.timeline.length; p++) {
-      const start = getStartTick(this.timeline[p]!);
-      if (start > to) {
-        return undefined;
-      }
-
-      if (start >= from) {
-        return start;
-      }
-    }
-
-    return undefined;
-  }
-
-  /** The first barline or beat strictly between `after` and `before`. */
-  private findLineBetween(after: Tick, before: Tick, kind: LineKind): Tick | undefined {
-    for (let p = findPositionAt(this.timeline, after)!.position; p < this.timeline.length; p++) {
       const position = this.timeline[p]!;
       const ticks = kind === "bar" ? [getStartTick(position)] : position.beatTicks;
-      const line = ticks.find(tick => tick > after);
+      const line = ticks.find(tick => includeFrom ? tick >= from : tick > from);
       if (line !== undefined) {
         return line < before ? line : undefined;
       }
