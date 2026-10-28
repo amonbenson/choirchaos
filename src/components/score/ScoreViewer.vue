@@ -29,7 +29,6 @@ import {
   toggleMeasure,
 } from "@/core/models/selection";
 import Song from "@/core/models/song";
-import { getSyncedOccurrences } from "@/core/models/warpEditing";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
 import { usePlayerStore } from "@/stores/player";
@@ -173,11 +172,6 @@ const cutBoxes = computed(() => sectionOverlays.value
   .filter(overlay => overlay.section.kind === "cut")
   .flatMap(overlay => overlay.measures.flatMap(id => props.song?.findMeasure(id)?.layout ?? [])));
 
-/** Sync points only matter while editing an audio song. */
-const syncedOccurrences = computed(() => props.editMode && props.song?.playerMode === "audio"
-  ? getSyncedOccurrences(props.song.getTimeline(), props.song.getWarpMarkers())
-  : new Map<MeasureId, number[]>());
-
 const boxOverlays = computed(() => {
   const song = props.song;
   if (!song) {
@@ -191,7 +185,6 @@ const boxOverlays = computed(() => {
     sections: sectionOverlays.value,
     markers: isArrangementVisible("marker") ? song.getMarkers() : [],
     jumps: props.editMode ? findRecordingJumps(song.getMeasures(), timeline) : [],
-    synced: syncedOccurrences.value,
   });
 });
 

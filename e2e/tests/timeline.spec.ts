@@ -65,8 +65,6 @@ test.describe("timeline and audio sync", () => {
     await expect.poll(storedTime).toBeCloseTo(playhead, 1);
     const synced = (await storedTime())!;
     await expect(panel.getByRole("heading", { name: "Sync point at 2, 2nd time" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Measure 2", exact: true }))
-      .toHaveAccessibleDescription(/Sync point on the 1st and 2nd time/);
 
     await panel.getByRole("textbox", { name: "Starts at" }).press("ArrowUp");
     await expect.poll(storedTime).toBeCloseTo(synced + 0.01, 3);

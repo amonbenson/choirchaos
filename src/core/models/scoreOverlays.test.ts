@@ -222,17 +222,11 @@ describe("getBoxOverlays", () => {
 
   it("joins what each box shows into its description", () => {
     const markers = [{ at: at(10, 0, 2), text: "D" }, { at: at(12), text: "E" }];
-    const overlays = getBoxOverlays({
-      measures,
-      timeline,
-      sections,
-      markers,
-      synced: new Map([["m10", [1, 3]], ["m12", [1]]]),
-    });
+    const overlays = getBoxOverlays({ measures, timeline, sections, markers });
 
-    expect(overlays.get("m10")?.description).toBe("Vamp 10 to 11. Marker D, 2nd time. Sync point on the 1st and 3rd time.");
+    expect(overlays.get("m10")?.description).toBe("Vamp 10 to 11. Marker D, 2nd time.");
     expect(overlays.get("m11")?.description).toBe("Vamp 10 to 11.");
-    expect(overlays.get("m12")?.description).toBe("Marker E. Sync point.");
+    expect(overlays.get("m12")?.description).toBe("Marker E.");
     expect(overlays.has("m1")).toBe(false);
   });
 
@@ -243,7 +237,6 @@ describe("getBoxOverlays", () => {
     expect(overlays.get("m10")?.markers.map(badge => badge.name)).toEqual(["Marker D, 1st time", "Marker D2, 2nd time"]);
     expect(overlays.get("m10")?.markerLane).toBe(1);
     expect(overlays.get("m12")?.markerLane).toBe(0);
-    expect(overlays.get("m12")?.synced).toBe(false);
   });
 
   it("names the jumps after a box", () => {
