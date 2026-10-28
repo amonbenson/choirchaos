@@ -1,4 +1,4 @@
-import { formatOccurrence, formatOrdinal, formatTimes } from "./locationFormat";
+import { formatOccurrence, formatTimes } from "./locationFormat";
 import type { Marker } from "./markers";
 import type Measure from "./measure";
 import type { MeasureId, MeasureLayout } from "./measure";
@@ -346,7 +346,6 @@ export type BoxOverlays = {
   markers: MarkerBadge[];
   /** The lane of the marker badges, above every section chip on the box. */
   markerLane: number;
-  synced: boolean;
 };
 
 export type BoxOverlayInput = {
@@ -355,25 +354,13 @@ export type BoxOverlayInput = {
   sections: readonly SectionOverlay[];
   markers: readonly Marker[];
   jumps?: readonly RecordingJump[];
-  /** The occurrences of each measure that have a sync point. */
-  synced?: ReadonlyMap<MeasureId, readonly number[]>;
 };
-
-function describeSyncPoints(timeline: Timeline, measure: MeasureId, occurrences: readonly number[]): string {
-  if (countOccurrences(timeline, measure) < 2) {
-    return "Sync point";
-  }
-
-  const times = occurrences.map(formatOrdinal);
-  const list = times.length > 1 ? `${times.slice(0, -1).join(", ")} and ${times.at(-1)}` : times[0];
-  return `Sync point on the ${list} time`;
-}
 
 type BoxOverlayDraft = Omit<BoxOverlays, "description"> & { texts: string[] };
 
 /** The overlays of every box that has any, keyed by measure. */
 export function getBoxOverlays(input: BoxOverlayInput): Map<MeasureId, BoxOverlays> {
-  const { measures, timeline, sections, markers, jumps = [], synced = new Map() } = input;
+  const { measures, timeline, sections, markers, jumps = [] } = input;
   const drafts = new Map<MeasureId, BoxOverlayDraft>();
   const draftOf = (measure: MeasureId): BoxOverlayDraft => {
     const existing = drafts.get(measure);
@@ -381,7 +368,7 @@ export function getBoxOverlays(input: BoxOverlayInput): Map<MeasureId, BoxOverla
       return existing;
     }
 
-    const draft: BoxOverlayDraft = { texts: [], jumps: [], markers: [], markerLane: 0, synced: false };
+    const draft: BoxOverlayDraft = { texts: [], jumps: [], markers: [], markerLane: 0 };
     drafts.set(measure, draft);
     return draft;
   };
@@ -407,12 +394,6 @@ export function getBoxOverlays(input: BoxOverlayInput): Map<MeasureId, BoxOverla
     const name = describeJump(measures, timeline, jump);
     draft.texts.push(name);
     draft.jumps.push({ key: `jump-${jump.position}`, text: formatJumpChip(measures, jump), name });
-  }
-
-  for (const [measure, occurrences] of synced) {
-    const draft = draftOf(measure);
-    draft.texts.push(describeSyncPoints(timeline, measure, occurrences));
-    draft.synced = true;
   }
 
   return new Map([...drafts].map(([measure, { texts, ...overlays }]) => [measure, { ...overlays, description: `${texts.join(". ")}.` }]));

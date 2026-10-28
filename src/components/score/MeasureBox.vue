@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, useId } from "vue";
 
-import { SYNC_POINT_COLORS } from "@/components/editor/timeline/syncColors";
 import type { Marker } from "@/core/models/markers";
 import Measure, { type MeasureLayout, needsReview } from "@/core/models/measure";
 import type { BoxEdge } from "@/core/models/measureEditing";
@@ -102,13 +101,6 @@ const surfaceClass = computed(() => {
         </ScoreBadge>
       </div>
     </ScoreLane>
-
-    <i
-      v-if="overlays?.synced"
-      class="pi pi-map-marker absolute top-full left-0 mt-0.25 -translate-x-1/2 text-[0.625rem]"
-      :class="SYNC_POINT_COLORS.onScore"
-      aria-hidden="true"
-    />
 
     <template
       v-if="editMode"

@@ -1,6 +1,5 @@
 import type { SongLayers } from "./layers";
 import type Measure from "./measure";
-import type { MeasureId } from "./measure";
 import { findPosition, type Occurrence, type StoredWarpMarker, type Timeline, type TimelineEntry } from "./recording";
 
 // Keeps neighbouring markers apart, so the warp map never contains two markers at the same time.
@@ -229,16 +228,6 @@ export function findMeterChangesToSync(timeline: Timeline, measures: readonly Me
     const target = [...inside, ...ends].find(position => !synced.has(position));
     return target === undefined ? [] : [target];
   });
-}
-
-/** The occurrences of each measure that have a sync point, for the pins on the score. */
-export function getSyncedOccurrences(timeline: Timeline, warpMarkers: readonly StoredWarpMarker[]): Map<MeasureId, number[]> {
-  const occurrences = new Map<MeasureId, number[]>();
-  for (const { measure, occurrence } of getPositionedWarpMarkers(timeline, warpMarkers)) {
-    occurrences.set(measure, [...occurrences.get(measure) ?? [], occurrence]);
-  }
-
-  return occurrences;
 }
 
 const SECONDS_PER_MINUTE = 60;

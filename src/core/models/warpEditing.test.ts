@@ -17,7 +17,6 @@ import {
   getPositionedSyncPoints,
   getPositionedWarpMarkers,
   getReassignCandidates,
-  getSyncedOccurrences,
   getWarpMarkerCandidates,
   isRecordingEnd,
   LARGE_NUDGE_STEP,
@@ -267,12 +266,6 @@ describe("sync status", () => {
 
     expect(findMeterChangesToSync(ending, measures, points(syncAt(0, 2)))).toEqual([3]);
     expect(findMeterChangesToSync(ending, measures, points(syncAt(0, 2, 3)))).toEqual([]);
-  });
-
-  it("groups the synced occurrences by measure", () => {
-    const markers = [marker(song, "2", 3, 3), marker(song, "1", 1, 0), marker(song, "2", 1, 1), marker(song, "4", 2, 4)];
-
-    expect(getSyncedOccurrences(timeline, markers)).toEqual(new Map([[idOf(song, "1"), [1]], [idOf(song, "2"), [1, 3]]]));
   });
 });
 
