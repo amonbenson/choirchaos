@@ -3,7 +3,7 @@ import type Measure from "./measure";
 import { countReviewItems } from "./measureReview";
 import { findUnplayedMeasures } from "./recording";
 import type Song from "./song";
-import { findMeterChangesToSync, MIN_SYNC_POINTS } from "./warpEditing";
+import { countSyncPoints, findMeterChangesToSync, MIN_SYNC_POINTS } from "./warpEditing";
 
 export type SetupStepId = "score" | "playback" | "measures" | "review" | "sync";
 
@@ -37,7 +37,7 @@ function getMeasuresAction(song: Song): string {
 }
 
 function isAudioSynced(song: Song): boolean {
-  return song.getWarpMarkers().length >= MIN_SYNC_POINTS;
+  return countSyncPoints(song.getSyncPoints()) >= MIN_SYNC_POINTS;
 }
 
 /**
@@ -119,7 +119,7 @@ function getMeterChangesHint(song: Song): SetupHint | undefined {
   }
 
   const timeline = song.getTimeline();
-  const [first, ...rest] = findMeterChangesToSync(timeline, song.getMeasures(), song.getWarpMarkers());
+  const [first, ...rest] = findMeterChangesToSync(timeline, song.getMeasures(), song.getSyncPoints());
   if (first === undefined) {
     return undefined;
   }

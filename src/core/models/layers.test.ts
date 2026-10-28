@@ -5,6 +5,7 @@ import {
   deserializeLayers,
   getChangedFields,
   planMeasureEdit,
+  planRecordingChange,
   serializeLayers,
   type SongLayers,
   sortReferences,
@@ -21,6 +22,7 @@ function makeLayers(): SongLayers {
     unnumberedBoxes: [],
     spans: [{ from: "m1", to: "m4" }],
     warpMarkers: [{ measure: "m3", occurrence: 1, time: 2 }],
+    endSyncTime: undefined,
     markers: [{ at: { measure: "m3", beat: 2, occurrence: 1 }, text: "A" }],
     sections: [{ kind: "cut", from: { measure: "m3", beat: 0, occurrence: 1 }, to: { measure: "m3", beat: 3, occurrence: 1 } }],
     segue: false,
@@ -124,5 +126,56 @@ describe("sortReferences", () => {
 
     expect(sorted.warpMarkers.map(marker => marker.measure)).toEqual(["m1", "m3"]);
     expect(sorted.markers.map(marker => marker.text)).toEqual(["A", "B"]);
+  });
+});
+
+describe("end sync point", () => {
+  // The last measure "4" ends at 8 seconds.
+  function makeSynced(): SongLayers {
+    return { ...makeLayers(), endSyncTime: 8 };
+  }
+
+  it("is stored only when set", () => {
+    expect(serializeLayers(makeLayers()).recording).not.toHaveProperty("endSyncTime");
+    expect(serializeLayers(makeSynced()).recording.endSyncTime).toBe(8);
+    expect(deserializeLayers(serializeLayers(makeSynced())).endSyncTime).toBe(8);
+    expect(getChangedFields(makeLayers(), makeSynced())).toEqual(new Set(["endSyncTime"]));
+  });
+
+  it("stays while the last measure still ends the recording", () => {
+    expect(planMeasureEdit(makeSynced(), edit({ removals: ["m2"] })).layers.endSyncTime).toBe(8);
+    expect(planMeasureEdit(makeSynced(), edit({ beats: new Map([["m4", 3]]) })).layers.endSyncTime).toBe(8);
+  });
+
+  it("becomes the sync point of a measure added after the last", () => {
+    const { layers } = planMeasureEdit(makeSynced(), edit({ additions: [{ label: "5", beats: 4, index: 4 }] }));
+
+    expect(layers.endSyncTime).toBeUndefined();
+    expect(layers.warpMarkers).toEqual([{ measure: "m3", occurrence: 1, time: 2 }, { measure: "m5", occurrence: 1, time: 8 }]);
+  });
+
+  it("goes with the last measure", () => {
+    expect(planMeasureEdit(makeSynced(), edit({ removals: ["m4"] })).layers.endSyncTime).toBeUndefined();
+  });
+
+  it("follows recording changes like the other sync points", () => {
+    const measures = makeSynced().measures;
+    const repeated = planRecordingChange(makeSynced(), measures, [{ from: "m1", to: "m4" }, { from: "m3", to: "m4" }]);
+    const shortened = planRecordingChange(makeSynced(), measures, [{ from: "m1", to: "m3" }]);
+
+    expect(repeated.layers.endSyncTime).toBeUndefined();
+    expect(repeated.layers.warpMarkers).toContainEqual({ measure: "m3", occurrence: 2, time: 8 });
+    expect(repeated.dropped.endSyncTime).toBeUndefined();
+    expect(shortened.layers.endSyncTime).toBeUndefined();
+    expect(shortened.dropped.endSyncTime).toBe(8);
+  });
+
+  it("must come after every sync point of a recording with measures", () => {
+    const synced = makeSynced();
+
+    expect(validateLayers(synced, new Set(["endSyncTime"]))).toBeUndefined();
+    expect(validateLayers({ ...synced, endSyncTime: 2 }, new Set(["endSyncTime"]))).toContain("after every other sync point");
+    expect(validateLayers({ ...synced, endSyncTime: 0 }, new Set(["endSyncTime"]))).toContain("after its start");
+    expect(validateLayers({ ...synced, spans: [], warpMarkers: [], markers: [], sections: [] }, new Set(["spans"]))).toContain("no measures");
   });
 });

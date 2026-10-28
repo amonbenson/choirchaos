@@ -14,6 +14,7 @@ import { findExistingLabels, getUnplacedRuns, type MeasureRun, planAddMeasures }
 import { parseLabelList } from "@/core/models/measureLabel";
 import type Song from "@/core/models/song";
 import { getSongSetup, isFileStep, type SetupStep } from "@/core/models/songSetup";
+import { countSyncPoints } from "@/core/models/warpEditing";
 
 import DuplicateReviewCard from "./DuplicateReviewCard.vue";
 import RecordingOverview from "./RecordingOverview.vue";
@@ -50,7 +51,7 @@ function describeStep(step: SetupStep): string {
     case "review":
       return reviewItems.value.length === 1 ? "1 box to review" : `${reviewItems.value.length} boxes to review`;
     case "sync": {
-      const count = props.song.getWarpMarkers().length;
+      const count = countSyncPoints(props.song.getSyncPoints());
       return `Audio sync (${count} ${count === 1 ? "sync point" : "sync points"})`;
     }
 

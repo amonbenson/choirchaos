@@ -31,6 +31,7 @@ import Measure, { isEmptyMeasureEdit, type MeasureEdit, type MeasureId, type Mea
 import { expandRecording, type RecordingSpan, type StoredWarpMarker, type Timeline } from "./recording";
 import type { Section } from "./sections";
 import Track from "./track";
+import type { SyncPoints } from "./warpEditing";
 
 export type SongNumber = Numbering;
 
@@ -65,7 +66,7 @@ export type LayersChange = {
 
 const LAYER_FIELDS: Record<keyof LayerSnapshot, readonly LayerField[]> = {
   score: ["measures", "unnumberedBoxes"],
-  recording: ["spans", "warpMarkers"],
+  recording: ["spans", "warpMarkers", "endSyncTime"],
   arrangement: ["markers", "sections", "segue"],
 };
 
@@ -86,6 +87,7 @@ export default class Song {
   private readonly unnumberedBoxes: MeasureLayout[];
   private readonly spans: RecordingSpan[];
   private readonly warpMarkers: StoredWarpMarker[];
+  private endSyncTime: number | undefined;
   private readonly markers: Marker[];
   private readonly sections: Section[];
   private segue: boolean;
@@ -126,6 +128,7 @@ export default class Song {
     this.unnumberedBoxes = [...layers.unnumberedBoxes ?? []];
     this.spans = [...layers.spans ?? []];
     this.warpMarkers = [...layers.warpMarkers ?? []];
+    this.endSyncTime = layers.endSyncTime;
     this.markers = [...layers.markers ?? []];
     this.sections = [...layers.sections ?? []];
     this.segue = layers.segue ?? false;
@@ -181,6 +184,11 @@ export default class Song {
   /** Audio sync anchors in timeline order. MIDI songs have none. */
   public getWarpMarkers(): readonly StoredWarpMarker[] {
     return this.warpMarkers;
+  }
+
+  /** The warp markers and the end sync point, which the warp map anchors the recording to. */
+  public getSyncPoints(): SyncPoints {
+    return { warpMarkers: this.warpMarkers, endSyncTime: this.endSyncTime };
   }
 
   /** MIDI songs take their recording from the beat map. */
@@ -244,6 +252,7 @@ export default class Song {
     replaceAll(this.unnumberedBoxes, layers.unnumberedBoxes);
     replaceAll(this.spans, layers.spans);
     replaceAll(this.warpMarkers, layers.warpMarkers);
+    this.endSyncTime = layers.endSyncTime;
     replaceAll(this.markers, layers.markers);
     replaceAll(this.sections, layers.sections);
     this.segue = layers.segue;
@@ -398,6 +407,7 @@ export default class Song {
       unnumberedBoxes: [...this.unnumberedBoxes, ...orphanedBoxes],
       spans: built.recording.map(({ from, to }) => ({ from: ids.get(from)!, to: ids.get(to)! })),
       warpMarkers: [],
+      endSyncTime: undefined,
     });
   }
 
@@ -496,6 +506,7 @@ export default class Song {
       unnumberedBoxes: this.unnumberedBoxes,
       spans: this.spans,
       warpMarkers: this.warpMarkers,
+      endSyncTime: this.endSyncTime,
       markers: this.markers,
       sections: this.sections,
       segue: this.segue,
@@ -512,7 +523,8 @@ export default class Song {
       return "A MIDI song takes its recording from the beat map.";
     }
 
-    return fields.has("warpMarkers") && next.warpMarkers.length > 0 ? "A MIDI song takes its timing from the beat map." : undefined;
+    const synced = (fields.has("warpMarkers") && next.warpMarkers.length > 0) || (fields.has("endSyncTime") && next.endSyncTime !== undefined);
+    return synced ? "A MIDI song takes its timing from the beat map." : undefined;
   }
 
   /**

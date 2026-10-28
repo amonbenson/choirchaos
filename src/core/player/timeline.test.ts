@@ -77,7 +77,7 @@ describe("resolveMidiTimeline", () => {
 describe("resolveAudioTimeline", () => {
   it("places positions between warp markers on measure occurrences", () => {
     const song = makeAudioSongWithBakedVamp();
-    const timeline = resolveAudioTimeline(song.getTimeline(), song.getMeasures(), song.getWarpMarkers(), new WarpMap());
+    const timeline = resolveAudioTimeline(song.getTimeline(), song.getMeasures(), song.getSyncPoints(), new WarpMap());
 
     expect(timeline.map(p => p.beatTicks[0])).toEqual([0, 250, 500, 750, 1000, 1250, 1500]);
     expect(timeline[1]!.beatTicks).toEqual([250, 312.5, 375, 437.5]);
@@ -88,9 +88,17 @@ describe("resolveAudioTimeline", () => {
     const song = makeAudioSongWithBakedVamp();
     const markers = [...song.getWarpMarkers(), { measure: idOf(song, "2"), occurrence: 9, time: 9 }];
     const warpMap = new WarpMap();
-    resolveAudioTimeline(song.getTimeline(), song.getMeasures(), markers, warpMap);
+    resolveAudioTimeline(song.getTimeline(), song.getMeasures(), { warpMarkers: markers, endSyncTime: undefined }, warpMap);
 
     expect(warpMap.getMarkers()).toEqual([{ position: 0, time: 0 }, { position: 2, time: 0.5 }]);
+  });
+
+  it("ends the last measure at the end sync point instead of extrapolating", () => {
+    const song = makeAudioSongWithBakedVamp();
+    const timeline = resolveAudioTimeline(song.getTimeline(), song.getMeasures(), { ...song.getSyncPoints(), endSyncTime: 3.5 }, new WarpMap());
+
+    expect(timeline.map(p => p.beatTicks[0])).toEqual([0, 250, 500, 1100, 1700, 2300, 2900]);
+    expect(timeline.at(-1)!.endTick).toBe(3500);
   });
 });
 

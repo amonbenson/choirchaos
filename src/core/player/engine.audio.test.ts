@@ -1,8 +1,10 @@
 import axios from "axios";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
+import type { StoredWarpMarker } from "@/core/models/recording";
 import type { Section } from "@/core/models/sections";
 import type Song from "@/core/models/song";
+import type { SyncPoints } from "@/core/models/warpEditing";
 import type { VampOut, VampVocals } from "@/core/player/types";
 import {
   idOf,
@@ -41,6 +43,10 @@ type MockAudioDriver = {
   connect: MockFn;
   dispose: MockFn;
 };
+
+function withWarpMarkers(warpMarkers: StoredWarpMarker[]): SyncPoints {
+  return { warpMarkers, endSyncTime: undefined };
+}
 
 /** A driver mock whose position only moves when the test sets it, and follows crossfade seeks. */
 function makeMockAP(): MockAudioDriver {
@@ -156,11 +162,11 @@ describe("PlayerEngine – audio mode", () => {
   });
   it("takes the tempo from the beats between sync points", async () => {
     const song = makeAudioSong();
-    vi.spyOn(song, "getWarpMarkers").mockReturnValue([
+    vi.spyOn(song, "getSyncPoints").mockReturnValue(withWarpMarkers([
       { measure: idOf(song, "1"), occurrence: 1, time: 0 },
       { measure: idOf(song, "2"), occurrence: 1, time: 0.5 },
       { measure: idOf(song, "3"), occurrence: 1, time: 0.75 },
-    ]);
+    ]));
     await reload(song);
     expect(player.getCurrentTempo()).toBe(480);
 
@@ -175,10 +181,10 @@ describe("PlayerEngine – audio mode", () => {
     await reload(song);
     expect(player.getCurrentTempo()).toBe(120);
 
-    vi.spyOn(song, "getWarpMarkers").mockReturnValue([
+    vi.spyOn(song, "getSyncPoints").mockReturnValue(withWarpMarkers([
       { measure: idOf(song, "1"), occurrence: 1, time: 0 },
       { measure: idOf(song, "2"), occurrence: 1, time: 1 },
-    ]);
+    ]));
     player.syncWarp();
 
     expect(player.getCurrentTempo()).toBe(240);
@@ -334,7 +340,7 @@ describe("PlayerEngine – audio mode", () => {
     player.seek(300);
     ap.seek.mockClear();
 
-    vi.spyOn(song, "getWarpMarkers").mockReturnValue([{ measure: idOf(song, "1"), occurrence: 1, time: 0 }, { measure: idOf(song, "3"), occurrence: 1, time: 1 }]);
+    vi.spyOn(song, "getSyncPoints").mockReturnValue(withWarpMarkers([{ measure: idOf(song, "1"), occurrence: 1, time: 0 }, { measure: idOf(song, "3"), occurrence: 1, time: 1 }]));
     player.syncWarp();
 
     expect(player.getTimeline()[1]!.beatTicks[0]).toBe(500);

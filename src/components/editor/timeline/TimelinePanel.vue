@@ -11,17 +11,19 @@ import CollapsiblePanel from "@/components/base/CollapsiblePanel.vue";
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { useSyncEditor } from "@/composables/useSyncEditor";
 import { useTimelineAxis } from "@/composables/useTimelineAxis";
-import { formatOccurrence } from "@/core/models/locationFormat";
-import type { Occurrence } from "@/core/models/recording";
+import { formatOccurrence, formatSyncPlace } from "@/core/models/locationFormat";
 import type Song from "@/core/models/song";
 import {
   constrainWarpMarkerTime,
-  getOccurrenceKey,
-  getPositionedWarpMarkers,
+  getPositionedSyncPoints,
+  getSyncPlaceKey,
   getWarpMarkerCandidates,
-  type PositionedWarpMarker,
+  isRecordingEnd,
+  type PositionedSyncPoint,
+  type SyncPlace,
 } from "@/core/models/warpEditing";
 import { mixdownChunks } from "@/core/player/audio/mixdown";
+import { upperFirst } from "@/core/utils/text";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -82,14 +84,14 @@ const currentTime = computed(() => player.position / MILLISECONDS_PER_SECOND);
 const duration = computed(() => player.duration / MILLISECONDS_PER_SECOND);
 const playheadX = computed(() => player.ready && axis.isVisible(player.position) ? Math.round(axis.toX(player.position)) : undefined);
 
-const positionedMarkers = computed(() => getPositionedWarpMarkers(player.timeline, props.song.getWarpMarkers()));
-const markersByKey = computed(() => new Map(positionedMarkers.value.map(marker => [getOccurrenceKey(marker), marker])));
+const positionedMarkers = computed(() => getPositionedSyncPoints(player.timeline, props.song.getSyncPoints()));
+const markersByKey = computed(() => new Map(positionedMarkers.value.map(marker => [getSyncPlaceKey(marker.place), marker])));
 
 const markers = computed(() => positionedMarkers.value.map((marker) => {
-  const id = getOccurrenceKey(marker);
+  const id = getSyncPlaceKey(marker.place);
   return {
     id,
-    time: dragged.value?.id === id ? dragged.value.time : sync.getTime(marker) ?? marker.time,
+    time: dragged.value?.id === id ? dragged.value.time : sync.getTime(marker.place) ?? marker.time,
   };
 }));
 
@@ -98,15 +100,21 @@ const syncLines = computed(() => markers.value.flatMap(({ id, time }) => {
   return axis.isVisible(tick) ? [{ id, x: Math.round(axis.toX(tick)) }] : [];
 }));
 
-const candidates = computed(() => getWarpMarkerCandidates(player.timeline, props.song.getWarpMarkers(), currentTime.value, duration.value));
+const candidates = computed(() => getWarpMarkerCandidates(player.timeline, props.song.getSyncPoints(), currentTime.value, duration.value));
 
 const candidateOptions = computed(() => candidates.value.map(candidate => ({
-  label: formatOccurrence(getLabel(candidate), candidate.occurrence),
-  value: getOccurrenceKey(candidate),
+  label: upperFirst(getLabel(candidate)),
+  value: getSyncPlaceKey(candidate),
 })));
 
-function getLabel({ measure }: Occurrence): string {
-  return props.song.findMeasure(measure)?.label ?? measure;
+const candidateQuestion = computed(() => candidates.value.some(isRecordingEnd) ? "Which measure starts or ends here?" : "Which measure starts here?");
+
+function getLabel(place: SyncPlace): string {
+  if (isRecordingEnd(place)) {
+    return formatSyncPlace(props.song, place);
+  }
+
+  return formatOccurrence(props.song.findMeasure(place.measure)?.label ?? place.measure, place.occurrence);
 }
 
 watch(() => [player.status, props.song] as const, ([status, song]) => {
@@ -118,7 +126,7 @@ watch(() => [player.status, props.song] as const, ([status, song]) => {
 
 async function addMarker(key: string): Promise<void> {
   addPopover.value?.hide();
-  const candidate = candidates.value.find(entry => getOccurrenceKey(entry) === key);
+  const candidate = candidates.value.find(place => getSyncPlaceKey(place) === key);
   if (candidate) {
     await sync.add(candidate, currentTime.value);
     selectSyncPoint(candidate);
@@ -128,20 +136,20 @@ async function addMarker(key: string): Promise<void> {
 function onAddClick(event: Event): void {
   const [only, ...others] = candidates.value;
   if (only && others.length === 0) {
-    addMarker(getOccurrenceKey(only));
+    addMarker(getSyncPlaceKey(only));
   } else {
     addPopover.value.toggle(event);
   }
 }
 
-function selectSyncPoint({ measure, occurrence }: Occurrence): void {
-  selectAndSeek({ kind: "syncPoint", occurrence: { measure, occurrence } });
+function selectSyncPoint(place: SyncPlace): void {
+  selectAndSeek({ kind: "syncPoint", place: isRecordingEnd(place) ? place : { measure: place.measure, occurrence: place.occurrence } });
 }
 
-function openMarkerMenu(marker: PositionedWarpMarker, event: MouseEvent): void {
+function openMarkerMenu(marker: PositionedSyncPoint, event: MouseEvent): void {
   markerMenuItems.value = [
-    { label: `Sync point at ${formatOccurrence(getLabel(marker), marker.occurrence)}`, disabled: true },
-    { label: "Remove sync point", icon: "pi pi-trash", command: () => sync.remove(marker) },
+    { label: `Sync point at ${getLabel(marker.place)}`, disabled: true },
+    { label: "Remove sync point", icon: "pi pi-trash", command: () => sync.remove(marker.place) },
   ];
   markerMenu.value.show(event);
 }
@@ -159,7 +167,7 @@ function isOnAudio(event: MouseEvent): boolean {
 }
 
 /** The sync point drawn under the pointer. Sync points only take presses below the measure ruler. */
-function findSyncPointAt(event: MouseEvent): PositionedWarpMarker | undefined {
+function findSyncPointAt(event: MouseEvent): PositionedSyncPoint | undefined {
   if (!isOnAudio(event)) {
     return undefined;
   }
@@ -172,7 +180,7 @@ function findSyncPointAt(event: MouseEvent): PositionedWarpMarker | undefined {
 
 // One handler for the whole axis: a drag moves the sync point it starts on and scrubs the playhead
 // anywhere else. peaks.js has no option to scrub by dragging, its own drag scrolls the waveform.
-let drag: { marker: PositionedWarpMarker; startX: number; startTime: number } | undefined;
+let drag: { marker: PositionedSyncPoint; startX: number; startTime: number } | undefined;
 let swallowClick = false;
 
 const { isSwiping } = usePointerSwipe(axisElement, {
@@ -181,7 +189,7 @@ const { isSwiping } = usePointerSwipe(axisElement, {
   onSwipeStart: (event) => {
     swallowClick = false;
     const marker = findSyncPointAt(event);
-    drag = marker && { marker, startX: toAxisX(event), startTime: sync.getTime(marker) ?? marker.time };
+    drag = marker && { marker, startX: toAxisX(event), startTime: sync.getTime(marker.place) ?? marker.time };
   },
   onSwipe: (event) => {
     if (!drag) {
@@ -190,13 +198,13 @@ const { isSwiping } = usePointerSwipe(axisElement, {
     }
 
     const delta = (axis.toTick(toAxisX(event)) - axis.toTick(drag.startX)) / MILLISECONDS_PER_SECOND;
-    const time = constrainWarpMarkerTime(player.timeline, props.song.getWarpMarkers(), drag.marker, drag.startTime + delta, duration.value);
-    dragged.value = { id: getOccurrenceKey(drag.marker), time };
+    const time = constrainWarpMarkerTime(player.timeline, props.song.getSyncPoints(), drag.marker.place, drag.startTime + delta, duration.value);
+    dragged.value = { id: getSyncPlaceKey(drag.marker.place), time };
   },
   onSwipeEnd: () => {
     swallowClick = true;
     if (drag && dragged.value) {
-      sync.moveTo(drag.marker, dragged.value.time);
+      sync.moveTo(drag.marker.place, dragged.value.time);
     }
 
     drag = undefined;
@@ -223,7 +231,7 @@ function onClick(event: MouseEvent): void {
 
   const marker = findSyncPointAt(event);
   if (marker) {
-    selectSyncPoint(marker);
+    selectSyncPoint(marker.place);
     return;
   }
 
@@ -405,7 +413,7 @@ watch(() => player.position, (tick) => {
         <label
           id="sync-point-measure"
           class="text-sm font-medium"
-        >Which measure starts here?</label>
+        >{{ candidateQuestion }}</label>
         <Select
           :options="candidateOptions"
           option-label="label"

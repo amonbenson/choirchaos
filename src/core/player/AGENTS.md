@@ -58,6 +58,7 @@ Both modes share the engine:
 ## Warp Editing
 
 - Warp markers (keyed by `(measure, occurrence)`) stay in timeline order through `warpEditing.ts`: new markers go between neighbours, drags and nudges clamp between them, `reassignWarpMarker()` only targets free occurrences between them, since `WarpMap` needs strictly increasing times.
+- Editing works on a `SyncPlace`, an occurrence or `RECORDING_END`, so the end sync point shares candidates, clamping and the editor with warp markers. The end of the audio file bounds the sync points one position past the end sync point (`getEdges()`).
 - `WaveformView` draws `mixdownChunks()` with peaks.js at the timeline axis's scale and offset. Positions are milliseconds, peaks.js uses seconds.
 - peaks.js cannot start in a hidden container (an unshown phone tab), so it is built once the container has a size.
 - peaks.js caches every resampled zoom level, so the axis zooms along `ZoomLadder` levels only. The base waveform has one sample per pixel (`getWaveformBaseScale()`, coarser for very long recordings).

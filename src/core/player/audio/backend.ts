@@ -195,7 +195,7 @@ export default class AudioBackend extends PlayerBackend {
 
   private buildTimeline(): TimelinePosition[] {
     const song = this.currentSong!;
-    const timeline = resolveAudioTimeline(song.getTimeline(), song.getMeasures(), song.getWarpMarkers(), this.warpMap);
+    const timeline = resolveAudioTimeline(song.getTimeline(), song.getMeasures(), song.getSyncPoints(), this.warpMap);
 
     this.systemEvents.tempo = buildAudioTempoEvents(timeline, this.warpMap.getMarkers());
     this.systemEvents.timeSignature = new MidiEventList([new TimeSignatureEvent(0, [4, 2])]);

@@ -6,8 +6,8 @@ import { computed, ref, useId, watch } from "vue";
 
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { useSyncEditor } from "@/composables/useSyncEditor";
-import { formatLocation, formatOccurrence } from "@/core/models/locationFormat";
-import type { Occurrence, StoredWarpMarker, TimelineEntry } from "@/core/models/recording";
+import { formatOccurrence, formatSyncPlace } from "@/core/models/locationFormat";
+import type { TimelineEntry } from "@/core/models/recording";
 import type Song from "@/core/models/song";
 import {
   canPlaceWarpMarker,
@@ -15,10 +15,13 @@ import {
   formatSyncTime,
   getOccurrenceKey,
   getReassignCandidates,
+  getSyncPlaceKey,
+  isRecordingEnd,
   LARGE_NUDGE_STEP,
   NUDGE_STEP,
   nudgeWarpMarkerTime,
   parseSyncTime,
+  type SyncPlace,
 } from "@/core/models/warpEditing";
 import { usePlayerStore } from "@/stores/player";
 
@@ -26,7 +29,8 @@ import RemoveButton from "./RemoveButton.vue";
 
 const props = defineProps<{
   song: Song;
-  warpMarker: StoredWarpMarker;
+  place: SyncPlace;
+  time: number;
 }>();
 
 const player = usePlayerStore();
@@ -36,19 +40,18 @@ const ids = { time: useId(), hint: useId(), reassign: useId(), reassignPanel: us
 const reassigning = ref(false);
 const timeText = ref("");
 
-const occurrence = computed<Occurrence>(() => ({ measure: props.warpMarker.measure, occurrence: props.warpMarker.occurrence }));
-const place = computed(() => formatLocation(props.song, occurrence.value));
-const time = computed(() => sync.getTime(occurrence.value) ?? props.warpMarker.time);
+const placeName = computed(() => formatSyncPlace(props.song, props.place));
+const time = computed(() => sync.getTime(props.place) ?? props.time);
 
 const canSyncToPlayhead = computed(() => player.ready && canPlaceWarpMarker(
   props.song.getTimeline(),
-  props.song.getWarpMarkers(),
-  occurrence.value,
+  props.song.getSyncPoints(),
+  props.place,
   sync.getPlayheadTime(),
   sync.getDuration(),
 ));
 
-watch(() => getOccurrenceKey(occurrence.value), () => {
+watch(() => getSyncPlaceKey(props.place), () => {
   reassigning.value = false;
 });
 
@@ -60,11 +63,17 @@ function label(entry: TimelineEntry): string {
   return formatOccurrence(props.song.findMeasure(entry.measure)?.label ?? "?", entry.occurrence);
 }
 
-const reassignOptions = computed(() => getReassignCandidates(props.song.getTimeline(), props.song.getWarpMarkers(), occurrence.value, sync.getDuration())
-  .map(candidate => ({ label: label(candidate), value: getOccurrenceKey(candidate), entry: candidate })));
+// The end sync point belongs to the end of the recording, so it never moves to another measure.
+const reassignOptions = computed(() => {
+  const place = props.place;
+  return isRecordingEnd(place)
+    ? []
+    : getReassignCandidates(props.song.getTimeline(), props.song.getWarpMarkers(), place, sync.getDuration())
+        .map(candidate => ({ label: label(candidate), value: getOccurrenceKey(candidate), entry: candidate }));
+});
 
 function nudge(delta: number): void {
-  sync.moveTo(occurrence.value, nudgeWarpMarkerTime(props.song.getTimeline(), props.song.getWarpMarkers(), occurrence.value, time.value, delta, sync.getDuration()));
+  sync.moveTo(props.place, nudgeWarpMarkerTime(props.song.getTimeline(), props.song.getSyncPoints(), props.place, time.value, delta, sync.getDuration()));
 }
 
 function onTimeKeydown(event: KeyboardEvent): void {
@@ -86,27 +95,28 @@ function commitTime(): void {
     return;
   }
 
-  const next = constrainWarpMarkerTime(props.song.getTimeline(), props.song.getWarpMarkers(), occurrence.value, parsed, sync.getDuration());
+  const next = constrainWarpMarkerTime(props.song.getTimeline(), props.song.getSyncPoints(), props.place, parsed, sync.getDuration());
   timeText.value = formatSyncTime(next);
   if (next !== time.value) {
-    sync.moveTo(occurrence.value, next);
+    sync.moveTo(props.place, next);
   }
 }
 
 /** The sync point keeps its time on the other measure, and the selection follows it there. */
 async function reassign(key: string): Promise<void> {
   reassigning.value = false;
+  const place = props.place;
   const target = reassignOptions.value.find(option => option.value === key)?.entry;
-  if (!target) {
+  if (!target || isRecordingEnd(place)) {
     return;
   }
 
-  await sync.reassign(occurrence.value, target);
-  selection.selectAndSeek({ kind: "syncPoint", occurrence: { measure: target.measure, occurrence: target.occurrence } });
+  await sync.reassign(place, target);
+  selection.selectAndSeek({ kind: "syncPoint", place: { measure: target.measure, occurrence: target.occurrence } });
 }
 
 async function remove(): Promise<void> {
-  if (await sync.remove(occurrence.value)) {
+  if (await sync.remove(props.place)) {
     selection.clear();
   }
 }
@@ -120,7 +130,7 @@ defineExpose({ remove });
       <label
         :for="ids.time"
         class="text-sm"
-      >Starts at</label>
+      >{{ isRecordingEnd(place) ? "Ends at" : "Starts at" }}</label>
       <div class="ml-auto flex items-center gap-1">
         <Button
           icon="pi pi-chevron-left"
@@ -165,9 +175,10 @@ defineExpose({ remove });
         severity="secondary"
         size="small"
         :disabled="!canSyncToPlayhead"
-        @click="sync.syncToPlayhead(occurrence)"
+        @click="sync.syncToPlayhead(place)"
       />
       <Button
+        v-if="!isRecordingEnd(place)"
         label="Move to another measure"
         severity="secondary"
         size="small"
@@ -180,7 +191,7 @@ defineExpose({ remove });
     <span
       v-if="player.ready && !canSyncToPlayhead"
       class="text-xs text-muted-color"
-    >To sync {{ place }} to the playhead, move the playhead between the sync points before and after it.</span>
+    >To sync {{ placeName }} to the playhead, move the playhead between the sync points before and after it.</span>
 
     <div
       v-show="reassigning"
@@ -216,7 +227,7 @@ defineExpose({ remove });
 
     <RemoveButton
       label="Remove sync point"
-      :aria-label="`Remove sync point at ${place}`"
+      :aria-label="`Remove sync point at ${placeName}`"
       @click="remove"
     />
   </div>

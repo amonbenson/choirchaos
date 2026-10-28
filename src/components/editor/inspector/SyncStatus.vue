@@ -2,7 +2,7 @@
 import { computed } from "vue";
 
 import type Song from "@/core/models/song";
-import { getPositionedWarpMarkers, MIN_SYNC_POINTS } from "@/core/models/warpEditing";
+import { getPositionedSyncPoints, MIN_SYNC_POINTS } from "@/core/models/warpEditing";
 
 import InspectorSection from "./InspectorSection.vue";
 
@@ -10,7 +10,7 @@ const props = defineProps<{
   song: Song;
 }>();
 
-const count = computed(() => getPositionedWarpMarkers(props.song.getTimeline(), props.song.getWarpMarkers()).length);
+const count = computed(() => getPositionedSyncPoints(props.song.getTimeline(), props.song.getSyncPoints()).length);
 
 const summary = computed(() => {
   if (count.value === 0) {

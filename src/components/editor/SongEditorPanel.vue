@@ -10,12 +10,12 @@ import MeasureReviewBar from "@/components/editor/measures/MeasureReviewBar.vue"
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import type { SongHistoryControls } from "@/composables/useSongHistory";
-import { formatLocation, formatOccurrence, formatTimes } from "@/core/models/locationFormat";
+import { formatLocation, formatOccurrence, formatSyncPlace, formatTimes } from "@/core/models/locationFormat";
 import type { MeasureId } from "@/core/models/measure";
 import { countOccurrences } from "@/core/models/recording";
 import { formatSectionName } from "@/core/models/scoreOverlays";
 import type Song from "@/core/models/song";
-import { formatSyncTime } from "@/core/models/warpEditing";
+import { formatSyncTime, isRecordingEnd } from "@/core/models/warpEditing";
 
 import BoxesInspector from "./inspector/BoxesInspector.vue";
 import MarkerInspector from "./inspector/MarkerInspector.vue";
@@ -109,7 +109,10 @@ function getHeading(): Heading {
     case "marker":
       return { title: `Marker ${current.marker.text}`, subtitle: `At ${formatLocation(song, current.marker.at)}` };
     case "syncPoint":
-      return { title: `Sync point at ${formatLocation(song, current.warpMarker)}`, subtitle: `Starts at ${formatSyncTime(current.warpMarker.time)}` };
+      return {
+        title: `Sync point at ${formatSyncPlace(song, current.place)}`,
+        subtitle: `${isRecordingEnd(current.place) ? "Ends" : "Starts"} at ${formatSyncTime(current.time)}`,
+      };
     case "pass": {
       const { span, occurrence, after } = current.stretch;
       const range = span.from === span.to ? label(span.from) : `${label(span.from)} to ${label(span.to)}`;
@@ -305,7 +308,8 @@ useEventListener("keydown", (event: KeyboardEvent) => {
             v-else-if="selected.kind === 'syncPoint'"
             ref="inspector"
             :song="song"
-            :warp-marker="selected.warpMarker"
+            :place="selected.place"
+            :time="selected.time"
           />
           <PassInspector
             v-else-if="selected.kind === 'pass'"

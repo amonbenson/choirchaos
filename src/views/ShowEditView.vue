@@ -72,7 +72,10 @@ const accessSummary = computed(() => {
     viewers.length > 0 ? `${viewers.length} ${viewers.length === 1 ? "viewer" : "viewers"}` : "",
   ].filter(Boolean).join(", ");
 
-  return { ...VISIBILITY_SUMMARY[visibility], people: people || "Not shared with anyone yet" };
+  return {
+    ...VISIBILITY_SUMMARY[visibility],
+    people: people || (visibility === "private" ? "Not shared with anyone yet" : undefined),
+  };
 });
 
 async function loadShow(): Promise<void> {
@@ -233,7 +236,10 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
               <div class="font-medium">
                 {{ accessSummary!.label }}
               </div>
-              <div class="truncate text-sm text-muted-color">
+              <div
+                v-if="accessSummary!.people"
+                class="truncate text-sm text-muted-color"
+              >
                 {{ accessSummary!.people }}
               </div>
             </div>

@@ -14,7 +14,7 @@ import { selectMeasures } from "@/core/models/selection";
 import type Song from "@/core/models/song";
 import { dbUpdate } from "@/pocketbase/db";
 import { usePlayerStore } from "@/stores/player";
-import { idOf, locationOf, makeAudioSong, makeAudioSongWithRepeat, makeMidiSong, makeMidiSongWithRepeat } from "@/test/fixtures";
+import { idOf, locationOf, makeAudioSong, makeAudioSongWithRepeat, makeAudioSongWithVamp, makeMidiSong, makeMidiSongWithRepeat } from "@/test/fixtures";
 
 import SongEditorPanel from "./SongEditorPanel.vue";
 
@@ -240,7 +240,7 @@ describe("SongEditorPanel", () => {
       expect(region(mounted.wrapper, "Recording")).toBeDefined();
       await button(mounted.wrapper, "Select sync point at 3, 1st time").trigger("click");
 
-      expect(mounted.selection.selection.value).toEqual({ kind: "syncPoint", occurrence: { measure: idOf(mounted.song, "3"), occurrence: 1 } });
+      expect(mounted.selection.selection.value).toEqual({ kind: "syncPoint", place: { measure: idOf(mounted.song, "3"), occurrence: 1 } });
       expect(title(mounted.wrapper)).toBe("Sync point at 3, 1st time");
     });
   });
@@ -325,7 +325,7 @@ describe("SongEditorPanel", () => {
     it("nudges it and moves it to another measure, where the selection follows", async () => {
       const mounted = mountPanel(makeAudioSongWithRepeat());
       const [, second] = mounted.song.getWarpMarkers();
-      mounted.selection.select({ kind: "syncPoint", occurrence: { measure: second!.measure, occurrence: second!.occurrence } });
+      mounted.selection.select({ kind: "syncPoint", place: { measure: second!.measure, occurrence: second!.occurrence } });
       await flushPromises();
 
       await button(mounted.wrapper, "Nudge later").trigger("click");
@@ -337,7 +337,29 @@ describe("SongEditorPanel", () => {
       options.vm.$emit("update:modelValue", `${idOf(mounted.song, "2")}#1`);
       await flushPromises();
 
-      expect(mounted.selection.selection.value).toEqual({ kind: "syncPoint", occurrence: { measure: idOf(mounted.song, "2"), occurrence: 1 } });
+      expect(mounted.selection.selection.value).toEqual({ kind: "syncPoint", place: { measure: idOf(mounted.song, "2"), occurrence: 1 } });
+    });
+
+    it("syncs the end of the last measure from its inspector and removes it again", async () => {
+      const mounted = mountPanel(makeAudioSongWithVamp());
+      await select(mounted, ["4"]);
+      fakePlayer().position = 1500;
+      await flushPromises();
+
+      await button(mounted.wrapper, "Sync end to playhead").trigger("click");
+      await flushPromises();
+
+      expect(mounted.song.getSyncPoints().endSyncTime).toBe(1.5);
+      expect(mounted.selection.selection.value).toEqual({ kind: "syncPoint", place: "end" });
+      expect(title(mounted.wrapper)).toBe("Sync point at the end of 4");
+      expect(mounted.wrapper.text()).toContain("Ends at");
+      expect(mounted.wrapper.text()).not.toContain("Move to another measure");
+
+      await button(mounted.wrapper, "Remove sync point at the end of 4").trigger("click");
+      await flushPromises();
+
+      expect(mounted.song.getSyncPoints().endSyncTime).toBeUndefined();
+      expect(mounted.selection.selection.value).toEqual({ kind: "none" });
     });
   });
 

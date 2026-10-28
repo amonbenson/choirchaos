@@ -136,6 +136,8 @@ const LAYER_KEYS = {
   arrangement: ["markers", "sections", "segue"],
 } as const;
 
+const OPTIONAL_LAYER_KEYS: Record<string, string[]> = { recording: ["endSyncTime"] };
+
 const LAYOUT_KEYS = ["page", "x", "y", "width", "height"];
 const SECTION_KEYS: Record<string, string[]> = {
   cut: ["kind", "from", "to"],
@@ -181,6 +183,7 @@ type Layers = {
   unnumberedBoxes: unknown[];
   spans: Json[];
   warpMarkers: Json[];
+  endSyncTime?: unknown;
   markers: Json[];
   sections: Json[];
 };
@@ -193,7 +196,7 @@ function layerShapeViolations(song: RecordModel): string[] {
   }
 
   for (const [layer, keys] of Object.entries(LAYER_KEYS)) {
-    if (!isObject(song[layer]) || !hasKeys(song[layer], keys)) {
+    if (!isObject(song[layer]) || !hasKeys(song[layer], keys, OPTIONAL_LAYER_KEYS[layer])) {
       violations.push(`${layer} is not an object with exactly the keys ${keys.join(", ")}`);
     }
   }
@@ -284,8 +287,8 @@ function findPosition(timeline: TimelineEntry[], measure: unknown, occurrence: u
   return index === -1 ? undefined : index;
 }
 
-function warpMarkerViolations(song: RecordModel, { warpMarkers }: Layers, timeline: TimelineEntry[]): string[] {
-  if (song.midiFile && warpMarkers.length > 0) {
+function warpMarkerViolations(song: RecordModel, { warpMarkers, endSyncTime }: Layers, timeline: TimelineEntry[]): string[] {
+  if (song.midiFile && (warpMarkers.length > 0 || endSyncTime !== undefined)) {
     return ["is a MIDI song with warp markers"];
   }
 
@@ -300,6 +303,17 @@ function warpMarkerViolations(song: RecordModel, { warpMarkers }: Layers, timeli
       violations.push(`warp marker ${JSON.stringify(marker)} is not in the recording`);
     } else {
       positioned.push({ position, time: marker.time });
+    }
+  }
+
+  // The end sync point anchors where the last measure ends, one position after its start.
+  if (endSyncTime !== undefined) {
+    if (typeof endSyncTime !== "number" || !Number.isFinite(endSyncTime) || endSyncTime <= 0) {
+      violations.push(`end sync time ${JSON.stringify(endSyncTime)} is malformed`);
+    } else if (timeline.length === 0) {
+      violations.push("end sync time is set for a recording without measures");
+    } else {
+      positioned.push({ position: timeline.length, time: endSyncTime });
     }
   }
 

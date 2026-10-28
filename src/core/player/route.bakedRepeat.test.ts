@@ -47,7 +47,7 @@ function toMeasures(labels: readonly string[]): Measure[] {
 }
 
 function resolve(labels: readonly string[], syncPoints: readonly StoredWarpMarker[]): TimelinePosition[] {
-  return resolveAudioTimeline(toTimeline(labels), toMeasures(labels), syncPoints, new WarpMap());
+  return resolveAudioTimeline(toTimeline(labels), toMeasures(labels), { warpMarkers: syncPoints, endSyncTime: undefined }, new WarpMap());
 }
 
 /** A vamp over the passes of 70 to 73, starting in pass `occurrence`. */

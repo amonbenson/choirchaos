@@ -5,21 +5,19 @@ import { getReadingOrder } from "./measureEditing";
 import {
   getRecordingStretches,
   type Location,
-  type Occurrence,
   type RecordedPass,
   type RecordingStretch,
-  type StoredWarpMarker,
   type Timeline,
 } from "./recording";
 import { findSection, type Section } from "./sections";
 import type Song from "./song";
-import { findWarpMarker } from "./warpEditing";
+import { getSyncTime, type SyncPlace } from "./warpEditing";
 
 /**
  * What the song editor works on. Exactly one kind is selected at a time, so the inspector shows one
  * panel and a section is never selected together with its measures. Each object is kept by what
  * identifies it across saves: measures by ID, boxes without a number by position, a section by its
- * start (sections never overlap), a marker by its location and name, a sync point by its occurrence
+ * start (sections never overlap), a marker by its location and name, a sync point by its place
  * and a recording pass by its index in the recording.
  */
 export type Selection
@@ -28,7 +26,7 @@ export type Selection
     | { kind: "boxes"; boxes: readonly MeasureLayout[] }
     | { kind: "section"; from: Location }
     | { kind: "marker"; marker: Marker }
-    | { kind: "syncPoint"; occurrence: Occurrence }
+    | { kind: "syncPoint"; place: SyncPlace }
     | { kind: "pass"; index: number };
 
 /** A selection with its objects looked up in the song. Objects that no longer exist leave nothing selected. */
@@ -38,7 +36,7 @@ export type SelectedObjects
     | { kind: "boxes"; boxes: MeasureLayout[] }
     | { kind: "section"; section: Section }
     | { kind: "marker"; marker: Marker }
-    | { kind: "syncPoint"; warpMarker: StoredWarpMarker }
+    | { kind: "syncPoint"; place: SyncPlace; time: number }
     | { kind: "pass"; index: number; stretch: RecordingStretch };
 
 export const NO_SELECTION = { kind: "none" } as const;
@@ -143,7 +141,7 @@ export function resolveSelection(song: Song, selection: Selection): SelectedObje
     case "marker":
       return found(song.getMarkers().find(marker => isSameMarker(marker, selection.marker)), marker => ({ kind: "marker", marker }));
     case "syncPoint":
-      return found(findWarpMarker(song.getWarpMarkers(), selection.occurrence), warpMarker => ({ kind: "syncPoint", warpMarker }));
+      return found(getSyncTime(song.getSyncPoints(), selection.place), time => ({ kind: "syncPoint", place: selection.place, time }));
     case "pass":
       return found(
         getRecordingStretches(song.getMeasures(), song.getRecording())[selection.index],

@@ -1,3 +1,4 @@
+import type { SongLayers } from "./layers";
 import type Measure from "./measure";
 import type { MeasureId } from "./measure";
 import { findPosition, type Occurrence, type StoredWarpMarker, type Timeline, type TimelineEntry } from "./recording";
@@ -15,7 +16,18 @@ export const MIN_SYNC_POINTS = 2;
 // Times closer than this count as equal, since they went through floating point arithmetic.
 const TIME_EPSILON = 1e-9;
 
+/** The end of the recording's last measure, which has no occurrence of its own to start. */
+export const RECORDING_END = "end";
+
+/** Where a sync point sits: where an occurrence starts, or where the recording's last measure ends. */
+export type SyncPlace = Occurrence | typeof RECORDING_END;
+
+/** All sync points of a song: the warp markers and the optional one at the end. */
+export type SyncPoints = Pick<SongLayers, "warpMarkers" | "endSyncTime">;
+
 export type PositionedWarpMarker = StoredWarpMarker & { position: number };
+
+export type PositionedSyncPoint = { place: SyncPlace; position: number; time: number };
 
 type Edge = { position: number; time: number };
 
@@ -23,9 +35,42 @@ export function isSameOccurrence(a: Occurrence, b: Occurrence): boolean {
   return a.measure === b.measure && a.occurrence === b.occurrence;
 }
 
+export function isRecordingEnd(place: SyncPlace): place is typeof RECORDING_END {
+  return place === RECORDING_END;
+}
+
+export function isSameSyncPlace(a: SyncPlace, b: SyncPlace): boolean {
+  if (isRecordingEnd(a) || isRecordingEnd(b)) {
+    return a === b;
+  }
+
+  return isSameOccurrence(a, b);
+}
+
 /** A string that identifies a marker by its measure and occurrence, for views that need string IDs. */
 export function getOccurrenceKey({ measure, occurrence }: Occurrence): string {
   return `${measure}#${occurrence}`;
+}
+
+export function getSyncPlaceKey(place: SyncPlace): string {
+  return isRecordingEnd(place) ? RECORDING_END : getOccurrenceKey(place);
+}
+
+/** The warp map position of a sync place: the end follows the last timeline position. */
+export function findSyncPosition(timeline: Timeline, place: SyncPlace): number | undefined {
+  if (isRecordingEnd(place)) {
+    return timeline.length > 0 ? timeline.length : undefined;
+  }
+
+  return findPosition(timeline, place);
+}
+
+export function getSyncTime({ warpMarkers, endSyncTime }: SyncPoints, place: SyncPlace): number | undefined {
+  return isRecordingEnd(place) ? endSyncTime : findWarpMarker(warpMarkers, place)?.time;
+}
+
+export function countSyncPoints({ warpMarkers, endSyncTime }: SyncPoints): number {
+  return warpMarkers.length + (endSyncTime === undefined ? 0 : 1);
 }
 
 /** The warp markers that resolve on the timeline, in timeline order. */
@@ -38,33 +83,46 @@ export function getPositionedWarpMarkers(timeline: Timeline, warpMarkers: readon
     .sort((a, b) => a.position - b.position);
 }
 
+/** The sync points that resolve on the timeline, the end included, in timeline order. */
+export function getPositionedSyncPoints(timeline: Timeline, sync: SyncPoints): PositionedSyncPoint[] {
+  const points: PositionedSyncPoint[] = getPositionedWarpMarkers(timeline, sync.warpMarkers)
+    .map(({ measure, occurrence, position, time }) => ({ place: { measure, occurrence }, position, time }));
+  if (sync.endSyncTime !== undefined && timeline.length > 0) {
+    points.push({ place: RECORDING_END, position: timeline.length, time: sync.endSyncTime });
+  }
+
+  return points;
+}
+
 export function findWarpMarker(warpMarkers: readonly StoredWarpMarker[], occurrence: Occurrence): StoredWarpMarker | undefined {
   return warpMarkers.find(marker => isSameOccurrence(marker, occurrence));
 }
 
-function getEdges(timeline: Timeline, warpMarkers: readonly StoredWarpMarker[], duration: number): Edge[] {
+// The end of the audio file lies one position past the end sync point, so both can bound the sync points.
+function getEdges(timeline: Timeline, sync: SyncPoints, duration: number): Edge[] {
   return [
     { position: -1, time: 0 },
-    ...getPositionedWarpMarkers(timeline, warpMarkers),
-    { position: timeline.length, time: duration },
+    ...getPositionedSyncPoints(timeline, sync),
+    { position: timeline.length + 1, time: duration },
   ];
 }
 
+export function removeSyncPoint({ warpMarkers, endSyncTime }: SyncPoints, place: SyncPlace): SyncPoints {
+  return isRecordingEnd(place)
+    ? { warpMarkers, endSyncTime: undefined }
+    : { warpMarkers: removeWarpMarker(warpMarkers, place), endSyncTime };
+}
+
 /**
- * Timeline positions that may receive a marker at the given time: those between the markers left and
- * right of it, so markers always stay in timeline order.
+ * Places that may receive a sync point at the given time: those between the sync points left and right
+ * of it, so sync points always stay in timeline order.
  */
-export function getWarpMarkerCandidates(
-  timeline: Timeline,
-  warpMarkers: readonly StoredWarpMarker[],
-  time: number,
-  duration: number,
-): TimelineEntry[] {
-  if (time <= 0 || time >= duration) {
+export function getWarpMarkerCandidates(timeline: Timeline, sync: SyncPoints, time: number, duration: number): SyncPlace[] {
+  if (time <= 0 || time >= duration || timeline.length === 0) {
     return [];
   }
 
-  const edges = getEdges(timeline, warpMarkers, duration);
+  const edges = getEdges(timeline, sync, duration);
   const rightIndex = edges.findIndex(edge => edge.time > time);
   const left = edges[rightIndex - 1];
   const right = edges[rightIndex];
@@ -73,7 +131,9 @@ export function getWarpMarkerCandidates(
     return [];
   }
 
-  return timeline.slice(left.position + 1, right.position);
+  const entries: SyncPlace[] = timeline.slice(left.position + 1, right.position);
+  const endIsFree = left.position < timeline.length && right.position > timeline.length;
+  return endIsFree ? [...entries, RECORDING_END] : entries;
 }
 
 function clampAtPosition(edges: readonly Edge[], position: number, time: number): number {
@@ -87,54 +147,35 @@ function clampAtPosition(edges: readonly Edge[], position: number, time: number)
 }
 
 /** Clamps a dragged marker between its neighbours in timeline order. */
-export function constrainWarpMarkerTime(
-  timeline: Timeline,
-  warpMarkers: readonly StoredWarpMarker[],
-  marker: Occurrence,
-  time: number,
-  duration: number,
-): number {
-  const position = findPosition(timeline, marker);
+export function constrainWarpMarkerTime(timeline: Timeline, sync: SyncPoints, place: SyncPlace, time: number, duration: number): number {
+  const position = findSyncPosition(timeline, place);
   if (position === undefined) {
     return time;
   }
 
-  return clampAtPosition(getEdges(timeline, warpMarkers, duration), position, time);
+  return clampAtPosition(getEdges(timeline, sync, duration), position, time);
 }
 
 /**
  * The time a marker moves to when nudged by `delta` seconds from `time`, kept between its neighbours.
  * Nudges start from the shown time, which can be ahead of the stored one while a save is pending.
  */
-export function nudgeWarpMarkerTime(
-  timeline: Timeline,
-  warpMarkers: readonly StoredWarpMarker[],
-  marker: Occurrence,
-  time: number,
-  delta: number,
-  duration: number,
-): number {
-  return constrainWarpMarkerTime(timeline, warpMarkers, marker, time + delta, duration);
+export function nudgeWarpMarkerTime(timeline: Timeline, sync: SyncPoints, place: SyncPlace, time: number, delta: number, duration: number): number {
+  return constrainWarpMarkerTime(timeline, sync, place, time + delta, duration);
 }
 
 /**
- * Whether the occurrence's marker may sit at `time`, its own marker aside: the recording plays the
- * occurrence, and the time lies between the markers before and after it in timeline order.
+ * Whether the place's sync point may sit at `time`, its own sync point aside: the recording plays the
+ * place, and the time lies between the sync points before and after it in timeline order.
  */
-export function canPlaceWarpMarker(
-  timeline: Timeline,
-  warpMarkers: readonly StoredWarpMarker[],
-  occurrence: Occurrence,
-  time: number,
-  duration: number,
-): boolean {
-  const position = findPosition(timeline, occurrence);
+export function canPlaceWarpMarker(timeline: Timeline, sync: SyncPoints, place: SyncPlace, time: number, duration: number): boolean {
+  const position = findSyncPosition(timeline, place);
   if (position === undefined || time < 0 || time > duration) {
     return false;
   }
 
-  const others = warpMarkers.filter(marker => !isSameOccurrence(marker, occurrence));
-  return Math.abs(clampAtPosition(getEdges(timeline, others, duration), position, time) - time) < TIME_EPSILON;
+  const edges = getEdges(timeline, removeSyncPoint(sync, place), duration);
+  return Math.abs(clampAtPosition(edges, position, time) - time) < TIME_EPSILON;
 }
 
 /**
@@ -152,7 +193,8 @@ export function getReassignCandidates(
     return [];
   }
 
-  const others = warpMarkers.filter(other => other !== stored);
+  // The end sync point never limits them, since the marker already sits before it.
+  const others = { warpMarkers: warpMarkers.filter(other => other !== stored), endSyncTime: undefined };
   return timeline.filter(entry => !findWarpMarker(warpMarkers, entry) && canPlaceWarpMarker(timeline, others, entry, stored.time, duration));
 }
 
@@ -162,8 +204,8 @@ export function getReassignCandidates(
  * points, except where measures timed at one rate differ in beats. For each such stretch this returns
  * the position to sync next: its first meter change without a sync point, else the end it extrapolates to.
  */
-export function findMeterChangesToSync(timeline: Timeline, measures: readonly Measure[], warpMarkers: readonly StoredWarpMarker[]): number[] {
-  const positions = getPositionedWarpMarkers(timeline, warpMarkers).map(marker => marker.position);
+export function findMeterChangesToSync(timeline: Timeline, measures: readonly Measure[], sync: SyncPoints): number[] {
+  const positions = getPositionedSyncPoints(timeline, sync).map(point => point.position);
   if (positions.length < MIN_SYNC_POINTS) {
     return [];
   }
@@ -182,7 +224,8 @@ export function findMeterChangesToSync(timeline: Timeline, measures: readonly Me
       return [];
     }
 
-    const ends = [...i === 0 ? [0] : [], ...end === timeline.length ? [timeline.length - 1] : []];
+    const extrapolatesEnd = end === timeline.length && !synced.has(end);
+    const ends = [...i === 0 ? [0] : [], ...extrapolatesEnd ? [timeline.length - 1] : []];
     const target = [...inside, ...ends].find(position => !synced.has(position));
     return target === undefined ? [] : [target];
   });
@@ -259,7 +302,7 @@ export function reassignWarpMarker(timeline: Timeline, warpMarkers: readonly Sto
 
   assertFreeOccurrence(timeline, warpMarkers, to);
   const others = warpMarkers.filter(other => other !== marker);
-  if (!canPlaceWarpMarker(timeline, others, to, marker.time, Infinity)) {
+  if (!canPlaceWarpMarker(timeline, { warpMarkers: others, endSyncTime: undefined }, to, marker.time, Infinity)) {
     throw new Error(`Measure ${to.measure} does not lie between the neighbouring warp markers.`);
   }
 
@@ -268,4 +311,24 @@ export function reassignWarpMarker(timeline: Timeline, warpMarkers: readonly Sto
 
 export function removeWarpMarker(warpMarkers: readonly StoredWarpMarker[], occurrence: Occurrence): StoredWarpMarker[] {
   return warpMarkers.filter(marker => !isSameOccurrence(marker, occurrence));
+}
+
+export function addSyncPoint(timeline: Timeline, sync: SyncPoints, place: SyncPlace, time: number): SyncPoints {
+  if (!isRecordingEnd(place)) {
+    return { ...sync, warpMarkers: addWarpMarker(timeline, sync.warpMarkers, { ...place, time }) };
+  }
+
+  if (timeline.length === 0) {
+    throw new Error("The recording plays no measures.");
+  }
+
+  if (sync.endSyncTime !== undefined) {
+    throw new Error("The end of the recording already has a sync point.");
+  }
+
+  return { ...sync, endSyncTime: time };
+}
+
+export function moveSyncPoint(sync: SyncPoints, place: SyncPlace, time: number): SyncPoints {
+  return isRecordingEnd(place) ? { ...sync, endSyncTime: time } : { ...sync, warpMarkers: moveWarpMarker(sync.warpMarkers, place, time) };
 }

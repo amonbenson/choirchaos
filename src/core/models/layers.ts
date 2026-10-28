@@ -42,6 +42,8 @@ export type SongLayers = {
   unnumberedBoxes: readonly MeasureLayout[];
   spans: readonly RecordingSpan[];
   warpMarkers: readonly StoredWarpMarker[];
+  /** Where the recording's last measure ends, in seconds, or undefined while the end is not synced. */
+  endSyncTime: number | undefined;
   markers: readonly Marker[];
   sections: readonly Section[];
   segue: boolean;
@@ -63,14 +65,15 @@ export const EMPTY_LAYERS: LayerSnapshot = Object.freeze({
 }) as LayerSnapshot;
 
 const TIMELINE_FIELDS: readonly LayerField[] = ["measures", "spans"];
-const REFERENCE_FIELDS: readonly LayerField[] = ["warpMarkers", "markers", "sections"];
+const REFERENCE_FIELDS: readonly LayerField[] = ["warpMarkers", "endSyncTime", "markers", "sections"];
 
 export function serializeScore({ measures, unnumberedBoxes }: Pick<SongLayers, "measures" | "unnumberedBoxes">): StoredScore {
   return { measures: measures.map(measure => measure.serialize()), unnumberedBoxes: [...unnumberedBoxes] };
 }
 
-export function serializeRecording({ spans, warpMarkers }: Pick<SongLayers, "spans" | "warpMarkers">): StoredRecording {
-  return { spans: spans.map(span => ({ ...span })), warpMarkers: warpMarkers.map(marker => ({ ...marker })) };
+export function serializeRecording({ spans, warpMarkers, endSyncTime }: Pick<SongLayers, "spans" | "warpMarkers" | "endSyncTime">): StoredRecording {
+  const recording = { spans: spans.map(span => ({ ...span })), warpMarkers: warpMarkers.map(marker => ({ ...marker })) };
+  return endSyncTime === undefined ? recording : { ...recording, endSyncTime };
 }
 
 export function serializeArrangement({ markers, sections, segue }: Pick<SongLayers, "markers" | "sections" | "segue">): StoredArrangement {
@@ -87,6 +90,7 @@ export function deserializeLayers({ score, recording, arrangement }: LayerSnapsh
     unnumberedBoxes: [...score.unnumberedBoxes],
     spans: recording.spans.map(span => ({ ...span })),
     warpMarkers: recording.warpMarkers.map(marker => ({ ...marker })),
+    endSyncTime: recording.endSyncTime,
     markers: arrangement.markers.map(deserializeMarker),
     sections: arrangement.sections.map(deserializeSection),
     segue: arrangement.segue,
@@ -177,10 +181,29 @@ function validateWarpMarkers(measures: readonly Measure[], timeline: Timeline, w
   return duplicate && `Measure ${label(duplicate.measure)} already has a sync point.`;
 }
 
+function validateEndSyncTime(timeline: Timeline, { warpMarkers, endSyncTime }: SongLayers): string | undefined {
+  if (endSyncTime === undefined) {
+    return undefined;
+  }
+
+  if (timeline.length === 0) {
+    return "The recording plays no measures whose end could be synced.";
+  }
+
+  if (!Number.isFinite(endSyncTime) || endSyncTime <= 0) {
+    return "The end of the recording needs a time after its start.";
+  }
+
+  const later = warpMarkers.some(marker => findPosition(timeline, marker) !== undefined && marker.time >= endSyncTime);
+  return later ? "The end of the recording must be synced after every other sync point." : undefined;
+}
+
 function validateReference(layers: SongLayers, timeline: Timeline, field: LayerField): string | undefined {
   switch (field) {
     case "warpMarkers":
       return validateWarpMarkers(layers.measures, timeline, layers.warpMarkers);
+    case "endSyncTime":
+      return validateEndSyncTime(timeline, layers);
     case "markers":
       return layers.markers.map(marker => validateLocation(layers.measures, timeline, marker.at)).find(Boolean);
     case "sections":
@@ -213,9 +236,36 @@ export function dropUnresolvedReferences(layers: SongLayers): SongLayers {
   return {
     ...layers,
     warpMarkers: layers.warpMarkers.filter(marker => findPosition(timeline, marker) !== undefined),
+    endSyncTime: timeline.length > 0 ? layers.endSyncTime : undefined,
     markers: layers.markers.filter(marker => !validateLocation(layers.measures, timeline, marker.at)),
     sections: layers.sections.filter((_, index) => !invalid.has(index)),
   };
+}
+
+/**
+ * The sync points once the timeline changed from `before` to `after`. The end sync point stays while the
+ * last measure of `before` still ends the recording, and becomes the warp marker of the measure after it
+ * once the recording plays on. Without that measure in `after`, it is dropped (`endSyncTime` undefined).
+ */
+function remapEndSync(
+  { warpMarkers, endSyncTime }: Pick<SongLayers, "warpMarkers" | "endSyncTime">,
+  before: Timeline,
+  after: Timeline,
+  map: OccurrenceMap,
+): Pick<SongLayers, "warpMarkers" | "endSyncTime"> {
+  const last = before.at(-1);
+  const moved = endSyncTime === undefined || !last ? undefined : map(last);
+  const position = moved && findPosition(after, moved);
+  if (endSyncTime === undefined || position === undefined) {
+    return { warpMarkers, endSyncTime: undefined };
+  }
+
+  const next = after[position + 1];
+  if (!next) {
+    return { warpMarkers, endSyncTime };
+  }
+
+  return { warpMarkers: [...warpMarkers, { measure: next.measure, occurrence: next.occurrence, time: endSyncTime }], endSyncTime: undefined };
 }
 
 // Measure edits
@@ -283,7 +333,16 @@ export function planMeasureEdit(layers: SongLayers, edit: MeasureEdit): PlannedM
     unnumberedBoxes: edit.unnumberedBoxes ?? layers.unnumberedBoxes,
   };
 
-  return { layers: changesTiming(layers, next) ? dropUnresolvedReferences(next) : next, added: result.added };
+  if (!changesTiming(layers, next)) {
+    return { layers: next, added: result.added };
+  }
+
+  // Measure IDs stay, so every occurrence the new timeline still plays keeps its place.
+  const resolved = dropUnresolvedReferences(next);
+  const after = expandRecording(resolved.measures, resolved.spans);
+  const sameOccurrence: OccurrenceMap = occurrence => findPosition(after, occurrence) === undefined ? undefined : occurrence;
+  const sync = remapEndSync({ ...resolved, endSyncTime: layers.endSyncTime }, expandRecording(layers.measures, layers.spans), after, sameOccurrence);
+  return { layers: { ...resolved, ...sync }, added: result.added };
 }
 
 // Recording changes
@@ -291,6 +350,8 @@ export function planMeasureEdit(layers: SongLayers, edit: MeasureEdit): PlannedM
 /** References a recording change cannot move, as they are before the change. */
 export type DroppedReferences = {
   warpMarkers: StoredWarpMarker[];
+  /** The time of a dropped end sync point. */
+  endSyncTime?: number;
   markers: Marker[];
   sections: Section[];
 };
@@ -326,7 +387,8 @@ function remapSections(sections: readonly Section[], map: OccurrenceMap, measure
 /**
  * The layers after the recording changes to `spans` over `measures`. Warp markers keep their times, and
  * they, markers and sections move with their timeline position wherever it survives the change. Only the
- * rest are dropped. `replacements` let references on a removed measure move to another measure.
+ * rest are dropped. The end sync point follows the last measure (`remapEndSync()`). `replacements` let
+ * references on a removed measure move to another measure.
  */
 export function planRecordingChange(
   layers: SongLayers,
@@ -349,6 +411,11 @@ export function planRecordingChange(
     return [{ ...moved, time: marker.time }];
   });
 
+  const sync = remapEndSync({ warpMarkers, endSyncTime: layers.endSyncTime }, before, timeline, map);
+  if (layers.endSyncTime !== undefined && sync.warpMarkers === warpMarkers && sync.endSyncTime === undefined) {
+    dropped.endSyncTime = layers.endSyncTime;
+  }
+
   const markers = layers.markers.flatMap((marker) => {
     const at = remapLocation(map, marker.at);
     if (!at || validateLocation(measures, timeline, at)) {
@@ -364,7 +431,7 @@ export function planRecordingChange(
       ...layers,
       measures: [...measures],
       spans: spans.map(span => ({ ...span })),
-      warpMarkers,
+      ...sync,
       markers,
       sections: remapSections(layers.sections, map, measures, timeline, dropped),
     },

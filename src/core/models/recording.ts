@@ -10,6 +10,8 @@ export type StoredWarpMarker = { measure: MeasureId; occurrence: number; time: n
 export type StoredRecording = {
   spans: RecordingSpan[];
   warpMarkers: StoredWarpMarker[];
+  /** Where the last measure of the recording ends, in seconds, when that is synced. */
+  endSyncTime?: number;
 };
 
 /** A beat at the `occurrence`-th time its measure plays. Beats are 0-based, occurrences 1-based. */

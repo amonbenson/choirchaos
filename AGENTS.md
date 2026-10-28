@@ -54,7 +54,7 @@ Before finishing: `lint:fix`, `typecheck`, `vitest run`, plus `test:e2e` when ba
 
 Three layers, each referencing the one below only by measure ID:
 - **Score:** printed measures in written order, with their boxes on the PDF.
-- **Recording:** inclusive measure ID spans in the order the backing track plays them, plus sync points (warp markers).
+- **Recording:** inclusive measure ID spans in the order the backing track plays them, plus sync points: warp markers on measure occurrences and an optional `endSyncTime` where the last measure ends (warp map position `timeline.length`), which songs leave out until synced.
 - **Arrangement:** markers, cut/repeat/vamp sections, segue.
 
 Invariants:
@@ -63,7 +63,7 @@ Invariants:
 - Each layer is one PocketBase JSON field (`score`, `recording`, `arrangement`), always read and written whole through its serializer in `layers.ts`. No handling for older formats.
 - Every layer edit goes through `Song.editLayers()`. Callers compute the next lists with pure functions (`planMeasureEdit()`, `planRecordingChange()`, `replaceSections()`, `addMarker()`, `addWarpMarker()`, ...) and never mutate the song. `editLayers()` orders references, validates the changed fields (all references once the timeline changed, so older stored data only blocks edits of its own field), saves all changed layers in one atomic request and fires `onLayersChange` with both snapshots and `timingChanged`. A failed save changes nothing. Only uploads with a beat map write layers otherwise.
 - A song with measures has recording spans. Every measure or recording change drops the references it leaves unresolved (e2e invariants reject them).
-- Recording changes (`planRecordingChange()`, used by `setRecordingSpans()` and the duplicate migration) move references by timeline position through `remapReferences()`, keeping sync point times, and drop only what has no surviving position. Span helpers return normalized spans (`spansFromSequence()`); the UI previews with `previewRecordingSpans()`.
+- Recording changes (`planRecordingChange()`, used by `setRecordingSpans()` and the duplicate migration) move references by timeline position through `remapReferences()`, keeping sync point times, and drop only what has no surviving position. The end sync point belongs to the old last measure: it stays while that measure still ends the recording, becomes the warp marker of the measure now following it, and is dropped with it (`remapEndSync()`, also for measure edits). Span helpers return normalized spans (`spansFromSequence()`); the UI previews with `previewRecordingSpans()`.
 - `usePlayerSync` follows `onLayersChange`: reload at the same time when `timingChanged`, otherwise `syncWarp()`. Callers never touch the player, so UI never waits for audio.
 - Undo (`songHistory.ts`) stores snapshot pairs for the song open in the editor and restores through `restoreLayers()`. It covers the three layers and the segue (not files, details, tracks) and resets when the song changes or the editor closes. It refuses and drops the history when the layers changed outside it (beat map upload) or the record's `updated` differs from `Song`'s last save (someone else saved). A failed save keeps it.
 - A MIDI song's score and recording come from its beat map (`jsonFile`) via `scoreFromBeatMap()`, which reads passes `12-2`, `12R` as measure `12`. The beat map stays the timing source: MIDI recordings are read-only and have no sync points. Never store a MIDI file without its beat map.

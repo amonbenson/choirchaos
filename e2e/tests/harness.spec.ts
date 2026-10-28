@@ -81,4 +81,22 @@ test.describe("e2e harness", () => {
       expect.stringContaining("overlaps another section"),
     ]);
   });
+
+  test("the invariants accept an end sync point only after the last sync point", async ({ admin, factory }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const bundle = await buildSongBundle(MINIMAL, { mode: "audio", withPdf: false });
+    const { recording } = bundle.fields;
+    const last = recording.warpMarkers.at(-1)!.time;
+    const song = await factory.createSong(owner, show, bundle);
+
+    await admin.collection("songs").update(song.id, { recording: { ...recording, endSyncTime: last + 1 } });
+    const valid = await findInvariantViolations(admin);
+    await admin.collection("songs").update(song.id, { recording: { ...recording, endSyncTime: last } });
+    const early = await findInvariantViolations(admin);
+    await admin.collection("songs").delete(song.id);
+
+    expect(valid).toEqual([]);
+    expect(early).toEqual([expect.stringContaining("do not strictly increase")]);
+  });
 });

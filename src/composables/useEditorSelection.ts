@@ -2,7 +2,6 @@ import { computed, type ComputedRef, inject, type InjectionKey, provide, type Re
 
 import type { MeasureId } from "@/core/models/measure";
 import type { RecordedPass } from "@/core/models/recording";
-import { findPosition } from "@/core/models/recording";
 import {
   findMeasureRuns,
   getSelectableMeasures,
@@ -16,6 +15,7 @@ import {
   toggleMeasure,
 } from "@/core/models/selection";
 import type Song from "@/core/models/song";
+import { findSyncPosition } from "@/core/models/warpEditing";
 import { usePlayerStore } from "@/stores/player";
 
 export type EditorSelection = {
@@ -98,9 +98,10 @@ export function useEditorSelection(song: Ref<Song | undefined>, editMode: Ref<bo
         player.seekLocation(next.marker.at);
         break;
       case "syncPoint": {
-        const position = findPosition(timeline, next.warpMarker);
+        // The end sync point has no measure of its own, so the playhead goes to the last measure it ends.
+        const position = findSyncPosition(timeline, next.place);
         if (position !== undefined) {
-          player.seekPosition(position);
+          player.seekPosition(Math.min(position, timeline.length - 1));
         }
 
         break;

@@ -6,7 +6,8 @@ import type { WarpMarker } from "../midi/warp";
 import type WarpMap from "../midi/warp";
 import type Measure from "../models/measure";
 import type { MeasureId } from "../models/measure";
-import { findPosition, type Occurrence, type StoredWarpMarker, type Timeline, type TimelineEntry } from "../models/recording";
+import { findPosition, type Occurrence, type Timeline, type TimelineEntry } from "../models/recording";
+import { getPositionedSyncPoints, type SyncPoints } from "../models/warpEditing";
 import type { PlayerLocation } from "./types";
 
 const MILLISECONDS_PER_SECOND = 1000;
@@ -37,22 +38,17 @@ export function resolveMidiTimeline(timeline: Timeline, beatMap: MTIMidiJson): T
   });
 }
 
-/** Resolves warp markers to timeline positions. Markers whose occurrence the recording no longer plays are dropped. */
-export function resolveWarpMarkers(timeline: Timeline, warpMarkers: readonly StoredWarpMarker[]): WarpMarker[] {
-  return warpMarkers.flatMap((marker) => {
-    const position = findPosition(timeline, marker);
-    return position === undefined ? [] : [{ position, time: marker.time }];
-  });
+/**
+ * Resolves sync points to warp map positions, the end sync point to the position after the last.
+ * Markers whose occurrence the recording no longer plays are dropped.
+ */
+export function resolveWarpMarkers(timeline: Timeline, sync: SyncPoints): WarpMarker[] {
+  return getPositionedSyncPoints(timeline, sync).map(({ position, time }) => ({ position, time }));
 }
 
 /** Times an audio song's timeline in milliseconds of the recording, with beats evenly spread over each position. */
-export function resolveAudioTimeline(
-  timeline: Timeline,
-  measures: readonly Measure[],
-  warpMarkers: readonly StoredWarpMarker[],
-  warpMap: WarpMap,
-): TimelinePosition[] {
-  warpMap.setMarkers(resolveWarpMarkers(timeline, warpMarkers));
+export function resolveAudioTimeline(timeline: Timeline, measures: readonly Measure[], sync: SyncPoints, warpMap: WarpMap): TimelinePosition[] {
+  warpMap.setMarkers(resolveWarpMarkers(timeline, sync));
   const beatsById = new Map(measures.map(measure => [measure.id, measure.beats]));
 
   return timeline.map((entry) => {

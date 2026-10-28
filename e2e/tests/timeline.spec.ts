@@ -77,6 +77,44 @@ test.describe("timeline and audio sync", () => {
     expect(errors).toEqual([]);
   });
 
+  test("syncs the end of the last measure and removes it again", async ({ page, admin, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const bundle = await buildSongBundle(MINIMAL, { mode: "audio" });
+    const times = bundle.fields.recording.warpMarkers.map(marker => marker.time);
+    const song = await factory.createSong(owner, show, bundle);
+    const errors = collectPageErrors(page);
+    await loginAs(owner);
+
+    await page.goto(`/show/${show.id}/song/${song.id}/edit`);
+    await waitForPlayer(page);
+    const panel = page.getByRole("region", { name: "Editor panel" });
+    await page.getByRole("button", { name: "Measure 4", exact: true }).click();
+
+    // Inside the last measure, after its own sync point.
+    const target = times[3]! + 0.5 * (times[3]! - times[2]!);
+    const { scale, sampleRate } = await waveformState(page);
+    const waveform = (await page.getByRole("img", { name: "Waveform" }).boundingBox())!;
+    await page.mouse.click(waveform.x + (target * sampleRate) / scale, waveform.y + waveform.height * 0.7);
+    await expect.poll(() => playheadSeconds(page)).toBeCloseTo(target, 1);
+    const playhead = await playheadSeconds(page);
+
+    await panel.getByRole("region", { name: "Audio sync" }).getByRole("button", { name: "Sync end to playhead" }).click();
+
+    const storedEnd = async (): Promise<number | undefined> => (await admin.collection("songs").getOne(song.id)).recording.endSyncTime;
+    await expect.poll(storedEnd).toBeCloseTo(playhead, 2);
+    await expect(panel.getByRole("heading", { name: "Sync point at the end of 4" })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Move to another measure" })).toHaveCount(0);
+
+    await panel.getByRole("textbox", { name: "Ends at" }).press("ArrowUp");
+    await expect.poll(storedEnd).toBeCloseTo(playhead + 0.01, 3);
+
+    await panel.getByRole("button", { name: "Remove sync point at the end of 4" }).click();
+    await page.getByRole("alertdialog", { name: "Remove sync point" }).getByRole("button", { name: "Remove" }).click();
+    await expect.poll(storedEnd).toBeUndefined();
+    expect(errors).toEqual([]);
+  });
+
   test("moves a sync point to another measure and keeps its time", async ({ page, admin, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);

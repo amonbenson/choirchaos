@@ -1,5 +1,6 @@
 import { countOccurrences, type Occurrence } from "./recording";
 import type Song from "./song";
+import { isRecordingEnd, type SyncPlace } from "./warpEditing";
 
 const ORDINAL_SUFFIXES: Record<string, string> = { one: "st", two: "nd", few: "rd", other: "th" };
 const ordinalRules = new Intl.PluralRules("en-US", { type: "ordinal" });
@@ -30,4 +31,14 @@ export function formatOccurrenceShort(label: string, occurrence: number): string
 export function formatLocation(song: Song, { measure, occurrence }: Occurrence): string {
   const label = song.findMeasure(measure)?.label ?? "?";
   return countOccurrences(song.getTimeline(), measure) > 1 ? `${label}, ${formatTimes(occurrence)}` : label;
+}
+
+/** "12, 2nd time" like `formatLocation`, or "the end of 32" for the end sync point. */
+export function formatSyncPlace(song: Song, place: SyncPlace): string {
+  if (!isRecordingEnd(place)) {
+    return formatLocation(song, place);
+  }
+
+  const last = song.getTimeline().at(-1);
+  return last ? `the end of ${formatLocation(song, last)}` : "the end";
 }

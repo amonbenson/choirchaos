@@ -108,8 +108,8 @@ describe("resolveSelection", () => {
     expect(isSectionSelected({ kind: "section", from: { ...section!.from } }, section!)).toBe(true);
     expect(resolveSelection(song, { kind: "marker", marker: { at: { ...marker.at }, text: "A" } })).toEqual({ kind: "marker", marker });
     expect(resolveSelection(song, { kind: "marker", marker: { at: marker.at, text: "B" } })).toEqual(NO_SELECTION);
-    expect(resolveSelection(song, { kind: "syncPoint", occurrence: { measure: warpMarker!.measure, occurrence: warpMarker!.occurrence } }))
-      .toEqual({ kind: "syncPoint", warpMarker });
+    expect(resolveSelection(song, { kind: "syncPoint", place: { measure: warpMarker!.measure, occurrence: warpMarker!.occurrence } }))
+      .toEqual({ kind: "syncPoint", place: { measure: warpMarker!.measure, occurrence: warpMarker!.occurrence }, time: warpMarker!.time });
     expect(resolveSelection(song, { kind: "pass", index: 1 })).toMatchObject({ kind: "pass", index: 1, stretch: { occurrence: 2 } });
   });
 });
