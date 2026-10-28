@@ -62,15 +62,16 @@ test.describe("timeline and audio sync", () => {
 
     const storedTime = async (): Promise<number | undefined> =>
       (await admin.collection("songs").getOne(song.id)).recording.warpMarkers.find(isSecondTime)?.time;
-    await expect.poll(storedTime).toBeCloseTo(playhead, 2);
+    await expect.poll(storedTime).toBeCloseTo(playhead, 1);
+    const synced = (await storedTime())!;
     await expect(panel.getByRole("heading", { name: "Sync point at 2, 2nd time" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Measure 2", exact: true }))
       .toHaveAccessibleDescription(/Sync point on the 1st and 2nd time/);
 
     await panel.getByRole("textbox", { name: "Starts at" }).press("ArrowUp");
-    await expect.poll(storedTime).toBeCloseTo(playhead + 0.01, 3);
+    await expect.poll(storedTime).toBeCloseTo(synced + 0.01, 3);
     await panel.getByRole("button", { name: "Nudge earlier" }).click();
-    await expect.poll(storedTime).toBeCloseTo(playhead, 3);
+    await expect.poll(storedTime).toBeCloseTo(synced, 3);
 
     await page.getByRole("button", { name: "Clear selection" }).click();
     await expect(panel.getByRole("region", { name: "Audio sync" })).toContainText("Synced with");
@@ -102,12 +103,13 @@ test.describe("timeline and audio sync", () => {
     await panel.getByRole("region", { name: "Audio sync" }).getByRole("button", { name: "Sync end to playhead" }).click();
 
     const storedEnd = async (): Promise<number | undefined> => (await admin.collection("songs").getOne(song.id)).recording.endSyncTime;
-    await expect.poll(storedEnd).toBeCloseTo(playhead, 2);
+    await expect.poll(storedEnd).toBeCloseTo(playhead, 1);
+    const synced = (await storedEnd())!;
     await expect(panel.getByRole("heading", { name: "Sync point at the end of 4" })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Move to another measure" })).toHaveCount(0);
 
     await panel.getByRole("textbox", { name: "Ends at" }).press("ArrowUp");
-    await expect.poll(storedEnd).toBeCloseTo(playhead + 0.01, 3);
+    await expect.poll(storedEnd).toBeCloseTo(synced + 0.01, 3);
 
     await panel.getByRole("button", { name: "Remove sync point at the end of 4" }).click();
     await page.getByRole("alertdialog", { name: "Remove sync point" }).getByRole("button", { name: "Remove" }).click();

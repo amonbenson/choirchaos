@@ -30,7 +30,8 @@ test.describe("visible arrangement", () => {
     const score = page.getByRole("region", { name: "Score" });
 
     await expect(score.getByRole("button", { name: "Repeat 14 to 15, 3 times" })).toHaveText("Repeat 3×");
-    await expect(score.getByRole("button", { name: "Cut 16 to 17" })).toHaveText("Cut");
+    await expect(score.getByRole("button", { name: "Cut 16 to 17" })).toHaveCount(0);
+    await expect(score.getByRole("button", { name: "Measure 16" })).toHaveAccessibleDescription("Cut 16 to 17.");
     await expect(score.getByRole("button", { name: "Vamp 19 to 20" })).toHaveText("Vamp");
     await expect(score.getByRole("button", { name: "Measure 19" }))
       .toHaveAccessibleDescription("Vamp 19 to 20. Marker D, 1st time.");
