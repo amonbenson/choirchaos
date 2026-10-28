@@ -3,6 +3,7 @@ import Button from "primevue/button";
 import Panel from "primevue/panel";
 import { computed } from "vue";
 
+import { MARKER_COLORS } from "@/components/score/sectionColors";
 import { formatLocation } from "@/core/models/locationFormat";
 import type { Marker } from "@/core/models/markers";
 import type Song from "@/core/models/song";
@@ -48,7 +49,8 @@ function getMarkerProgress({ at }: Marker): number {
       >
         <Button
           class="relative flex items-center justify-between gap-2 text-left"
-          :severity="isMarkerActive(marker) ? 'primary' : 'secondary'"
+          :class="isMarkerActive(marker) ? [MARKER_COLORS.background, MARKER_COLORS.contrast, 'border-transparent'] : []"
+          severity="secondary"
           :aria-label="`${marker.text}, marker at ${formatLocation(song, marker.at)}`"
           fluid
           @click="player.seekLocation(marker.at)"
@@ -57,8 +59,8 @@ function getMarkerProgress({ at }: Marker): number {
           <span class="min-w-0 truncate">{{ marker.text }}</span>
         </Button>
         <div
-          class="absolute bottom-0 left-1 h-0.5 translate-y-1/2 rounded-full bg-primary transition-opacity"
-          :class="isMarkerActive(marker) ? 'opacity-0': 'opacity-50'"
+          class="absolute bottom-0 left-1 h-0.5 translate-y-1/2 rounded-full transition-opacity"
+          :class="[MARKER_COLORS.background, isMarkerActive(marker) ? 'opacity-0' : '']"
           :style="{ width: `calc(${getMarkerProgress(marker) * 100}% - 0.5rem)` }"
           aria-hidden="true"
         />

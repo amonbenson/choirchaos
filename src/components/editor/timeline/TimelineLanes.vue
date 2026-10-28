@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-import { SECTION_COLORS, SECTION_CONTRAST_TEXT } from "@/components/score/sectionColors";
+import { MARKER_COLORS, SECTION_COLORS, SECTION_CONTRAST_TEXT } from "@/components/score/sectionColors";
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import type { TimelineAxis } from "@/composables/useTimelineAxis";
 import type { Tick } from "@/core/midi/types";
@@ -35,19 +35,30 @@ const timeline = computed(() => player.timeline);
 const label = (id: MeasureId): string => props.song.findMeasure(id)?.label ?? "?";
 
 // Every lane only renders what lies in the view, so nothing outside it leaves a sliver at the edge.
-const markers = computed(() => props.song.getMarkers().flatMap((marker) => {
-  const tick = player.getLocationTick(marker.at);
-  if (tick === undefined || !props.axis.isVisible(tick)) {
-    return [];
-  }
+const markers = computed(() => {
+  const placed = props.song.getMarkers()
+    .flatMap((marker) => {
+      const tick = player.getLocationTick(marker.at);
+      return tick === undefined ? [] : [{ marker, tick }];
+    })
+    .sort((a, b) => a.tick - b.tick);
 
-  return [{
-    marker,
-    block: { left: props.axis.toX(tick) },
-    name: `Marker ${marker.text} at ${formatLocation(props.song, marker.at)}`,
-    selected: isMarkerSelected(selection.value, marker),
-  }];
-}));
+  // A marker sizes to its text but ends where the next one starts, so zooming out truncates instead of overlapping.
+  return placed.flatMap(({ marker, tick }, index) => {
+    if (!props.axis.isVisible(tick)) {
+      return [];
+    }
+
+    const left = props.axis.toX(tick);
+    const next = placed[index + 1];
+    return [{
+      marker,
+      block: { left, maxWidth: next ? Math.max(0, props.axis.toX(next.tick) - left) : undefined },
+      name: `Marker ${marker.text} at ${formatLocation(props.song, marker.at)}`,
+      selected: isMarkerSelected(selection.value, marker),
+    }];
+  });
+});
 
 /** A vamp loops its own pass, so it is drawn there; the recorded passes it extends over only get an outline. */
 function getOwnPassTicks(section: Section, all: readonly Section[]): { start: Tick; end: Tick } | undefined {
@@ -141,7 +152,8 @@ function formatStretch(stretch: RecordingStretch, long: boolean): string {
       :block="item.block"
       :name="item.name"
       :pressed="item.selected"
-      class="font-semibold text-primary hover:bg-primary/10"
+      class="font-semibold"
+      :class="[MARKER_COLORS.background, MARKER_COLORS.contrast]"
       @click="selectAndSeek({ kind: 'marker', marker: item.marker })"
     >
       <i

@@ -230,6 +230,7 @@ describe("ScoreViewer", () => {
     });
 
     it("moves the playhead to a section or marker whose badge is clicked", async () => {
+      useSettingsStore().update({ appearance: { arrangementVisible: { marker: true } } });
       const song = makeMidiSongWithRepeat();
       await song.editLayers({ markers: [{ at: locationOf(song, "3"), text: "A" }] });
       const { wrapper, selection } = mountViewer(song);
@@ -254,7 +255,7 @@ describe("ScoreViewer", () => {
     });
 
     it("hides sections while rehearsing when they are turned off, but not while editing", () => {
-      useSettingsStore().update({ appearance: { sectionsVisible: false } });
+      useSettingsStore().update({ appearance: { arrangementVisible: { cut: false } } });
       const song = makeMidiSongWithCut();
 
       const rehearsing = mountViewer(song).wrapper;
@@ -262,6 +263,18 @@ describe("ScoreViewer", () => {
 
       const editing = mountViewer(song, true).wrapper;
       expect(editing.findAll(".hatch-section-cut").length).toBeGreaterThan(0);
+    });
+
+    it("hides markers while rehearsing until they are turned on, but not while editing", async () => {
+      const song = makeMidiSongWithRepeat();
+      await song.editLayers({ markers: [{ at: locationOf(song, "3"), text: "A" }] });
+      const marker = "button[aria-label='Marker A, 1st time']";
+
+      expect(mountViewer(song).wrapper.find(marker).exists()).toBe(false);
+      expect(mountViewer(song, true).wrapper.find(marker).exists()).toBe(true);
+
+      useSettingsStore().update({ appearance: { arrangementVisible: { marker: true } } });
+      expect(mountViewer(song).wrapper.find(marker).exists()).toBe(true);
     });
   });
 

@@ -3,9 +3,9 @@ import { computed } from "vue";
 
 import type { SectionKind } from "@/core/models/sections";
 
-import { SECTION_COLORS, SECTION_CONTRAST_TEXT } from "./sectionColors";
+import { MARKER_COLORS, SECTION_COLORS, SECTION_CONTRAST_TEXT } from "./sectionColors";
 
-export type BadgeTone = "primary" | "review" | "unnumbered" | "neutral" | SectionKind;
+export type BadgeTone = "primary" | "marker" | "review" | "unnumbered" | "neutral" | SectionKind;
 
 const props = defineProps<{
   tone: BadgeTone;
@@ -22,6 +22,7 @@ const emit = defineEmits<{
 
 const TONES: Record<Exclude<BadgeTone, SectionKind>, string> = {
   primary: "bg-primary text-primary-contrast",
+  marker: `${MARKER_COLORS.background} ${MARKER_COLORS.contrast}`,
   review: "bg-review-fill text-review-contrast",
   unnumbered: "bg-unnumbered text-unnumbered-contrast",
   neutral: "bg-score-chip/95 text-score-chip-contrast inset-ring inset-ring-score-chip-border",

@@ -13,7 +13,7 @@ import { computed, ref, watch } from "vue";
 
 import KbdShortcut from "@/components/base/KbdShortcut.vue";
 import type { ShortcutAction } from "@/composables/useGlobalShortcuts";
-import type { AppearanceSettings, TransportButtonKey } from "@/stores/settings";
+import type { AppearanceSettings, ArrangementKey, TransportButtonKey } from "@/stores/settings";
 import { useSettingsStore } from "@/stores/settings";
 
 const visible = defineModel<boolean>({ default: false });
@@ -27,6 +27,13 @@ const TRANSPORT_BUTTON_LABELS: Record<TransportButtonKey, string> = {
   segue: "Segue",
 };
 
+const ARRANGEMENT_LABELS: Record<ArrangementKey, string> = {
+  vamp: "Vamps",
+  repeat: "Repeats",
+  cut: "Cuts",
+  marker: "Markers",
+};
+
 const THEME_OPTIONS: { label: string; value: AppearanceSettings["theme"] }[] = [
   { label: "System", value: "system" },
   { label: "Light", value: "light" },
@@ -38,17 +45,30 @@ const theme = computed({
   set: (value: AppearanceSettings["theme"]) => settings.update({ appearance: { theme: value } }),
 });
 
-// Transport buttons as array instead of boolean map
+function toOptions<K extends string>(labels: Record<K, string>): { label: string; value: K }[] {
+  return Object.entries<string>(labels).map(([value, label]) => ({ label, value: value as K }));
+}
+
+function getVisibleKeys<K extends string>(visible: Record<K, boolean>): K[] {
+  return (Object.keys(visible) as K[]).filter(key => visible[key]);
+}
+
+function toVisibleMap<K extends string>(labels: Record<K, string>, visible: K[]): Record<K, boolean> {
+  return Object.fromEntries(Object.keys(labels).map(key => [key, visible.includes(key as K)])) as Record<K, boolean>;
+}
+
 const transportButtons = computed({
-  get: () => Object.entries(settings.current.appearance.transportButtonVisible)
-    .filter(([, visible]) => visible)
-    .map(([key]) => key as TransportButtonKey),
-  set: (visibleButtons: TransportButtonKey[]) => {
-    const updated = Object.fromEntries(
-      Object.keys(TRANSPORT_BUTTON_LABELS).map(key => [key, visibleButtons.includes(key as TransportButtonKey)]),
-    ) as Record<TransportButtonKey, boolean>;
-    settings.update({ appearance: { transportButtonVisible: updated as any } });
-  },
+  get: () => getVisibleKeys<TransportButtonKey>(settings.current.appearance.transportButtonVisible),
+  set: (visible: TransportButtonKey[]) => settings.update({
+    appearance: { transportButtonVisible: toVisibleMap(TRANSPORT_BUTTON_LABELS, visible) },
+  }),
+});
+
+const arrangement = computed({
+  get: () => getVisibleKeys<ArrangementKey>(settings.current.appearance.arrangementVisible),
+  set: (visible: ArrangementKey[]) => settings.update({
+    appearance: { arrangementVisible: toVisibleMap(ARRANGEMENT_LABELS, visible) },
+  }),
 });
 const ACTION_LABELS: Record<ShortcutAction, string> = {
   playPause: "Play / Pause",
@@ -189,21 +209,6 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                 @update:model-value="settings.update({ appearance: { mergeAccompaniment: $event } })"
               />
             </div>
-            <div class="flex items-center justify-between gap-4">
-              <div>
-                <div class="font-medium">
-                  Show vamps, repeats and cuts
-                </div>
-                <div class="text-sm text-muted-color">
-                  Show arrangement sections on the score while rehearsing.
-                </div>
-              </div>
-              <ToggleSwitch
-                :model-value="settings.current.appearance.sectionsVisible"
-                aria-label="Show vamps, repeats and cuts"
-                @update:model-value="settings.update({ appearance: { sectionsVisible: $event } })"
-              />
-            </div>
             <div class="@container flex flex-col gap-2">
               <div>
                 <div class="font-medium">
@@ -215,13 +220,33 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
               </div>
               <SelectButton
                 v-model="transportButtons"
-                :options="Object.entries(TRANSPORT_BUTTON_LABELS).map(([key, label]) => ({ label, value: key }))"
+                :options="toOptions(TRANSPORT_BUTTON_LABELS)"
                 option-label="label"
                 option-value="value"
                 multiple
                 aria-label="Transport bar buttons"
                 fluid
                 pt:root:class="grid grid-cols-2 @sm:grid-cols-3 @2xl:grid-cols-6"
+              />
+            </div>
+            <div class="@container flex flex-col gap-2">
+              <div>
+                <div class="font-medium">
+                  Arrangement on the score
+                </div>
+                <div class="text-sm text-muted-color">
+                  Choose what the score shows while rehearsing.
+                </div>
+              </div>
+              <SelectButton
+                v-model="arrangement"
+                :options="toOptions(ARRANGEMENT_LABELS)"
+                option-label="label"
+                option-value="value"
+                multiple
+                aria-label="Arrangement on the score"
+                fluid
+                pt:root:class="grid grid-cols-2 @sm:grid-cols-4"
               />
             </div>
           </div>

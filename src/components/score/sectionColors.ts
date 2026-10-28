@@ -16,3 +16,10 @@ export const SECTION_COLORS: Record<SectionKind, SectionColor> = {
 
 /** Text and icons drawn on a section color. */
 export const SECTION_CONTRAST_TEXT = "text-section-contrast";
+
+/** Markers have one color of their own. */
+export const MARKER_COLORS = {
+  background: "bg-marker",
+  /** Text and icons drawn on the marker color. */
+  contrast: "text-marker-contrast",
+};

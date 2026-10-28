@@ -85,12 +85,12 @@ describe("MarkerPanel", () => {
     const song = await makeSongWithMarkers();
     player.currentLocation = { position: 2, ...locationOf(song, "2"), beat: 0 };
     const wrapper = mountPanel(song);
-    expect(wrapper.findAll("li button").map(button => button.classes("p-button-secondary"))).toEqual([true, true]);
+    expect(wrapper.findAll("li button").map(button => button.classes("bg-marker"))).toEqual([false, false]);
 
     fakePlayer().currentLocation = { position: 4, ...locationOf(song, "2", 0, 2), beat: 0 };
     await flushPromises();
 
-    expect(wrapper.findAll("li button").map(button => button.classes("p-button-secondary"))).toEqual([true, false]);
+    expect(wrapper.findAll("li button").map(button => button.classes("bg-marker"))).toEqual([false, true]);
   });
 
   it("says so when the song has no markers", () => {

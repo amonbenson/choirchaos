@@ -7,11 +7,18 @@
 @theme {
   --color-surface: var(--p-content-background);
 
+  /* Overwrite PrimeVue's primary contrat color in light mode. */
+  --color-primary-contrast: var(--color-surface-900);
+
   /* Section kinds on the score, the playbar and the editor. Text on them uses section-contrast. */
-  --color-section-repeat: var(--color-sky-700);
-  --color-section-vamp: var(--color-violet-600);
-  --color-section-cut: var(--color-slate-600);
-  --color-section-contrast: var(--color-white);
+  --color-section-repeat: var(--color-sky-400);
+  --color-section-vamp: var(--color-violet-400);
+  --color-section-cut: var(--color-slate-300);
+  --color-section-contrast: var(--color-slate-950);
+
+  /* Markers wherever they show. */
+  --color-marker: var(--color-primary-500);
+  --color-marker-contrast: var(--color-slate-950);
 
   /* Text and icons that name an open issue, such as import warnings or the next setup step. */
   --color-attention: var(--color-orange-600);
@@ -51,14 +58,13 @@
     @apply size-full select-none bg-surface;
   }
 
-  /* Lighter tones stay visible on dark panels and take dark text, while the score page itself stays white. */
+  /* Optional overwrites in dark mode */
   .dark {
-    --color-section-repeat: var(--color-sky-400);
-    --color-section-vamp: var(--color-violet-400);
-    --color-section-cut: var(--color-slate-400);
-    --color-section-contrast: var(--color-slate-950);
+    --color-primary-contrast: var(--color-surface-900);
+
     --color-attention: var(--color-orange-400);
     --color-sync: var(--color-orange-400);
+
     --color-review-text: var(--color-amber-400);
     --color-review-surface: color-mix(in oklab, var(--color-amber-950) 40%, transparent);
     --color-review-border: var(--color-amber-700);

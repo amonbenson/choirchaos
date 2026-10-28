@@ -95,7 +95,7 @@ export const useSettingsStore = defineStore("settings", () => {
     clear,
   };
 });
-export { AppearanceSettings, type TransportButtonKey, TransportButtonSettings } from "./appearance";
+export { AppearanceSettings, type ArrangementKey, ArrangementVisibleSettings, type TransportButtonKey, TransportButtonSettings } from "./appearance";
 export type { DataOf, DeepPartial } from "./base";
 export { MixerSettings, type TrackMixerEntry } from "./mixer";
 export { PlaybackSettings } from "./playback";

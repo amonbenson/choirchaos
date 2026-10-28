@@ -97,7 +97,7 @@ const surfaceClass = computed(() => {
         <ScoreBadge
           v-for="{ marker, name } of overlays.markers"
           :key="`${marker.at.occurrence}-${marker.text}`"
-          tone="primary"
+          tone="marker"
           :name="name"
           selectable
           :selected="isMarkerSelected(selection, marker)"

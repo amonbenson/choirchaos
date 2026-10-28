@@ -266,12 +266,12 @@ watch(() => player.position, (tick) => {
           :id="titleId"
           class="font-bold"
         >Timeline</span>
-        <span
+        <!-- <span
           v-if="!collapsed"
           class="hidden flex-1 truncate text-sm text-muted-color md:inline"
         >{{ isAudio
           ? "Drag to move the playhead. Pause where a measure starts to add a sync point, or drag one to move it. Hold Ctrl and scroll to zoom."
-          : "The measures in the order the recording plays them. Drag to move the playhead, hold Ctrl and scroll to zoom." }}</span>
+          : "The measures in the order the recording plays them. Drag to move the playhead, hold Ctrl and scroll to zoom." }}</span> -->
         <div
           v-if="!collapsed"
           class="ml-auto flex items-center gap-1"

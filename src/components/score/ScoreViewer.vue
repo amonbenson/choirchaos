@@ -29,7 +29,7 @@ import { getSyncedOccurrences } from "@/core/models/warpEditing";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
 import { usePlayerStore } from "@/stores/player";
-import { useSettingsStore } from "@/stores/settings";
+import { type ArrangementKey, useSettingsStore } from "@/stores/settings";
 
 import DrawLayer from "./DrawLayer.vue";
 import MeasureBox, { type PlayingBox } from "./MeasureBox.vue";
@@ -171,8 +171,16 @@ const playingBox = computed<PlayingBox | undefined>(() => {
 
 const settings = useSettingsStore();
 
-const sectionOverlays = computed(() => props.song && (props.editMode || settings.current.appearance.sectionsVisible)
-  ? getSectionOverlays(props.song.getMeasures(), props.song.getTimeline(), props.song.getSections(), { cutBars: !!props.editMode })
+/** Rehearsers choose which parts of the arrangement the score shows. */
+const isArrangementVisible = (key: ArrangementKey): boolean => !!props.editMode || settings.current.appearance.arrangementVisible[key];
+
+const sectionOverlays = computed(() => props.song
+  ? getSectionOverlays(
+      props.song.getMeasures(),
+      props.song.getTimeline(),
+      props.song.getSections().filter(section => isArrangementVisible(section.kind)),
+      { cutBars: !!props.editMode },
+    )
   : []);
 
 const sectionBars = computed(() => props.song ? getSectionBars(props.song.getMeasures(), sectionOverlays.value) : []);
@@ -197,7 +205,7 @@ const boxOverlays = computed(() => {
     measures: song.getMeasures(),
     timeline,
     sections: sectionOverlays.value,
-    markers: song.getMarkers(),
+    markers: isArrangementVisible("marker") ? song.getMarkers() : [],
     jumps: props.editMode ? findRecordingJumps(song.getMeasures(), timeline) : [],
     synced: syncedOccurrences.value,
   });
