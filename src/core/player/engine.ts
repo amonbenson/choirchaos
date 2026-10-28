@@ -392,7 +392,7 @@ export default class PlayerEngine {
     this.setSegueEnabled(!this.currentSegue.get()?.enabled);
   }
 
-  async load(song: Song): Promise<void> {
+  async load(song: Song, startPosition: Tick = 0): Promise<void> {
     // Unloading also aborts any in-progress load operation
     this.unload();
     const controller = new AbortController();
@@ -460,7 +460,7 @@ export default class PlayerEngine {
     this.currentSegue.set(song.hasSegue() ? { enabled: true } : undefined);
 
     // This will set the position and perform an initial sync for the current section, location, tempo, etc.
-    this.seek(0);
+    this.seek(startPosition);
   }
 
   unload(): void {

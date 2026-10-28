@@ -96,8 +96,15 @@ function draw(): void {
   }
 }
 
+// Draws right away instead of through p5's redraw(), which is async and skips calls made while an
+// earlier draw finishes, leaving the canvas behind the transform until the next pan.
 function redraw(): void {
-  sketch.value?.redraw();
+  if (!sketch.value?.canvas) {
+    return;
+  }
+
+  sketch.value.resetMatrix();
+  draw();
 }
 
 function handleResize(): void {
@@ -110,14 +117,19 @@ function handleResize(): void {
   const w = container.value.clientWidth;
   const h = container.value.clientHeight;
 
-  sketch.value.resizeCanvas(w, h);
+  sketch.value.resizeCanvas(w, h, true);
 
   if (!viewUserModified.value && w > 0 && h > 0) {
     fitZoom(0);
-  } else if (pw > 100 && ph > 100 && w > 100 && h > 100) {
+    return;
+  }
+
+  if (pw > 100 && ph > 100 && w > 100 && h > 100) {
     transform.value.pan.x += (w - pw) / 2;
     transform.value.pan.y += (h - ph) / 2;
   }
+
+  redraw();
 }
 
 // p5 only renders. Pointer, touch and wheel input go through usePanZoom, since p5's own mouse events drift on touch devices.

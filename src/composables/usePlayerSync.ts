@@ -16,10 +16,8 @@ export function usePlayerSync(song: Ref<Song | undefined>): void {
   const { notifyError } = useNotify();
 
   async function reload(changed: Song): Promise<void> {
-    const position = player.position;
     try {
-      await player.load(changed);
-      player.seek(position);
+      await player.load(changed, player.position);
     } catch (error) {
       notifyError("Could not reload the song", error);
     }

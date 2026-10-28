@@ -55,8 +55,8 @@ describe("usePlayerSync", () => {
     await song.setRecordingSpans([{ from: idOf(song, "1"), to: idOf(song, "4") }]);
     await flushPromises();
 
-    expect(player.load).toHaveBeenCalledWith(song);
-    expect(player.seek).toHaveBeenCalledWith(1234);
+    expect(player.load).toHaveBeenCalledWith(song, 1234);
+    expect(player.seek).not.toHaveBeenCalled();
     expect(player.syncWarp).not.toHaveBeenCalled();
   });
 
@@ -81,7 +81,7 @@ describe("usePlayerSync", () => {
     await song.restoreLayers(before);
     await flushPromises();
 
-    expect(player.load).toHaveBeenCalledWith(song);
+    expect(player.load).toHaveBeenCalledWith(song, 1234);
   });
 
   it("follows only the current song and stops with its scope", async () => {
