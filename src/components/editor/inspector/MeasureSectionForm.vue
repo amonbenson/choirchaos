@@ -15,9 +15,9 @@ import { lowerFirst } from "@/core/utils/text";
 import InspectorSection from "./InspectorSection.vue";
 
 const KINDS: { value: SectionKind; label: string }[] = [
-  { value: "repeat", label: "Repeat" },
-  { value: "vamp", label: "Vamp" },
-  { value: "cut", label: "Cut" },
+  { value: "repeat", label: "Add repeat" },
+  { value: "vamp", label: "Add vamp" },
+  { value: "cut", label: "Add cut" },
 ];
 
 const props = defineProps<{
@@ -94,19 +94,20 @@ async function create(kind: SectionKind): Promise<void> {
       />
     </div>
 
-    <template v-else>
-      <span class="text-xs text-muted-color">How rehearsals play these measures</span>
-      <div class="flex flex-wrap gap-2">
-        <Button
-          v-for="kind in KINDS"
-          :key="kind.value"
-          :label="kind.label"
-          severity="secondary"
-          size="small"
-          @click="create(kind.value)"
-        />
-      </div>
-    </template>
+    <div
+      v-else
+      class="flex flex-wrap gap-2"
+    >
+      <Button
+        v-for="kind in KINDS"
+        :key="kind.value"
+        :label="kind.label"
+        icon="pi pi-plus"
+        severity="secondary"
+        size="small"
+        @click="create(kind.value)"
+      />
+    </div>
 
     <Message
       v-if="error"

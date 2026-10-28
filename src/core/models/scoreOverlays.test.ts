@@ -93,6 +93,14 @@ describe("getSectionOverlays", () => {
     expect(getSectionOverlays(measures, timeline, sections).map(overlay => overlay.lane)).toEqual([0, 1]);
   });
 
+  it("gives cuts no lane without cut bars, so they draw no bar and take no room", () => {
+    const timeline = expandRecording(measures, [span(1, 4), span(1, 16)]);
+    const sections = [createSection("cut", at(1), at(2, 3)), createSection("repeat", at(1, 0, 2), at(2, 3, 2))];
+    const overlays = getSectionOverlays(measures, timeline, sections, { cutBars: false });
+    expect(overlays.map(overlay => overlay.lane)).toEqual([undefined, 0]);
+    expect(getSectionBars(measures, overlays).map(bar => bar.section.kind)).toEqual(["repeat"]);
+  });
+
   it("leaves out sections that do not resolve", () => {
     expect(getSectionOverlays(measures, straight, [createSection("cut", at(2, 0, 2), at(3, 3, 2))])).toEqual([]);
   });

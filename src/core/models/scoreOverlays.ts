@@ -25,8 +25,8 @@ export type SectionOverlay = {
   measures: MeasureId[];
   /** One run per score row the first pass touches, in playing order. */
   runs: OverlayRun[];
-  /** Sections drawn on the same boxes stack upwards, 0 is closest to the boxes. */
-  lane: number;
+  /** Sections drawn on the same boxes stack upwards, 0 is closest to the boxes. A section drawn without a bar has none. */
+  lane?: number;
 };
 
 /** A passage the recording plays `times` times back to back. Its first pass is at `first..last`. */
@@ -101,12 +101,24 @@ function uniqueMeasures(timeline: Timeline, first: number, last: number): Measur
 }
 
 function findLane(earlier: readonly SectionOverlay[], measures: readonly MeasureId[]): number {
-  const sharing = earlier.filter(other => other.measures.some(measure => measures.includes(measure)));
-  return sharing.length === 0 ? 0 : Math.max(...sharing.map(other => other.lane)) + 1;
+  const lanes = earlier
+    .filter(other => other.measures.some(measure => measures.includes(measure)))
+    .flatMap(other => other.lane ?? []);
+  return lanes.length === 0 ? 0 : Math.max(...lanes) + 1;
 }
 
+export type SectionOverlayOptions = {
+  /** While rehearsing, the hatching alone shows a cut, so it needs no bar to be selected by. */
+  cutBars?: boolean;
+};
+
 /** Where each section is drawn on the score. Sections that do not resolve in the recording are left out. */
-export function getSectionOverlays(measures: readonly Measure[], timeline: Timeline, sections: readonly Section[]): SectionOverlay[] {
+export function getSectionOverlays(
+  measures: readonly Measure[],
+  timeline: Timeline,
+  sections: readonly Section[],
+  { cutBars = true }: SectionOverlayOptions = {},
+): SectionOverlay[] {
   const overlays: SectionOverlay[] = [];
   sections.forEach((section, index) => {
     const pass = getSectionRun(timeline, section);
@@ -115,7 +127,8 @@ export function getSectionOverlays(measures: readonly Measure[], timeline: Timel
     }
 
     const ids = uniqueMeasures(timeline, pass.first, pass.last);
-    overlays.push({ index, section, measures: ids, runs: splitIntoRuns(measures, ids), lane: findLane(overlays, ids) });
+    const lane = section.kind === "cut" && !cutBars ? undefined : findLane(overlays, ids);
+    overlays.push({ index, section, measures: ids, runs: splitIntoRuns(measures, ids), lane });
   });
 
   return overlays;
@@ -309,6 +322,10 @@ export type SectionBar = {
 
 export function getSectionBars(measures: readonly Measure[], overlays: readonly SectionOverlay[]): SectionBar[] {
   return overlays.flatMap(({ index, section, runs, lane }) => {
+    if (lane === undefined) {
+      return [];
+    }
+
     const chip = formatSectionChip(section);
     const name = describeSection(measures, section);
     return runs.map((run, i) => ({ key: `section-${index}-${i}`, section, run, lane, chip, name: i === 0 ? name : undefined }));
@@ -374,7 +391,7 @@ export function getBoxOverlays(input: BoxOverlayInput): Map<MeasureId, BoxOverla
     for (const measure of covered) {
       const draft = draftOf(measure);
       draft.texts.push(text);
-      draft.markerLane = Math.max(draft.markerLane, lane + 1);
+      draft.markerLane = Math.max(draft.markerLane, lane === undefined ? 0 : lane + 1);
     }
   }
 

@@ -242,12 +242,15 @@ describe("ScoreViewer", () => {
       expect(selection.selection.value).toEqual({ kind: "none" });
     });
 
-    it("hatches the boxes of a cut", () => {
+    it("hatches the boxes of a cut without a bar, which only editors select by", () => {
       const song = makeMidiSongWithCut();
-      const { wrapper } = mountViewer(song);
 
-      expect(wrapper.findAll(".hatch-section-cut").length).toBeGreaterThan(0);
-      expect(wrapper.find("button[aria-label^='Cut']").text()).toBe("Cut");
+      const rehearsing = mountViewer(song).wrapper;
+      expect(rehearsing.findAll(".hatch-section-cut").length).toBeGreaterThan(0);
+      expect(rehearsing.find("button[aria-label^='Cut']").exists()).toBe(false);
+
+      const editing = mountViewer(song, true).wrapper;
+      expect(editing.find("button[aria-label^='Cut']").text()).toBe("Cut");
     });
 
     it("hides sections while rehearsing when they are turned off, but not while editing", () => {
@@ -256,10 +259,9 @@ describe("ScoreViewer", () => {
 
       const rehearsing = mountViewer(song).wrapper;
       expect(rehearsing.findAll(".hatch-section-cut")).toHaveLength(0);
-      expect(rehearsing.find("button[aria-label^='Cut']").exists()).toBe(false);
 
       const editing = mountViewer(song, true).wrapper;
-      expect(editing.find("button[aria-label^='Cut']").exists()).toBe(true);
+      expect(editing.findAll(".hatch-section-cut").length).toBeGreaterThan(0);
     });
   });
 

@@ -35,7 +35,7 @@ test.describe("sections", () => {
     const create = panel.getByRole("region", { name: "Section" });
 
     await select(page, "1", "2");
-    await create.getByRole("button", { name: "Repeat", exact: true }).click();
+    await create.getByRole("button", { name: "Add repeat" }).click();
     const repeat: SongSection = { kind: "repeat", from: locationAt(score, "1"), to: locationAt(score, "2", 3), passes: 2 };
     await expect.poll(() => storedSections(admin, song.id)).toEqual([repeat]);
     await expect(panel.getByRole("heading", { name: "Repeat 1 to 2" })).toBeVisible();
@@ -44,12 +44,12 @@ test.describe("sections", () => {
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }]);
 
     await select(page, "3");
-    await create.getByRole("button", { name: "Cut", exact: true }).click();
+    await create.getByRole("button", { name: "Add cut" }).click();
     const cut: SongSection = { kind: "cut", from: locationAt(score, "3"), to: locationAt(score, "3", 3) };
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut]);
 
     await select(page, "4");
-    await create.getByRole("button", { name: "Vamp", exact: true }).click();
+    await create.getByRole("button", { name: "Add vamp" }).click();
     const vamp: SongSection = { kind: "vamp", from: locationAt(score, "4"), to: locationAt(score, "4", 3), out: "onEnd", vocals: "all" };
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut, vamp]);
     await expect(panel.getByLabel("Passes")).toHaveCount(0);
@@ -58,7 +58,7 @@ test.describe("sections", () => {
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut, { ...vamp, out: "anyBar" }]);
 
     await select(page, "2", "3");
-    await create.getByRole("button", { name: "Vamp", exact: true }).click();
+    await create.getByRole("button", { name: "Add vamp" }).click();
     const replace = page.getByRole("alertdialog", { name: "Replace sections" });
     await expect(replace).toContainText("These measures overlap repeat 1 to 2 and cut 3. Replace them with a vamp?");
     await replace.getByRole("button", { name: "Cancel" }).click();
@@ -81,9 +81,6 @@ test.describe("sections", () => {
     await scoreRegion.getByRole("slider", { name: "Last measure of repeat 1" }).press("ArrowRight");
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut]);
 
-    // The kind buttons share their names with the header's section button that the playback samples read.
-    await select(page, "1");
-    await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Play / Pause" }).click();
     const samples = await recordPlayback(page, sample => sample.measure === "4");
 
@@ -107,7 +104,7 @@ test.describe("sections", () => {
     await select(page, "2", "3");
     await expect(measures.getByRole("button", { name: "Measure 3" })).toHaveAttribute("aria-pressed", "true");
     await expect(panel.getByRole("heading", { name: "Measures 2 to 3" })).toBeVisible();
-    await panel.getByRole("region", { name: "Section" }).getByRole("button", { name: "Vamp", exact: true }).click();
+    await panel.getByRole("region", { name: "Section" }).getByRole("button", { name: "Add vamp" }).click();
 
     const vamp: SongSection = { kind: "vamp", from: locationAt(bundle.fields.score, "2"), to: locationAt(bundle.fields.score, "3", 3), out: "onEnd", vocals: "all" };
     await expect.poll(() => storedSections(admin, song.id)).toEqual([vamp]);

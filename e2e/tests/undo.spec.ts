@@ -43,11 +43,11 @@ test.describe("undo", () => {
     await expect(redo).toBeDisabled();
 
     await select(page, "1", "2");
-    await create.getByRole("button", { name: "Repeat", exact: true }).click();
+    await create.getByRole("button", { name: "Add repeat" }).click();
     const repeat: SongSection = { kind: "repeat", from: locationAt(score, "1"), to: locationAt(score, "2", 3), passes: 2 };
     await expect.poll(() => storedSections(admin, song.id)).toEqual([repeat]);
     await select(page, "3");
-    await create.getByRole("button", { name: "Cut", exact: true }).click();
+    await create.getByRole("button", { name: "Add cut" }).click();
     const cut: SongSection = { kind: "cut", from: locationAt(score, "3"), to: locationAt(score, "3", 3) };
     await expect.poll(() => storedSections(admin, song.id)).toEqual([repeat, cut]);
 
@@ -94,7 +94,7 @@ test.describe("undo", () => {
     await page.goto(`/show/${show.id}/song/${song.id}/edit`);
     await waitForPlayer(page);
     await select(page, "1");
-    await page.getByRole("region", { name: "Section" }).getByRole("button", { name: "Cut", exact: true }).click();
+    await page.getByRole("region", { name: "Section" }).getByRole("button", { name: "Add cut" }).click();
     await expect.poll(() => storedSections(admin, song.id)).toHaveLength(1);
     await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 

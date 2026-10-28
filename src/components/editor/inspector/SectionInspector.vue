@@ -2,7 +2,6 @@
 import { useDebounceFn } from "@vueuse/core";
 import Message from "primevue/message";
 import Select from "primevue/select";
-import SelectButton from "primevue/selectbutton";
 import { computed, ref, useId, watch } from "vue";
 
 import FieldRow from "@/components/base/FieldRow.vue";
@@ -12,11 +11,9 @@ import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { useNotify } from "@/composables/useNotify";
 import { formatSectionName } from "@/core/models/scoreOverlays";
 import {
-  createSection,
   getSectionRun,
   replaceSections,
   type Section,
-  type SectionKind,
   validateSections,
   type VampOut,
   type VampVocals,
@@ -26,12 +23,6 @@ import type Song from "@/core/models/song";
 import { lowerFirst } from "@/core/utils/text";
 
 import RemoveButton from "./RemoveButton.vue";
-
-const KIND_OPTIONS: { value: SectionKind; label: string }[] = [
-  { value: "repeat", label: "Repeat" },
-  { value: "vamp", label: "Vamp" },
-  { value: "cut", label: "Cut" },
-];
 
 const OUT_OPTIONS: { value: VampOut; label: string }[] = [
   { value: "onEnd", label: "At the end" },
@@ -94,12 +85,6 @@ function snapped(next: Section): Section {
   return run ? withRun(measures.value, timeline.value, next, run) : next;
 }
 
-function changeKind(kind: SectionKind): void {
-  if (kind !== props.section.kind) {
-    replace(snapped(createSection(kind, props.section.from, props.section.to)));
-  }
-}
-
 function update(change: Partial<Section>): void {
   replace(snapped({ ...props.section, ...change } as Section));
 }
@@ -129,19 +114,6 @@ defineExpose({ remove });
 
 <template>
   <div class="flex flex-col gap-4">
-    <SelectButton
-      :model-value="section.kind"
-      class="w-full"
-      :options="KIND_OPTIONS"
-      option-label="label"
-      option-value="value"
-      :allow-empty="false"
-      aria-label="Kind"
-      size="small"
-      :pt="{ pcToggleButton: { root: 'flex-1 px-1' } }"
-      @update:model-value="changeKind"
-    />
-
     <FieldRow
       v-if="section.kind === 'repeat'"
       v-slot="{ id }"

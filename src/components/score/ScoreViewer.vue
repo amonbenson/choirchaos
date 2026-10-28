@@ -172,7 +172,7 @@ const playingBox = computed<PlayingBox | undefined>(() => {
 const settings = useSettingsStore();
 
 const sectionOverlays = computed(() => props.song && (props.editMode || settings.current.appearance.sectionsVisible)
-  ? getSectionOverlays(props.song.getMeasures(), props.song.getTimeline(), props.song.getSections())
+  ? getSectionOverlays(props.song.getMeasures(), props.song.getTimeline(), props.song.getSections(), { cutBars: !!props.editMode })
   : []);
 
 const sectionBars = computed(() => props.song ? getSectionBars(props.song.getMeasures(), sectionOverlays.value) : []);

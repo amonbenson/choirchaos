@@ -169,7 +169,7 @@ describe("SongEditorPanel", () => {
       const mounted = mountPanel(makeMidiSong());
       await select(mounted, ["1", "2"]);
 
-      await button(mounted.wrapper, "Vamp").trigger("click");
+      await button(mounted.wrapper, "Add vamp").trigger("click");
       await flushPromises();
 
       const vamp = { kind: "vamp", from: locationOf(mounted.song, "1"), to: locationOf(mounted.song, "2", 3), out: "onEnd", vocals: "all" };
@@ -182,7 +182,7 @@ describe("SongEditorPanel", () => {
       fakePlayer().currentLocation = { position: 7, measure: idOf(mounted.song, "3"), occurrence: 3, beat: 0 };
       await select(mounted, ["3", "4"]);
 
-      await button(mounted.wrapper, "Cut").trigger("click");
+      await button(mounted.wrapper, "Add cut").trigger("click");
       await flushPromises();
 
       expect(confirmation.messages).toEqual(["These measures overlap repeat 2 to 3. Replace it with a cut?"]);
@@ -259,18 +259,6 @@ describe("SongEditorPanel", () => {
 
       expect(mounted.song.getSections()[0]).toMatchObject({ kind: "repeat", passes: 5 });
       expect(mounted.selection.selected.value.kind).toBe("section");
-    });
-
-    it("changes the kind and stays selected", async () => {
-      const mounted = mountPanel(makeMidiSongWithRepeat());
-      mounted.selection.select({ kind: "section", from: locationOf(mounted.song, "2") });
-      await flushPromises();
-
-      await mounted.wrapper.findAll("[aria-label='Kind'] button").find(element => element.text() === "Vamp")!.trigger("click");
-      await flushPromises();
-
-      expect(mounted.song.getSections()[0]).toMatchObject({ kind: "vamp", from: locationOf(mounted.song, "2") });
-      expect(title(mounted.wrapper)).toBe("Vamp 2 to 3");
     });
 
     it("removes the section after asking", async () => {
