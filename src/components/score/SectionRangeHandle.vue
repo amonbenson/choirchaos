@@ -34,7 +34,10 @@ defineExpose({
 });
 </script>
 
-<!-- The handle keeps its pointer events and stops them, so the score does not pan and the timeline does not scrub while it moves. -->
+<!--
+  The handle keeps its pointer events and stops them, so the score does not pan and the timeline does not scrub
+  while it moves. It also keeps its cursor while the canvas locks one (data-handle).
+-->
 <template>
   <div
     ref="element"
@@ -47,6 +50,7 @@ defineExpose({
     :aria-valuemax="count"
     :aria-valuenow="handle.position + 1"
     :aria-valuetext="handle.valueText"
+    data-handle
     @pointerdown.stop
     @click.stop
     @touchstart.stop

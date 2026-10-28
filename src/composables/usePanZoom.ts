@@ -1,11 +1,15 @@
 import { useEventListener } from "@vueuse/core";
-import { type Ref } from "vue";
+import { type Ref, ref } from "vue";
 
 import type PageTransform from "@/core/pdf/pageTransform";
 
 const TAP_MAX_MOVEMENT = 10;
 const LEFT_BUTTON = 0;
 const MIDDLE_BUTTON = 1;
+
+type Point = { x: number; y: number };
+
+type Press = { pointerId: number; start: Point; last: Point; moved: boolean };
 
 export function usePanZoom(
   container: Ref<HTMLElement | undefined>,
@@ -16,10 +20,10 @@ export function usePanZoom(
     canPan: () => boolean;
     onInteract?: () => void;
   },
-): void {
+): { isGrabbing: Readonly<Ref<boolean>> } {
   const { onRedraw, canPan } = options;
 
-  function containerPos(clientX: number, clientY: number): { x: number; y: number } {
+  function containerPos(clientX: number, clientY: number): Point {
     const rect = container.value!.getBoundingClientRect();
     return { x: clientX - rect.left, y: clientY - rect.top };
   }
@@ -34,9 +38,21 @@ export function usePanZoom(
       didGesture = false;
     }
   }, { capture: true });
-  let lastPos: { x: number; y: number } | undefined;
-  let startPos: { x: number; y: number } | undefined;
-  let movedBeyondTap = false;
+
+  // A mouse press that pans when it moves. On empty space it grabs at once. On something a click acts on it keeps
+  // the pointer, since releasing there still clicks, and grabs once the press has moved far enough to pan instead.
+  let press: Press | undefined;
+  const isGrabbing = ref(false);
+
+  /** The hover cursor says whether the element under the pointer takes clicks, as each such element sets it. */
+  function showsPointer(target: EventTarget | null): boolean {
+    return target instanceof Element && getComputedStyle(target).cursor === "pointer";
+  }
+
+  function endPress(): void {
+    press = undefined;
+    isGrabbing.value = false;
+  }
 
   useEventListener(container, "pointerdown", (e: PointerEvent) => {
     const pans = e.button === MIDDLE_BUTTON || (e.button === LEFT_BUTTON && canPan());
@@ -46,9 +62,9 @@ export function usePanZoom(
 
     // The pointer is captured only once it moves, since a capture retargets the click of a tap to the
     // container, away from the box or page under the pointer.
-    lastPos = { x: e.clientX, y: e.clientY };
-    startPos = lastPos;
-    movedBeyondTap = false;
+    const point = { x: e.clientX, y: e.clientY };
+    press = { pointerId: e.pointerId, start: point, last: point, moved: false };
+    isGrabbing.value = e.button === MIDDLE_BUTTON || !showsPointer(e.target);
   });
 
   // Keeps the browser from starting its own autoscroll on a middle-button drag.
@@ -59,16 +75,23 @@ export function usePanZoom(
   });
 
   useEventListener(container, "pointermove", (e: PointerEvent) => {
-    if (e.pointerType !== "mouse" || !lastPos) {
+    if (!press || e.pointerId !== press.pointerId) {
       return;
     }
 
-    transform.pan.x += e.clientX - lastPos.x;
-    transform.pan.y += e.clientY - lastPos.y;
-    lastPos = { x: e.clientX, y: e.clientY };
+    // The button was released outside the window, where no pointerup reaches the page.
+    if (e.buttons === 0) {
+      endPress();
+      return;
+    }
 
-    if (!movedBeyondTap && startPos && Math.hypot(e.clientX - startPos.x, e.clientY - startPos.y) > TAP_MAX_MOVEMENT) {
-      movedBeyondTap = true;
+    transform.pan.x += e.clientX - press.last.x;
+    transform.pan.y += e.clientY - press.last.y;
+    press.last = { x: e.clientX, y: e.clientY };
+
+    if (!press.moved && Math.hypot(e.clientX - press.start.x, e.clientY - press.start.y) > TAP_MAX_MOVEMENT) {
+      press.moved = true;
+      isGrabbing.value = true;
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       options.onInteract?.();
     }
@@ -76,29 +99,25 @@ export function usePanZoom(
     onRedraw();
   });
 
-  useEventListener(container, "pointerup", (e: PointerEvent) => {
-    if (e.pointerType !== "mouse") {
+  // On the window, so a press released outside the score before it was captured still ends.
+  useEventListener(window, "pointerup", (e: PointerEvent) => {
+    if (!press || e.pointerId !== press.pointerId) {
       return;
     }
 
-    if (movedBeyondTap) {
+    if (press.moved) {
       didGesture = true;
     }
 
-    lastPos = undefined;
-    startPos = undefined;
-    movedBeyondTap = false;
+    endPress();
   });
 
-  useEventListener(container, "pointercancel", (e: PointerEvent) => {
-    if (e.pointerType !== "mouse") {
-      return;
+  useEventListener(window, "pointercancel", (e: PointerEvent) => {
+    if (press?.pointerId === e.pointerId) {
+      endPress();
     }
-
-    lastPos = undefined;
-    startPos = undefined;
-    movedBeyondTap = false;
   });
+
   useEventListener(container, "wheel", (e: WheelEvent) => {
     e.preventDefault();
     const pos = containerPos(e.clientX, e.clientY);
@@ -178,4 +197,6 @@ export function usePanZoom(
     didGesture = true;
     activeTouches = [];
   });
+
+  return { isGrabbing };
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useResizeObserver } from "@vueuse/core";
 import p5 from "p5";
-import { onBeforeUnmount, onMounted, ref, shallowRef, toRef, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, toRef, watch } from "vue";
 
 import { usePanZoom } from "@/composables/usePanZoom";
 import { usePdfPages } from "@/composables/usePdfPages";
@@ -23,7 +23,9 @@ const props = withDefaults(defineProps<{
   pannable?: boolean;
   /** Pixels at the top and bottom that controls cover, so locations there count as hidden. */
   insets?: ViewInsets;
-}>(), { pannable: true, insets: () => ({ top: 0, bottom: 0 }) });
+  /** A cursor for the whole score while a press would not pan, such as the arrow of a selection box. A grab wins over it. */
+  cursorLock?: "default";
+}>(), { pannable: true, insets: () => ({ top: 0, bottom: 0 }), cursorLock: undefined });
 
 const emit = defineEmits<{
   loadingChange: [loading: boolean];
@@ -50,13 +52,15 @@ watch(() => props.url, () => {
   viewUserModified.value = false;
 });
 
-usePanZoom(wrapper, transform.value, {
+const { isGrabbing } = usePanZoom(wrapper, transform.value, {
   onRedraw: redraw,
   canPan: () => props.pannable,
   onInteract: () => {
     viewUserModified.value = true;
   },
 });
+
+const cursorLock = computed(() => isGrabbing.value ? "grabbing" : props.cursorLock);
 
 function rangeArray([start, end]: [number, number]): number[] {
   return Array.from({ length: end - start }, (_, i) => i + start);
@@ -223,12 +227,13 @@ defineExpose({ redraw, isLocationVisible, moveToLocation, zoomToPage: fitZoom })
   <div
     ref="wrapper"
     class="relative size-full touch-none overflow-hidden"
+    :class="pannable ? 'cursor-grab' : ''"
+    :data-cursor-lock="cursorLock"
   >
     <div
       ref="container"
       class="absolute size-full overflow-hidden *:absolute *:inset-0 *:touch-none"
       aria-hidden="true"
-      :class="pannable ? 'cursor-grab active:cursor-grabbing' : ''"
     />
 
     <slot

@@ -103,3 +103,24 @@
 
 @custom-variant touch (@media (pointer: coarse));
 @custom-variant mouse (@media (pointer: fine));
+
+/*
+  A canvas locks its cursor while a gesture runs or a held key changes what a press does, so the cursor shows
+  what happens next instead of what a click on the element below would do. Handles keep their own cursor.
+  Unlayered, so it wins over the cursor utilities of the elements inside.
+*/
+[data-cursor-lock="grabbing"] {
+  --cursor-lock: grabbing;
+}
+
+[data-cursor-lock="default"] {
+  --cursor-lock: default;
+}
+
+[data-cursor-lock="ew-resize"] {
+  --cursor-lock: ew-resize;
+}
+
+[data-cursor-lock], [data-cursor-lock] :not([data-handle], [data-handle] *) {
+  cursor: var(--cursor-lock);
+}

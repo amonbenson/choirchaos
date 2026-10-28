@@ -48,7 +48,7 @@ const review = computed(() => needsReview(props.measure.layout));
 
 const surfaceClass = computed(() => {
   if (!props.editMode) {
-    return ["cursor-pointer", props.highlighted ? "bg-track-highlight/25 hover:bg-track-highlight/45" : "hover:bg-primary/25"];
+    return props.highlighted ? "bg-track-highlight/25 hover:bg-track-highlight/45" : "hover:bg-primary/25";
   }
 
   if (selected.value) {
@@ -68,7 +68,7 @@ const surfaceClass = computed(() => {
     :data-measure="measure.id"
   >
     <div
-      class="pointer-events-auto absolute inset-0 transition-colors select-none"
+      class="pointer-events-auto absolute inset-0 cursor-pointer transition-colors select-none"
       :class="surfaceClass"
       role="button"
       :aria-label="`Measure ${measure.label}`"

@@ -39,13 +39,14 @@ function getDelta(): { x: number; y: number } {
 }
 </script>
 
-<!-- The handle keeps its pointer events, so the score does not pan or select while it moves. -->
+<!-- The handle keeps its pointer events, so the score does not pan or select while it moves, and its cursor (data-handle). -->
 <template>
   <div
     ref="handle"
     class="pointer-events-auto absolute flex size-5 -translate-1/2 touch-none items-center justify-center"
     :class="PLACEMENT[props.edge]"
     aria-hidden="true"
+    data-handle
     @pointerdown.stop
     @click.stop
     @touchstart.stop

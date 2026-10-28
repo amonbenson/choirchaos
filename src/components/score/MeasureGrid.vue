@@ -102,7 +102,7 @@ watch(playingId, (id) => {
       >
         <button
           type="button"
-          class="relative w-full rounded-md border py-3 text-sm font-semibold transition-colors"
+          class="relative w-full cursor-pointer rounded-md border py-3 text-sm font-semibold transition-colors"
           :class="isSelected(measure)
             ? 'border-primary bg-primary/30 outline-2 outline-primary'
             : 'border-surface-200 bg-surface-0 hover:bg-primary/10 dark:border-surface-700 dark:bg-surface-900'"

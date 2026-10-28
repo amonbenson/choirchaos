@@ -250,6 +250,15 @@ function onContextMenu(event: MouseEvent): void {
   }
 }
 
+/** A drag shows what it does wherever it passes: moving a sync point, or scrubbing with the arrow. */
+const cursorLock = computed(() => {
+  if (!isSwiping.value) {
+    return undefined;
+  }
+
+  return dragged.value ? "ew-resize" : "default";
+});
+
 watch(() => player.position, (tick) => {
   if (!isSwiping.value) {
     axis.reveal(tick);
@@ -346,7 +355,8 @@ watch(() => player.position, (tick) => {
         <div
           ref="axisElement"
           class="relative flex min-h-0 flex-col gap-1 overflow-hidden"
-          :class="[isAudio ? 'flex-1' : '', pointsAtSyncPoint ? 'cursor-ew-resize' : '']"
+          :class="[isAudio ? 'flex-1' : '', pointsAtSyncPoint ? 'cursor-ew-resize' : 'cursor-default']"
+          :data-cursor-lock="cursorLock"
           @click.capture="onClickCapture"
           @click="onClick"
           @contextmenu="onContextMenu"

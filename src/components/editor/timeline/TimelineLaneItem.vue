@@ -33,7 +33,7 @@ const hasText = (): boolean => (props.block.width ?? props.block.maxWidth ?? Inf
     <button
       v-bind="$attrs"
       type="button"
-      class="flex size-full items-center gap-1 truncate rounded-sm px-1 whitespace-nowrap focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+      class="flex size-full cursor-pointer items-center gap-1 truncate rounded-sm px-1 whitespace-nowrap focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
       :class="pressed ? 'ring-2 ring-primary ring-inset' : ''"
       :aria-label="name"
       :aria-pressed="pressed"

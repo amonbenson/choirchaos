@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onLongPress, useEventListener } from "@vueuse/core";
+import { onLongPress, useEventListener, useKeyModifier } from "@vueuse/core";
 import { computed, ref, shallowRef, watch } from "vue";
 
 import { type ClickIntent, getClickIntent, injectEditorSelection } from "@/composables/useEditorSelection";
+import { useMarqueeSelection } from "@/composables/useMarqueeSelection";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
 import type { Marker } from "@/core/models/markers";
@@ -17,9 +18,12 @@ import {
 } from "@/core/models/scoreOverlays";
 import { getSectionRun, type Section } from "@/core/models/sections";
 import {
+  getSelectableMeasures,
   isBoxSelected,
   isMeasureSelected,
   isSectionSelected,
+  NO_SELECTION,
+  type Selection,
   selectMeasures,
   toggleBox,
   toggleMeasure,
@@ -336,8 +340,12 @@ useEventListener("keydown", (event: KeyboardEvent) => {
   }
 });
 
-/** Escape steps back once: from a drawn box to drawing, from drawing to selecting, and from a selection to none. */
+/** Escape steps back once: from a selection box to the selection before it, from a drawn box to drawing, from drawing to selecting, and from a selection to none. */
 function stepBack(): void {
+  if (marquee.cancel()) {
+    return;
+  }
+
   if (pendingBox.value) {
     pendingBox.value = undefined;
   } else if (drawing.value) {
@@ -453,6 +461,54 @@ onLongPress(overlayRoot, (event) => {
   }
 });
 
+// Selection box
+// Shift and a drag select the measures the box touches while it moves. Ctrl/Cmd adds them to the selection.
+
+const canDrawMarquee = computed(() => !!props.editMode && !drawing.value && !previewing.value);
+
+// Mouse events too, so a Shift released while another window had focus is noticed on the next move.
+const shiftHeld = useKeyModifier("Shift", { events: ["mousedown", "mouseup", "mousemove", "keydown", "keyup"] });
+
+let selectionBeforeMarquee: Selection = NO_SELECTION;
+let addsToSelection = false;
+
+const marquee = useMarqueeSelection(overlayRoot, {
+  canStart: () => canDrawMarquee.value,
+  onStart: (event) => {
+    selectionBeforeMarquee = selection.value;
+    addsToSelection = event.ctrlKey || event.metaKey;
+  },
+  onChange: selectInBox,
+  onCancel: () => editorSelection.select(selectionBeforeMarquee),
+});
+
+/** Measures whose box, as drawn, overlaps the selection box. */
+function findMeasuresInBox(box: DOMRect): Set<MeasureId> {
+  const elements = overlayRoot.value?.querySelectorAll<HTMLElement>("[data-measure]") ?? [];
+  return new Set([...elements].flatMap((element) => {
+    const rect = element.getBoundingClientRect();
+    const overlaps = rect.right > box.left && rect.left < box.right && rect.bottom > box.top && rect.top < box.bottom;
+    return overlaps && element.dataset.measure ? [element.dataset.measure] : [];
+  }));
+}
+
+function selectInBox(box: DOMRect): void {
+  if (!props.song) {
+    return;
+  }
+
+  const ids = findMeasuresInBox(box);
+  const before = selectionBeforeMarquee;
+  const kept = addsToSelection && before.kind === "measures" ? before.ids : [];
+  const next = getSelectableMeasures(props.song)
+    .map(measure => measure.id)
+    .filter(id => ids.has(id) || kept.includes(id));
+  editorSelection.select(selectMeasures(next));
+}
+
+/** While Shift is held a press draws a selection box, so the score shows the arrow instead of the hand. */
+const cursorLock = computed(() => marquee.area.value || (shiftHeld.value && canDrawMarquee.value) ? "default" as const : undefined);
+
 // Resizing
 
 function onResize(measure: Measure, edge: BoxEdge, delta: { x: number; y: number }): void {
@@ -486,6 +542,7 @@ async function onResizeEnd(measure: Measure): Promise<void> {
     :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
     :pannable="!editMode || !drawing"
     :insets="viewInsets"
+    :cursor-lock="cursorLock"
     role="region"
     aria-label="Score"
     @loading-change="emit('pdf-loading', $event)"
@@ -495,7 +552,7 @@ async function onResizeEnd(measure: Measure): Promise<void> {
       <div
         ref="overlayRoot"
         class="absolute inset-0"
-        :class="editMode ? 'pointer-events-auto cursor-grab active:cursor-grabbing' : 'pointer-events-none'"
+        :class="editMode ? 'pointer-events-auto' : 'pointer-events-none'"
         @pointerdown.capture="rememberPointerType"
         @click="editMode && onEmptyClick($event)"
       >
@@ -544,7 +601,7 @@ async function onResizeEnd(measure: Measure): Promise<void> {
             @contextmenu.stop.prevent
           >
             <div
-              class="pointer-events-auto absolute inset-0 transition-colors select-none"
+              class="pointer-events-auto absolute inset-0 cursor-pointer transition-colors select-none"
               :class="unnumberedClass(box)"
               role="button"
               aria-label="Box without a number"
@@ -593,6 +650,13 @@ async function onResizeEnd(measure: Measure): Promise<void> {
         <DrawLayer
           v-if="editMode && drawing && !previewing"
           :pages="visiblePages"
+        />
+
+        <ScoreBox
+          v-if="marquee.area.value"
+          :layout="{ page: 0, ...marquee.area.value }"
+          class="bg-primary/10 outline outline-primary"
+          aria-hidden="true"
         />
       </div>
     </template>

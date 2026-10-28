@@ -485,7 +485,7 @@ const pdfLoading = ref(false);
         >
           <BabySvenja class="w-full max-w-lg" />
           <p class="text-xl">
-            Loading {{ player.loading ? "audio data" : "PDF" }} ...
+            Loading {{ player.loading ? "Recording" : "PDF" }} ...
           </p>
         </div>
       </div>

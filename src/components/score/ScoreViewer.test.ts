@@ -349,6 +349,83 @@ describe("ScoreViewer", () => {
       expect(selectedLabels(context)).toEqual(["1", "2", "3"]);
     });
 
+    describe("selection box", () => {
+      // Boxes are placed in percent of the page, which these tests make 100 pixels square.
+      function mockLayoutRects(): void {
+        vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+          if (!this.dataset.measure) {
+            return new DOMRect(0, 0, 100, 100);
+          }
+
+          const { left, top, width, height } = this.style;
+          return new DOMRect(Number.parseFloat(left), Number.parseFloat(top), Number.parseFloat(width), Number.parseFloat(height));
+        });
+      }
+
+      function drag(overlay: HTMLElement, from: [number, number], to: [number, number], init: PointerEventInit = {}): void {
+        const options = { pointerType: "mouse", pointerId: 1, button: 0, shiftKey: true, bubbles: true, ...init };
+        overlay.dispatchEvent(new PointerEvent("pointerdown", { ...options, clientX: from[0], clientY: from[1], buttons: 1 }));
+        overlay.dispatchEvent(new PointerEvent("pointermove", { ...options, clientX: to[0], clientY: to[1], buttons: 1 }));
+      }
+
+      /** The overlay once its listeners are attached, which happens after the render. */
+      async function overlayOf(wrapper: VueWrapper): Promise<HTMLElement> {
+        await flushPromises();
+        const overlay = wrapper.find("[role='group'][aria-label='Page 1']").element.parentElement!;
+        // jsdom has no pointer capture.
+        overlay.setPointerCapture = vi.fn();
+        overlay.hasPointerCapture = vi.fn(() => false);
+        return overlay;
+      }
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      it("selects the measures a shift drag touches, and swallows the click ending it", async () => {
+        mockLayoutRects();
+        const song = makeMidiSongWithRepeat();
+        const context = mountViewer(song, true);
+        const overlay = await overlayOf(context.wrapper);
+        click(box(context.wrapper, "4"));
+
+        drag(overlay, [20, 5], [50, 20]);
+        expect(selectedLabels(context)).toEqual(["1", "2"]);
+        await flushPromises();
+        expect(context.wrapper.find("[aria-hidden='true'].outline-primary").exists()).toBe(true);
+
+        overlay.dispatchEvent(new PointerEvent("pointerup", { pointerType: "mouse", pointerId: 1, bubbles: true }));
+        click(box(context.wrapper, "2"), { shiftKey: true });
+        expect(selectedLabels(context)).toEqual(["1", "2"]);
+      });
+
+      it("adds to the selection with ctrl, and Escape restores the selection before it", async () => {
+        mockLayoutRects();
+        const song = makeMidiSongWithRepeat();
+        const context = mountViewer(song, true);
+        const overlay = await overlayOf(context.wrapper);
+        click(box(context.wrapper, "4"));
+
+        drag(overlay, [20, 5], [30, 20], { ctrlKey: true });
+        expect(selectedLabels(context)).toEqual(["1", "4"]);
+
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+        expect(selectedLabels(context)).toEqual(["4"]);
+      });
+
+      it("leaves a shift press without movement to the shift-click", async () => {
+        mockLayoutRects();
+        const song = makeMidiSongWithRepeat();
+        const context = mountViewer(song, true);
+        const overlay = await overlayOf(context.wrapper);
+        click(box(context.wrapper, "1"));
+
+        drag(overlay, [40, 5], [41, 5]);
+        click(box(context.wrapper, "3"), { shiftKey: true });
+        expect(selectedLabels(context)).toEqual(["1", "2", "3"]);
+      });
+    });
+
     it("selects one kind at a time", async () => {
       const song = makeMidiSongWithVamp();
       const context = mountViewer(song, true);
