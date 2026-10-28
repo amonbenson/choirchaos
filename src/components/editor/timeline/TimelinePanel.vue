@@ -11,7 +11,7 @@ import CollapsiblePanel from "@/components/base/CollapsiblePanel.vue";
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { useSyncEditor } from "@/composables/useSyncEditor";
 import { useTimelineAxis } from "@/composables/useTimelineAxis";
-import { formatOccurrence, formatOccurrenceShort } from "@/core/models/locationFormat";
+import { formatOccurrence } from "@/core/models/locationFormat";
 import type { Occurrence } from "@/core/models/recording";
 import type Song from "@/core/models/song";
 import {
@@ -87,7 +87,6 @@ const markers = computed<WaveformMarker[]>(() => positionedMarkers.value.map((ma
   return {
     id,
     time: dragged.value?.id === id ? dragged.value.time : sync.getTime(marker) ?? marker.time,
-    label: formatOccurrenceShort(getLabel(marker), marker.occurrence),
   };
 }));
 

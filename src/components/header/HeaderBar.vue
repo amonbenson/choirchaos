@@ -12,7 +12,7 @@ import DottedHalfNoteIcon from "@/components/icons/DottedHalfNoteIcon.vue";
 import DottedQuarterNoteIcon from "@/components/icons/DottedQuarterNoteIcon.vue";
 import HalfNoteIcon from "@/components/icons/HalfNoteIcon.vue";
 import QuarterNoteIcon from "@/components/icons/QuarterNoteIcon.vue";
-import { SECTION_COLORS } from "@/components/score/sectionColors";
+import { SECTION_COLORS, SECTION_CONTRAST_TEXT } from "@/components/score/sectionColors";
 import { formatLocation } from "@/core/models/locationFormat";
 import { findRecordedRepeats, formatPlayingSection, formatSectionPass, getRecordedRepeatPass } from "@/core/models/scoreOverlays";
 import type Show from "@/core/models/show";
@@ -91,15 +91,13 @@ const beatLabel = computed(() => player.ready && player.currentLocation
   : undefined);
 
 const section = computed(() => player.ready ? player.currentSection : undefined);
-const vamping = computed(() => section.value?.kind === "vamp" && !section.value.released);
 
 const recordedRepeats = computed(() => currentSong.value ? findRecordedRepeats(currentSong.value.getTimeline()) : []);
 
-/** The repeating passage the section button shows: a playing vamp or repeat section, else a written repeat. */
-const repeating = computed(() => {
-  const current = section.value;
-  if (current && current.kind !== "cut") {
-    return current;
+/** The section button shows the playing section, else a written repeat. Playback skips cuts, so it only plays one after a seek into it. */
+const shownSection = computed(() => {
+  if (section.value) {
+    return section.value;
   }
 
   const location = player.ready ? player.currentLocation : undefined;
@@ -108,12 +106,22 @@ const repeating = computed(() => {
 });
 
 const sectionLabel = computed(() => {
-  const current = repeating.value;
+  const current = shownSection.value;
   if (!current) {
     return "Vamp";
   }
 
+  if (current.kind === "cut") {
+    return "Cut";
+  }
+
   return current.kind === "vamp" && current.released ? "Exiting" : formatSectionPass(current.kind, current);
+});
+
+/** A released vamp drops its color, so the button shows it will exit. */
+const sectionButtonClass = computed(() => {
+  const current = shownSection.value;
+  return current && !current.released ? [SECTION_COLORS[current.kind].background, SECTION_CONTRAST_TEXT, "border-transparent"] : [];
 });
 
 function toggleVamp(): void {
@@ -368,9 +376,10 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
             <Button
               v-if="visibleButtons.vamp"
               class="w-28 whitespace-nowrap"
-              :disabled="!repeating"
+              :class="sectionButtonClass"
+              :disabled="!shownSection"
               :label="sectionLabel"
-              :severity="vamping ? 'primary': 'secondary'"
+              severity="secondary"
               @click="toggleVamp"
             />
 

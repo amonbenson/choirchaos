@@ -19,6 +19,7 @@ export class AppearanceSettings extends SettingsBase {
   constructor(
     public readonly theme: "system" | "light" | "dark" = "system",
     public readonly mergeAccompaniment: boolean = true,
+    public readonly sectionsVisible: boolean = true,
     public readonly transportButtonVisible: TransportButtonSettings = new TransportButtonSettings(),
   ) {
     super();

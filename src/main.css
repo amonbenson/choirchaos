@@ -20,7 +20,6 @@
 
   /* Sync points, orange so they never look like the primary colored playhead. */
   --color-sync: var(--color-orange-600);
-  --color-sync-contrast: var(--color-white);
 
   /* Detection results still to review, in panels. */
   --color-review-text: var(--color-amber-700);
@@ -60,7 +59,6 @@
     --color-section-contrast: var(--color-slate-950);
     --color-attention: var(--color-orange-400);
     --color-sync: var(--color-orange-400);
-    --color-sync-contrast: var(--p-surface-950);
     --color-review-text: var(--color-amber-400);
     --color-review-surface: color-mix(in oklab, var(--color-amber-950) 40%, transparent);
     --color-review-border: var(--color-amber-700);

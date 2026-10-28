@@ -29,6 +29,7 @@ import { getSyncedOccurrences } from "@/core/models/warpEditing";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
 import { usePlayerStore } from "@/stores/player";
+import { useSettingsStore } from "@/stores/settings";
 
 import DrawLayer from "./DrawLayer.vue";
 import MeasureBox, { type PlayingBox } from "./MeasureBox.vue";
@@ -168,7 +169,9 @@ const playingBox = computed<PlayingBox | undefined>(() => {
 
 // Arrangement
 
-const sectionOverlays = computed(() => props.song
+const settings = useSettingsStore();
+
+const sectionOverlays = computed(() => props.song && (props.editMode || settings.current.appearance.sectionsVisible)
   ? getSectionOverlays(props.song.getMeasures(), props.song.getTimeline(), props.song.getSections())
   : []);
 

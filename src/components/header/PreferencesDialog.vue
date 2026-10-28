@@ -189,6 +189,21 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                 @update:model-value="settings.update({ appearance: { mergeAccompaniment: $event } })"
               />
             </div>
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <div class="font-medium">
+                  Show vamps, repeats and cuts
+                </div>
+                <div class="text-sm text-muted-color">
+                  Show arrangement sections on the score while rehearsing. The editor always shows them.
+                </div>
+              </div>
+              <ToggleSwitch
+                :model-value="settings.current.appearance.sectionsVisible"
+                aria-label="Show vamps, repeats and cuts"
+                @update:model-value="settings.update({ appearance: { sectionsVisible: $event } })"
+              />
+            </div>
             <div class="@container flex flex-col gap-2">
               <div>
                 <div class="font-medium">

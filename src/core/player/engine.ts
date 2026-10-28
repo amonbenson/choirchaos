@@ -668,7 +668,7 @@ export default class PlayerEngine {
   }
 
   private syncSection(): void {
-    const section = this.route.getSectionState(this.routeState);
+    const section = this.route.getSectionState(this.routeState) ?? this.route.getCutStateAt(this.position.get());
     if (!isSameSectionState(section, this.currentSection.get())) {
       this.currentSection.set(section);
     }

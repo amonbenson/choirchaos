@@ -76,7 +76,7 @@ function resolveTimeline(): TimelinePosition[] {
 }
 
 function sectionButton(wrapper: VueWrapper): VueWrapper["element"] {
-  return wrapper.findAll("button").find(button => /^(Vamp|Repeat|Exiting)/.test(button.text()))!.element;
+  return wrapper.findAll("button").find(button => /^(Vamp|Repeat|Exiting|Cut)/.test(button.text()))!.element;
 }
 
 describe("HeaderBar", () => {
@@ -104,6 +104,7 @@ describe("HeaderBar", () => {
     ["Vamp 3", { pass: 3, passes: undefined }],
     ["Exiting", { released: true, passes: 2 }],
     ["Repeat 2/3", { kind: "repeat", passes: 3, recordedPasses: 3 }],
+    ["Cut", { kind: "cut" }],
   ])("shows %s while a section plays", async (label, state) => {
     const wrapper = mountHeader();
     fakePlayer().currentSection = { ...VAMP, ...state };
@@ -128,6 +129,20 @@ describe("HeaderBar", () => {
     expect(wrapper.emitted("toggleVamp")).toHaveLength(1);
   });
 
+  it.each<[string, Partial<PlayerSectionState>, string | undefined]>([
+    ["a vamp", {}, "bg-section-vamp"],
+    ["a released vamp", { released: true }, undefined],
+    ["a repeat", { kind: "repeat" }, "bg-section-repeat"],
+    ["a cut", { kind: "cut" }, "bg-section-cut"],
+  ])("takes the color of %s", async (_name, state, color) => {
+    const wrapper = mountHeader();
+    fakePlayer().currentSection = { ...VAMP, ...state };
+    await flushPromises();
+    const classes = sectionButton(wrapper).classList;
+
+    expect([...classes].filter(name => name.startsWith("bg-section-"))).toEqual(color ? [color] : []);
+  });
+
   it("shows the pass of a written repeat outside sections", () => {
     const button = sectionButton(mountHeader()) as HTMLButtonElement;
 
@@ -147,7 +162,7 @@ describe("HeaderBar", () => {
     const wrapper = mountHeader();
     const timeline = fakePlayer().timeline;
     const first = timeline.findIndex(entry => entry.measure === locationOf(song, "2").measure);
-    const ranges = wrapper.findAll(".bg-section-repeat");
+    const ranges = wrapper.findAll("div.bg-section-repeat");
 
     expect(ranges).toHaveLength(1);
     expect((ranges[0]!.element as HTMLElement).style.left).toBe(`${first / timeline.length * 100}%`);

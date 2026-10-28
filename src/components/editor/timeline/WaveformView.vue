@@ -18,12 +18,11 @@ import WaveformData from "waveform-data";
 import { useCanvasColors } from "@/composables/useCanvasColors";
 
 import { SYNC_POINT_COLORS } from "./syncColors";
-import { createLabelledPointMarkerFactory } from "./waveformMarker";
+import { createLinePointMarkerFactory } from "./waveformMarker";
 
 export type WaveformMarker = {
   id: string;
   time: number;
-  label: string;
 };
 
 const props = defineProps<{
@@ -71,7 +70,7 @@ function getThemeOptions(): Pick<PeaksOptions, "zoomview" | "fontFamily" | "crea
   return {
     pointColor,
     fontFamily: getComputedStyle(root.value!).fontFamily,
-    createPointMarker: createLabelledPointMarkerFactory({ background: pointColor, text: colors.resolveVariable(SYNC_POINT_COLORS.contrastVariable) }),
+    createPointMarker: createLinePointMarkerFactory(pointColor),
     zoomview: {
       waveformColor: muted,
       axisLabelColor: muted,
@@ -99,7 +98,7 @@ async function createWaveformData(audioBuffer: AudioBuffer, scale: number): Prom
 }
 
 function toPoint(marker: WaveformMarker, color: string): PointOptions {
-  return { id: marker.id, time: marker.time, labelText: marker.label, editable: false, color };
+  return { id: marker.id, time: marker.time, editable: false, color };
 }
 
 function destroyPeaks(): void {
@@ -191,8 +190,8 @@ function syncPoints(markers: WaveformMarker[]): void {
     pending.delete(point.id!);
     if (!marker) {
       peaks.points.removeById(point.id!);
-    } else if (point.time !== marker.time || point.labelText !== marker.label) {
-      point.update({ time: marker.time, labelText: marker.label });
+    } else if (point.time !== marker.time) {
+      point.update({ time: marker.time });
     }
   }
 

@@ -160,6 +160,18 @@ export default class Route {
     };
   }
 
+  /** A cut only plays after a seek into it, so it has no route state and is found by the tick alone. */
+  getCutStateAt(tick: Tick): PlayerSectionState | undefined {
+    for (const routeSection of this.sections) {
+      const k = this.findPassIndex(routeSection, tick);
+      if (k !== -1 && routeSection.section.kind === "cut") {
+        return { section: routeSection.index, kind: "cut", pass: k + 1, passes: 0, recordedPasses: routeSection.passes.length, released: false };
+      }
+    }
+
+    return undefined;
+  }
+
   /** The tick at the same measure offset, beat and fraction of a beat in another pass. */
   mapTick(tick: Tick, from: PassRange, to: PassRange): Tick {
     const source = findPositionAt(this.timeline, tick)!;

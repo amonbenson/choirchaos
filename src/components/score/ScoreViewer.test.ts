@@ -1,7 +1,8 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
 import PrimeVue from "primevue/config";
 import ToastService from "primevue/toastservice";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { h, reactive, type Ref, ref, type SetupContext } from "vue";
 
 import { provideSongEditor, type SongEditor } from "@/composables/useSongEditor";
@@ -12,6 +13,7 @@ import type { TimelinePosition } from "@/core/player/timeline";
 import type { PlayerLocation, PlayerSectionState } from "@/core/player/types";
 import { dbUpdate } from "@/pocketbase/db";
 import { usePlayerStore } from "@/stores/player";
+import { useSettingsStore } from "@/stores/settings";
 import { idOf, locationOf, makeAudioSong, makeMidiSongWithCut, makeMidiSongWithRepeat, makeMidiSongWithVamp } from "@/test/fixtures";
 
 import BoxResizeHandle from "./BoxResizeHandle.vue";
@@ -128,6 +130,11 @@ describe("ScoreViewer", () => {
     Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 100 });
   });
 
+  beforeEach(() => {
+    localStorage.clear();
+    setActivePinia(createPinia());
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
     const state = fakePlayer();
@@ -241,6 +248,18 @@ describe("ScoreViewer", () => {
 
       expect(wrapper.findAll(".hatch-section-cut").length).toBeGreaterThan(0);
       expect(wrapper.find("button[aria-label^='Cut']").text()).toBe("Cut");
+    });
+
+    it("hides sections while rehearsing when they are turned off, but not while editing", () => {
+      useSettingsStore().update({ appearance: { sectionsVisible: false } });
+      const song = makeMidiSongWithCut();
+
+      const rehearsing = mountViewer(song).wrapper;
+      expect(rehearsing.findAll(".hatch-section-cut")).toHaveLength(0);
+      expect(rehearsing.find("button[aria-label^='Cut']").exists()).toBe(false);
+
+      const editing = mountViewer(song, true).wrapper;
+      expect(editing.find("button[aria-label^='Cut']").exists()).toBe(true);
     });
   });
 

@@ -92,6 +92,13 @@ describe("Route state", () => {
       .toEqual({ section: 0, kind: "vamp", pass: 3, passes: 3, recordedPasses: 4, released: true });
   });
 
+  it("reports a cut only at ticks inside it", () => {
+    const route = new Route(timeline, [cut("1", "1")], { vampsEnabled: true });
+    expect(route.getCutStateAt(1))
+      .toEqual({ section: 0, kind: "cut", pass: 1, passes: 0, recordedPasses: 1, released: false });
+    expect(route.getCutStateAt(POSITION_TICKS)).toBeUndefined();
+  });
+
   it("keeps section indices of the song when vamps are disabled", () => {
     const route = new Route(timeline, [vamp("1", "1"), repeat("2", "2", 2)], { vampsEnabled: false });
     expect(route.stateAt(POSITION_TICKS)).toEqual({ section: 1, pass: 1, released: false });
