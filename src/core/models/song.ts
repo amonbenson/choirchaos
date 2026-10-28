@@ -281,15 +281,6 @@ export default class Song {
     this.updateEffectiveParameters();
   }
 
-  public setTrackHighlight(trackIndex: number, value: boolean): void {
-    if (!this.trackList[trackIndex]) {
-      console.warn(`setTrackHighlight: track index ${trackIndex} out of range.`);
-      return;
-    }
-
-    this.trackList[trackIndex]!.mixer.highlight = value;
-  }
-
   public setTrackGain(trackIndex: number, value: number): void {
     if (!this.trackList[trackIndex]) {
       console.warn(`setTrackGain: track index ${trackIndex} out of range.`);

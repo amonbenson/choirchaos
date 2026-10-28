@@ -12,7 +12,6 @@ import {
   findLocationAt,
   getBeatTick,
   getLocationTick,
-  groupPositionsByMeasure,
   resolveAudioTimeline,
   resolveMidiTimeline,
   type TimelinePosition,
@@ -153,9 +152,5 @@ describe("timeline helpers", () => {
     expect(events).toHaveLength(1 + 4 * 7);
     expect(events[1]).toMatchObject({ tick: positionTick(1), position: 1, beat: 0 });
     expect(events.at(-1)).toMatchObject({ tick: positionTick(7) + 1440, position: 7, beat: 3 });
-  });
-
-  it("groups positions by measure", () => {
-    expect(groupPositionsByMeasure(timeline).get(measure2)).toEqual([2, 3, 4, 5]);
   });
 });

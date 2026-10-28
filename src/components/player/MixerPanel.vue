@@ -95,17 +95,6 @@ function setTrackSolo(track: Track | MergedTrack): void {
   }
 }
 
-function setTrackHighlight(track: Track | MergedTrack): void {
-  const next = !track.mixer.highlight;
-  settingsStore.updateTrackMixer(props.showId, track.title, { highlight: next });
-
-  if (track instanceof MergedTrack) {
-    track.applyToEach(setTrackHighlight);
-  } else {
-    props.song?.setTrackHighlight(track.mixer.index, next);
-  }
-}
-
 function setTrackGain(track: Track | MergedTrack, value: number): void {
   settingsStore.updateTrackMixer(props.showId, track.title, { gain: value });
 
@@ -130,7 +119,6 @@ watch(() => [props.showId, props.song, ...(props.song?.tracks ?? [])], () => {
       song.setTrackGain(track.mixer.index, stored.gain);
       song.setTrackMute(track.mixer.index, stored.mute);
       song.setTrackSolo(track.mixer.index, stored.solo);
-      song.setTrackHighlight(track.mixer.index, stored.highlight);
     }
   }
 }, { immediate: true });
@@ -200,15 +188,6 @@ watch(() => [props.showId, props.song, ...(props.song?.tracks ?? [])], () => {
                   :severity="track.mixer.solo ? 'warn' : 'secondary'"
                   size="small"
                   @click="setTrackSolo(track)"
-                />
-                <Button
-                  icon="pi pi-eye"
-                  :aria-label="`Highlight ${trackName(track)}`"
-                  :aria-pressed="track.mixer.highlight"
-                  class="w-8"
-                  :severity="track.mixer.highlight ? 'info' : 'secondary'"
-                  size="small"
-                  @click="setTrackHighlight(track)"
                 />
               </ButtonGroup>
               <TrackGainSlider

@@ -127,10 +127,6 @@ describe("PlayerEngine – MIDI mode", () => {
     expect(player.getFinalLocation()).toEqual({ position: 4, measure: idOf(song, "4"), occurrence: 1, beat: 3 });
   });
 
-  it("collects the tracks that play in each position", () => {
-    expect(player.getActiveTrackIndices().map(indices => [...indices])).toEqual([[], [0], [0], [1], []]);
-  });
-
   it("finds the tick of a location", () => {
     const song = player.getCurrentSong()!;
     expect(player.getLocationTick({ measure: idOf(song, "2"), occurrence: 1, beat: 2 })).toBe(TICKS.measure2 + 960);

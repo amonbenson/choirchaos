@@ -66,7 +66,6 @@ export default class PlayerEngine {
   private readonly playing = new Property(false);
   private readonly duration = new Property<Tick>(0);
   private readonly timeline = new Property<ResolvedTimeline>([]);
-  private readonly activeTrackIndices = new Property<readonly ReadonlySet<number>[]>([]);
   private readonly finalLocation = new Property<PlayerLocation | undefined>(undefined);
   private readonly playbackSpeed = new Property(1.0);
   private readonly playbackTransposition = new Property(0);
@@ -84,7 +83,6 @@ export default class PlayerEngine {
   readonly onPlayingChange = this.playing.onChange;
   readonly onDurationChange = this.duration.onChange;
   readonly onTimelineChange = this.timeline.onChange;
-  readonly onActiveTrackIndicesChange = this.activeTrackIndices.onChange;
   readonly onFinalLocationChange = this.finalLocation.onChange;
   readonly onPlaybackSpeedChange = this.playbackSpeed.onChange;
   readonly onPlaybackTranspositionChange = this.playbackTransposition.onChange;
@@ -159,11 +157,6 @@ export default class PlayerEngine {
   /** The recording's measure order with the ticks of every position. Empty until a song is loaded. */
   getTimeline(): ResolvedTimeline {
     return this.timeline.get();
-  }
-
-  /** The tracks that start a note in each timeline position, indexed by position. Empty in audio mode. */
-  getActiveTrackIndices(): readonly ReadonlySet<number>[] {
-    return this.activeTrackIndices.get();
   }
 
   getCurrentLocation(): PlayerLocation | undefined {
@@ -452,9 +445,6 @@ export default class PlayerEngine {
 
     this.duration.set(loadResult.duration);
     this.applyTimeline(loadResult.timeline);
-    if (this.backend instanceof MidiBackend) {
-      this.activeTrackIndices.set(this.backend.getActiveTrackIndices());
-    }
 
     this.route = this.createRoute();
     this.status.set("ready");
@@ -485,7 +475,6 @@ export default class PlayerEngine {
     this.routeState = undefined;
     this.duration.set(0);
     this.timeline.set([]);
-    this.activeTrackIndices.set([]);
     this.finalLocation.set(undefined);
 
     this.position.set(0);
