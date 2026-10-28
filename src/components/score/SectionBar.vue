@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-import { BAR_GAP_PX, BAR_HEIGHT_PX, getLaneOffset, type SectionBar } from "@/core/models/scoreOverlays";
+import type { SectionBar } from "@/core/models/scoreOverlays";
 
 import ScoreBadge from "./ScoreBadge.vue";
+import ScoreLane from "./ScoreLane.vue";
 import { SECTION_COLORS } from "./sectionColors";
 
 const props = defineProps<{
@@ -15,28 +16,20 @@ const emit = defineEmits<{
   select: [];
 }>();
 
-/** A line without height above the run, at the bottom of the bar's lane. The chip sits on it and the bar hangs below it. */
-const laneStyle = computed(() => ({
+const runStyle = computed(() => ({
   left: `${props.bar.run.x * 100}%`,
   width: `${props.bar.run.width * 100}%`,
-  top: `calc(${props.bar.run.y * 100}% - ${getLaneOffset(props.bar.lane)}px)`,
+  bottom: `${(1 - props.bar.run.y) * 100}%`,
 }));
-
-const barStyle = { top: `${BAR_GAP_PX}px`, height: `${BAR_HEIGHT_PX}px` };
 </script>
 
 <template>
-  <div
-    class="pointer-events-none absolute h-0"
-    :style="laneStyle"
+  <ScoreLane
+    :lane="bar.lane"
+    :style="runStyle"
   >
-    <div
-      class="absolute inset-x-0 rounded-full"
-      :class="SECTION_COLORS[bar.section.kind].background"
-      :style="barStyle"
-    />
     <ScoreBadge
-      class="absolute bottom-0 left-0.5"
+      class="ml-0.5 self-start"
       :tone="bar.section.kind"
       :name="bar.name"
       selectable
@@ -45,5 +38,11 @@ const barStyle = { top: `${BAR_GAP_PX}px`, height: `${BAR_HEIGHT_PX}px` };
     >
       {{ bar.chip }}
     </ScoreBadge>
-  </div>
+    <template #bar>
+      <div
+        class="absolute inset-0 rounded-full"
+        :class="SECTION_COLORS[bar.section.kind].background"
+      />
+    </template>
+  </ScoreLane>
 </template>

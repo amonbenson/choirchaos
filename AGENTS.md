@@ -48,7 +48,7 @@ Before finishing: `lint:fix`, `typecheck`, `vitest run`, plus `test:e2e` when ba
 | `src/test/` | Unit test setup, fixtures, helpers |
 | `e2e/` | Playwright tests and test data generators |
 
-`src/core/` is framework-free. Vue reads it through `useEvent()` (needs an effect scope). State is a `Property<T>` (`on*Change`; `Property<void>` fires with `fire(undefined)`), one-off events an `Emitter<T>`; both return a `Disposable`.
+`src/core/` is framework-free logic only: no UI helpers, sizes or styling values. Vue reads it through `useEvent()` (needs an effect scope). State is a `Property<T>` (`on*Change`; `Property<void>` fires with `fire(undefined)`), one-off events an `Emitter<T>`; both return a `Disposable`.
 
 ## Song Model
 
@@ -133,12 +133,12 @@ Rehearsers (viewers) only play songs. Editors (editors, owners) also set up show
 
 - `base/` only holds components that know nothing of shows, songs or playback. A component shared by two areas lives with the area that owns the action.
 - Repeated UI is one component: `base/FieldRow` (label and control), `base/StepperInput`, `RemoveButton` (inspector delete). Reuse before writing markup another file already has.
-- PrimeVue components styled with Tailwind. For missing behaviour prefer a library (vueuse, peaks.js) over hand-written pointer, scroll or drag code.
+- PrimeVue components styled with Tailwind. Never `px` sizes: Tailwind classes, else `rem` in the style. For missing behaviour prefer a library (vueuse, peaks.js) over hand-written pointer, scroll or drag code.
 - Reorderable lists: `useSortable` (`@vueuse/integrations`) with a drag handle; in `onUpdate` undo Sortable's DOM move and change the model. Every drag has a non-drag alternative (menu, arrow keys; see `SongDetailsForm`).
 - No `prompt()`/`confirm()`: destructive confirmations use `useConfirmDestructive()`, errors `useNotify()` toasts.
 - Dark mode is the `.dark` class (Tailwind `dark:` follows it); check both modes. Canvases resolve colors through `useCanvasColors()`, which also triggers redraws on theme change.
 - Every color is defined once. Accent (`primary`) and surface palettes come from `src/theme/preset.ts`; every other meaningful color (section kinds, sync points, review, boxes without a number, highlighted tracks, score chips, scrims, attention, danger) is a token in `src/main.css` with its `.dark` override. Never a Tailwind palette color or hex value. Score tokens have no dark override (the page stays white). `score/sectionColors.ts` and `editor/timeline/syncColors.ts` map kinds to token classes.
-- `ScoreViewer` draws from the pure geometry and texts in `scoreOverlays.ts`. Every box is a `ScoreBox` (badges in its corners at one inset) and every short label a `ScoreBadge`. Box states are outlines, never borders, so badges never move. Badges above boxes stack in lanes (`getLaneOffset()`).
+- `ScoreViewer` draws from the pure geometry and texts in `scoreOverlays.ts`. Every box is a `ScoreBox` (badges in its corners at one inset) and every short label a `ScoreBadge`. Box states are outlines, never borders, so badges never move. Badges above boxes stack in `ScoreLane`s.
 - Badges are the only overlays taking pointer events: section and marker badges are buttons that select in the editor and seek while rehearsing; others pass the click to their box. Each box's `aria-describedby` names all its overlays.
 - Locations are shown through `locationFormat.ts`: markers and location inputs name every occurrence of a repeated measure ("12, 1st time"); sync points and section names only from the second.
 - MIDI track titles link to their MIDI data by name, so MIDI tracks cannot be renamed.

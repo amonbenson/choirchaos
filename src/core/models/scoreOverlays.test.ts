@@ -13,7 +13,6 @@ import {
   formatSectionName,
   formatSectionPass,
   getBoxOverlays,
-  getLaneOffset,
   getSectionBars,
   getSectionOverlays,
   splitIntoRuns,
@@ -200,13 +199,6 @@ describe("getSectionBars", () => {
     expect(bars.map(bar => bar.run.measures)).toEqual([["m3", "m4"], ["m5", "m6"]]);
     expect(bars.map(bar => bar.chip)).toEqual(["Vamp 2", "Vamp 2"]);
     expect(bars.map(bar => bar.name)).toEqual(["Vamp 3 to 6, pass 2", undefined]);
-  });
-});
-
-describe("getLaneOffset", () => {
-  it("stacks lanes upwards by one lane height", () => {
-    expect(getLaneOffset(1) - getLaneOffset(0)).toBe(getLaneOffset(2) - getLaneOffset(1));
-    expect(getLaneOffset(0)).toBeGreaterThan(0);
   });
 });
 

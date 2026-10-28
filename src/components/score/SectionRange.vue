@@ -3,12 +3,12 @@ import { computed } from "vue";
 
 import { type RangeEnd, type RangeHandle, useSectionRange } from "@/composables/useSectionRange";
 import type { MeasureId, MeasureLayout } from "@/core/models/measure";
-import { getBarCenterOffset } from "@/core/models/scoreOverlays";
 import { findNearestPosition, type Section } from "@/core/models/sections";
 import type Song from "@/core/models/song";
 
 import type { VisiblePage } from "./PdfViewer.vue";
 import ScoreBox from "./ScoreBox.vue";
+import ScoreLane from "./ScoreLane.vue";
 import ScorePage from "./ScorePage.vue";
 import { SECTION_COLORS } from "./sectionColors";
 import SectionRangeHandle from "./SectionRangeHandle.vue";
@@ -44,7 +44,7 @@ function onPage<T>(items: readonly T[], page: VisiblePage, layoutOf: (item: T) =
 
 function handleStyle({ end, layout }: PlacedHandle): Record<string, string> {
   const x = end === "first" ? layout.x : layout.x + layout.width;
-  return { left: `${x * 100}%`, top: `calc(${layout.y * 100}% - ${getBarCenterOffset(props.lane)}px)` };
+  return { left: `${x * 100}%`, bottom: `${(1 - layout.y) * 100}%` };
 }
 
 function measureAt({ x, y }: { x: number; y: number }): MeasureId | undefined {
@@ -84,17 +84,24 @@ function onDrag(end: RangeEnd, point: { x: number; y: number }): void {
       :class="SECTION_COLORS[section.kind].outline"
     />
 
-    <SectionRangeHandle
+    <ScoreLane
       v-for="handle of onPage(handles, page, item => item.layout)"
       :key="handle.end"
-      :ref="instance => range.setHandleElement(handle.end, instance as InstanceType<typeof SectionRangeHandle> | null)"
+      :lane="lane"
       :style="handleStyle(handle)"
-      :handle="handle"
-      :count="song.getTimeline().length"
-      :kind="section.kind"
-      @drag="onDrag(handle.end, $event)"
-      @drop="range.drop()"
-      @keydown="range.onKeydown($event, handle.end)"
-    />
+    >
+      <template #bar>
+        <SectionRangeHandle
+          :ref="instance => range.setHandleElement(handle.end, instance as InstanceType<typeof SectionRangeHandle> | null)"
+          class="top-1/2 left-0"
+          :handle="handle"
+          :count="song.getTimeline().length"
+          :kind="section.kind"
+          @drag="onDrag(handle.end, $event)"
+          @drop="range.drop()"
+          @keydown="range.onKeydown($event, handle.end)"
+        />
+      </template>
+    </ScoreLane>
   </ScorePage>
 </template>

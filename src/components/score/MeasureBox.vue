@@ -6,12 +6,13 @@ import RepeatSignIcon from "@/components/icons/RepeatSignIcon.vue";
 import type { Marker } from "@/core/models/markers";
 import Measure, { type MeasureLayout, needsReview } from "@/core/models/measure";
 import type { BoxEdge } from "@/core/models/measureEditing";
-import { type BoxOverlays, getLaneOffset } from "@/core/models/scoreOverlays";
+import type { BoxOverlays } from "@/core/models/scoreOverlays";
 import { isMarkerSelected, isMeasureSelected, type Selection } from "@/core/models/selection";
 
 import BoxResizeHandle from "./BoxResizeHandle.vue";
 import ScoreBadge from "./ScoreBadge.vue";
 import ScoreBox from "./ScoreBox.vue";
+import ScoreLane from "./ScoreLane.vue";
 
 export type PlayingBox = {
   /** How far the playing pass has got through the measure, from 0 to 1. */
@@ -90,27 +91,29 @@ const surfaceClass = computed(() => {
       :style="{ left: `${playing.progress * 100}%` }"
     />
 
-    <div
+    <ScoreLane
       v-if="overlays?.markers.length"
-      class="absolute left-0.5 flex gap-0.5"
-      :style="{ bottom: `calc(100% + ${getLaneOffset(overlays.markerLane)}px)` }"
+      :lane="overlays.markerLane"
+      class="bottom-full left-0.5"
     >
-      <ScoreBadge
-        v-for="{ marker, name } of overlays.markers"
-        :key="`${marker.at.occurrence}-${marker.text}`"
-        tone="primary"
-        :name="name"
-        selectable
-        :selected="isMarkerSelected(selection, marker)"
-        @select="emit('select-marker', marker)"
-      >
-        <i
-          class="pi pi-bookmark text-[0.5625rem]"
-          aria-hidden="true"
-        />
-        <span class="truncate">{{ marker.text }}</span>
-      </ScoreBadge>
-    </div>
+      <div class="flex gap-0.5">
+        <ScoreBadge
+          v-for="{ marker, name } of overlays.markers"
+          :key="`${marker.at.occurrence}-${marker.text}`"
+          tone="primary"
+          :name="name"
+          selectable
+          :selected="isMarkerSelected(selection, marker)"
+          @select="emit('select-marker', marker)"
+        >
+          <i
+            class="pi pi-bookmark text-[0.5625rem]"
+            aria-hidden="true"
+          />
+          <span class="truncate">{{ marker.text }}</span>
+        </ScoreBadge>
+      </div>
+    </ScoreLane>
 
     <i
       v-if="overlays?.synced"

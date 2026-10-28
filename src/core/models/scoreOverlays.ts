@@ -42,25 +42,6 @@ export type PlayingSection = { section: number; pass: number; passes?: number; r
 
 type Placed = { measure: MeasureId; layout: MeasureLayout };
 
-/**
- * Badges above the boxes stack in lanes, so sections that share boxes never cover each other. Each lane
- * holds a badge and, for a section, the bar under it. Lane 0 is closest to the boxes.
- */
-export const LANE_HEIGHT_PX = 24;
-export const BAR_GAP_PX = 2;
-export const BAR_HEIGHT_PX = 3;
-const LANE_BASE_PX = 2 * BAR_GAP_PX + BAR_HEIGHT_PX;
-
-/** How far above the top of its boxes the badges of a lane end, in pixels. A section bar lies below that line. */
-export function getLaneOffset(lane: number): number {
-  return LANE_BASE_PX + lane * LANE_HEIGHT_PX;
-}
-
-/** How far above the top of its boxes the middle of a lane's section bar is, in pixels. */
-export function getBarCenterOffset(lane: number): number {
-  return getLaneOffset(lane) - BAR_GAP_PX - BAR_HEIGHT_PX / 2;
-}
-
 const KIND_NAMES: Record<Section["kind"], string> = { cut: "Cut", repeat: "Repeat", vamp: "Vamp" };
 
 function centerY(layout: MeasureLayout): number {
