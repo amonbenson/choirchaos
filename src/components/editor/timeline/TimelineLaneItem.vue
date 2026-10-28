@@ -21,7 +21,10 @@ const hasText = (): boolean => props.block.width === undefined || props.block.wi
   <li
     class="absolute inset-y-0"
     :class="block.width === undefined ? 'max-w-28' : ''"
-    :style="{ left: `${block.left}px`, width: block.width === undefined ? undefined : `${block.width}px` }"
+    :style="{
+      left: `${block.left + 1}px`,
+      width: block.width === undefined ? undefined : `${block.width - 2}px`,
+    }"
   >
     <button
       v-bind="$attrs"

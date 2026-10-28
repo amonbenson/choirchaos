@@ -4,15 +4,17 @@ import { computed } from "vue";
 import { SECTION_COLORS, SECTION_CONTRAST_TEXT } from "@/components/score/sectionColors";
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import type { TimelineAxis } from "@/composables/useTimelineAxis";
+import type { Tick } from "@/core/midi/types";
 import { formatLocation, formatOccurrence, formatOrdinal, formatTimes } from "@/core/models/locationFormat";
 import type { MeasureId } from "@/core/models/measure";
 import { getRecordingStretches, type RecordingStretch } from "@/core/models/recording";
 import { describeSection, formatSectionChip } from "@/core/models/scoreOverlays";
+import { getSectionPasses, type Section } from "@/core/models/sections";
 import { isMarkerSelected, isPassSelected, isSectionSelected } from "@/core/models/selection";
 import type Song from "@/core/models/song";
 import { findUnsyncedRepeatPasses } from "@/core/models/warpEditing";
 import { getSectionTicks } from "@/core/player/route";
-import { getStartTick } from "@/core/player/timeline";
+import { getBeatTick, getStartTick } from "@/core/player/timeline";
 import { usePlayerStore } from "@/stores/player";
 
 import TimelineLaneItem from "./TimelineLaneItem.vue";
@@ -48,8 +50,20 @@ const markers = computed(() => props.song.getMarkers().flatMap((marker) => {
   }];
 }));
 
+/** A vamp loops its own pass, so it is drawn there; the recorded passes it extends over only get an outline. */
+function getOwnPassTicks(section: Section, all: readonly Section[]): { start: Tick; end: Tick } | undefined {
+  if (section.kind !== "vamp") {
+    return getSectionTicks(timeline.value, all, section);
+  }
+
+  const own = getSectionPasses(timeline.value, all, section)[0];
+  const first = own && timeline.value[own.first];
+  const last = own && timeline.value[own.last];
+  return first && last ? { start: getBeatTick(first, section.from.beat), end: getBeatTick(last, section.to.beat + 1) } : undefined;
+}
+
 const sections = computed(() => props.song.getSections().flatMap((section, index, all) => {
-  const ticks = getSectionTicks(timeline.value, all, section);
+  const ticks = getOwnPassTicks(section, all);
   const block = ticks && props.axis.toBlock(ticks.start, ticks.end);
   if (!block) {
     return [];
@@ -62,10 +76,20 @@ const sections = computed(() => props.song.getSections().flatMap((section, index
     text: formatSectionChip(section),
     name: describeSection(props.song.getMeasures(), section),
     colors: section.kind === "cut"
-      ? ["border hatch-section-cut", SECTION_COLORS.cut.border]
+      ? "hatch-section-cut"
       : [SECTION_COLORS[section.kind].background, SECTION_CONTRAST_TEXT],
     selected: isSectionSelected(selection.value, section),
   }];
+}));
+
+const vampExtensions = computed(() => props.song.getSections().flatMap((section, index, all) => {
+  if (section.kind !== "vamp" || getSectionPasses(timeline.value, all, section).length < 2) {
+    return [];
+  }
+
+  const ticks = getSectionTicks(timeline.value, all, section);
+  const block = ticks && props.axis.toBlock(ticks.start, ticks.end);
+  return block ? [{ index, block }] : [];
 }));
 
 const selectedSection = computed(() => selected.value.kind === "section" ? selected.value.section : undefined);
@@ -154,6 +178,13 @@ function formatStretch(stretch: RecordingStretch, long: boolean): string {
   </ul>
 
   <div class="relative h-6">
+    <div
+      v-for="extension in vampExtensions"
+      :key="extension.index"
+      class="pointer-events-none absolute inset-y-0 rounded-sm bg-section-vamp/20"
+      :style="{ left: `${extension.block.left + 1}px`, width: `${extension.block.width - 2}px` }"
+      aria-hidden="true"
+    />
     <ul
       class="relative h-6"
       :aria-labelledby="titleIds.Sections"
@@ -189,7 +220,7 @@ function formatStretch(stretch: RecordingStretch, long: boolean): string {
       :block="item.block"
       :name="item.name"
       :pressed="item.selected"
-      class="border border-surface-300 bg-surface-0 hover:bg-surface-100 dark:border-surface-600 dark:bg-surface-900 dark:hover:bg-surface-800"
+      class="bg-surface-100 hover:bg-surface-100 dark:bg-surface-800 dark:hover:bg-surface-700"
       @click="selectAndSeek({ kind: 'pass', index: item.index })"
     >
       <i
@@ -210,7 +241,7 @@ function formatStretch(stretch: RecordingStretch, long: boolean): string {
       :key="cell.position"
       :block="cell.block"
       :name="cell.name"
-      class="justify-center rounded-none border-l border-surface-200 text-muted-color tabular-nums hover:bg-surface-100 dark:border-surface-700 dark:hover:bg-surface-800"
+      class="justify-center rounded-none text-muted-color tabular-nums hover:bg-surface-100 dark:hover:bg-surface-800"
       @click="player.seekPosition(cell.position)"
     >
       {{ cell.label }}<sup
