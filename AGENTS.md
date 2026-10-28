@@ -18,6 +18,7 @@ Nested guides, read before working in their folder: `src/views/AGENTS.md` (pages
 
 ```bash
 npm run dev          # dev server, http://localhost:5173
+npm run dev:https    # LAN dev server over HTTPS for phones (AudioWorklet needs a secure context), proxies PocketBase
 npm run lint:fix     # eslint with autofix
 npm run typecheck    # vue-tsc --build
 npx vitest run       # unit tests (add a path for one file); never `npm test`, which watches forever
