@@ -1,5 +1,6 @@
+import type Measure from "./measure";
 import type { MeasureId } from "./measure";
-import { findPosition, type Occurrence, type RecordedPass, type RecordingStretch, type StoredWarpMarker, type Timeline, type TimelineEntry } from "./recording";
+import { findPosition, type Occurrence, type StoredWarpMarker, type Timeline, type TimelineEntry } from "./recording";
 
 // Keeps neighbouring markers apart, so the warp map never contains two markers at the same time.
 export const MIN_WARP_MARKER_GAP = 0.01;
@@ -8,11 +9,8 @@ export const MIN_WARP_MARKER_GAP = 0.01;
 export const NUDGE_STEP = 0.01;
 export const LARGE_NUDGE_STEP = 0.1;
 
-/**
- * Between two sync points the warp map assumes a steady tempo. Choirs and bands drift over longer
- * stretches, so the sync status names stretches with more measures than this.
- */
-export const MAX_MEASURES_PER_SYNC_POINT = 8;
+/** The warp map needs a start and an end anchor before measures line up with the recording. */
+export const MIN_SYNC_POINTS = 2;
 
 // Times closer than this count as equal, since they went through floating point arithmetic.
 const TIME_EPSILON = 1e-9;
@@ -20,17 +18,6 @@ const TIME_EPSILON = 1e-9;
 export type PositionedWarpMarker = StoredWarpMarker & { position: number };
 
 type Edge = { position: number; time: number };
-
-/** Timeline positions `first` to `last` that the warp map times from a single sync point or none. */
-export type SyncGap = RecordedPass & { length: number };
-
-export type SyncStatus = {
-  count: number;
-  /** Recorded passes without a sync point of their own. */
-  unsyncedPasses: RecordedPass[];
-  /** Stretches with more than `MAX_MEASURES_PER_SYNC_POINT` measures per sync point. */
-  gaps: SyncGap[];
-};
 
 export function isSameOccurrence(a: Occurrence, b: Occurrence): boolean {
   return a.measure === b.measure && a.occurrence === b.occurrence;
@@ -169,34 +156,36 @@ export function getReassignCandidates(
   return timeline.filter(entry => !findWarpMarker(warpMarkers, entry) && canPlaceWarpMarker(timeline, others, entry, stored.time, duration));
 }
 
-function findGaps(positions: readonly number[], length: number): SyncGap[] {
-  const starts = positions[0] === 0 ? positions : [0, ...positions];
-  return starts
-    .map((first, i) => {
-      const last = (starts[i + 1] ?? length) - 1;
-      return { first, last, length: last - first + 1 };
-    })
-    .filter(gap => gap.length > MAX_MEASURES_PER_SYNC_POINT);
-}
-
-/** How well the sync points cover the recording: passes without one, and stretches with too few. */
-export function getSyncStatus(timeline: Timeline, warpMarkers: readonly StoredWarpMarker[], passes: readonly RecordedPass[]): SyncStatus {
-  const positions = getPositionedWarpMarkers(timeline, warpMarkers).map(marker => marker.position);
-  const unsyncedPasses = passes
-    .filter(({ first, last }) => !positions.some(position => position >= first && position <= last))
-    .map(({ first, last }) => ({ first, last }));
-
-  return { count: positions.length, unsyncedPasses, gaps: timeline.length === 0 ? [] : findGaps(positions, timeline.length) };
-}
-
 /**
- * Passes that play measures again, such as the later passes of a recorded repeat, without a sync point
- * where they start. Their timing is spread evenly from the sync points around them, which rarely matches
- * a recording that slows down or breathes before it goes back.
+ * The warp map gives every measure between two sync points the same time, and goes on at the rate of
+ * the first and last two beyond them. Recordings with a steady click therefore line up from two sync
+ * points, except where measures timed at one rate differ in beats. For each such stretch this returns
+ * the position to sync next: its first meter change without a sync point, else the end it extrapolates to.
  */
-export function findUnsyncedRepeatPasses(timeline: Timeline, warpMarkers: readonly StoredWarpMarker[], stretches: readonly RecordingStretch[]): RecordingStretch[] {
-  const synced = new Set(getPositionedWarpMarkers(timeline, warpMarkers).map(marker => marker.position));
-  return stretches.filter(stretch => stretch.occurrence > 1 && !synced.has(stretch.first));
+export function findMeterChangesToSync(timeline: Timeline, measures: readonly Measure[], warpMarkers: readonly StoredWarpMarker[]): number[] {
+  const positions = getPositionedWarpMarkers(timeline, warpMarkers).map(marker => marker.position);
+  if (positions.length < MIN_SYNC_POINTS) {
+    return [];
+  }
+
+  const beats = new Map(measures.map(measure => [measure.id, measure.beats]));
+  const changes = timeline.slice(1)
+    .filter(entry => beats.get(entry.measure) !== beats.get(timeline[entry.position - 1]!.measure))
+    .map(entry => entry.position);
+  const synced = new Set(positions);
+  const bounds = [0, ...positions.slice(1, -1), timeline.length];
+
+  return bounds.slice(0, -1).flatMap((first, i) => {
+    const end = bounds[i + 1]!;
+    const inside = changes.filter(position => position > first && position < end);
+    if (inside.length === 0) {
+      return [];
+    }
+
+    const ends = [...i === 0 ? [0] : [], ...end === timeline.length ? [timeline.length - 1] : []];
+    const target = [...inside, ...ends].find(position => !synced.has(position));
+    return target === undefined ? [] : [target];
+  });
 }
 
 /** The occurrences of each measure that have a sync point, for the pins on the score. */

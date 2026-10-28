@@ -1,10 +1,9 @@
-import { formatLocation, formatTimes } from "./locationFormat";
+import { formatLocation } from "./locationFormat";
 import type Measure from "./measure";
-import type { MeasureId } from "./measure";
 import { countReviewItems } from "./measureReview";
-import { findUnplayedMeasures, getRecordingStretches, type RecordingSpan } from "./recording";
+import { findUnplayedMeasures } from "./recording";
 import type Song from "./song";
-import { findUnsyncedRepeatPasses } from "./warpEditing";
+import { findMeterChangesToSync, MIN_SYNC_POINTS } from "./warpEditing";
 
 export type SetupStepId = "score" | "playback" | "measures" | "review" | "sync";
 
@@ -16,7 +15,7 @@ export type SetupStep = {
 
 /** Something worth a look that does not keep the song from being ready. */
 export type SetupHint = {
-  id: "unplayed" | "unsyncedPasses";
+  id: "unplayed" | "meterChanges";
   label: string;
   /** Where the hint's control goes, a timeline position, with the control's label. */
   target?: { position: number; action: string };
@@ -28,9 +27,6 @@ export type SongSetup = {
   hints: SetupHint[];
 };
 
-// Audio sync needs at least a start and an end anchor before measures line up with the recording.
-const MIN_SYNC_MARKERS = 2;
-
 function getPlacedMeasureCount(song: Song): number {
   return song.getMeasures().filter(measure => measure.layout).length;
 }
@@ -41,7 +37,7 @@ function getMeasuresAction(song: Song): string {
 }
 
 function isAudioSynced(song: Song): boolean {
-  return song.getWarpMarkers().length >= MIN_SYNC_MARKERS;
+  return song.getWarpMarkers().length >= MIN_SYNC_POINTS;
 }
 
 /**
@@ -117,32 +113,25 @@ function getUnplayedHint(song: Song): SetupHint | undefined {
   return { id: "unplayed", label: `The recording never plays ${noun} ${formatMeasureRuns(song.getMeasures(), unplayed)}` };
 }
 
-function formatSpan(song: Song, { from, to }: RecordingSpan): string {
-  const label = (id: MeasureId): string => song.findMeasure(id)?.label ?? "?";
-  return from === to ? label(from) : `${label(from)} to ${label(to)}`;
-}
-
-/** Only once the song is synced, since before that every pass has a guessed timing. */
-function getUnsyncedPassesHint(song: Song): SetupHint | undefined {
-  if (song.playerMode !== "audio" || !isAudioSynced(song)) {
+function getMeterChangesHint(song: Song): SetupHint | undefined {
+  if (song.playerMode !== "audio") {
     return undefined;
   }
 
   const timeline = song.getTimeline();
-  const passes = findUnsyncedRepeatPasses(timeline, song.getWarpMarkers(), getRecordingStretches(song.getMeasures(), song.getRecording()));
-  const first = passes[0];
-  if (!first) {
+  const [first, ...rest] = findMeterChangesToSync(timeline, song.getMeasures(), song.getWarpMarkers());
+  if (first === undefined) {
     return undefined;
   }
 
-  const label = passes.length === 1
-    ? `The pass ${formatSpan(song, first.span)}, ${formatTimes(first.occurrence)}, has no sync point at its start, so its timing is guessed`
-    : `${passes.length} repeated passes have no sync point at their start, so their timing is guessed`;
-  return { id: "unsyncedPasses", label, target: { position: first.first, action: `Go to ${formatLocation(song, timeline[first.first]!)}` } };
+  const label = rest.length === 0
+    ? "A meter change between sync points mistimes the measures around it"
+    : `${rest.length + 1} meter changes between sync points mistime the measures around them`;
+  return { id: "meterChanges", label, target: { position: first, action: `Go to ${formatLocation(song, timeline[first]!)}` } };
 }
 
 function getHints(song: Song): SetupHint[] {
-  return [getUnplayedHint(song), getUnsyncedPassesHint(song)].filter(hint => hint !== undefined);
+  return [getUnplayedHint(song), getMeterChangesHint(song)].filter(hint => hint !== undefined);
 }
 
 export function isFileStep(id: SetupStepId): boolean {

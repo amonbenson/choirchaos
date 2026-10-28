@@ -3,21 +3,20 @@ import { describe, expect, it } from "vitest";
 import { idOf, makeAudioSong, makeAudioSongWithBakedVamp, makeAudioSongWithRepeat } from "@/test/fixtures";
 
 import { formatOccurrenceShort } from "./locationFormat";
-import { getRecordingStretches, type Occurrence, type StoredWarpMarker, type TimelineEntry } from "./recording";
+import Measure from "./measure";
+import { type Occurrence, type StoredWarpMarker, type TimelineEntry } from "./recording";
 import type Song from "./song";
 import {
   canPlaceWarpMarker,
   constrainWarpMarkerTime,
-  findUnsyncedRepeatPasses,
+  findMeterChangesToSync,
   formatSyncTime,
   getOccurrenceKey,
   getPositionedWarpMarkers,
   getReassignCandidates,
   getSyncedOccurrences,
-  getSyncStatus,
   getWarpMarkerCandidates,
   LARGE_NUDGE_STEP,
-  MAX_MEASURES_PER_SYNC_POINT,
   MIN_WARP_MARKER_GAP,
   NUDGE_STEP,
   nudgeWarpMarkerTime,
@@ -207,43 +206,54 @@ describe("sync status", () => {
   // Positions 0 to 7 play "1 2 3 2 3 2 3 4" in the spans 1 to 3, 2 to 3, 2 to 4.
   const song = makeAudioSongWithRepeat();
   const timeline = song.getTimeline();
-  const passes = getRecordingStretches(song.getMeasures(), song.getRecording());
 
-  it("names the passes without a sync point", () => {
-    const status = getSyncStatus(timeline, [marker(song, "1", 1, 0), marker(song, "3", 3, 3)], passes);
+  function withBeats(...beats: number[]): { timeline: TimelineEntry[]; measures: Measure[] } {
+    return {
+      timeline: beats.map((_, position) => ({ position, measure: `m${position + 1}`, occurrence: 1 })),
+      measures: beats.map((count, i) => new Measure(`m${i + 1}`, `${i + 1}`, count)),
+    };
+  }
 
-    expect(status.count).toBe(2);
-    expect(status.unsyncedPasses).toEqual([{ first: 3, last: 4 }]);
+  function syncAt(...positions: number[]): StoredWarpMarker[] {
+    return positions.map(position => ({ measure: `m${position + 1}`, occurrence: 1, time: position }));
+  }
+
+  it("needs nothing beyond two sync points in a steady meter, repeats included", () => {
+    expect(findMeterChangesToSync(timeline, song.getMeasures(), [marker(song, "1", 1, 0), marker(song, "4", 1, 7)])).toEqual([]);
   });
 
-  it("counts every pass covered with one sync point each", () => {
-    const markers = [marker(song, "1", 1, 0), marker(song, "2", 2, 1), marker(song, "2", 3, 2)];
+  it("names nothing before the song is synced", () => {
+    const { timeline: changing, measures } = withBeats(4, 3, 4);
 
-    expect(getSyncStatus(timeline, markers, passes).unsyncedPasses).toEqual([]);
+    expect(findMeterChangesToSync(changing, measures, syncAt(0))).toEqual([]);
   });
 
-  it("finds repeated passes without a sync point at their start", () => {
-    const inside = [marker(song, "1", 1, 0), marker(song, "3", 2, 1), marker(song, "2", 3, 2)];
+  it("asks for a sync point at each meter change between sync points, one at a time", () => {
+    const { timeline: changing, measures } = withBeats(4, 4, 3, 3, 4, 4);
 
-    expect(findUnsyncedRepeatPasses(timeline, inside, passes).map(pass => pass.first)).toEqual([3]);
-    expect(findUnsyncedRepeatPasses(timeline, [marker(song, "1", 1, 0)], passes).map(pass => pass.first)).toEqual([3, 5]);
+    expect(findMeterChangesToSync(changing, measures, syncAt(0, 5))).toEqual([2]);
+    expect(findMeterChangesToSync(changing, measures, syncAt(0, 2, 5))).toEqual([4]);
+    expect(findMeterChangesToSync(changing, measures, syncAt(0, 2, 4, 5))).toEqual([]);
   });
 
-  it("does not ask for a sync point at the start of the first pass", () => {
-    expect(findUnsyncedRepeatPasses(timeline, [marker(song, "2", 2, 1), marker(song, "2", 3, 2)], passes)).toEqual([]);
+  it("names every stretch whose meter changes", () => {
+    const { timeline: changing, measures } = withBeats(4, 3, 4, 4, 2, 4);
+
+    expect(findMeterChangesToSync(changing, measures, syncAt(0, 3, 5))).toEqual([1, 4]);
   });
 
-  it("names stretches with too many measures per sync point", () => {
-    const long = Array.from({ length: 3 * MAX_MEASURES_PER_SYNC_POINT }, (_, position) => ({ position, measure: "m1", occurrence: position + 1 }));
-    const markers = [{ measure: "m1", occurrence: 3, time: 1 }, { measure: "m1", occurrence: 4, time: 2 }];
+  it("asks for the start once a pickup is synced but extrapolated", () => {
+    const { timeline: pickup, measures } = withBeats(1, 4, 4, 4);
 
-    expect(getSyncStatus(long, markers, []).gaps).toEqual([{ first: 3, last: long.length - 1, length: long.length - 3 }]);
-    expect(getSyncStatus(long, [], []).gaps).toEqual([{ first: 0, last: long.length - 1, length: long.length }]);
+    expect(findMeterChangesToSync(pickup, measures, syncAt(1, 3))).toEqual([0]);
+    expect(findMeterChangesToSync(pickup, measures, syncAt(0, 1, 3))).toEqual([]);
   });
 
-  it("finds no gaps in a short recording", () => {
-    expect(getSyncStatus(timeline, [], passes).gaps).toEqual([]);
-    expect(getSyncStatus([], [], []).gaps).toEqual([]);
+  it("asks for the last measure when the meter changes at the last sync point", () => {
+    const { timeline: ending, measures } = withBeats(4, 4, 2, 2);
+
+    expect(findMeterChangesToSync(ending, measures, syncAt(0, 2))).toEqual([3]);
+    expect(findMeterChangesToSync(ending, measures, syncAt(0, 2, 3))).toEqual([]);
   });
 
   it("groups the synced occurrences by measure", () => {

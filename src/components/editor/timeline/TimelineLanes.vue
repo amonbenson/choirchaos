@@ -12,7 +12,6 @@ import { describeSection, formatSectionChip } from "@/core/models/scoreOverlays"
 import { getSectionPasses, type Section } from "@/core/models/sections";
 import { isMarkerSelected, isMeasureSelected, isPassSelected, isSectionSelected } from "@/core/models/selection";
 import type Song from "@/core/models/song";
-import { findUnsyncedRepeatPasses } from "@/core/models/warpEditing";
 import { getSectionTicks } from "@/core/player/route";
 import { getBeatTick, getStartTick } from "@/core/player/timeline";
 import { usePlayerStore } from "@/stores/player";
@@ -94,11 +93,6 @@ const selectedSection = computed(() => selected.value.kind === "section" ? selec
 
 const recordingStretches = computed(() => getRecordingStretches(props.song.getMeasures(), props.song.getRecording()));
 
-/** Audio passes whose timing is guessed, marked so they get a sync point. */
-const unsyncedPasses = computed(() => new Set(props.song.playerMode === "audio"
-  ? findUnsyncedRepeatPasses(props.song.getTimeline(), props.song.getWarpMarkers(), recordingStretches.value).map(stretch => stretch.first)
-  : []));
-
 const stretches = computed(() => recordingStretches.value.flatMap((stretch, index) => {
   const first = timeline.value[stretch.first];
   const last = timeline.value[stretch.last];
@@ -107,14 +101,12 @@ const stretches = computed(() => recordingStretches.value.flatMap((stretch, inde
     return [];
   }
 
-  const unsynced = unsyncedPasses.value.has(stretch.first);
   return [{
     stretch,
     index,
     block,
     text: formatStretch(stretch, false),
-    name: unsynced ? `${formatStretch(stretch, true)}, no sync point at its start` : formatStretch(stretch, true),
-    unsynced,
+    name: formatStretch(stretch, true),
     selected: isPassSelected(selection.value, index),
   }];
 }));
@@ -242,11 +234,6 @@ function formatStretch(stretch: RecordingStretch, long: boolean): string {
       class="bg-surface-100 hover:bg-surface-100 dark:bg-surface-800 dark:hover:bg-surface-700"
       @click="selectAndSeek({ kind: 'pass', index: item.index })"
     >
-      <i
-        v-if="item.unsynced"
-        class="pi pi-exclamation-circle text-[0.625rem] text-attention"
-        aria-hidden="true"
-      />
       <span class="truncate">{{ item.text }}</span>
     </TimelineLaneItem>
   </ul>

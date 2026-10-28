@@ -73,7 +73,7 @@ test.describe("timeline and audio sync", () => {
     await expect.poll(storedTime).toBeCloseTo(playhead, 3);
 
     await page.getByRole("button", { name: "Clear selection" }).click();
-    await expect(panel.getByRole("region", { name: "Audio sync" })).toContainText("every pass covered");
+    await expect(panel.getByRole("region", { name: "Audio sync" })).toContainText("Synced with");
     expect(errors).toEqual([]);
   });
 
@@ -230,27 +230,32 @@ test.describe("timeline and audio sync", () => {
     expect(await stored()).toEqual([{ ...vamp, to: locationAt(score, "1", 3, 2) }, cut]);
   });
 
-  test("passes of a recorded repeat without a sync point at their start are marked and lead to a hint", async ({ page, factory, loginAs }) => {
+  test("two sync points sync recorded repeats, and a meter change between them leads to a hint", async ({ page, admin, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const bundle = await buildSongBundle(MINIMAL, { mode: "audio", repeats: [{ from: "1", to: "2", passes: 3 }] });
-    bundle.fields.recording.warpMarkers = bundle.fields.recording.warpMarkers.filter(marker => marker.measure !== "m1" || marker.occurrence === 1);
+    const markers = bundle.fields.recording.warpMarkers;
+    bundle.fields.recording.warpMarkers = [markers[0]!, markers.at(-1)!];
     const song = await factory.createSong(owner, show, bundle);
     const errors = collectPageErrors(page);
     await loginAs(owner);
 
     await page.goto(`/show/${show.id}/song/${song.id}/edit`);
     await waitForPlayer(page);
-    const timeline = page.getByRole("region", { name: "Timeline", exact: true });
     const panel = page.getByRole("region", { name: "Editor panel" });
-    await expect(timeline.getByRole("list", { name: "Recording" }).getByRole("button", { name: /no sync point at its start$/ })).toHaveCount(2);
-
     const checklist = panel.getByRole("list", { name: "Setup checklist" });
-    await expect(checklist).toContainText("2 repeated passes have no sync point at their start, so their timing is guessed");
-    await checklist.getByRole("button", { name: "Go to 1, 2nd time" }).click();
-    await expect(page.getByRole("slider", { name: "Position" })).toHaveAttribute("aria-valuetext", /^1, 2nd time/);
-    await expect(panel.getByRole("heading", { name: "Measure 1" })).toBeVisible();
-    await expect(panel.getByRole("region", { name: "Audio sync" }).getByRole("button", { name: "Sync to playhead" })).toBeVisible();
+    await expect(panel.getByRole("region", { name: "Audio sync" })).toContainText("Synced with 2 sync points");
+    await expect(checklist).not.toContainText("meter change");
+
+    await admin.collection("songs").update(song.id, {
+      score: { ...bundle.fields.score, measures: bundle.fields.score.measures.map(measure => measure.id === "m3" ? { ...measure, beats: 2 } : measure) },
+    });
+    await page.reload();
+    await waitForPlayer(page);
+    await expect(checklist).toContainText("A meter change between sync points mistimes the measures around it");
+    await checklist.getByRole("button", { name: "Go to 3" }).click();
+    await expect(page.getByRole("slider", { name: "Position" })).toHaveAttribute("aria-valuetext", /^3/);
+    await expect(panel.getByRole("heading", { name: "Measure 3" })).toBeVisible();
     expect(errors).toEqual([]);
   });
 
