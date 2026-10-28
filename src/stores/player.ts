@@ -3,11 +3,10 @@ import { computed, markRaw, onScopeDispose } from "vue";
 
 import { useEvent } from "@/composables/event";
 import type { NoteEvent } from "@/core/midi/events";
-import type { MeasureId } from "@/core/models/measure";
 import type { Occurrence } from "@/core/models/recording";
 import type Song from "@/core/models/song";
 import PlayerEngine, { type PlayerLocation, type PlayerSectionState, type PlayerSegueState } from "@/core/player/engine";
-import { getLocationTick as findLocationTick, groupPositionsByMeasure } from "@/core/player/timeline";
+import { getLocationTick as findLocationTick } from "@/core/player/timeline";
 
 const globalPlayer = new PlayerEngine();
 
@@ -25,7 +24,6 @@ export const usePlayerStore = defineStore("player", () => {
   const position = useEvent(globalPlayer.onPositionChange, globalPlayer.getPosition());
   const duration = useEvent(globalPlayer.onDurationChange, globalPlayer.getDuration());
   const timeline = useEvent(globalPlayer.onTimelineChange, globalPlayer.getTimeline());
-  const activeTrackIndices = useEvent(globalPlayer.onActiveTrackIndicesChange, globalPlayer.getActiveTrackIndices());
   const currentTempo = useEvent(globalPlayer.onCurrentTempoChange, globalPlayer.getCurrentTempo());
   const currentTimeSignature = useEvent(globalPlayer.onCurrentTimeSignatureChange, globalPlayer.getCurrentTimeSignature());
   const currentLocation = useEvent<PlayerLocation | undefined>(globalPlayer.onCurrentLocationChange, globalPlayer.getCurrentLocation());
@@ -54,16 +52,6 @@ export const usePlayerStore = defineStore("player", () => {
   );
 
   const trackAmplitudes = useEvent<number[]>(globalPlayer.onTrackAmplitudesChange, []);
-
-  /** The tracks that start a note anywhere the measure plays, since one box stands for all its occurrences. */
-  const measureTrackIndices = computed(() => {
-    const result = new Map<MeasureId, Set<number>>();
-    for (const [measure, positions] of groupPositionsByMeasure(timeline.value)) {
-      result.set(measure, new Set(positions.flatMap(p => [...activeTrackIndices.value[p] ?? []])));
-    }
-
-    return result;
-  });
 
   /** Reactive: recomputes when the timeline is re-resolved. */
   function getLocationTick(location: Occurrence & { beat: number }): number | undefined {
@@ -142,8 +130,6 @@ export const usePlayerStore = defineStore("player", () => {
     position,
     duration,
     timeline,
-    activeTrackIndices,
-    measureTrackIndices,
     currentTempo,
     currentTimeSignature,
     currentLocation,

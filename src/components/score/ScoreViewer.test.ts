@@ -6,7 +6,6 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { h, reactive, type Ref, ref, type SetupContext } from "vue";
 
 import { provideSongEditor, type SongEditor } from "@/composables/useSongEditor";
-import type { MeasureId } from "@/core/models/measure";
 import { selectMeasures } from "@/core/models/selection";
 import Song from "@/core/models/song";
 import type { TimelinePosition } from "@/core/player/timeline";
@@ -28,7 +27,6 @@ const player = vi.hoisted(() => ({
   currentLocation: undefined as PlayerLocation | undefined,
   currentTimelinePosition: undefined as TimelinePosition | undefined,
   currentSection: undefined as PlayerSectionState | undefined,
-  measureTrackIndices: new Map<MeasureId, Set<number>>(),
   seekPosition: vi.fn(),
   seekLocation: vi.fn(),
   syncWarp: vi.fn(),
@@ -144,7 +142,6 @@ describe("ScoreViewer", () => {
     state.currentTimelinePosition = undefined;
     state.currentSection = undefined;
     state.position = 0;
-    state.measureTrackIndices = new Map();
   });
 
   describe("while rehearsing", () => {
@@ -180,17 +177,6 @@ describe("ScoreViewer", () => {
       click(box(wrapper, "2"));
 
       expect(fakePlayer().seekLocation).toHaveBeenCalledWith({ measure: idOf(song, "2"), occurrence: 1, beat: 0 });
-    });
-
-    it("highlights measures where a highlighted track plays", async () => {
-      const song = makeMidiSongWithRepeat();
-      song.tracks[1]!.mixer.highlight = true;
-      fakePlayer().measureTrackIndices = new Map([[idOf(song, "3"), new Set([1])]]);
-      const { wrapper } = mountViewer(song);
-      await flushPromises();
-
-      expect(box(wrapper, "3").className).toContain("bg-track-highlight/25");
-      expect(box(wrapper, "2").className).not.toContain("bg-track-highlight/25");
     });
   });
 

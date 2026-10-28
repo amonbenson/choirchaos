@@ -6,7 +6,6 @@ export type TrackMixerEntry = {
   gain: number;
   mute: boolean;
   solo: boolean;
-  highlight: boolean;
 };
 
 export type ShowMixer = Record<string, TrackMixerEntry>;
@@ -15,11 +14,10 @@ export const DEFAULT_TRACK_MIXER: Readonly<TrackMixerEntry> = {
   gain: DEFAULT_TRACK_GAIN,
   mute: false,
   solo: false,
-  highlight: false,
 };
 
 export function isDefaultTrackMixer(entry: TrackMixerEntry): boolean {
-  return entry.gain === DEFAULT_TRACK_GAIN && !entry.mute && !entry.solo && !entry.highlight;
+  return entry.gain === DEFAULT_TRACK_GAIN && !entry.mute && !entry.solo;
 }
 
 function isTrackMixerEntry(v: unknown): v is TrackMixerEntry {
@@ -28,7 +26,6 @@ function isTrackMixerEntry(v: unknown): v is TrackMixerEntry {
     && typeof v.gain === "number"
     && typeof v.mute === "boolean"
     && typeof v.solo === "boolean"
-    && typeof v.highlight === "boolean"
   );
 }
 

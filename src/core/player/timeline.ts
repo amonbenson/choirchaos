@@ -5,7 +5,6 @@ import type { Tick } from "../midi/types";
 import type { WarpMarker } from "../midi/warp";
 import type WarpMap from "../midi/warp";
 import type Measure from "../models/measure";
-import type { MeasureId } from "../models/measure";
 import { findPosition, type Occurrence, type Timeline, type TimelineEntry } from "../models/recording";
 import { getPositionedSyncPoints, type SyncPoints } from "../models/warpEditing";
 import type { PlayerLocation } from "./types";
@@ -158,14 +157,4 @@ export function buildBeatEvents(timeline: ResolvedTimeline): MidiEventList<BeatE
   return new MidiEventList(timeline.flatMap(position =>
     position.beatTicks.map((tick, beat) => new BeatEvent(tick, position.position, beat)),
   ));
-}
-
-/** The positions of each measure, so callers can combine per-position data into per-measure data. */
-export function groupPositionsByMeasure(timeline: ResolvedTimeline): Map<MeasureId, number[]> {
-  const groups = new Map<MeasureId, number[]>();
-  for (const { measure, position } of timeline) {
-    groups.set(measure, [...groups.get(measure) ?? [], position]);
-  }
-
-  return groups;
 }

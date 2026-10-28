@@ -14,7 +14,6 @@ export default class Track {
       index: number;
       mute: boolean;
       solo: boolean;
-      highlight: boolean;
       gain: number;
       effectiveMute: boolean;
       effectiveGain: number;
@@ -22,7 +21,6 @@ export default class Track {
       index: 0,
       mute: false,
       solo: false,
-      highlight: false,
       gain: DEFAULT_TRACK_GAIN,
       effectiveMute: false,
       effectiveGain: DEFAULT_TRACK_GAIN,

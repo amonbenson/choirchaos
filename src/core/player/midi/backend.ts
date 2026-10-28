@@ -8,7 +8,7 @@ import type Song from "../../models/song";
 import { resolveUrl } from "../../utils/file";
 import type AudioClock from "../audioClock";
 import { type BackendCallbacks, type LoadResult, PlayerBackend, type StepResult } from "../backend";
-import { findPositionAt, resolveMidiTimeline, type TimelinePosition } from "../timeline";
+import { resolveMidiTimeline } from "../timeline";
 import type { SystemEvents, TrackEvents } from "../types";
 
 const AUDIO_CLOCK_OFFSET = 0.1;
@@ -33,7 +33,6 @@ export default class MidiBackend extends PlayerBackend {
   private player: any = undefined;
   private instruments: { [key: number]: any } = {};
   private noteEvents: TrackEvents[] = [];
-  private activeTrackIndices: Set<number>[] = [];
   // Notes just before a step limit. They sound only if the engine continues without a jump there.
   private heldNotes: NoteEvent[] = [];
   private heldLimit: Tick = 0;
@@ -55,11 +54,6 @@ export default class MidiBackend extends PlayerBackend {
 
   getNoteEvents(): TrackEvents[] {
     return this.noteEvents;
-  }
-
-  /** The indices of the tracks that start a note in each timeline position. */
-  getActiveTrackIndices(): readonly ReadonlySet<number>[] {
-    return this.activeTrackIndices;
   }
 
   private resetAudioClockReference(): void {
@@ -103,7 +97,6 @@ export default class MidiBackend extends PlayerBackend {
     this.systemEvents.tempo = new MidiEventList();
     this.systemEvents.timeSignature = new MidiEventList();
     this.noteEvents = [];
-    this.activeTrackIndices = timeline.map(() => new Set<number>());
 
     for (const event of midiJson.score.events) {
       if (event.type === "TEMPO") {
@@ -156,8 +149,6 @@ export default class MidiBackend extends PlayerBackend {
               t,
             ));
             noteOnIndices[midiEvent.noteOff.noteNumber] = -1;
-
-            this.markTrackActive(timeline, noteOnEvent.$tick, t);
           }
         }
       }
@@ -181,13 +172,6 @@ export default class MidiBackend extends PlayerBackend {
     await new Promise(resolve => this.player.loader.waitLoad(resolve));
 
     return { duration: timeline.at(-1)!.endTick, timeline };
-  }
-
-  private markTrackActive(timeline: readonly TimelinePosition[], tick: Tick, trackIndex: number): void {
-    const position = findPositionAt(timeline, tick);
-    if (position) {
-      this.activeTrackIndices[position.position]!.add(trackIndex);
-    }
   }
 
   play(currentPosition: Tick): void {
@@ -348,7 +332,6 @@ export default class MidiBackend extends PlayerBackend {
   dispose(): void {
     this.player = undefined;
     this.noteEvents = [];
-    this.activeTrackIndices = [];
     this.heldNotes = [];
     this.currentSong = undefined;
   }
