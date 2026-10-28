@@ -23,8 +23,6 @@ const props = defineProps<{
   overlays?: BoxOverlays;
   /** The playhead is in this measure. */
   playing: boolean;
-  /** A highlighted track plays in this measure. */
-  highlighted: boolean;
   resizable: boolean;
   dimmed: boolean;
 }>();
@@ -45,7 +43,7 @@ const review = computed(() => needsReview(props.measure.layout));
 
 const surfaceClass = computed(() => {
   if (!props.editMode) {
-    return props.highlighted ? "bg-track-highlight/25 hover:bg-track-highlight/45" : "hover:bg-primary/25";
+    return "hover:bg-primary/25";
   }
 
   if (selected.value) {

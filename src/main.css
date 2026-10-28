@@ -34,8 +34,6 @@
   --color-sync: var(--color-orange-400);
   --color-sync-text: var(--color-orange-600);
 
-  --color-track-highlight: var(--color-sky-400);
-
   /* TODO: only used by the jump chips on the score, remove together with them. */
   --color-score-chip: var(--color-white);
   --color-score-chip-border: var(--color-slate-700);

@@ -88,12 +88,6 @@ function layoutOf(measure: Measure): MeasureLayout | undefined {
 
 const measuresByPage = computed(() => groupByPage(props.song?.getMeasures() ?? [], layoutOf));
 
-const highlightedTracks = computed(() => new Set(props.song?.tracks.flatMap((track, i) => track.mixer.highlight ? [i] : []) ?? []));
-
-const highlightedMeasures = computed(() => new Set([...player.measureTrackIndices]
-  .filter(([, tracks]) => [...tracks].some(track => highlightedTracks.value.has(track)))
-  .map(([measure]) => measure)));
-
 function isResizable(measure: Measure): boolean {
   const current = selected.value;
   return !!props.editMode && !drawing.value && current.kind === "measures" && current.measures.length === 1 && current.measures[0]!.id === measure.id;
@@ -567,7 +561,6 @@ async function onResizeEnd(measure: Measure): Promise<void> {
             :selection="selection"
             :overlays="boxOverlays.get(measure.id)"
             :playing="currentMeasureId === measure.id"
-            :highlighted="highlightedMeasures.has(measure.id)"
             :resizable="isResizable(measure)"
             :dimmed="previewing"
             @click.stop="onBoxClick($event, measure)"
