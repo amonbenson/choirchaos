@@ -166,7 +166,7 @@ async function deleteSong(): Promise<void> {
           <label
             for="song-title"
             class="text-sm font-medium text-muted-color"
-          >Title</label>
+          >Song title</label>
           <InputText
             id="song-title"
             v-model="draft.title"
@@ -235,17 +235,25 @@ async function deleteSong(): Promise<void> {
           />
         </template>
 
+        <span
+          v-if="draft.playback !== 'none'"
+          id="song-tracks"
+          class="mt-2 text-sm font-medium text-muted-color"
+        >Tracks</span>
         <div
           v-if="draft.playback !== 'none'"
           class="flex flex-col rounded-md border border-(--p-content-border-color)"
         >
           <div
             ref="trackList"
+            role="list"
+            aria-labelledby="song-tracks"
             class="flex flex-col"
           >
             <div
               v-for="track, i in tracks"
               :key="track.key"
+              role="listitem"
               class="flex items-center gap-2 border-b border-(--p-content-border-color) bg-(--p-content-background) p-2 pl-1"
             >
               <button
@@ -271,6 +279,7 @@ async function deleteSong(): Promise<void> {
                     size="small"
                     :invalid="!!errors.tracks && !track.title.trim()"
                     :aria-label="`Name of track ${i + 1}`"
+                    placeholder="Track name"
                     fluid
                   />
                   <span
