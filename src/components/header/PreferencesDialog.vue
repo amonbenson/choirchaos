@@ -195,7 +195,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                   Show vamps, repeats and cuts
                 </div>
                 <div class="text-sm text-muted-color">
-                  Show arrangement sections on the score while rehearsing. The editor always shows them.
+                  Show arrangement sections on the score while rehearsing.
                 </div>
               </div>
               <ToggleSwitch
