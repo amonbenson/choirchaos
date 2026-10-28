@@ -14,10 +14,9 @@ import HalfNoteIcon from "@/components/icons/HalfNoteIcon.vue";
 import QuarterNoteIcon from "@/components/icons/QuarterNoteIcon.vue";
 import { SECTION_COLORS } from "@/components/score/sectionColors";
 import { formatLocation } from "@/core/models/locationFormat";
-import { findRecordedPasses } from "@/core/models/recording";
 import { formatPlayingSection, formatSectionPass } from "@/core/models/scoreOverlays";
 import type Show from "@/core/models/show";
-import { getBeatTick } from "@/core/player/timeline";
+import { getSectionTicks } from "@/core/player/route";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -111,17 +110,10 @@ const sectionRanges = computed(() => {
     return [];
   }
 
-  return song.getSections().flatMap((section, index) => {
-    const passes = findRecordedPasses(timeline, section);
-    const first = passes[0] && timeline[passes[0].first];
-    const last = passes.at(-1) && timeline[passes.at(-1)!.last];
-    if (!first || !last) {
-      return [];
-    }
-
-    const start = getBeatTick(first, section.from.beat);
-    const end = getBeatTick(last, section.to.beat + 1);
-    return [{ key: index, kind: section.kind, left: start / duration, width: (end - start) / duration }];
+  const sections = song.getSections();
+  return sections.flatMap((section, index) => {
+    const ticks = getSectionTicks(timeline, sections, section);
+    return ticks ? [{ key: index, kind: section.kind, left: ticks.start / duration, width: (ticks.end - ticks.start) / duration }] : [];
   });
 });
 

@@ -6,14 +6,17 @@ import { injectEditorSelection } from "@/composables/useEditorSelection";
 import type { TimelineAxis } from "@/composables/useTimelineAxis";
 import { formatLocation, formatOccurrence, formatOrdinal, formatTimes } from "@/core/models/locationFormat";
 import type { MeasureId } from "@/core/models/measure";
-import { findRecordedPasses, getRecordingStretches, type RecordingStretch } from "@/core/models/recording";
+import { getRecordingStretches, type RecordingStretch } from "@/core/models/recording";
 import { describeSection, formatSectionChip } from "@/core/models/scoreOverlays";
 import { isMarkerSelected, isPassSelected, isSectionSelected } from "@/core/models/selection";
 import type Song from "@/core/models/song";
-import { getBeatTick, getStartTick } from "@/core/player/timeline";
+import { findUnsyncedRepeatPasses } from "@/core/models/warpEditing";
+import { getSectionTicks } from "@/core/player/route";
+import { getStartTick } from "@/core/player/timeline";
 import { usePlayerStore } from "@/stores/player";
 
 import TimelineLaneItem from "./TimelineLaneItem.vue";
+import TimelineSectionRange from "./TimelineSectionRange.vue";
 
 export type LaneName = "Markers" | "Sections" | "Recording" | "Measures";
 
@@ -25,7 +28,7 @@ const props = defineProps<{
 }>();
 
 const player = usePlayerStore();
-const { selection, selectAndSeek } = injectEditorSelection();
+const { selection, selected, selectAndSeek } = injectEditorSelection();
 
 const timeline = computed(() => player.timeline);
 const label = (id: MeasureId): string => props.song.findMeasure(id)?.label ?? "?";
@@ -45,11 +48,9 @@ const markers = computed(() => props.song.getMarkers().flatMap((marker) => {
   }];
 }));
 
-const sections = computed(() => props.song.getSections().flatMap((section, index) => {
-  const passes = findRecordedPasses(props.song.getTimeline(), section);
-  const first = timeline.value[passes[0]?.first ?? -1];
-  const last = timeline.value[passes.at(-1)?.last ?? -1];
-  const block = first && last && props.axis.toBlock(getBeatTick(first, section.from.beat), getBeatTick(last, section.to.beat + 1));
+const sections = computed(() => props.song.getSections().flatMap((section, index, all) => {
+  const ticks = getSectionTicks(timeline.value, all, section);
+  const block = ticks && props.axis.toBlock(ticks.start, ticks.end);
   if (!block) {
     return [];
   }
@@ -67,7 +68,16 @@ const sections = computed(() => props.song.getSections().flatMap((section, index
   }];
 }));
 
-const stretches = computed(() => getRecordingStretches(props.song.getMeasures(), props.song.getRecording()).flatMap((stretch, index) => {
+const selectedSection = computed(() => selected.value.kind === "section" ? selected.value.section : undefined);
+
+const recordingStretches = computed(() => getRecordingStretches(props.song.getMeasures(), props.song.getRecording()));
+
+/** Audio passes whose timing is guessed, marked so they get a sync point. */
+const unsyncedPasses = computed(() => new Set(props.song.playerMode === "audio"
+  ? findUnsyncedRepeatPasses(props.song.getTimeline(), props.song.getWarpMarkers(), recordingStretches.value).map(stretch => stretch.first)
+  : []));
+
+const stretches = computed(() => recordingStretches.value.flatMap((stretch, index) => {
   const first = timeline.value[stretch.first];
   const last = timeline.value[stretch.last];
   const block = first && last && props.axis.toBlock(getStartTick(first), last.endTick);
@@ -75,12 +85,14 @@ const stretches = computed(() => getRecordingStretches(props.song.getMeasures(),
     return [];
   }
 
+  const unsynced = unsyncedPasses.value.has(stretch.first);
   return [{
     stretch,
     index,
     block,
     text: formatStretch(stretch, false),
-    name: formatStretch(stretch, true),
+    name: unsynced ? `${formatStretch(stretch, true)}, no sync point at its start` : formatStretch(stretch, true),
+    unsynced,
     selected: isPassSelected(selection.value, index),
   }];
 }));
@@ -141,23 +153,31 @@ function formatStretch(stretch: RecordingStretch, long: boolean): string {
     </TimelineLaneItem>
   </ul>
 
-  <ul
-    class="relative h-6"
-    :aria-labelledby="titleIds.Sections"
-  >
-    <TimelineLaneItem
-      v-for="item in sections"
-      :key="item.index"
-      :block="item.block"
-      :name="item.name"
-      :pressed="item.selected"
-      class="font-semibold"
-      :class="item.colors"
-      @click="selectAndSeek({ kind: 'section', from: item.section.from })"
+  <div class="relative h-6">
+    <ul
+      class="relative h-6"
+      :aria-labelledby="titleIds.Sections"
     >
-      <span class="truncate">{{ item.text }}</span>
-    </TimelineLaneItem>
-  </ul>
+      <TimelineLaneItem
+        v-for="item in sections"
+        :key="item.index"
+        :block="item.block"
+        :name="item.name"
+        :pressed="item.selected"
+        class="font-semibold"
+        :class="item.colors"
+        @click="selectAndSeek({ kind: 'section', from: item.section.from })"
+      >
+        <span class="truncate">{{ item.text }}</span>
+      </TimelineLaneItem>
+    </ul>
+    <TimelineSectionRange
+      v-if="selectedSection"
+      :song="song"
+      :section="selectedSection"
+      :axis="axis"
+    />
+  </div>
 
   <ul
     class="relative h-6"
@@ -172,6 +192,11 @@ function formatStretch(stretch: RecordingStretch, long: boolean): string {
       class="border border-surface-300 bg-surface-0 hover:bg-surface-100 dark:border-surface-600 dark:bg-surface-900 dark:hover:bg-surface-800"
       @click="selectAndSeek({ kind: 'pass', index: item.index })"
     >
+      <i
+        v-if="item.unsynced"
+        class="pi pi-exclamation-circle text-[0.625rem] text-attention"
+        aria-hidden="true"
+      />
       <span class="truncate">{{ item.text }}</span>
     </TimelineLaneItem>
   </ul>

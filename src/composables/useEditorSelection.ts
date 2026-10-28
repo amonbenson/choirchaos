@@ -31,6 +31,8 @@ export type EditorSelection = {
   select: (next: Selection) => void;
   /** Selects an object and moves the playhead to where it starts, as a click on it in the timeline does. */
   selectAndSeek: (next: Selection) => void;
+  /** Selects the measure at a timeline position and moves the playhead there, so that pass can be edited or synced. */
+  selectPosition: (position: number) => void;
   /** Selects a clicked measure alone, toggles it, or selects the range from the last one clicked. */
   clickMeasure: (id: MeasureId, intent: ClickIntent) => void;
   selectAllMeasures: () => void;
@@ -115,6 +117,13 @@ export function useEditorSelection(song: Ref<Song | undefined>, editMode: Ref<bo
     seekTo(selected.value);
   }
 
+  function selectPosition(position: number): void {
+    const entry = song.value?.getTimeline()[position];
+    const selectable = entry && song.value && getSelectableMeasures(song.value).some(measure => measure.id === entry.measure);
+    select(selectable ? selectMeasures([entry.measure]) : NO_SELECTION);
+    player.seekPosition(position);
+  }
+
   function clickMeasure(id: MeasureId, intent: ClickIntent): void {
     const current = selection.value;
     if (intent === "range") {
@@ -135,7 +144,7 @@ export function useEditorSelection(song: Ref<Song | undefined>, editMode: Ref<bo
   watch(song, clear);
   watch(editMode, clear);
 
-  return { selection, selected, runs, run, touchMultiSelect, select, selectAndSeek, clickMeasure, selectAllMeasures, clear };
+  return { selection, selected, runs, run, touchMultiSelect, select, selectAndSeek, selectPosition, clickMeasure, selectAllMeasures, clear };
 }
 
 const EDITOR_SELECTION: InjectionKey<EditorSelection> = Symbol("editorSelection");

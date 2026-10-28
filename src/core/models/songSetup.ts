@@ -1,7 +1,10 @@
+import { formatLocation, formatTimes } from "./locationFormat";
 import type Measure from "./measure";
+import type { MeasureId } from "./measure";
 import { countReviewItems } from "./measureReview";
-import { findUnplayedMeasures } from "./recording";
+import { findUnplayedMeasures, getRecordingStretches, type RecordingSpan } from "./recording";
 import type Song from "./song";
+import { findUnsyncedRepeatPasses } from "./warpEditing";
 
 export type SetupStepId = "score" | "playback" | "measures" | "review" | "sync";
 
@@ -13,9 +16,10 @@ export type SetupStep = {
 
 /** Something worth a look that does not keep the song from being ready. */
 export type SetupHint = {
-  id: "unplayed";
+  id: "unplayed" | "unsyncedPasses";
   label: string;
-  measures: Measure[];
+  /** Where the hint's control goes, a timeline position, with the control's label. */
+  target?: { position: number; action: string };
 };
 
 export type SongSetup = {
@@ -103,14 +107,42 @@ function formatMeasureRuns(score: readonly Measure[], measures: readonly Measure
   return runs.map(run => run.length > 1 ? `${run[0]!.label} to ${run.at(-1)!.label}` : run[0]!.label).join(", ");
 }
 
-function getHints(song: Song): SetupHint[] {
+function getUnplayedHint(song: Song): SetupHint | undefined {
   const unplayed = findUnplayedMeasures(song.getMeasures(), song.getTimeline());
   if (unplayed.length === 0) {
-    return [];
+    return undefined;
   }
 
   const noun = unplayed.length > 1 ? "measures" : "measure";
-  return [{ id: "unplayed", label: `The recording never plays ${noun} ${formatMeasureRuns(song.getMeasures(), unplayed)}`, measures: unplayed }];
+  return { id: "unplayed", label: `The recording never plays ${noun} ${formatMeasureRuns(song.getMeasures(), unplayed)}` };
+}
+
+function formatSpan(song: Song, { from, to }: RecordingSpan): string {
+  const label = (id: MeasureId): string => song.findMeasure(id)?.label ?? "?";
+  return from === to ? label(from) : `${label(from)} to ${label(to)}`;
+}
+
+/** Only once the song is synced, since before that every pass has a guessed timing. */
+function getUnsyncedPassesHint(song: Song): SetupHint | undefined {
+  if (song.playerMode !== "audio" || !isAudioSynced(song)) {
+    return undefined;
+  }
+
+  const timeline = song.getTimeline();
+  const passes = findUnsyncedRepeatPasses(timeline, song.getWarpMarkers(), getRecordingStretches(song.getMeasures(), song.getRecording()));
+  const first = passes[0];
+  if (!first) {
+    return undefined;
+  }
+
+  const label = passes.length === 1
+    ? `The pass ${formatSpan(song, first.span)}, ${formatTimes(first.occurrence)}, has no sync point at its start, so its timing is guessed`
+    : `${passes.length} repeated passes have no sync point at their start, so their timing is guessed`;
+  return { id: "unsyncedPasses", label, target: { position: first.first, action: `Go to ${formatLocation(song, timeline[first.first]!)}` } };
+}
+
+function getHints(song: Song): SetupHint[] {
+  return [getUnplayedHint(song), getUnsyncedPassesHint(song)].filter(hint => hint !== undefined);
 }
 
 export function isFileStep(id: SetupStepId): boolean {

@@ -3,13 +3,20 @@ import { describe, expect, it } from "vitest";
 import { makeAudioSongWithVamp, makeMidiSong } from "@/test/fixtures";
 
 import Measure, { type MeasureLayout } from "./measure";
-import type { RecordingSpan } from "./recording";
+import type { RecordingSpan, StoredWarpMarker } from "./recording";
 import Song from "./song";
 import { getSongSetup, hasUnsyncedAudio } from "./songSetup";
 
 const LAYOUT = { page: 0, x: 0, y: 0, width: 0.1, height: 0.1 };
 
-type SongOptions = { pdf?: boolean; audio?: boolean; measures?: Measure[]; unnumberedBoxes?: MeasureLayout[]; spans?: RecordingSpan[] };
+type SongOptions = {
+  pdf?: boolean;
+  audio?: boolean;
+  measures?: Measure[];
+  unnumberedBoxes?: MeasureLayout[];
+  spans?: RecordingSpan[];
+  warpMarkers?: StoredWarpMarker[];
+};
 
 function makeSong(options: SongOptions = {}): Song {
   return new Song(
@@ -21,7 +28,7 @@ function makeSong(options: SongOptions = {}): Song {
     options.pdf ? "score.pdf" : undefined,
     options.audio ? ["mix.mp3"] : [],
     [],
-    { measures: options.measures ?? [], unnumberedBoxes: options.unnumberedBoxes ?? [], spans: options.spans },
+    { measures: options.measures ?? [], unnumberedBoxes: options.unnumberedBoxes ?? [], spans: options.spans, warpMarkers: options.warpMarkers },
   );
 }
 
@@ -90,8 +97,7 @@ describe("setup hints", () => {
 
     const [hint] = getSongSetup(song).hints;
 
-    expect(hint).toMatchObject({ id: "unplayed", label: "The recording never plays measures 2, 4 to 5" });
-    expect(hint!.measures.map(measure => measure.id)).toEqual(["m2", "m4", "m5"]);
+    expect(hint).toEqual({ id: "unplayed", label: "The recording never plays measures 2, 4 to 5" });
   });
 
   it("names a single measure", () => {
@@ -105,6 +111,31 @@ describe("setup hints", () => {
     song.playerMode = "midi";
 
     expect(getSongSetup(song).next).toBeUndefined();
+  });
+
+  it("names repeated passes of a synced audio song without a sync point at their start", () => {
+    // The passes of 2 to 3 start at positions 1, 3 and 5.
+    const spans = [{ from: "m1", to: "m3" }, { from: "m2", to: "m3" }, { from: "m2", to: "m4" }];
+    const synced = (...occurrences: number[]): Song => makeSong({
+      audio: true,
+      measures: measures(),
+      spans: [...spans, { from: "m5", to: "m5" }],
+      warpMarkers: [{ measure: "m1", occurrence: 1, time: 0 }, ...occurrences.map(occurrence => ({ measure: "m2", occurrence, time: occurrence }))],
+    });
+
+    expect(getSongSetup(synced(1, 3)).hints).toEqual([{
+      id: "unsyncedPasses",
+      label: "The pass 2 to 3, 2nd time, has no sync point at its start, so its timing is guessed",
+      target: { position: 3, action: "Go to 2, 2nd time" },
+    }]);
+    expect(getSongSetup(synced(1)).hints.map(hint => hint.label)).toEqual(["2 repeated passes have no sync point at their start, so their timing is guessed"]);
+    expect(getSongSetup(synced(1, 2, 3)).hints).toEqual([]);
+  });
+
+  it("does not name unsynced passes before the song is synced", () => {
+    const song = makeSong({ audio: true, measures: measures(), spans: [{ from: "m1", to: "m3" }, { from: "m2", to: "m5" }] });
+
+    expect(getSongSetup(song).hints).toEqual([]);
   });
 
   it("has no hints when the recording plays every measure", () => {

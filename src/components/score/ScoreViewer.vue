@@ -212,9 +212,8 @@ const boxOverlays = computed(() => {
 const rangeTarget = computed(() => {
   const current = selected.value;
   const section = props.editMode && !drawing.value && !previewing.value && current.kind === "section" ? current.section : undefined;
-  const run = section && props.song ? getSectionRun(props.song.getTimeline(), section) : undefined;
   const lane = sectionOverlays.value.find(overlay => overlay.section === section)?.lane ?? 0;
-  return section && run ? { section, run, lane } : undefined;
+  return section && props.song && getSectionRun(props.song.getTimeline(), section) ? { section, lane } : undefined;
 });
 
 /** A click on a section or marker badge selects it in the editor. While rehearsing it only moves the playhead there. */
@@ -584,7 +583,6 @@ async function onResizeEnd(measure: Measure): Promise<void> {
           v-if="song && rangeTarget"
           :song="song"
           :section="rangeTarget.section"
-          :run="rangeTarget.run"
           :lane="rangeTarget.lane"
           :pages="visiblePages"
         />

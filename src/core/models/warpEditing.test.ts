@@ -8,6 +8,7 @@ import type Song from "./song";
 import {
   canPlaceWarpMarker,
   constrainWarpMarkerTime,
+  findUnsyncedRepeatPasses,
   formatSyncTime,
   getOccurrenceKey,
   getPositionedWarpMarkers,
@@ -219,6 +220,17 @@ describe("sync status", () => {
     const markers = [marker(song, "1", 1, 0), marker(song, "2", 2, 1), marker(song, "2", 3, 2)];
 
     expect(getSyncStatus(timeline, markers, passes).unsyncedPasses).toEqual([]);
+  });
+
+  it("finds repeated passes without a sync point at their start", () => {
+    const inside = [marker(song, "1", 1, 0), marker(song, "3", 2, 1), marker(song, "2", 3, 2)];
+
+    expect(findUnsyncedRepeatPasses(timeline, inside, passes).map(pass => pass.first)).toEqual([3]);
+    expect(findUnsyncedRepeatPasses(timeline, [marker(song, "1", 1, 0)], passes).map(pass => pass.first)).toEqual([3, 5]);
+  });
+
+  it("does not ask for a sync point at the start of the first pass", () => {
+    expect(findUnsyncedRepeatPasses(timeline, [marker(song, "2", 2, 1), marker(song, "2", 3, 2)], passes)).toEqual([]);
   });
 
   it("names stretches with too many measures per sync point", () => {

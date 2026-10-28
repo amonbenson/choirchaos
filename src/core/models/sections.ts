@@ -59,14 +59,42 @@ export function deserializeSection(stored: StoredSection): Section {
   return { ...stored, from: deserializeLocation(stored.from), to: deserializeLocation(stored.to) };
 }
 
+/** Where the section's own range lies in the recording, which is its first recorded pass. */
+export function getSectionRun(timeline: Timeline, section: Section): RecordedPass | undefined {
+  const first = findPosition(timeline, section.from);
+  const last = findPosition(timeline, section.to);
+  return first === undefined || last === undefined || last < first ? undefined : { first, last };
+}
+
+/** The first position after `after` where one of the sections starts. */
+function findNextSectionStart(timeline: Timeline, sections: readonly Section[], after: number): number {
+  const starts = sections.map(other => findPosition(timeline, other.from) ?? Infinity);
+  return Math.min(...starts.filter(start => start > after));
+}
+
+/**
+ * The recorded passes a section plays. A cut covers exactly its own range. A repeat or vamp also takes in
+ * the directly following repetitions of its range, but none from where another section starts.
+ */
+export function getSectionPasses(timeline: Timeline, sections: readonly Section[], section: Section): RecordedPass[] {
+  const run = getSectionRun(timeline, section);
+  if (!run || section.kind === "cut") {
+    return run ? [run] : [];
+  }
+
+  const next = findNextSectionStart(timeline, sections, run.first);
+  const [first, ...later] = findRecordedPasses(timeline, section);
+  return [first!, ...later.filter(pass => pass.last < next)];
+}
+
 /** Positions and beats a section covers in the recording, counting all its recorded passes. */
 export type SectionExtent = {
   from: { position: number; beat: number };
   to: { position: number; beat: number };
 };
 
-export function getSectionExtent(timeline: Timeline, section: Section): SectionExtent | undefined {
-  const passes = findRecordedPasses(timeline, section);
+export function getSectionExtent(timeline: Timeline, sections: readonly Section[], section: Section): SectionExtent | undefined {
+  const passes = getSectionPasses(timeline, sections, section);
   const last = passes.at(-1);
   if (!last) {
     return undefined;
@@ -125,7 +153,7 @@ export function validateSections(measures: readonly Measure[], timeline: Timelin
       return;
     }
 
-    const extent = getSectionExtent(timeline, section)!;
+    const extent = getSectionExtent(timeline, sections, section)!;
     if (extents.some(other => overlaps(extent, other))) {
       issues.push({ index, reason: "Sections must not overlap." });
       return;
@@ -155,13 +183,6 @@ export function findSection(sections: readonly Section[], from: Location): Secti
   return sections.find(section => isSameStart(section.from, from));
 }
 
-/** The positions of a section's first pass, which its range handles move. */
-export function getSectionRun(timeline: Timeline, section: Section): RecordedPass | undefined {
-  const first = findPosition(timeline, section.from);
-  const last = findPosition(timeline, section.to);
-  return first === undefined || last === undefined ? undefined : { first, last };
-}
-
 /** A section range over whole measures: from the first beat of the run's first measure to the last beat of its last. */
 export function toMeasureRange(measures: readonly Measure[], timeline: Timeline, run: RecordedPass): { from: Location; to: Location } {
   const first = timeline[run.first]!;
@@ -188,13 +209,13 @@ export function findNearestPosition(timeline: Timeline, measure: MeasureId, near
 /** Sections that share a played measure with the run, counting all their recorded passes. */
 export function findSectionsAt(timeline: Timeline, sections: readonly Section[], run: RecordedPass): Section[] {
   return sections.filter((section) => {
-    const extent = getSectionExtent(timeline, section);
+    const extent = getSectionExtent(timeline, sections, section);
     return extent && extent.to.position >= run.first && extent.from.position <= run.last;
   });
 }
 
 /** Whether the section, with all its recorded passes, holds the whole run. */
-export function holdsRun(timeline: Timeline, section: Section, run: RecordedPass): boolean {
-  const extent = getSectionExtent(timeline, section);
+export function holdsRun(timeline: Timeline, sections: readonly Section[], section: Section, run: RecordedPass): boolean {
+  const extent = getSectionExtent(timeline, sections, section);
   return !!extent && extent.from.position <= run.first && run.last <= extent.to.position;
 }

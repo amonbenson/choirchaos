@@ -73,11 +73,12 @@ test.describe("sections", () => {
     await select(page, "1");
     await expect(create).toContainText("Part of Repeat 1 to 2");
     await create.getByRole("button", { name: "Select repeat 1 to 2" }).click();
-    const last = page.getByRole("slider", { name: "Last measure of repeat 1 to 2" });
+    const scoreRegion = page.getByRole("region", { name: "Score" });
+    const last = scoreRegion.getByRole("slider", { name: "Last measure of repeat 1 to 2" });
     await last.focus();
     await last.press("ArrowLeft");
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, to: locationAt(score, "1", 3), passes: 3 }, cut]);
-    await page.getByRole("slider", { name: "Last measure of repeat 1" }).press("ArrowRight");
+    await scoreRegion.getByRole("slider", { name: "Last measure of repeat 1" }).press("ArrowRight");
     await expect.poll(() => storedSections(admin, song.id)).toEqual([{ ...repeat, passes: 3 }, cut]);
 
     // The kind buttons share their names with the header's section button that the playback samples read.

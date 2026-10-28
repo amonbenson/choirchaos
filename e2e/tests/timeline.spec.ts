@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { MINIMAL } from "../generators/score/presets";
-import { buildSongBundle, locationAt, type SongWarpMarker } from "../generators/song";
+import { buildSongBundle, locationAt, type SongSection, type SongWarpMarker } from "../generators/song";
 import { expect, test } from "../harness/fixtures";
 import { collectPageErrors } from "../harness/page";
 import { waitForPlayer } from "../harness/playback";
@@ -126,7 +126,8 @@ test.describe("timeline and audio sync", () => {
     await timeline.getByRole("list", { name: "Sections" }).getByRole("button", { name: "Cut 3" }).click();
     await expect(panel.getByRole("heading", { name: "Cut 3" })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Measure /, pressed: true })).toHaveCount(0);
-    await expect(page.getByRole("slider", { name: "First measure of cut 3" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Score" }).getByRole("slider", { name: "First measure of cut 3" })).toBeVisible();
+    await expect(timeline.getByRole("slider", { name: "First measure of cut 3" })).toBeVisible();
 
     await timeline.getByRole("list", { name: "Recording" }).getByRole("button").first().click();
     await expect(panel.getByRole("heading", { name: /^Recording pass/ })).toBeVisible();
@@ -170,6 +171,77 @@ test.describe("timeline and audio sync", () => {
     await page.getByRole("button", { name: "Rewind / Previous Song" }).click();
     await expect(measures.getByRole("button", { name: "1", exact: true })).toBeVisible();
     await expect(sections.getByRole("listitem")).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test("a selected section's handles move it to another pass by mouse and keyboard, without moving the playhead", async ({ page, admin, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    // Recorded as 1, 2, 1, 2, 1, 2, 3, 4, with a vamp on the first pass and a cut on the third.
+    const bundle = await buildSongBundle(MINIMAL, { mode: "audio", withPdf: false, repeats: [{ from: "1", to: "2", passes: 3 }] });
+    const { score } = bundle.fields;
+    const vamp: SongSection = { kind: "vamp", from: locationAt(score, "1"), to: locationAt(score, "2", 3), out: "onEnd", vocals: "all" };
+    const cut: SongSection = { kind: "cut", from: locationAt(score, "1", 0, 3), to: locationAt(score, "2", 3, 3) };
+    bundle.fields.arrangement.sections = [vamp, cut];
+    const song = await factory.createSong(owner, show, bundle);
+    const errors = collectPageErrors(page);
+    await loginAs(owner);
+
+    await page.goto(`/show/${show.id}/song/${song.id}/edit`);
+    await waitForPlayer(page);
+    const timeline = page.getByRole("region", { name: "Timeline", exact: true });
+    await timeline.getByRole("list", { name: "Sections" }).getByRole("button", { name: "Vamp 1 to 2" }).click();
+    const position = page.getByRole("slider", { name: "Position" });
+    await expect(position).toHaveAttribute("aria-valuetext", /^1, 1st time/);
+
+    // Drops the last handle on the end of the second pass, where the third time of 1 starts.
+    const last = timeline.getByRole("slider", { name: "Last measure of vamp 1 to 2" });
+    await expect(last).toHaveAttribute("aria-valuetext", "2, 1st time");
+    const handle = (await last.boundingBox())!;
+    const thirdTime = (await timeline.getByRole("list", { name: "Measures" }).getByRole("button", { name: "1, 3rd time" }).boundingBox())!;
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(thirdTime.x + 2, handle.y + handle.height / 2, { steps: 8 });
+    await page.mouse.up();
+    const stored = async (): Promise<SongSection[]> => (await admin.collection("songs").getOne(song.id)).arrangement.sections;
+    await expect.poll(stored).toEqual([{ ...vamp, to: locationAt(score, "2", 3, 2) }, cut]);
+    await expect(position).toHaveAttribute("aria-valuetext", /^1, 1st time/);
+
+    const moved = timeline.getByRole("slider", { name: "Last measure of vamp 1, 1st time to 2, 2nd time" });
+    await expect(moved).toHaveAttribute("aria-valuetext", "2, 2nd time");
+    await moved.press("ArrowLeft");
+    await expect.poll(stored).toEqual([{ ...vamp, to: locationAt(score, "1", 3, 2) }, cut]);
+    await expect(position).toHaveAttribute("aria-valuetext", /^1, 1st time/);
+
+    expect(errors).toEqual([]);
+
+    // The end of the recording would take in the cut, which is explained instead of saved.
+    await timeline.getByRole("slider", { name: "Last measure of vamp 1, 1st time to 1, 2nd time" }).press("End");
+    await expect(page.getByText("Sections must not overlap.")).toBeVisible();
+    expect(await stored()).toEqual([{ ...vamp, to: locationAt(score, "1", 3, 2) }, cut]);
+  });
+
+  test("passes of a recorded repeat without a sync point at their start are marked and lead to a hint", async ({ page, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const bundle = await buildSongBundle(MINIMAL, { mode: "audio", repeats: [{ from: "1", to: "2", passes: 3 }] });
+    bundle.fields.recording.warpMarkers = bundle.fields.recording.warpMarkers.filter(marker => marker.measure !== "m1" || marker.occurrence === 1);
+    const song = await factory.createSong(owner, show, bundle);
+    const errors = collectPageErrors(page);
+    await loginAs(owner);
+
+    await page.goto(`/show/${show.id}/song/${song.id}/edit`);
+    await waitForPlayer(page);
+    const timeline = page.getByRole("region", { name: "Timeline", exact: true });
+    const panel = page.getByRole("region", { name: "Editor panel" });
+    await expect(timeline.getByRole("list", { name: "Recording" }).getByRole("button", { name: /no sync point at its start$/ })).toHaveCount(2);
+
+    const checklist = panel.getByRole("list", { name: "Setup checklist" });
+    await expect(checklist).toContainText("2 repeated passes have no sync point at their start, so their timing is guessed");
+    await checklist.getByRole("button", { name: "Go to 1, 2nd time" }).click();
+    await expect(page.getByRole("slider", { name: "Position" })).toHaveAttribute("aria-valuetext", /^1, 2nd time/);
+    await expect(panel.getByRole("heading", { name: "Measure 1" })).toBeVisible();
+    await expect(panel.getByRole("region", { name: "Audio sync" }).getByRole("button", { name: "Sync to playhead" })).toBeVisible();
     expect(errors).toEqual([]);
   });
 

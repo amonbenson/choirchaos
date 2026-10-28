@@ -37,7 +37,7 @@ const matches = computed(() => findSectionsAt(timeline.value, props.song.getSect
 /** The section these measures are part of, which the link selects. */
 const holder = computed(() => {
   const [only, ...others] = matches.value;
-  return only && others.length === 0 && holdsRun(timeline.value, only, props.run) ? only : undefined;
+  return only && others.length === 0 && holdsRun(timeline.value, props.song.getSections(), only, props.run) ? only : undefined;
 });
 const holderName = computed(() => holder.value && formatSectionName(measures.value, holder.value));
 
