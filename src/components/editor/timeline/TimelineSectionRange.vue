@@ -32,7 +32,7 @@ const handles = computed<PlacedHandle[]>(() => {
   });
 });
 
-/** Where the section would lie with all its recorded passes, outlined while a handle is dragged. */
+/** Where the section would lie with all its recorded passes, shaded while a handle is dragged. */
 const preview = computed(() => {
   if (!range.dragged.value) {
     return undefined;
@@ -64,8 +64,8 @@ function onDrag(end: RangeEnd, { x }: { x: number }): void {
   >
     <div
       v-if="preview"
-      class="absolute inset-y-0 rounded-sm outline-2 -outline-offset-2 outline-dashed"
-      :class="SECTION_COLORS[section.kind].outline"
+      class="absolute inset-y-0 rounded-sm opacity-30"
+      :class="SECTION_COLORS[section.kind].background"
       :style="{ left: `${preview.left}px`, width: `${preview.width}px` }"
       aria-hidden="true"
     />

@@ -190,30 +190,32 @@ describe("ScoreViewer", () => {
       return id ? wrapper.find(`[id='${id}']`).text() : undefined;
     }
 
-    it("describes the sections and recorded repeats on each box", () => {
+    it("describes the sections on each box and shows no badge for recorded repeats", () => {
       const { wrapper } = mountViewer(makeMidiSongWithRepeat());
 
-      expect(description(wrapper, "2")).toBe("Repeat 2 to 3, 3 times. Recorded 3 times.");
+      expect(description(wrapper, "2")).toBe("Repeat 2 to 3, 3 times.");
       expect(description(wrapper, "1")).toBeUndefined();
       expect(wrapper.find("button[aria-label='Repeat 2 to 3, 3 times']").text()).toBe("Repeat 3×");
-      expect(wrapper.find("[role='img'][aria-label='Measures 2 to 3 recorded 3 times']").text()).toBe("×3");
+      expect(badgeTexts(wrapper, "3")).toEqual([]);
     });
 
-    it("shows the pass of the playing section and the occurrence of the playing box", async () => {
+    it("shows the same section badges and no pass while a section plays", async () => {
       const { wrapper } = mountViewer(makeMidiSongWithRepeat());
       playAt(4);
       fakePlayer().currentSection = { section: 0, kind: "repeat", pass: 2, passes: 3, recordedPasses: 3, released: false };
       await flushPromises();
 
-      expect(wrapper.find("button[aria-label='Repeat 2 to 3, pass 2 of 3']").text()).toBe("Repeat 2/3");
-      expect(badgeTexts(wrapper, "2")).toContain("2nd time");
-      expect(description(wrapper, "2")).toBe("Repeat 2 to 3, pass 2 of 3. Recorded 3 times.");
+      expect(wrapper.find("button[aria-label='Repeat 2 to 3, 3 times']").text()).toBe("Repeat 3×");
+      expect(badgeTexts(wrapper, "2")).not.toContain("2nd time");
+      expect(description(wrapper, "2")).toBe("Repeat 2 to 3, 3 times.");
     });
 
-    it("shows a chip where the recording jumps", async () => {
+    it("shows a chip where the recording jumps only in edit mode", async () => {
       const song = makeAudioSong();
       await song.setRecordingSpans([{ from: idOf(song, "1"), to: idOf(song, "3") }, { from: idOf(song, "1"), to: idOf(song, "2") }, { from: idOf(song, "4"), to: idOf(song, "4") }]);
-      const { wrapper } = mountViewer(song);
+      expect(description(mountViewer(song).wrapper, "2")).toBeUndefined();
+
+      const { wrapper } = mountViewer(song, true);
 
       expect(wrapper.find("[role='img'][aria-label='After 3, the recording continues at 1, 2nd time']").text()).toBe("to 1, 2nd time");
       expect(wrapper.find("[role='img'][aria-label='After 2, 2nd time, the recording continues at 4']").text()).toBe("to 4");
@@ -270,7 +272,8 @@ describe("ScoreViewer", () => {
       const song = makeMidiSongWithRepeat();
       const context = mountViewer(song, true);
 
-      click(context.wrapper.find("[role='img'][aria-label='Measures 2 to 3 recorded 3 times']").element);
+      const label = [...frame(context.wrapper, "3").querySelectorAll("[aria-hidden='true']")].find(badge => badge.textContent?.trim() === "3")!;
+      click(label);
 
       expect(selectedLabels(context)).toEqual(["3"]);
     });

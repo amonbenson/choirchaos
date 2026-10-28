@@ -3,7 +3,6 @@ import Button from "primevue/button";
 import Message from "primevue/message";
 import { computed, ref, watch } from "vue";
 
-import { SECTION_COLORS } from "@/components/score/sectionColors";
 import { useConfirmDestructive } from "@/composables/useConfirmDestructive";
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { useNotify } from "@/composables/useNotify";
@@ -82,8 +81,7 @@ async function create(kind: SectionKind): Promise<void> {
   <InspectorSection title="Section">
     <div
       v-if="holder"
-      class="flex items-center justify-between gap-2 rounded-md border-l-4 bg-surface-100 py-2 pr-1 pl-3 text-sm dark:bg-surface-800"
-      :class="SECTION_COLORS[holder.kind].border"
+      class="flex items-center justify-between gap-2 rounded-md bg-surface-100 py-2 pr-1 pl-3 text-sm dark:bg-surface-800"
     >
       <span>Part of <strong>{{ holderName }}</strong></span>
       <Button

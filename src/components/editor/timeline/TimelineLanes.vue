@@ -75,9 +75,7 @@ const sections = computed(() => props.song.getSections().flatMap((section, index
     block,
     text: formatSectionChip(section),
     name: describeSection(props.song.getMeasures(), section),
-    colors: section.kind === "cut"
-      ? "hatch-section-cut"
-      : [SECTION_COLORS[section.kind].background, SECTION_CONTRAST_TEXT],
+    colors: [SECTION_COLORS[section.kind].background, SECTION_CONTRAST_TEXT],
     selected: isSectionSelected(selection.value, section),
   }];
 }));

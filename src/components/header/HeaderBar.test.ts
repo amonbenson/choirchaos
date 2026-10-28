@@ -112,11 +112,14 @@ describe("HeaderBar", () => {
     expect(sectionButton(wrapper).textContent?.trim()).toBe(label);
   });
 
-  it("releases and resets only vamps", async () => {
+  it("releases and resets only vamps, and is active during repeats", async () => {
     const wrapper = mountHeader();
     fakePlayer().currentSection = { ...VAMP, kind: "repeat" };
     await flushPromises();
-    expect((sectionButton(wrapper) as HTMLButtonElement).disabled).toBe(true);
+    const button = sectionButton(wrapper) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    button.click();
+    expect(wrapper.emitted("toggleVamp")).toBeUndefined();
 
     fakePlayer().currentSection = VAMP;
     await flushPromises();
@@ -125,7 +128,15 @@ describe("HeaderBar", () => {
     expect(wrapper.emitted("toggleVamp")).toHaveLength(1);
   });
 
-  it("shows Vamp, disabled, outside sections", () => {
+  it("shows the pass of a written repeat outside sections", () => {
+    const button = sectionButton(mountHeader()) as HTMLButtonElement;
+
+    expect(button.textContent?.trim()).toBe("Repeat 2/3");
+    expect(button.disabled).toBe(false);
+  });
+
+  it("shows Vamp, disabled, outside sections and repeats", () => {
+    fakePlayer().currentLocation = { position: 1, ...locationOf(song, "1"), beat: 0 };
     const button = sectionButton(mountHeader()) as HTMLButtonElement;
 
     expect(button.textContent?.trim()).toBe("Vamp");

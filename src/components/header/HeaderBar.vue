@@ -14,7 +14,7 @@ import HalfNoteIcon from "@/components/icons/HalfNoteIcon.vue";
 import QuarterNoteIcon from "@/components/icons/QuarterNoteIcon.vue";
 import { SECTION_COLORS } from "@/components/score/sectionColors";
 import { formatLocation } from "@/core/models/locationFormat";
-import { formatPlayingSection, formatSectionPass } from "@/core/models/scoreOverlays";
+import { findRecordedRepeats, formatPlayingSection, formatSectionPass, getRecordedRepeatPass } from "@/core/models/scoreOverlays";
 import type Show from "@/core/models/show";
 import { getSectionTicks } from "@/core/player/route";
 import { usePlayerStore } from "@/stores/player";
@@ -93,14 +93,34 @@ const beatLabel = computed(() => player.ready && player.currentLocation
 const section = computed(() => player.ready ? player.currentSection : undefined);
 const vamping = computed(() => section.value?.kind === "vamp" && !section.value.released);
 
-const sectionLabel = computed(() => {
+const recordedRepeats = computed(() => currentSong.value ? findRecordedRepeats(currentSong.value.getTimeline()) : []);
+
+/** The repeating passage the section button shows: a playing vamp or repeat section, else a written repeat. */
+const repeating = computed(() => {
   const current = section.value;
-  if (!current || current.kind === "cut") {
+  if (current && current.kind !== "cut") {
+    return current;
+  }
+
+  const location = player.ready ? player.currentLocation : undefined;
+  const pass = location ? getRecordedRepeatPass(recordedRepeats.value, location.position) : undefined;
+  return pass ? { kind: "repeat" as const, ...pass, released: false } : undefined;
+});
+
+const sectionLabel = computed(() => {
+  const current = repeating.value;
+  if (!current) {
     return "Vamp";
   }
 
   return current.kind === "vamp" && current.released ? "Exiting" : formatSectionPass(current.kind, current);
 });
+
+function toggleVamp(): void {
+  if (section.value?.kind === "vamp") {
+    emit("toggleVamp");
+  }
+}
 
 /** Where each section's recorded passes lie on the playbar, as fractions of the song. */
 const sectionRanges = computed(() => {
@@ -344,14 +364,14 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
               :aria-label="timeSignatureLabel"
             />
 
-            <!-- Section: releases or resets a vamp, and shows the pass of a repeat -->
+            <!-- Section: releases or resets a vamp, and shows the pass of a repeat section or a written repeat -->
             <Button
               v-if="visibleButtons.vamp"
               class="w-28 whitespace-nowrap"
-              :disabled="section?.kind !== 'vamp'"
+              :disabled="!repeating"
               :label="sectionLabel"
               :severity="vamping ? 'primary': 'secondary'"
-              @click="emit('toggleVamp')"
+              @click="toggleVamp"
             />
 
             <!-- Segue -->

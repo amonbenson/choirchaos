@@ -32,7 +32,7 @@ const handles = computed<PlacedHandle[]>(() => range.handles.value.flatMap((hand
 }));
 
 /** The boxes of the section's first pass, or of where a handle is being dragged to. */
-const outlinedBoxes = computed(() => {
+const shadedBoxes = computed(() => {
   const run = range.shownRun.value;
   const ids = new Set(run ? props.song.getTimeline().slice(run.first, run.last + 1).map(entry => entry.measure) : []);
   return [...ids].flatMap(id => props.song.findMeasure(id)?.layout ?? []);
@@ -77,11 +77,11 @@ function onDrag(end: RangeEnd, point: { x: number; y: number }): void {
     class="pointer-events-none"
   >
     <ScoreBox
-      v-for="(layout, i) of onPage(outlinedBoxes, page, box => box)"
+      v-for="(layout, i) of onPage(shadedBoxes, page, box => box)"
       :key="i"
       :layout="layout"
-      class="outline-2 outline-dashed"
-      :class="SECTION_COLORS[section.kind].outline"
+      class="opacity-30"
+      :class="SECTION_COLORS[section.kind].background"
     />
 
     <ScoreLane

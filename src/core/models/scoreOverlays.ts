@@ -164,6 +164,19 @@ export function findRecordedRepeats(timeline: Timeline): RecordedRepeat[] {
   return repeats;
 }
 
+/** The pass of the recorded repeat that plays at a timeline position, e.g. pass 2 of 3. */
+export function getRecordedRepeatPass(repeats: readonly RecordedRepeat[], position: number): { pass: number; passes: number } | undefined {
+  for (const { first, last, times } of repeats) {
+    const length = last - first + 1;
+    const offset = position - first;
+    if (offset >= 0 && offset < times * length) {
+      return { pass: Math.floor(offset / length) + 1, passes: times };
+    }
+  }
+
+  return undefined;
+}
+
 /** A place where the recording does not go on with the next measure of the score, e.g. "after 8, 2nd time, to 9". */
 export type RecordingJump = {
   /** Timeline position of the measure played before the jump. */
@@ -182,7 +195,7 @@ function isRepeatReturn(repeats: readonly RecordedRepeat[], position: number): b
 
 /**
  * Every place where the recording continues somewhere other than the next measure of the score. Returns to
- * the start of a passage played back to back are left out, since the recorded-repeat glyph shows them.
+ * the start of a passage played back to back are left out, since the Vamp button shows their passes.
  */
 export function findRecordingJumps(measures: readonly Measure[], timeline: Timeline): RecordingJump[] {
   const indices = new Map(measures.map((measure, index) => [measure.id, index]));
@@ -256,7 +269,7 @@ export function formatPlayingSection(kind: Section["kind"], playing: PlayingSect
 }
 
 /** The short text of the section being played and its pass, e.g. "Repeat 2/4" or "Vamp 3". */
-export function formatSectionPass(kind: Section["kind"], { pass, passes }: PlayingSection): string {
+export function formatSectionPass(kind: Section["kind"], { pass, passes }: Pick<PlayingSection, "pass" | "passes">): string {
   return passes === undefined ? `${KIND_NAMES[kind]} ${pass}` : `${KIND_NAMES[kind]} ${pass}/${passes}`;
 }
 
@@ -265,29 +278,17 @@ export function formatSectionName(measures: readonly Measure[], section: Section
   return `${KIND_NAMES[section.kind]} ${formatRange(measures, section)}`;
 }
 
-/** The section and what it plays, e.g. "Repeat 14 to 15, 3 times" or, while it plays, "Repeat 14 to 15, pass 2 of 3". */
-export function describeSection(measures: readonly Measure[], section: Section, playing?: PlayingSection): string {
-  const passes = playing ? formatPlayingPass(playing) : formatPlannedPasses(section);
+/** The section and what it plays, e.g. "Repeat 14 to 15, 3 times". */
+export function describeSection(measures: readonly Measure[], section: Section): string {
+  const passes = formatPlannedPasses(section);
   const name = formatSectionName(measures, section);
   return passes ? `${name}, ${passes}` : name;
 }
 
-/** The short text of a section chip, e.g. "Repeat 3×", "Vamp" or, while it plays, "Repeat 2/3". */
-export function formatSectionChip(section: Section, playing?: PlayingSection): string {
+/** The short text of a section chip, e.g. "Repeat 3×" or "Vamp". */
+export function formatSectionChip(section: Section): string {
   const kind = KIND_NAMES[section.kind];
   const occurrence = section.from.occurrence > 1 ? `, ${formatTimes(section.from.occurrence)}` : "";
-  if (section.kind === "cut") {
-    return `${kind}${occurrence}`;
-  }
-
-  if (playing) {
-    if (playing.released) {
-      return `${kind}, exiting`;
-    }
-
-    return formatSectionPass(section.kind, playing);
-  }
-
   const passes = section.kind === "repeat" ? ` ${section.passes}×` : "";
   return `${kind}${passes}${occurrence}`;
 }
@@ -306,11 +307,10 @@ export type SectionBar = {
   name?: string;
 };
 
-export function getSectionBars(measures: readonly Measure[], overlays: readonly SectionOverlay[], playing?: PlayingSection): SectionBar[] {
+export function getSectionBars(measures: readonly Measure[], overlays: readonly SectionOverlay[]): SectionBar[] {
   return overlays.flatMap(({ index, section, runs, lane }) => {
-    const pass = playing?.section === index ? playing : undefined;
-    const chip = formatSectionChip(section, pass);
-    const name = describeSection(measures, section, pass);
+    const chip = formatSectionChip(section);
+    const name = describeSection(measures, section);
     return runs.map((run, i) => ({ key: `section-${index}-${i}`, section, run, lane, chip, name: i === 0 ? name : undefined }));
   });
 }
@@ -322,10 +322,8 @@ export type MarkerBadge = { marker: Marker; name: string };
 
 /** Everything the arrangement draws on and around one box. */
 export type BoxOverlays = {
-  /** What all overlays on the box say, for its `aria-describedby`: "Vamp 19 to 20. Recorded 4 times. Marker D." */
+  /** What all overlays on the box say, for its `aria-describedby`: "Vamp 19 to 20. Marker D." */
   description: string;
-  /** On the last box of a passage the recording plays back to back. */
-  recorded?: BoxBadge;
   /** The jumps after this box, in playing order. */
   jumps: BoxBadge[];
   markers: MarkerBadge[];
@@ -338,19 +336,11 @@ export type BoxOverlayInput = {
   measures: readonly Measure[];
   timeline: Timeline;
   sections: readonly SectionOverlay[];
-  repeats: readonly RecordedRepeat[];
   markers: readonly Marker[];
   jumps?: readonly RecordingJump[];
   /** The occurrences of each measure that have a sync point. */
   synced?: ReadonlyMap<MeasureId, readonly number[]>;
-  playing?: PlayingSection;
 };
-
-function describeRecordedRepeat(measures: readonly Measure[], repeat: RecordedRepeat): string {
-  const labels = repeat.measures.map(id => labelOf(measures, id));
-  const range = labels.length === 1 ? `Measure ${labels[0]}` : `Measures ${labels[0]} to ${labels.at(-1)}`;
-  return `${range} recorded ${formatCount(repeat.times)}`;
-}
 
 function describeSyncPoints(timeline: Timeline, measure: MeasureId, occurrences: readonly number[]): string {
   if (countOccurrences(timeline, measure) < 2) {
@@ -366,7 +356,7 @@ type BoxOverlayDraft = Omit<BoxOverlays, "description"> & { texts: string[] };
 
 /** The overlays of every box that has any, keyed by measure. */
 export function getBoxOverlays(input: BoxOverlayInput): Map<MeasureId, BoxOverlays> {
-  const { measures, timeline, sections, repeats, markers, jumps = [], synced = new Map(), playing } = input;
+  const { measures, timeline, sections, markers, jumps = [], synced = new Map() } = input;
   const drafts = new Map<MeasureId, BoxOverlayDraft>();
   const draftOf = (measure: MeasureId): BoxOverlayDraft => {
     const existing = drafts.get(measure);
@@ -379,19 +369,14 @@ export function getBoxOverlays(input: BoxOverlayInput): Map<MeasureId, BoxOverla
     return draft;
   };
 
-  for (const { index, section, measures: covered, lane } of sections) {
-    const text = describeSection(measures, section, playing?.section === index ? playing : undefined);
+  for (const { section, measures: covered, lane } of sections) {
+    const text = describeSection(measures, section);
     for (const measure of covered) {
       const draft = draftOf(measure);
       draft.texts.push(text);
       draft.markerLane = Math.max(draft.markerLane, lane + 1);
     }
   }
-
-  repeats.forEach((repeat, i) => {
-    repeat.measures.forEach(measure => draftOf(measure).texts.push(`Recorded ${formatCount(repeat.times)}`));
-    draftOf(repeat.measures.at(-1)!).recorded = { key: `recorded-${i}`, text: `×${repeat.times}`, name: describeRecordedRepeat(measures, repeat) };
-  });
 
   for (const marker of markers) {
     const draft = draftOf(marker.at.measure);

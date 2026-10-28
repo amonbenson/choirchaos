@@ -2,7 +2,6 @@
 import { computed, useId } from "vue";
 
 import { SYNC_POINT_COLORS } from "@/components/editor/timeline/syncColors";
-import RepeatSignIcon from "@/components/icons/RepeatSignIcon.vue";
 import type { Marker } from "@/core/models/markers";
 import Measure, { type MeasureLayout, needsReview } from "@/core/models/measure";
 import type { BoxEdge } from "@/core/models/measureEditing";
@@ -17,8 +16,6 @@ import ScoreLane from "./ScoreLane.vue";
 export type PlayingBox = {
   /** How far the playing pass has got through the measure, from 0 to 1. */
   progress: number;
-  /** "2nd time", only for measures the recording plays more than once. */
-  occurrence?: string;
 };
 
 const props = defineProps<{
@@ -128,28 +125,6 @@ const surfaceClass = computed(() => {
     >
       <ScoreBadge :tone="review ? 'review' : 'primary'">
         {{ measure.label }}
-      </ScoreBadge>
-    </template>
-
-    <template
-      v-if="overlays?.recorded"
-      #top-end
-    >
-      <ScoreBadge
-        tone="neutral"
-        :name="overlays.recorded.name"
-      >
-        <RepeatSignIcon />
-        <span aria-hidden="true">{{ overlays.recorded.text }}</span>
-      </ScoreBadge>
-    </template>
-
-    <template
-      v-if="playing?.occurrence"
-      #bottom-start
-    >
-      <ScoreBadge tone="primary">
-        {{ playing.occurrence }}
       </ScoreBadge>
     </template>
 

@@ -5,14 +5,11 @@ import { computed, ref, shallowRef, watch } from "vue";
 import { type ClickIntent, getClickIntent, injectEditorSelection } from "@/composables/useEditorSelection";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
-import { formatTimes } from "@/core/models/locationFormat";
 import type { Marker } from "@/core/models/markers";
 import Measure, { type MeasureId, type MeasureLayout, needsReview } from "@/core/models/measure";
 import { type BoxEdge, planLayouts, resizeBox } from "@/core/models/measureEditing";
-import { countOccurrences } from "@/core/models/recording";
 import {
   type BoxOverlays,
-  findRecordedRepeats,
   findRecordingJumps,
   getBoxOverlays,
   getSectionBars,
@@ -166,19 +163,16 @@ const playingBox = computed<PlayingBox | undefined>(() => {
   const start = position.beatTicks[0] ?? 0;
   const length = position.endTick - start;
   const progress = length > 0 ? Math.max(0, Math.min(1, (player.position - start) / length)) : 0;
-  const repeated = countOccurrences(props.song.getTimeline(), location.measure) > 1;
-  return { progress, occurrence: repeated ? formatTimes(location.occurrence) : undefined };
+  return { progress };
 });
 
 // Arrangement
-
-const playingSection = computed(() => player.ready ? player.currentSection : undefined);
 
 const sectionOverlays = computed(() => props.song
   ? getSectionOverlays(props.song.getMeasures(), props.song.getTimeline(), props.song.getSections())
   : []);
 
-const sectionBars = computed(() => props.song ? getSectionBars(props.song.getMeasures(), sectionOverlays.value, playingSection.value) : []);
+const sectionBars = computed(() => props.song ? getSectionBars(props.song.getMeasures(), sectionOverlays.value) : []);
 
 const cutBoxes = computed(() => sectionOverlays.value
   .filter(overlay => overlay.section.kind === "cut")
@@ -200,11 +194,9 @@ const boxOverlays = computed(() => {
     measures: song.getMeasures(),
     timeline,
     sections: sectionOverlays.value,
-    repeats: findRecordedRepeats(timeline),
     markers: song.getMarkers(),
-    jumps: findRecordingJumps(song.getMeasures(), timeline),
+    jumps: props.editMode ? findRecordingJumps(song.getMeasures(), timeline) : [],
     synced: syncedOccurrences.value,
-    playing: playingSection.value,
   });
 });
 

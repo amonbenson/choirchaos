@@ -58,7 +58,6 @@ test.describe("recording editing", () => {
     const stored = await admin.collection("songs").getOne(song.id);
     expect(stored.score.measures.map((measure: SongMeasure) => measure.label)).toEqual(["1", "2", "3", "4"]);
     await expect(proposals).toHaveCount(0);
-    await expect(page.getByRole("region", { name: "Score" }).getByRole("img", { name: "Measures 1 to 2 recorded 2 times" })).toBeVisible();
     await expect(panel.getByRole("list", { name: "The order the backing track plays the measures in" }).getByRole("listitem"))
       .toHaveText([/^1 to 2\s*1st time$/, /^1 to 2\s*2nd time\s*after 2$/, /^3 to 4\s*after 2, 2nd time$/]);
     expect(errors).toEqual([]);
@@ -125,7 +124,6 @@ test.describe("recording editing", () => {
     await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).recording.spans)
       .toEqual([{ from: "m1", to: "m4" }, { from: "m3", to: "m4" }]);
     await expect(recording.getByRole("status")).toHaveText("The recording now plays 6 measures.");
-    await expect(score.getByRole("img", { name: "Measures 3 to 4 recorded 2 times" })).toBeVisible();
 
     await page.getByRole("button", { name: "Clear selection" }).click();
     const passes = panel.getByRole("list", { name: "The order the backing track plays the measures in" });
