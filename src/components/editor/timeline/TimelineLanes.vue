@@ -2,7 +2,7 @@
 import { computed } from "vue";
 
 import { SECTION_COLORS, SECTION_CONTRAST_TEXT } from "@/components/score/sectionColors";
-import { getClickIntent, injectEditorSelection } from "@/composables/useEditorSelection";
+import { injectEditorSelection } from "@/composables/useEditorSelection";
 import type { TimelineAxis } from "@/composables/useTimelineAxis";
 import type { Tick } from "@/core/midi/types";
 import { formatLocation, formatOccurrence, formatOrdinal, formatTimes } from "@/core/models/locationFormat";
@@ -10,7 +10,7 @@ import type { MeasureId } from "@/core/models/measure";
 import { getRecordingStretches, type RecordingStretch } from "@/core/models/recording";
 import { describeSection, formatSectionChip } from "@/core/models/scoreOverlays";
 import { getSectionPasses, type Section } from "@/core/models/sections";
-import { isMarkerSelected, isMeasureSelected, isPassSelected, isSectionSelected } from "@/core/models/selection";
+import { isMarkerSelected, isPassSelected, isSectionSelected } from "@/core/models/selection";
 import type Song from "@/core/models/song";
 import { getSectionTicks } from "@/core/player/route";
 import { getBeatTick, getStartTick } from "@/core/player/timeline";
@@ -29,7 +29,7 @@ const props = defineProps<{
 }>();
 
 const player = usePlayerStore();
-const { selection, selected, run, touchMultiSelect, selectAndSeek, selectPosition, clickMeasure } = injectEditorSelection();
+const { selection, selected, selectAndSeek } = injectEditorSelection();
 
 const timeline = computed(() => player.timeline);
 const label = (id: MeasureId): string => props.song.findMeasure(id)?.label ?? "?";
@@ -110,42 +110,6 @@ const stretches = computed(() => recordingStretches.value.flatMap((stretch, inde
     selected: isPassSelected(selection.value, index),
   }];
 }));
-
-const cells = computed(() => timeline.value.flatMap((position) => {
-  const block = props.axis.toBlock(getStartTick(position), position.endTick);
-  if (!block) {
-    return [];
-  }
-
-  return [{
-    position: position.position,
-    measure: position.measure,
-    block,
-    label: label(position.measure),
-    occurrence: position.occurrence,
-    name: formatOccurrence(label(position.measure), position.occurrence),
-    selected: isCellSelected(position.measure, position.position),
-  }];
-}));
-
-/** The selected measures are edited in the pass at the playhead, so only that pass shows them selected. */
-function isCellSelected(measure: MeasureId, position: number): boolean {
-  const pass = run.value;
-  return isMeasureSelected(selection.value, measure) && (!pass || (position >= pass.first && position <= pass.last));
-}
-
-/** A plain click selects the measure in this pass, Ctrl/Cmd and Shift add to the selection as on the score. */
-function onCellClick(event: MouseEvent, measure: MeasureId, position: number): void {
-  const pointerType = "pointerType" in event && typeof event.pointerType === "string" ? event.pointerType : "mouse";
-  const intent = getClickIntent(event, pointerType, touchMultiSelect.value);
-  if (intent === "select") {
-    selectPosition(position);
-    return;
-  }
-
-  clickMeasure(measure, intent);
-  player.seekPosition(position);
-}
 
 function formatRange({ span }: RecordingStretch): string {
   return span.from === span.to ? label(span.from) : `${label(span.from)} to ${label(span.to)}`;
@@ -235,26 +199,6 @@ function formatStretch(stretch: RecordingStretch, long: boolean): string {
       @click="selectAndSeek({ kind: 'pass', index: item.index })"
     >
       <span class="truncate">{{ item.text }}</span>
-    </TimelineLaneItem>
-  </ul>
-
-  <ul
-    class="relative h-6"
-    :aria-labelledby="titleIds.Measures"
-  >
-    <TimelineLaneItem
-      v-for="cell in cells"
-      :key="cell.position"
-      :block="cell.block"
-      :name="cell.name"
-      :pressed="cell.selected"
-      class="justify-center rounded-none text-muted-color tabular-nums hover:bg-surface-100 dark:hover:bg-surface-800"
-      @click="onCellClick($event, cell.measure, cell.position)"
-    >
-      {{ cell.label }}<sup
-        v-if="cell.occurrence > 1"
-        aria-hidden="true"
-      >{{ cell.occurrence }}</sup>
     </TimelineLaneItem>
   </ul>
 </template>

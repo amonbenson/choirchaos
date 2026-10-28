@@ -10,20 +10,12 @@ export function getWaveformBaseScale(audioBuffer: AudioBuffer): number {
 
 <script setup lang="ts">
 import { useResizeObserver } from "@vueuse/core";
-import Peaks, { type PeaksInstance, type PeaksOptions, type PlayerAdapter, type PointOptions } from "peaks.js";
+import Peaks, { type PeaksInstance, type PeaksOptions, type PlayerAdapter } from "peaks.js";
 import ProgressSpinner from "primevue/progressspinner";
 import { onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from "vue";
 import WaveformData from "waveform-data";
 
 import { useCanvasColors } from "@/composables/useCanvasColors";
-
-import { SYNC_POINT_COLORS } from "./syncColors";
-import { createLinePointMarkerFactory } from "./waveformMarker";
-
-export type WaveformMarker = {
-  id: string;
-  time: number;
-};
 
 const props = defineProps<{
   audioBuffer?: AudioBuffer;
@@ -31,13 +23,11 @@ const props = defineProps<{
   scale: number;
   /** Pixels scrolled from the start of the recording, from the timeline's shared axis. */
   offset: number;
-  markers: WaveformMarker[];
 }>();
 
 // peaks.js turns a start time into a pixel offset by rounding down, so the time aims at the middle of the pixel.
 const HALF_PIXEL = 0.5;
 
-const root = useTemplateRef<HTMLElement>("root");
 const zoomviewContainer = useTemplateRef<HTMLElement>("zoomview");
 
 const loading = ref(false);
@@ -49,7 +39,7 @@ let buildGeneration = 0;
 
 const colors = useCanvasColors(() => buildPeaks());
 
-// The timeline draws the one playhead and handles every pointer, so peaks.js only draws.
+// The timeline draws the playhead, rulers and sync points and handles every pointer, so peaks.js only draws the waveform.
 const playerAdapter: PlayerAdapter = {
   init: async events => events.emit("player.canplay"),
   destroy: () => {},
@@ -62,26 +52,16 @@ const playerAdapter: PlayerAdapter = {
   seek: () => {},
 };
 
-function getThemeOptions(): Pick<PeaksOptions, "zoomview" | "fontFamily" | "createPointMarker"> & { pointColor: string } {
-  const muted = colors.resolve("var(--p-text-muted-color)");
-  const border = colors.resolve("var(--p-content-border-color)");
-  const pointColor = colors.resolveVariable(SYNC_POINT_COLORS.variable);
-
+function getZoomviewOptions(): PeaksOptions["zoomview"] {
   return {
-    pointColor,
-    fontFamily: getComputedStyle(root.value!).fontFamily,
-    createPointMarker: createLinePointMarkerFactory(pointColor),
-    zoomview: {
-      waveformColor: muted,
-      axisLabelColor: muted,
-      axisGridlineColor: border,
-      fontSize: 11,
-      playheadColor: "transparent",
-      playheadWidth: 0,
-      showPlayheadTime: false,
-      wheelMode: "none",
-      autoScroll: false,
-    },
+    waveformColor: colors.resolve("var(--p-text-muted-color)"),
+    showAxisLabels: false,
+    axisGridlineColor: "transparent",
+    playheadColor: "transparent",
+    playheadWidth: 0,
+    showPlayheadTime: false,
+    wheelMode: "none",
+    autoScroll: false,
   };
 }
 
@@ -95,10 +75,6 @@ async function createWaveformData(audioBuffer: AudioBuffer, scale: number): Prom
       }
     });
   });
-}
-
-function toPoint(marker: WaveformMarker, color: string): PointOptions {
-  return { id: marker.id, time: marker.time, editable: false, color };
 }
 
 function destroyPeaks(): void {
@@ -146,14 +122,11 @@ async function buildPeaks(): Promise<void> {
     return;
   }
 
-  const { pointColor, ...theme } = getThemeOptions();
   const options: PeaksOptions = {
-    ...theme,
-    zoomview: { ...theme.zoomview, container: zoomviewContainer.value },
+    zoomview: { ...getZoomviewOptions(), container: zoomviewContainer.value },
     player: playerAdapter,
     keyboard: false,
     zoomLevels: [props.scale],
-    points: props.markers.map(marker => toPoint(marker, pointColor)),
     waveformData: { arraybuffer: cachedWaveform },
   };
 
@@ -179,26 +152,6 @@ async function buildPeaks(): Promise<void> {
   loading.value = false;
 }
 
-function syncPoints(markers: WaveformMarker[]): void {
-  if (!peaks) {
-    return;
-  }
-
-  const pending = new Map(markers.map(marker => [marker.id, marker]));
-  for (const point of peaks.points.getPoints()) {
-    const marker = pending.get(point.id!);
-    pending.delete(point.id!);
-    if (!marker) {
-      peaks.points.removeById(point.id!);
-    } else if (point.time !== marker.time) {
-      point.update({ time: marker.time });
-    }
-  }
-
-  const { pointColor } = getThemeOptions();
-  peaks.points.add([...pending.values()].map(marker => toPoint(marker, pointColor)));
-}
-
 function resetWaveform(): void {
   cachedWaveform = undefined;
   buildPeaks();
@@ -208,7 +161,6 @@ function resetWaveform(): void {
 onMounted(resetWaveform);
 watch(() => props.audioBuffer, resetWaveform);
 watch(() => [props.scale, props.offset], applyView);
-watch(() => props.markers, syncPoints, { deep: true });
 
 useResizeObserver(zoomviewContainer, () => {
   if (!peaks && cachedWaveform && hasSize()) {
@@ -228,7 +180,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    ref="root"
     class="relative"
     :data-zoom-scale="drawn ? scale : 0"
     :data-sample-rate="audioBuffer?.sampleRate"

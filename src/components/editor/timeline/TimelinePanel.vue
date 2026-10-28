@@ -25,9 +25,12 @@ import { mixdownChunks } from "@/core/player/audio/mixdown";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
+import { SYNC_POINT_COLORS } from "./syncColors";
 import TimelineLanes, { type LaneName } from "./TimelineLanes.vue";
+import TimelineMeasureRuler from "./TimelineMeasureRuler.vue";
 import TimelineScrollbar from "./TimelineScrollbar.vue";
-import WaveformView, { getWaveformBaseScale, type WaveformMarker } from "./WaveformView.vue";
+import TimelineTimeRuler from "./TimelineTimeRuler.vue";
+import WaveformView, { getWaveformBaseScale } from "./WaveformView.vue";
 
 const props = defineProps<{ song: Song }>();
 
@@ -60,7 +63,7 @@ const rootClass = computed(() => {
 });
 
 const axisElement = useTemplateRef<HTMLElement>("axisElement");
-const waveform = useTemplateRef<InstanceType<typeof WaveformView>>("waveform");
+const audioArea = useTemplateRef<HTMLElement>("audioArea");
 const markerMenu = ref();
 const markerMenuItems = ref<MenuItem[]>([]);
 const addPopover = ref();
@@ -82,12 +85,17 @@ const playheadX = computed(() => player.ready && axis.isVisible(player.position)
 const positionedMarkers = computed(() => getPositionedWarpMarkers(player.timeline, props.song.getWarpMarkers()));
 const markersByKey = computed(() => new Map(positionedMarkers.value.map(marker => [getOccurrenceKey(marker), marker])));
 
-const markers = computed<WaveformMarker[]>(() => positionedMarkers.value.map((marker) => {
+const markers = computed(() => positionedMarkers.value.map((marker) => {
   const id = getOccurrenceKey(marker);
   return {
     id,
     time: dragged.value?.id === id ? dragged.value.time : sync.getTime(marker) ?? marker.time,
   };
+}));
+
+const syncLines = computed(() => markers.value.flatMap(({ id, time }) => {
+  const tick = time * MILLISECONDS_PER_SECOND;
+  return axis.isVisible(tick) ? [{ id, x: Math.round(axis.toX(tick)) }] : [];
 }));
 
 const candidates = computed(() => getWarpMarkerCandidates(player.timeline, props.song.getWarpMarkers(), currentTime.value, duration.value));
@@ -146,18 +154,18 @@ function seekTo(event: MouseEvent): void {
   player.seek(Math.min(player.duration, Math.max(0, axis.toTick(toAxisX(event)))));
 }
 
-function isOnWaveform(event: MouseEvent): boolean {
-  return event.target instanceof Node && !!waveform.value?.$el.contains(event.target);
+function isOnAudio(event: MouseEvent): boolean {
+  return event.target instanceof Node && !!audioArea.value?.contains(event.target);
 }
 
-/** The sync point drawn under the pointer. Sync points only take presses on the waveform. */
+/** The sync point drawn under the pointer. Sync points only take presses below the measure ruler. */
 function findSyncPointAt(event: MouseEvent): PositionedWarpMarker | undefined {
-  if (!isOnWaveform(event)) {
+  if (!isOnAudio(event)) {
     return undefined;
   }
 
   const x = toAxisX(event);
-  const distanceTo = (marker: WaveformMarker): number => Math.abs(axis.toX(marker.time * MILLISECONDS_PER_SECOND) - x);
+  const distanceTo = (marker: { time: number }): number => Math.abs(axis.toX(marker.time * MILLISECONDS_PER_SECOND) - x);
   const [nearest] = markers.value.filter(marker => distanceTo(marker) <= SYNC_POINT_HIT_PX).sort((a, b) => distanceTo(a) - distanceTo(b));
   return nearest && markersByKey.value.get(nearest.id);
 }
@@ -219,7 +227,7 @@ function onClick(event: MouseEvent): void {
     return;
   }
 
-  if (!isOnWaveform(event)) {
+  if (!isOnAudio(event)) {
     clear();
   }
 
@@ -324,10 +332,6 @@ watch(() => player.position, (tick) => {
           :key="lane"
           class="flex h-6 items-center"
         >{{ lane }}</span>
-        <span
-          v-if="isAudio"
-          class="flex h-6 items-center"
-        >Audio</span>
       </div>
 
       <div class="flex min-w-0 flex-1 flex-col gap-1">
@@ -346,15 +350,40 @@ watch(() => player.position, (tick) => {
             :axis="axis"
             :title-ids="laneTitleIds"
           />
-          <WaveformView
-            v-if="isAudio"
-            ref="waveform"
-            class="min-h-24 flex-1 rounded bg-surface-100 dark:bg-surface-900"
-            :audio-buffer="audioBuffer"
-            :scale="axis.scale.value"
-            :offset="axis.offset.value"
-            :markers="markers"
-          />
+          <div
+            class="relative flex flex-col overflow-hidden rounded bg-surface-100 dark:bg-surface-900"
+            :class="isAudio ? 'min-h-0 flex-1' : ''"
+          >
+            <TimelineMeasureRuler
+              :song="song"
+              :axis="axis"
+              :title-id="laneTitleIds.Measures"
+            />
+            <div
+              v-if="isAudio"
+              ref="audioArea"
+              class="flex min-h-24 flex-1 flex-col"
+            >
+              <WaveformView
+                class="min-h-0 flex-1"
+                :audio-buffer="audioBuffer"
+                :scale="axis.scale.value"
+                :offset="axis.offset.value"
+              />
+              <TimelineTimeRuler
+                :axis="axis"
+                :ticks-per-second="MILLISECONDS_PER_SECOND"
+              />
+            </div>
+            <div
+              v-for="line in syncLines"
+              :key="line.id"
+              class="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2"
+              :class="SYNC_POINT_COLORS.line"
+              :style="{ left: `${line.x}px` }"
+              aria-hidden="true"
+            />
+          </div>
           <div
             v-if="playheadX !== undefined"
             class="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-primary"

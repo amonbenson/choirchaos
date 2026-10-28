@@ -4,8 +4,6 @@ import { onScopeDispose } from "vue";
 export type CanvasColors = {
   /** Resolves a CSS color, e.g. "var(--p-primary-color)", to a plain rgb() value. */
   resolve: (cssColor: string) => string;
-  /** Resolves a theme variable name, e.g. "--color-sync". */
-  resolveVariable: (name: string) => string;
 };
 
 /**
@@ -26,5 +24,5 @@ export function useCanvasColors(onThemeChange: () => void): CanvasColors {
     return getComputedStyle(probe).color;
   }
 
-  return { resolve, resolveVariable: name => resolve(`var(${name})`) };
+  return { resolve };
 }
