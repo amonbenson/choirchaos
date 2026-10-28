@@ -7,9 +7,6 @@ import { DEFAULT_TRACK_MIXER, isDefaultTrackMixer, MixerSettings, type TrackMixe
 import { PlaybackSettings } from "./playback";
 import { ShortcutSettings } from "./shortcuts";
 import { PanelVisibleSettings, WorkspaceSettings } from "./workspace";
-
-// --- Root settings class -----------------------------------------------------
-
 class Settings extends SettingsBase {
   constructor(
     public readonly workspace: WorkspaceSettings = new WorkspaceSettings(),
@@ -21,20 +18,15 @@ class Settings extends SettingsBase {
     super();
   }
 }
-
-// --- Versioning --------------------------------------------------------------
 //
 // Increment SETTINGS_VERSION when making breaking changes to the Settings
 // shape. Stored settings from a different version are discarded entirely and
 // replaced with defaults.
 //
-// For additive changes (new fields with defaults), keep the version as-is —
+// For additive changes (new fields with defaults), keep the version as it is,
 // fromPartial fills in missing keys automatically.
 
 const SETTINGS_VERSION = 1;
-
-// --- Persistence -------------------------------------------------------------
-
 const STORAGE_KEY = "choirchaosSettings";
 
 function loadSettings(): Settings {
@@ -54,8 +46,6 @@ function saveSettings(settings: Settings): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: SETTINGS_VERSION, ...settings }));
 }
 
-// --- Store -------------------------------------------------------------------
-
 export const useSettingsStore = defineStore("settings", () => {
   const current: Ref<Settings> = ref(loadSettings());
 
@@ -65,7 +55,7 @@ export const useSettingsStore = defineStore("settings", () => {
     // Cross-group side effect: reset per-track mixer state when the track
     // grouping mode changes, since old keys would refer to the wrong tracks.
     if (patch.appearance?.mergeAccompaniment !== undefined) {
-      current.value = current.value.update({ mixer: { tracks: {} } });
+      current.value = current.value.update({ mixer: { shows: {} } });
     }
 
     saveSettings(current.value);
@@ -75,20 +65,25 @@ export const useSettingsStore = defineStore("settings", () => {
     update({ workspace: { panelVisible: { [panel]: !current.value.workspace.panelVisible[panel] } } });
   }
 
-  function getTrackMixer(trackTitle: string): TrackMixerEntry {
-    return current.value.mixer.tracks[trackTitle] ?? { ...DEFAULT_TRACK_MIXER };
+  function getTrackMixer(showId: string, trackTitle: string): TrackMixerEntry {
+    return current.value.mixer.shows[showId]?.[trackTitle] ?? { ...DEFAULT_TRACK_MIXER };
   }
 
-  function updateTrackMixer(trackTitle: string, patch: Partial<TrackMixerEntry>): void {
-    const updated = { ...(current.value.mixer.tracks[trackTitle] ?? DEFAULT_TRACK_MIXER), ...patch };
-    const tracks = { ...current.value.mixer.tracks };
+  function updateTrackMixer(showId: string, trackTitle: string, patch: Partial<TrackMixerEntry>): void {
+    const tracks = { ...current.value.mixer.shows[showId] };
+    const updated = { ...(tracks[trackTitle] ?? DEFAULT_TRACK_MIXER), ...patch };
     if (isDefaultTrackMixer(updated)) {
       delete tracks[trackTitle];
     } else {
       tracks[trackTitle] = updated;
     }
 
-    update({ mixer: { tracks } });
+    const shows = { ...current.value.mixer.shows, [showId]: tracks };
+    if (Object.keys(tracks).length === 0) {
+      delete shows[showId];
+    }
+
+    update({ mixer: { shows } });
   }
 
   function clear(): void {
@@ -105,12 +100,9 @@ export const useSettingsStore = defineStore("settings", () => {
     clear,
   };
 });
-
-// --- Re-exports for consumers ------------------------------------------------
-
-export { AppearanceSettings, type TransportButtonKey, TransportButtonSettings } from "./appearance";
+export { AppearanceSettings, type ArrangementKey, ArrangementVisibleSettings, type TransportButtonKey, TransportButtonSettings } from "./appearance";
 export type { DataOf, DeepPartial } from "./base";
-export { MixerSettings, type TrackMixerEntry } from "./mixer";
+export { MixerSettings, type ShowMixer, type TrackMixerEntry } from "./mixer";
 export { PlaybackSettings } from "./playback";
 export { ShortcutSettings } from "./shortcuts";
 export { PanelVisibleSettings, WorkspaceSettings } from "./workspace";

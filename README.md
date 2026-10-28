@@ -1,10 +1,10 @@
 # Choir Chaos
 
-A web-based rehearsal platform for musical ensembles, loosely based on [ChordChaos](https://chordchaos.com/) and similar proprietary tools. Editors organize shows into songs, upload sheet music PDFs with MIDI or audio files, and sync them to the score with automatic measure detection. Rehearsers play songs back with multi-track mixing, vamp loops, segues and real-time time-stretching. Shows can be private, unlisted or public, with owner, editor and viewer roles.
+A web-based rehearsal platform for musical ensembles, loosely based on [ChordChaos](https://chordchaos.com/) and similar proprietary tools. Editors organize shows into songs and upload sheet music PDFs with MIDI or audio files. They mark the measures on the score (with automatic measure detection), sync audio recordings on a timeline, describe the repeats the recording already contains, and arrange vamps, repeats and cuts on the score and the timeline, with undo. Rehearsers play songs back with multi-track mixing, the arrangement, segues and real-time time-stretching. Shows can be private, unlisted or public, with owner, editor and viewer roles.
 
 ## Technology Stack
 
-[Vue 3](https://vuejs.org/) · [Vite](https://vitejs.dev/) · [TypeScript](https://www.typescriptlang.org/) · [Pinia](https://pinia.vuejs.org/) · [Tailwind CSS v4](https://tailwindcss.com/) · [PrimeVue](https://primevue.org/) · [PDF.js](https://mozilla.github.io/pdf.js/) · [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) · [Rubberband Web](https://www.npmjs.com/package/rubberband-web) · [PocketBase](https://pocketbase.io/) · [Dokku](https://dokku.com/)
+[Vue 3](https://vuejs.org/) · [Vite](https://vitejs.dev/) · [TypeScript](https://www.typescriptlang.org/) · [Pinia](https://pinia.vuejs.org/) · [Tailwind CSS v4](https://tailwindcss.com/) · [PrimeVue](https://primevue.org/) · [PDF.js](https://mozilla.github.io/pdf.js/) · [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) · [Rubberband Web](https://www.npmjs.com/package/rubberband-web) · [WebAudioFont](https://github.com/surikov/webaudiofont) · [Peaks.js](https://github.com/bbc/peaks.js) · [measure-detection](https://www.npmjs.com/package/measure-detection) · [PocketBase](https://pocketbase.io/) · [Dokku](https://dokku.com/)
 
 ## Project Structure
 
@@ -16,6 +16,7 @@ src/
 ├── stores/         # Pinia stores
 ├── router/         # Routes and navigation guards
 ├── pocketbase/     # PocketBase client and DB access
+├── theme/          # PrimeVue preset (accent and surface palettes)
 └── core/           # Framework-free models, playback engine, MIDI, PDF rendering, utilities
 e2e/                # Playwright end-to-end tests
 ```
@@ -34,11 +35,15 @@ VITE_PB_URL="https://your-pocketbase-instance.com"
 # VITE_PB_AUTOLOGIN_EMAIL="user@example.com"
 # VITE_PB_AUTOLOGIN_PASS="yourpassword"
 # VITE_PB_AUTOLOGIN_SHOW="<show-id>"
+
+# Optional: log database writes instead of sending them
+# VITE_DRY_RUN="true"
 ```
 
 ```bash
 npm install
 npm run dev        # dev server at http://localhost:5173
+npm run dev:https  # HTTPS dev server on the LAN for phones and tablets, proxies PocketBase
 npm run lint:fix   # lint with autofix
 npm run typecheck  # TypeScript validation
 npx vitest run     # unit tests
@@ -57,7 +62,7 @@ npm run e2e:serve                 # seeded backend + frontend for manual testing
 
 ## Deployment
 
-The app is deployed to a Dokku server using the included `Dockerfile`. On every push to `main`, the GitHub Actions pipeline runs lint, typecheck, unit tests, build and e2e tests and then deploys via `git push dokku`. It needs these repository settings:
+The app is deployed to a Dokku server using the included `Dockerfile`. The GitHub Actions pipeline runs lint, typecheck, unit tests, build and e2e tests on every pull request and push. Pushes to `main` (and manual runs) then deploy via `git push dokku`. It needs these repository settings:
 
 | Name | Type | Description |
 |---|---|---|

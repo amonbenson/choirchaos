@@ -132,7 +132,7 @@ async function copyLink(): Promise<void> {
   <Dialog
     v-model:visible="visible"
     :header="`Share &quot;${show.title}&quot;`"
-    class="w-[34rem] max-w-[calc(100vw-2rem)]"
+    class="w-136 max-w-[calc(100vw-2rem)]"
     modal
     dismissable-mask
   >
@@ -238,7 +238,7 @@ async function copyLink(): Promise<void> {
           class="text-sm font-medium text-muted-color"
         >General access</span>
         <div class="flex items-center gap-3">
-          <span class="flex size-10 flex-none items-center justify-center rounded-full bg-primary/15 text-primary">
+          <span class="flex size-10 flex-none items-center justify-center rounded-full bg-primary/15 text-primary-text">
             <i
               :class="`pi ${visibility.icon}`"
               aria-hidden="true"

@@ -1,33 +1,39 @@
 import { pb, type PbRecord } from "@/pocketbase";
 import { NoPermissions, type Permissions } from "@/pocketbase/auth";
-import { dbCreate, dbCreateWithFiles, dbDelete, dbUpdate, dbUpdateWithFiles } from "@/pocketbase/db";
+import { dbCreate, dbCreateWithFiles, dbDelete, dbGetOne, dbUpdate, dbUpdateWithFiles } from "@/pocketbase/db";
 
-import { measuresFromBeatMap, tracksFromBeatMap } from "../midi/beatMap";
-import type { Tick } from "../midi/types";
-import type { WarpMarker } from "../midi/warp";
+import { scoreFromBeatMap, tracksFromBeatMap } from "../midi/beatMap";
+import type { MTIMidiJson } from "../midi/mtiJson";
 import type { PlayerMode, SystemEvents } from "../player/types";
-import { binarySearch } from "../utils/binarySearch";
+import { Emitter } from "../utils/events";
 import type { UrlOrFile } from "../utils/file";
 import type { Numbering } from "../utils/numbering";
 import { inferTrackClassification } from "../utils/trackInference";
-import Measure, { isSameLayout, type MeasureLayout, MeasureList, type MeasureReference } from "./measure";
-import type { MeasureDetectionPlan } from "./measureDetection";
-import { isEmptyEdit, type MeasureEdit } from "./measureEditing";
-import { MarkerEvent, type MeasureEvent, MeasureEventList, VampEvent } from "./measureEvent";
+import {
+  changesTiming,
+  deserializeLayers,
+  dropUnresolvedReferences,
+  EMPTY_LAYERS,
+  getChangedFields,
+  type LayerField,
+  type LayerSnapshot,
+  planMeasureEdit,
+  planRecordingChange,
+  type RecordingPreview,
+  serializeLayers,
+  type SongLayers,
+  sortReferences,
+  toRecordingPreview,
+  validateLayers,
+} from "./layers";
+import type { Marker } from "./markers";
+import Measure, { isEmptyMeasureEdit, type MeasureEdit, type MeasureId, type MeasureLayout, nextMeasureIds } from "./measure";
+import { expandRecording, type RecordingSpan, type StoredWarpMarker, type Timeline } from "./recording";
+import type { Section } from "./sections";
 import Track from "./track";
+import type { SyncPoints } from "./warpEditing";
 
 export type SongNumber = Numbering;
-
-export type SongEvents = {
-  markers: MeasureEventList<MarkerEvent>;
-  vamps: MeasureEventList<VampEvent>;
-  segue: boolean;
-};
-
-export type SongWarpMarker = {
-  measure: Numbering; // measure number (e.g. "1", "2a")
-  time: number;
-};
 
 export type SongDetails = {
   number: SongNumber;
@@ -46,38 +52,61 @@ export type SongFiles = {
   recordings?: SongRecording[];
 };
 
-const EMPTY_EVENTS = Object.freeze({ markers: [], vamps: [], segue: false });
+/** Who changed the layers: an editing action, or the undo history restoring a snapshot. */
+export type LayersOrigin = "edit" | "history";
 
-function updateEventReferences<T extends MeasureEvent>(
-  list: MeasureEventList<T>,
-  rename: (value: Numbering) => Numbering,
-  removed: Set<Numbering>,
-): void {
-  const events = list.items().filter(event => !removed.has(event.start[0]) && !removed.has(event.end[0]));
-  events.forEach((event) => {
-    event.start = [rename(event.start[0]), event.start[1]];
-    event.end = [rename(event.end[0]), event.end[1]];
-  });
-  list.setItems(events);
+/** One saved change of the layers. */
+export type LayersChange = {
+  before: LayerSnapshot;
+  after: LayerSnapshot;
+  /** The measure order, beats or recording changed, so the player has to load the song again. */
+  timingChanged: boolean;
+  origin: LayersOrigin;
+};
+
+const LAYER_FIELDS: Record<keyof LayerSnapshot, readonly LayerField[]> = {
+  score: ["measures", "unnumberedBoxes"],
+  recording: ["spans", "warpMarkers", "endSyncTime"],
+  arrangement: ["markers", "sections", "segue"],
+};
+
+function replaceAll<T>(items: T[], replacement: readonly T[]): void {
+  items.splice(0, items.length, ...replacement);
+}
+
+function getMeasureKey(measures: readonly Measure[]): string {
+  return JSON.stringify(measures.map(measure => [measure.id, measure.beats]));
 }
 
 export default class Song {
   public playerMode: PlayerMode = "none";
 
-  private readonly _tracks: Track[];
-  private readonly _audioFiles: UrlOrFile[];
-  private readonly _warpMarkers: SongWarpMarker[];
+  private readonly trackList: Track[];
+  private readonly audioFileList: UrlOrFile[];
+  private readonly measures: Measure[];
+  private readonly unnumberedBoxes: MeasureLayout[];
+  private readonly spans: RecordingSpan[];
+  private readonly warpMarkers: StoredWarpMarker[];
+  private endSyncTime: number | undefined;
+  private readonly markers: Marker[];
+  private readonly sections: Section[];
+  private segue: boolean;
+  /** The record's `updated` timestamp as of our last save, to notice changes made elsewhere. */
+  private updated?: string;
+  private timelineRevision = 0;
+  // Vue does not proxy non-extensible objects, so filling the cache inside a computed triggers nothing.
+  private readonly timelineCache: { revision: number; timeline?: Timeline } = Object.preventExtensions({ revision: -1, timeline: undefined });
+  private readonly layersChange = new Emitter<LayersChange>();
+
+  /** Fires after every saved change of the layers. */
+  public readonly onLayersChange = this.layersChange.event;
 
   get tracks(): readonly Track[] {
-    return this._tracks;
+    return this.trackList;
   }
 
   get audioFiles(): readonly UrlOrFile[] {
-    return this._audioFiles;
-  }
-
-  get warpMarkers(): readonly SongWarpMarker[] {
-    return this._warpMarkers;
+    return this.audioFileList;
   }
 
   constructor(
@@ -89,165 +118,222 @@ export default class Song {
     public pdfFile: UrlOrFile | undefined,
     audioFiles: UrlOrFile[] = [],
     tracks: Track[] = [],
-    public readonly measures: MeasureList = new MeasureList(),
-    public readonly events: SongEvents = {
-      markers: new MeasureEventList<MarkerEvent>(),
-      vamps: new MeasureEventList<VampEvent>(),
-      segue: false,
-    },
-    warpMarkers: SongWarpMarker[] = [],
+    layers: Partial<SongLayers> = {},
     public readonly permissions: Permissions = NoPermissions,
     public $midiSystemEvents: SystemEvents | object = {},
-    private readonly unnumberedBoxes: MeasureLayout[] = [],
   ) {
-    this._tracks = tracks;
-    this._audioFiles = audioFiles;
-    this._warpMarkers = warpMarkers;
+    this.trackList = tracks;
+    this.audioFileList = audioFiles;
+    this.measures = [...layers.measures ?? []];
+    this.unnumberedBoxes = [...layers.unnumberedBoxes ?? []];
+    this.spans = [...layers.spans ?? []];
+    this.warpMarkers = [...layers.warpMarkers ?? []];
+    this.endSyncTime = layers.endSyncTime;
+    this.markers = [...layers.markers ?? []];
+    this.sections = [...layers.sections ?? []];
+    this.segue = layers.segue ?? false;
+    // Stored data may come in any order (the backend migration writes sections in old event order), while the panels list it in timeline order.
+    this.replaceLayers(sortReferences(this.getLayers()));
 
-    this._tracks.forEach((track, i) => track.mixer.index = i);
-    this._syncPlayerMode();
+    this.trackList.forEach((track, i) => track.mixer.index = i);
+    this.syncPlayerMode();
   }
 
-  /** Boxes on the score that detection could not give a number. They wait for the user to number or remove them. */
+  // Score
+
+  /** Measures in score order. */
+  public getMeasures(): readonly Measure[] {
+    return this.measures;
+  }
+
+  public findMeasure(id: MeasureId): Measure | undefined {
+    return this.measures.find(measure => measure.id === id);
+  }
+
+  public findMeasureByLabel(label: string): Measure | undefined {
+    return this.measures.find(measure => measure.label === label);
+  }
+
+  /** The measure's index in score order, or -1 if the song has no such measure. */
+  public getScoreIndex(id: MeasureId): number {
+    return this.measures.findIndex(measure => measure.id === id);
+  }
+
+  /** Boxes on the score that belong to no measure yet. They wait for the user to number or remove them. */
   public getUnnumberedBoxes(): readonly MeasureLayout[] {
     return this.unnumberedBoxes;
   }
 
-  // ── Internal helpers ──────────────────────────────────────────────────────────
+  // Recording
 
-  private async _save(fields: PbRecord): Promise<PbRecord> {
-    return dbUpdate("songs", this.id, fields);
+  /** The recording's measure order. */
+  public getRecording(): readonly RecordingSpan[] {
+    return this.spans;
   }
 
-  private _serializeTracks(): any[] {
-    return this._tracks.map(t => t.serialize());
+  /** The recording expanded into one entry per measure played. */
+  public getTimeline(): Timeline {
+    if (this.timelineCache.revision !== this.timelineRevision || !this.timelineCache.timeline) {
+      this.timelineCache.timeline = expandRecording(this.measures, this.spans);
+      this.timelineCache.revision = this.timelineRevision;
+    }
+
+    return this.timelineCache.timeline;
   }
 
-  private _serializeMeasures(): any[] {
-    return this.measures.items().map(m => m.serialize());
+  /** Audio sync anchors in timeline order. MIDI songs have none. */
+  public getWarpMarkers(): readonly StoredWarpMarker[] {
+    return this.warpMarkers;
   }
 
-  private _serializeEvents(): PbRecord {
-    return {
-      markers: this.events.markers.items().map(m => m.serialize()),
-      vamps: this.events.vamps.items().map(v => v.serialize()),
-      segue: this.events.segue,
-    };
+  /** The warp markers and the end sync point, which the warp map anchors the recording to. */
+  public getSyncPoints(): SyncPoints {
+    return { warpMarkers: this.warpMarkers, endSyncTime: this.endSyncTime };
   }
 
-  private _syncPlayerMode(): void {
+  /** MIDI songs take their recording from the beat map. */
+  public isRecordingEditable(): boolean {
+    return this.playerMode !== "midi";
+  }
+
+  // Arrangement
+
+  /** Markers in timeline order. */
+  public getMarkers(): readonly Marker[] {
+    return this.markers;
+  }
+
+  /** Sections in timeline order. */
+  public getSections(): readonly Section[] {
+    return this.sections;
+  }
+
+  public hasSegue(): boolean {
+    return this.segue;
+  }
+
+  // Internal helpers
+
+  private async save(fields: PbRecord): Promise<PbRecord> {
+    return this.rememberUpdated(await dbUpdate("songs", this.id, fields));
+  }
+
+  private async saveWithFiles(formData: FormData): Promise<PbRecord> {
+    return this.rememberUpdated(await dbUpdateWithFiles("songs", this.id, formData));
+  }
+
+  private rememberUpdated(record: PbRecord): PbRecord {
+    this.updated = record.updated ?? this.updated;
+    return record;
+  }
+
+  private serializeTracks(): any[] {
+    return this.trackList.map(t => t.serialize());
+  }
+
+  private syncPlayerMode(): void {
     if (this.midiFile) {
       this.playerMode = "midi";
-    } else if (this._audioFiles.length > 0) {
+    } else if (this.audioFileList.length > 0) {
       this.playerMode = "audio";
     } else {
       this.playerMode = "none";
     }
   }
 
-  private _updateEffectiveParameters(): void {
-    const soloing = this._tracks.some(track => track.mixer.solo);
-    this._tracks.forEach(track => track.mixer.effectiveMute = soloing ? !track.mixer.solo : track.mixer.mute);
-    this._tracks.forEach(track => track.mixer.effectiveGain = track.mixer.effectiveMute ? 0.0 : track.mixer.gain);
+  private updateEffectiveParameters(): void {
+    const soloing = this.trackList.some(track => track.mixer.solo);
+    this.trackList.forEach(track => track.mixer.effectiveMute = soloing ? !track.mixer.solo : track.mixer.mute);
+    this.trackList.forEach(track => track.mixer.effectiveGain = track.mixer.effectiveMute ? 0.0 : track.mixer.gain);
   }
 
-  // ── Measure lookup ────────────────────────────────────────────────────────────
-
-  public findMeasureIndex(value: Numbering, ignoreRepeats: boolean = false): number {
-    if (ignoreRepeats && value.includes("-")) {
-      value = value.split("-")[0] + "-1";
-    }
-
-    return this.measures.searchIndex({ value } as Measure);
+  private replaceLayers(layers: SongLayers): void {
+    replaceAll(this.measures, layers.measures);
+    replaceAll(this.unnumberedBoxes, layers.unnumberedBoxes);
+    replaceAll(this.spans, layers.spans);
+    replaceAll(this.warpMarkers, layers.warpMarkers);
+    this.endSyncTime = layers.endSyncTime;
+    replaceAll(this.markers, layers.markers);
+    replaceAll(this.sections, layers.sections);
+    this.segue = layers.segue;
+    this.timelineRevision++;
   }
 
-  public findMeasure(value: Numbering, ignoreRepeats: boolean = false): Measure | undefined {
-    return this.measures.items()[this.findMeasureIndex(value, ignoreRepeats)];
-  }
-
-  public findMeasureByTick(tick: Tick): Measure | undefined {
-    const index = binarySearch<number, Measure>(this.measures.items(), tick, {
-      comparator: (tick, measure) => tick - (measure.$beatTicks[0] ?? Infinity),
-      direction: "backward",
-      inclusive: true,
-      extend: true,
-    });
-    return this.measures.items()[index];
-  }
-
-  // ── Mixer (in-memory only, not persisted) ─────────────────────────────────────
+  // Mixer (in-memory only, not persisted)
 
   public setTrackMute(trackIndex: number, value: boolean): void {
-    if (!this._tracks[trackIndex]) {
+    if (!this.trackList[trackIndex]) {
       console.warn(`setTrackMute: track index ${trackIndex} out of range.`);
       return;
     }
 
-    this._tracks[trackIndex]!.mixer.mute = value;
-    this._updateEffectiveParameters();
+    this.trackList[trackIndex]!.mixer.mute = value;
+    this.updateEffectiveParameters();
   }
 
   public setTrackSolo(trackIndex: number, value: boolean): void {
-    if (!this._tracks[trackIndex]) {
+    if (!this.trackList[trackIndex]) {
       console.warn(`setTrackSolo: track index ${trackIndex} out of range.`);
       return;
     }
 
-    this._tracks[trackIndex]!.mixer.solo = value;
-    this._updateEffectiveParameters();
+    this.trackList[trackIndex]!.mixer.solo = value;
+    this.updateEffectiveParameters();
   }
 
   public setTrackHighlight(trackIndex: number, value: boolean): void {
-    if (!this._tracks[trackIndex]) {
+    if (!this.trackList[trackIndex]) {
       console.warn(`setTrackHighlight: track index ${trackIndex} out of range.`);
       return;
     }
 
-    this._tracks[trackIndex]!.mixer.highlight = value;
+    this.trackList[trackIndex]!.mixer.highlight = value;
   }
 
   public setTrackGain(trackIndex: number, value: number): void {
-    if (!this._tracks[trackIndex]) {
+    if (!this.trackList[trackIndex]) {
       console.warn(`setTrackGain: track index ${trackIndex} out of range.`);
       return;
     }
 
-    this._tracks[trackIndex]!.mixer.gain = Math.max(0, Math.min(1, value));
-    this._updateEffectiveParameters();
+    this.trackList[trackIndex]!.mixer.gain = Math.max(0, Math.min(1, value));
+    this.updateEffectiveParameters();
   }
 
-  // ── Track mutations ───────────────────────────────────────────────────────────
+  // Track mutations
 
   public async addTracks(tracks: Track[]): Promise<void> {
     for (const track of tracks) {
-      track.mixer.index = this._tracks.length;
-      this._tracks.push(track);
+      track.mixer.index = this.trackList.length;
+      this.trackList.push(track);
     }
 
-    await this._save({ tracks: this._serializeTracks() });
+    await this.save({ tracks: this.serializeTracks() });
   }
 
   public async setTracks(tracks: Track[]): Promise<void> {
-    this._tracks.splice(0, this._tracks.length, ...tracks);
-    this._tracks.forEach((t, i) => (t.mixer.index = i));
-    await this._save({ tracks: this._serializeTracks() });
+    replaceAll(this.trackList, tracks);
+    this.trackList.forEach((t, i) => (t.mixer.index = i));
+    await this.save({ tracks: this.serializeTracks() });
   }
 
-  // ── File mutations ────────────────────────────────────────────────────────────
+  // File mutations
 
   public async updateDetails({ number, title }: SongDetails): Promise<void> {
-    await this._save({ number, title });
+    await this.save({ number, title });
     this.number = number;
     this.title = title;
   }
 
   /**
-   * Uploads score, MIDI and recordings in one request. A beat map also fills in the measures and
-   * the MIDI tracks while the song has none, so a freshly imported MIDI song is playable at once.
+   * Uploads score, MIDI and recordings in one request. A beat map rebuilds the score and the
+   * recording, and fills in the MIDI tracks while the song has none, so a freshly imported MIDI song
+   * is playable at once.
    */
   public async addFiles({ score, midi, beatMap, recordings = [] }: SongFiles): Promise<void> {
     const formData = new FormData();
-    const beatMapJson = beatMap ? JSON.parse(await beatMap.text()) : undefined;
+    const beatMapJson = beatMap ? JSON.parse(await beatMap.text()) as MTIMidiJson : undefined;
+    const layers = beatMapJson && this.planBeatMap(beatMapJson);
 
     if (score) {
       formData.append("pdfFile", score);
@@ -261,15 +347,19 @@ export default class Song {
       formData.append("jsonFile", beatMap);
     }
 
-    if (beatMapJson && this.measures.items().length === 0) {
-      measuresFromBeatMap(beatMapJson).forEach(measure => this.measures.insert(measure));
-      formData.append("measures", JSON.stringify(this._serializeMeasures()));
+    if (layers) {
+      const { score: storedScore, recording, arrangement } = serializeLayers(layers);
+      formData.append("score", JSON.stringify(storedScore));
+      formData.append("recording", JSON.stringify(recording));
+      const fields = getChangedFields(this.getLayers(), layers);
+      if (fields.has("markers") || fields.has("sections")) {
+        formData.append("arrangement", JSON.stringify(arrangement));
+      }
     }
 
-    if (beatMapJson && this._tracks.length === 0) {
-      this._tracks.push(...tracksFromBeatMap(beatMapJson));
-      this._tracks.forEach((track, i) => track.mixer.index = i);
-      formData.append("tracks", JSON.stringify(this._serializeTracks()));
+    const tracks = beatMapJson && this.trackList.length === 0 ? tracksFromBeatMap(beatMapJson) : [];
+    if (tracks.length > 0) {
+      formData.append("tracks", JSON.stringify(tracks.map(track => track.serialize())));
     }
 
     if ([...formData.keys()].length === 0) {
@@ -277,13 +367,48 @@ export default class Song {
       return;
     }
 
-    const record = await dbUpdateWithFiles("songs", this.id, formData);
+    const record = await this.saveWithFiles(formData);
     this.pdfFile = record.pdfFile || this.pdfFile;
     this.midiFile = record.midiFile || this.midiFile;
     this.jsonFile = record.jsonFile || this.jsonFile;
-    this._syncPlayerMode();
+    if (layers) {
+      this.replaceLayers(layers);
+    }
+
+    this.trackList.push(...tracks);
+    this.trackList.forEach((track, i) => track.mixer.index = i);
+    this.syncPlayerMode();
 
     await this.addRecordings(recordings);
+  }
+
+  /**
+   * Score and recording of the beat map. Measures whose label stays keep their ID and box, so
+   * references to them survive. Boxes of measures that are gone wait as unnumbered boxes.
+   */
+  private planBeatMap(beatMap: MTIMidiJson): SongLayers {
+    const built = scoreFromBeatMap(beatMap);
+    const previous = new Map(this.measures.map(measure => [measure.label, measure]));
+    const freshIds = nextMeasureIds(this.measures, built.measures.length);
+    const ids = new Map<MeasureId, MeasureId>();
+
+    const measures = built.measures.map((measure, i) => {
+      const kept = previous.get(measure.label);
+      previous.delete(measure.label);
+      const id = kept?.id ?? freshIds[i]!;
+      ids.set(measure.id, id);
+      return new Measure(id, measure.label, measure.beats, kept?.layout);
+    });
+
+    const orphanedBoxes = [...previous.values()].flatMap(measure => measure.layout ? [measure.layout] : []);
+    return dropUnresolvedReferences({
+      ...this.getLayers(),
+      measures,
+      unnumberedBoxes: [...this.unnumberedBoxes, ...orphanedBoxes],
+      spans: built.recording.map(({ from, to }) => ({ from: ids.get(from)!, to: ids.get(to)! })),
+      warpMarkers: [],
+      endSyncTime: undefined,
+    });
   }
 
   public async addRecordings(recordings: SongRecording[]): Promise<void> {
@@ -301,7 +426,7 @@ export default class Song {
   }
 
   public async removeScore(): Promise<void> {
-    await this._save({ pdfFile: null });
+    await this.save({ pdfFile: null });
     this.pdfFile = undefined;
   }
 
@@ -309,9 +434,9 @@ export default class Song {
   public async removeMidiFile(): Promise<void> {
     this.midiFile = undefined;
     this.jsonFile = undefined;
-    this._tracks.splice(0, this._tracks.length);
-    this._syncPlayerMode();
-    await this._save({ midiFile: null, jsonFile: null, tracks: [] });
+    this.trackList.splice(0, this.trackList.length);
+    this.syncPlayerMode();
+    await this.save({ midiFile: null, jsonFile: null, tracks: [] });
   }
 
   public async uploadAudioFiles(files: File[]): Promise<string[]> {
@@ -320,7 +445,7 @@ export default class Song {
     }
 
     const prevFilenames = new Set(
-      this._audioFiles.map(f => (typeof f === "string" ? f : f.name)),
+      this.audioFileList.map(f => (typeof f === "string" ? f : f.name)),
     );
 
     const formData = new FormData();
@@ -330,14 +455,14 @@ export default class Song {
       formData.append("audioFiles+", file);
     }
 
-    const record = await dbUpdateWithFiles("songs", this.id, formData);
+    const record = await this.saveWithFiles(formData);
     const newFilenames = (record.audioFiles as string[]).filter(f => !prevFilenames.has(f));
 
     for (const filename of newFilenames) {
-      this._audioFiles.push(filename);
+      this.audioFileList.push(filename);
     }
 
-    this._syncPlayerMode();
+    this.syncPlayerMode();
 
     return newFilenames;
   }
@@ -353,171 +478,126 @@ export default class Song {
   }
 
   public async removeAudioFile(filename: string): Promise<void> {
-    await dbUpdate("songs", this.id, { "audioFiles-": filename });
-    const idx = this._audioFiles.findIndex(
+    await this.save({ "audioFiles-": filename });
+    const idx = this.audioFileList.findIndex(
       f => (typeof f === "string" ? f : f.name) === filename,
     );
     if (idx !== -1) {
-      this._audioFiles.splice(idx, 1);
+      this.audioFileList.splice(idx, 1);
     }
 
-    for (let i = this._tracks.length - 1; i >= 0; i--) {
-      if (this._tracks[i]!.audioFile === filename) {
-        this._tracks.splice(i, 1);
+    for (let i = this.trackList.length - 1; i >= 0; i--) {
+      if (this.trackList[i]!.audioFile === filename) {
+        this.trackList.splice(i, 1);
       }
     }
 
-    this._tracks.forEach((t, i) => (t.mixer.index = i));
-    this._syncPlayerMode();
-    await this._save({ tracks: this._serializeTracks() });
+    this.trackList.forEach((t, i) => (t.mixer.index = i));
+    this.syncPlayerMode();
+    await this.save({ tracks: this.serializeTracks() });
   }
 
-  // ── Measure mutations ─────────────────────────────────────────────────────────
+  // Layer mutations
 
-  public async addMeasure(measure: Measure): Promise<void> {
-    this.measures.insert(measure);
-    await this._save({ measures: this._serializeMeasures() });
+  /** The current score, recording and arrangement, to compute the next ones from. */
+  public getLayers(): SongLayers {
+    return {
+      measures: this.measures,
+      unnumberedBoxes: this.unnumberedBoxes,
+      spans: this.spans,
+      warpMarkers: this.warpMarkers,
+      endSyncTime: this.endSyncTime,
+      markers: this.markers,
+      sections: this.sections,
+      segue: this.segue,
+    };
   }
 
-  public async addMeasures(measures: Measure[]): Promise<void> {
-    for (const measure of measures) {
-      this.measures.insert(measure);
+  /** A MIDI song plays its beat map, so only labels, boxes and the arrangement may change. */
+  private validateMidiLayers(current: SongLayers, next: SongLayers, fields: ReadonlySet<LayerField>): string | undefined {
+    if (fields.has("measures") && getMeasureKey(current.measures) !== getMeasureKey(next.measures)) {
+      return "A MIDI song only has the measures of its beat map.";
     }
 
-    await this._save({ measures: this._serializeMeasures() });
-  }
+    if (fields.has("spans")) {
+      return "A MIDI song takes its recording from the beat map.";
+    }
 
-  public applyMeasureLayout(measure: Measure, layout: MeasureLayout | undefined): void {
-    measure._applyLayout(layout);
+    const synced = (fields.has("warpMarkers") && next.warpMarkers.length > 0) || (fields.has("endSyncTime") && next.endSyncTime !== undefined);
+    return synced ? "A MIDI song takes its timing from the beat map." : undefined;
   }
 
   /**
-   * Applies a whole measure edit in one save. Renamed and deleted measures carry their warp
-   * markers, markers and vamps along, so no reference points to a measure that is gone.
+   * The one way to change the score, recording and arrangement. Merges `change` into the current layers,
+   * puts references in timeline order, validates the result and saves every changed layer in one request.
+   * Nothing changes when validation or the save fails. Returns undefined when nothing would change.
    */
-  public async applyMeasureEdit(edit: MeasureEdit): Promise<void> {
-    if (isEmptyEdit(edit)) {
-      return;
+  public async editLayers(change: Partial<SongLayers>, origin: LayersOrigin = "edit"): Promise<LayersChange | undefined> {
+    const current = this.getLayers();
+    const next = sortReferences({ ...current, ...change });
+    const fields = getChangedFields(current, next);
+    if (fields.size === 0) {
+      return undefined;
     }
 
-    edit.layouts.forEach((layout, measure) => measure._applyLayout(layout));
-    edit.beats.forEach((beats, measure) => measure._applyBeats(beats));
-
-    const renames = new Map([...edit.renames].map(([measure, value]) => [measure.value, value]));
-    edit.renames.forEach((value, measure) => measure.value = value);
-
-    const removed = new Set(edit.removals.map(measure => measure.value));
-    const kept = this.measures.items().filter(measure => !removed.has(measure.value));
-    this.measures.setItems([...kept, ...edit.additions]);
-
-    const fields: PbRecord = { measures: this._serializeMeasures() };
-    if (edit.resolvedBoxes.length > 0) {
-      this.removeUnnumberedBoxes(edit.resolvedBoxes);
-      fields.unnumberedBoxes = this.unnumberedBoxes;
+    const reason = (this.playerMode === "midi" ? this.validateMidiLayers(current, next, fields) : undefined) ?? validateLayers(next, fields);
+    if (reason) {
+      throw new Error(reason);
     }
 
-    if (renames.size > 0 || removed.size > 0) {
-      this._updateMeasureReferences(renames, removed);
-      fields.warpMarkers = this._warpMarkers;
-      fields.events = this._serializeEvents();
+    const before = serializeLayers(current);
+    const after = serializeLayers(next);
+    const layers = Object.keys(LAYER_FIELDS) as (keyof LayerSnapshot)[];
+    const changed = layers.filter(layer => LAYER_FIELDS[layer].some(field => fields.has(field)));
+    await this.save(Object.fromEntries(changed.map(layer => [layer, after[layer]])));
+
+    const result: LayersChange = { before, after, timingChanged: changesTiming(current, next), origin };
+    this.replaceLayers(next);
+    this.layersChange.fire(result);
+    return result;
+  }
+
+  /** Writes a snapshot back, for undo and redo. */
+  public async restoreLayers(snapshot: LayerSnapshot): Promise<LayersChange | undefined> {
+    return this.editLayers(deserializeLayers(snapshot), "history");
+  }
+
+  /** The stored form of the current layers. */
+  public getLayerSnapshot(): LayerSnapshot {
+    return serializeLayers(this.getLayers());
+  }
+
+  /** Whether someone else saved the record since our last save, which an undo would overwrite. */
+  public async isChangedElsewhere(): Promise<boolean> {
+    const { updated } = await dbGetOne("songs", this.id, "updated");
+    return updated !== this.updated;
+  }
+
+  /** Applies a whole measure edit in one save. Returns the added measures in the order of `edit.additions`. */
+  public async applyMeasureEdit(edit: MeasureEdit): Promise<Measure[]> {
+    if (isEmptyMeasureEdit(edit)) {
+      return [];
     }
 
-    await this._save(fields);
+    const { layers, added } = planMeasureEdit(this.getLayers(), edit);
+    await this.editLayers(layers);
+    return added;
   }
 
-  private removeUnnumberedBoxes(resolved: readonly MeasureLayout[]): void {
-    const kept = this.unnumberedBoxes.filter(box => !resolved.some(other => isSameLayout(box, other)));
-    this.unnumberedBoxes.splice(0, this.unnumberedBoxes.length, ...kept);
+  /** What `setRecordingSpans(spans)` would do, for showing before saving. Throws like it on invalid spans. */
+  public previewRecordingSpans(spans: readonly RecordingSpan[]): RecordingPreview {
+    return toRecordingPreview(planRecordingChange(this.getLayers(), this.measures, spans));
   }
 
-  private _updateMeasureReferences(renames: Map<Numbering, Numbering>, removed: Set<Numbering>): void {
-    const rename = (value: Numbering): Numbering => renames.get(value) ?? value;
-
-    const warpMarkers = this._warpMarkers
-      .filter(marker => !removed.has(marker.measure))
-      .map(marker => ({ ...marker, measure: rename(marker.measure) }));
-    this._warpMarkers.splice(0, this._warpMarkers.length, ...warpMarkers);
-
-    updateEventReferences(this.events.markers, rename, removed);
-    updateEventReferences(this.events.vamps, rename, removed);
+  /**
+   * Replaces the recording. Warp markers keep their times, and they, markers and sections move with
+   * their timeline position wherever it survives the change. Only the rest are dropped.
+   */
+  public async setRecordingSpans(spans: readonly RecordingSpan[]): Promise<void> {
+    await this.editLayers(planRecordingChange(this.getLayers(), this.measures, spans).layers);
   }
 
-  public async applyMeasureDetection(plan: MeasureDetectionPlan): Promise<void> {
-    for (const { measure, layout } of plan.placements) {
-      measure._applyLayout(layout);
-    }
-
-    for (const measure of plan.additions) {
-      this.measures.insert(measure);
-    }
-
-    this.unnumberedBoxes.push(...plan.unnumbered);
-    await this._save({ measures: this._serializeMeasures(), unnumberedBoxes: this.unnumberedBoxes });
-  }
-
-  public async saveMeasures(): Promise<void> {
-    await this._save({ measures: this._serializeMeasures() });
-  }
-
-  // Markers only label the timeline, so editing them never needs a player reload.
-  public async addMarker(start: MeasureReference, name: string): Promise<MarkerEvent> {
-    const marker = new MarkerEvent(start, name);
-    marker.$startTick = this.findMeasure(start[0])?.$beatTicks[start[1]];
-    this.events.markers.insert(marker);
-    await this._save({ events: this._serializeEvents() });
-    return marker;
-  }
-
-  public async updateMarker(marker: MarkerEvent, start: MeasureReference, name: string): Promise<void> {
-    this.removeMarkerEvent(marker);
-    marker.start = start;
-    marker.end = start;
-    marker.marker = name;
-    marker.$startTick = this.findMeasure(start[0])?.$beatTicks[start[1]];
-    this.events.markers.insert(marker);
-    await this._save({ events: this._serializeEvents() });
-  }
-
-  public async removeMarker(marker: MarkerEvent): Promise<void> {
-    this.removeMarkerEvent(marker);
-    await this._save({ events: this._serializeEvents() });
-  }
-
-  // Markers can share a start, so they are removed by identity instead of by position.
-  private removeMarkerEvent(marker: MarkerEvent): void {
-    const index = this.events.markers.items().indexOf(marker);
-    if (index !== -1) {
-      this.events.markers.removeAt(index);
-    }
-  }
-
-  // ── Warp marker mutations ─────────────────────────────────────────────────────
-
-  public async addWarpMarker(marker: SongWarpMarker): Promise<void> {
-    this._warpMarkers.push(marker);
-    this._warpMarkers.sort((a, b) => a.time - b.time);
-    await this._save({ warpMarkers: this._warpMarkers });
-  }
-
-  public async removeWarpMarker(measure: Numbering): Promise<void> {
-    const idx = this._warpMarkers.findIndex(m => m.measure === measure);
-    if (idx !== -1) {
-      this._warpMarkers.splice(idx, 1);
-    }
-
-    await this._save({ warpMarkers: this._warpMarkers });
-  }
-
-  public async setWarpMarker(measure: Numbering, time: number): Promise<void> {
-    const marker = this._warpMarkers.find(m => m.measure === measure);
-    if (marker) {
-      marker.time = time;
-    }
-
-    await this._save({ warpMarkers: this._warpMarkers });
-  }
-
-  // ── Serialization & persistence ───────────────────────────────────────────────
+  // Serialization and persistence
 
   public serialize(): PbRecord {
     return {
@@ -526,25 +606,14 @@ export default class Song {
       midiFile: this.midiFile,
       jsonFile: this.jsonFile,
       pdfFile: this.pdfFile,
-      audioFiles: this._audioFiles,
-      tracks: this._serializeTracks(),
-      measures: this._serializeMeasures(),
-      events: this._serializeEvents(),
-      warpMarkers: this._warpMarkers,
-      unnumberedBoxes: this.unnumberedBoxes,
+      audioFiles: this.audioFileList,
+      tracks: this.serializeTracks(),
+      ...this.getLayerSnapshot(),
     };
   }
 
-  public static deserialize({ id, number, title, midiFile, jsonFile, pdfFile, audioFiles, tracks, measures, events, warpMarkers, unnumberedBoxes }: PbRecord, showPermissions?: Permissions): Song {
-    const measureList = new MeasureList(measures.map((m: PbRecord) => Measure.deserialize(m)));
-
-    // Convert all warp markers from using indices to using measure numbers
-    const songWarpMarkers = ((warpMarkers ?? []) as (WarpMarker | SongWarpMarker)[]).map(m => ({
-      measure: typeof m.measure === "number" ? (measureList.items()[m.measure]?.value ?? String(m.measure)) : m.measure,
-      time: m.time,
-    }));
-
-    return new Song(
+  public static deserialize({ id, number, title, midiFile, jsonFile, pdfFile, audioFiles, tracks, score, recording, arrangement, updated }: PbRecord, showPermissions?: Permissions): Song {
+    const song = new Song(
       id,
       number,
       title,
@@ -553,17 +622,11 @@ export default class Song {
       pdfFile,
       audioFiles,
       tracks.map((t: PbRecord) => Track.deserialize(t)),
-      measureList,
-      {
-        markers: new MeasureEventList<MarkerEvent>(events.markers.map((m: PbRecord) => MarkerEvent.deserialize(m))),
-        vamps: new MeasureEventList<VampEvent>(events.vamps.map((v: PbRecord) => VampEvent.deserialize(v))),
-        segue: events.segue,
-      },
-      songWarpMarkers,
+      deserializeLayers({ score, recording, arrangement }),
       showPermissions ?? NoPermissions,
-      {},
-      Array.isArray(unnumberedBoxes) ? unnumberedBoxes : [],
     );
+    song.updated = updated;
+    return song;
   }
 
   public async create(): Promise<PbRecord> {
@@ -576,13 +639,12 @@ export default class Song {
     formData.append("number", number);
     formData.append("title", title);
     formData.append("tracks", "[]");
-    formData.append("measures", "[]");
-    formData.append("events", JSON.stringify(EMPTY_EVENTS));
-    formData.append("warpMarkers", "[]");
-    formData.append("unnumberedBoxes", "[]");
+    formData.append("score", JSON.stringify(EMPTY_LAYERS.score));
+    formData.append("recording", JSON.stringify(EMPTY_LAYERS.recording));
+    formData.append("arrangement", JSON.stringify(EMPTY_LAYERS.arrangement));
 
     const record = await dbCreateWithFiles("songs", formData);
-    const song = Song.deserialize({ ...record, tracks: [], measures: [], events: EMPTY_EVENTS, warpMarkers: [], unnumberedBoxes: [] }, permissions);
+    const song = Song.deserialize({ ...record, tracks: [], ...EMPTY_LAYERS }, permissions);
     await song.addFiles(files);
     return song;
   }

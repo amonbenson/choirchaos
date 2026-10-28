@@ -1,24 +1,29 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { dbCreateWithFiles, dbDelete, dbUpdate, dbUpdateWithFiles } from "@/pocketbase/db";
-import { makeMtiJson, TRACK_NAMES } from "@/test/fixtures";
+import { dbCreateWithFiles, dbDelete, dbGetOne, dbUpdate, dbUpdateWithFiles } from "@/pocketbase/db";
+import { idOf, locationOf, makeAudioSongWithRepeat, makeMidiSong, makeMtiJson, TRACK_NAMES } from "@/test/fixtures";
 
-import Measure, { MeasureList } from "./measure";
-import { createEmptyEdit, type MeasureEdit } from "./measureEditing";
-import { MarkerEvent, MeasureEventList, VampEvent } from "./measureEvent";
-import Song from "./song";
+import { scoreFromBeatMap } from "../midi/beatMap";
+import { EMPTY_LAYERS, type SongLayers, type StoredArrangement, type StoredScore } from "./layers";
+import { addMarker, type Marker, removeMarker, replaceMarker } from "./markers";
+import Measure, { createEmptyMeasureEdit, type MeasureEdit } from "./measure";
+import { type Location, setRecordedCount, type StoredRecording, type StoredWarpMarker } from "./recording";
+import { getSectionPasses, replaceSections, type Section } from "./sections";
+import Song, { type LayersChange } from "./song";
 import Track from "./track";
+import { addWarpMarker, moveWarpMarker, reassignWarpMarker, removeWarpMarker } from "./warpEditing";
 
 vi.mock("@/pocketbase/db", () => ({
   dbCreate: vi.fn(),
   dbCreateWithFiles: vi.fn(),
   dbDelete: vi.fn(),
+  dbGetOne: vi.fn(),
   dbUpdate: vi.fn(async (_collection: string, id: string, data: object) => ({ id, ...data })),
   dbUpdateWithFiles: vi.fn(),
 }));
 
-function makeSong(audioFiles: string[] = [], tracks: Track[] = []): Song {
-  return new Song("song-id", "1", "Song", undefined, undefined, undefined, audioFiles, tracks);
+function makeSong(audioFiles: string[] = [], tracks: Track[] = [], layers: Partial<SongLayers> = {}): Song {
+  return new Song("song-id", "1", "Song", undefined, undefined, undefined, audioFiles, tracks, layers);
 }
 
 function mockStoredAudioFiles(audioFiles: string[]): void {
@@ -32,6 +37,10 @@ function uploadedEntries(): [string, FormDataEntryValue][] {
 
 function mp3(name: string): File {
   return new File(["mp3"], name, { type: "audio/mpeg" });
+}
+
+function lastSave(): Record<string, any> {
+  return vi.mocked(dbUpdate).mock.calls.at(-1)![2];
 }
 
 describe("Song audio files", () => {
@@ -105,6 +114,8 @@ function beatMapFile(): File {
   return new File([JSON.stringify(makeMtiJson())], "song.json", { type: "application/json" });
 }
 
+const BOX = { page: 0, x: 0.2, y: 0.3, width: 0.2, height: 0.1 };
+
 describe("Song details and files", () => {
   afterEach(() => {
     vi.clearAllMocks();
@@ -119,26 +130,42 @@ describe("Song details and files", () => {
     expect([song.number, song.title]).toEqual(["4a", "Reprise"]);
   });
 
-  it("creates measures and MIDI tracks from the beat map of an empty song", async () => {
+  it("builds score, recording and MIDI tracks from the beat map of an empty song", async () => {
     const song = makeSong();
     vi.mocked(dbUpdateWithFiles).mockResolvedValueOnce({ id: "song-id", midiFile: "song_1.mid", jsonFile: "song_1.json" });
 
     await song.addFiles({ midi: new File(["midi"], "song.mid"), beatMap: beatMapFile() });
 
+    const built = scoreFromBeatMap(makeMtiJson());
     const entries = entriesOf(0);
-    expect(Object.keys(entries)).toEqual(["midiFile", "jsonFile", "measures", "tracks"]);
+    expect(Object.keys(entries)).toEqual(["midiFile", "jsonFile", "score", "recording", "tracks"]);
+    expect(JSON.parse(entries.score as string)).toEqual({ measures: built.measures.map(m => m.serialize()), unnumberedBoxes: [] });
+    expect(JSON.parse(entries.recording as string)).toEqual({ spans: built.recording, warpMarkers: [] });
     expect(JSON.parse(entries.tracks as string).map((t: { title: string }) => t.title)).toEqual([TRACK_NAMES.instrument, TRACK_NAMES.vocals]);
-    expect(song.measures.items().map(m => m.value)).toEqual(["0", "1", "2", "3", "4", "5"]);
+    expect(song.getMeasures().map(m => m.label)).toEqual(built.measures.map(m => m.label));
     expect([song.midiFile, song.jsonFile, song.playerMode]).toEqual(["song_1.mid", "song_1.json", "midi"]);
   });
 
-  it("keeps existing measures and tracks when a beat map is replaced", async () => {
-    const song = new Song("song-id", "1", "Song", undefined, undefined, undefined, [], [new Track("Lead")], new MeasureList([new Measure("1", 3)]));
+  it("keeps the IDs, boxes and references of measures whose label stays when the beat map is replaced", async () => {
+    const kept = new Measure("m7", "2", 3, BOX);
+    const gone = new Measure("m8", "Coda", 4, { ...BOX, page: 1 });
+    const song = makeSong(["a.mp3"], [new Track("Lead")], {
+      measures: [kept, gone],
+      spans: [{ from: "m7", to: "m8" }],
+      warpMarkers: [{ measure: "m7", occurrence: 1, time: 0 }],
+      markers: [{ at: { measure: "m7", beat: 0, occurrence: 1 }, text: "A" }, { at: { measure: "m8", beat: 0, occurrence: 1 }, text: "B" }],
+    });
     vi.mocked(dbUpdateWithFiles).mockResolvedValueOnce({ id: "song-id", midiFile: "a.mid", jsonFile: "a.json" });
 
     await song.addFiles({ midi: new File(["midi"], "song.mid"), beatMap: beatMapFile() });
 
-    expect(Object.keys(entriesOf(0))).toEqual(["midiFile", "jsonFile"]);
+    expect(Object.keys(entriesOf(0))).toEqual(["midiFile", "jsonFile", "score", "recording", "arrangement"]);
+    expect(song.findMeasureByLabel("2")).toMatchObject({ id: "m7", layout: BOX });
+    expect(song.findMeasure("m8")).toBeUndefined();
+    expect(song.getMeasures().filter(m => m.id !== "m7").every(m => /^m(9|\d\d)$/.test(m.id))).toBe(true);
+    expect(song.getUnnumberedBoxes()).toEqual([{ ...BOX, page: 1 }]);
+    expect(song.getWarpMarkers()).toEqual([]);
+    expect(song.getMarkers().map(m => m.text)).toEqual(["A"]);
     expect(song.tracks.map(t => t.title)).toEqual(["Lead"]);
   });
 
@@ -163,16 +190,19 @@ describe("Song details and files", () => {
     expect([song.midiFile, song.jsonFile, song.playerMode]).toEqual([undefined, undefined, "none"]);
   });
 
-  it("creates a song in its show with empty data", async () => {
+  it("creates a song in its show with empty layers", async () => {
     vi.mocked(dbCreateWithFiles).mockResolvedValueOnce({ id: "new-id", number: "2", title: "New", audioFiles: [] });
 
     const song = await Song.create("show-id", { number: "2", title: "New" });
 
     const entries = Object.fromEntries(vi.mocked(dbCreateWithFiles).mock.calls[0]![1].entries());
-    expect(entries).toMatchObject({ show: "show-id", number: "2", title: "New", tracks: "[]", measures: "[]", unnumberedBoxes: "[]" });
-    expect(JSON.parse(entries.events as string)).toEqual({ markers: [], vamps: [], segue: false });
+    expect(Object.keys(entries)).toEqual(["show", "number", "title", "tracks", "score", "recording", "arrangement"]);
+    expect(entries).toMatchObject({ show: "show-id", number: "2", title: "New", tracks: "[]" });
+    expect(JSON.parse(entries.score as string)).toEqual({ measures: [], unnumberedBoxes: [] });
+    expect(JSON.parse(entries.recording as string)).toEqual({ spans: [], warpMarkers: [] });
+    expect(JSON.parse(entries.arrangement as string)).toEqual({ markers: [], sections: [], segue: false });
     expect([song.id, song.number, song.title]).toEqual(["new-id", "2", "New"]);
-    expect(song.getUnnumberedBoxes()).toEqual([]);
+    expect([song.getMeasures(), song.getUnnumberedBoxes(), song.getTimeline()]).toEqual([[], [], []]);
   });
 
   it("deletes itself", async () => {
@@ -182,182 +212,647 @@ describe("Song details and files", () => {
   });
 });
 
+describe("Song layers", () => {
+  const score: StoredScore = {
+    measures: [
+      { id: "m1", label: "1", beats: 4, layout: { ...BOX, review: true } },
+      { id: "m2", label: "2", beats: 3 },
+    ],
+    unnumberedBoxes: [BOX],
+  };
+  const recording: StoredRecording = {
+    spans: [{ from: "m1", to: "m2" }, { from: "m2", to: "m2" }],
+    warpMarkers: [{ measure: "m1", occurrence: 1, time: 0 }, { measure: "m2", occurrence: 2, time: 4 }],
+  };
+  const arrangement: StoredArrangement = {
+    markers: [{ at: { measure: "m2", beat: 1, occurrence: 2 }, text: "B" }],
+    sections: [{ kind: "vamp", from: { measure: "m2", beat: 0 }, to: { measure: "m2", beat: 2 }, out: "anyBar", vocals: "last" }],
+    segue: true,
+  };
+  const record = { id: "song-id", number: "1", title: "Song", audioFiles: ["a.mp3"], tracks: [], score, recording, arrangement };
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("round-trips the three layers in exactly their stored shapes", () => {
+    const serialized = Song.deserialize(record).serialize();
+
+    expect(serialized.score).toEqual(score);
+    expect(serialized.recording).toEqual(recording);
+    expect(serialized.arrangement).toEqual(arrangement);
+    expect(Object.keys(serialized.score.measures[1])).toEqual(["id", "label", "beats"]);
+  });
+
+  it("exposes the layers", () => {
+    const song = Song.deserialize(record);
+
+    expect(song.getMeasures().map(m => m.label)).toEqual(["1", "2"]);
+    expect(song.findMeasure("m2")?.label).toBe("2");
+    expect(song.findMeasureByLabel("1")?.id).toBe("m1");
+    expect([song.getScoreIndex("m2"), song.getScoreIndex("m9")]).toEqual([1, -1]);
+    expect(song.getRecording()).toEqual(recording.spans);
+    expect(song.getWarpMarkers()).toEqual(recording.warpMarkers);
+    expect(song.getMarkers()).toEqual([{ at: { measure: "m2", beat: 1, occurrence: 2 }, text: "B" }]);
+    expect(song.getSections()[0]).toMatchObject({ kind: "vamp", from: { occurrence: 1 }, out: "anyBar" });
+    expect(song.hasSegue()).toBe(true);
+    expect(song.getUnnumberedBoxes()).toEqual([BOX]);
+  });
+
+  it("orders stored markers and sections in timeline order", () => {
+    const song = Song.deserialize({
+      ...record,
+      arrangement: {
+        markers: [{ at: { measure: "m2", beat: 0, occurrence: 2 }, text: "Late" }, { at: { measure: "m1", beat: 0 }, text: "Early" }],
+        sections: [
+          { kind: "repeat", from: { measure: "m2", beat: 0, occurrence: 2 }, to: { measure: "m2", beat: 2, occurrence: 2 }, passes: 2 },
+          { kind: "cut", from: { measure: "m1", beat: 0 }, to: { measure: "m1", beat: 3 } },
+        ],
+        segue: false,
+      },
+    });
+
+    expect(song.getMarkers().map(marker => marker.text)).toEqual(["Early", "Late"]);
+    expect(song.getSections().map(section => section.kind)).toEqual(["cut", "repeat"]);
+  });
+
+  it("caches the timeline until the measures or the recording change", async () => {
+    const song = Song.deserialize(record);
+    const timeline = song.getTimeline();
+
+    expect(timeline.map(e => [e.measure, e.occurrence])).toEqual([["m1", 1], ["m2", 1], ["m2", 2]]);
+    expect(song.getTimeline()).toBe(timeline);
+
+    await song.setRecordingSpans([{ from: "m1", to: "m2" }]);
+
+    expect(song.getTimeline()).not.toBe(timeline);
+    expect(song.getTimeline()).toHaveLength(2);
+  });
+});
+
 describe("Song measure edits", () => {
   const layoutA = { page: 0, x: 0.1, y: 0, width: 0.1, height: 0.1 };
   const layoutB = { page: 0, x: 0.5, y: 0, width: 0.1, height: 0.1 };
 
-  function makeMeasureSong(): Song {
-    const measures = new MeasureList([new Measure("1", 4, layoutA), new Measure("2", 4), new Measure("3", 4, layoutB)]);
-    const events = {
-      markers: new MeasureEventList<MarkerEvent>([new MarkerEvent(["3", 0], "B")]),
-      vamps: new MeasureEventList<VampEvent>([new VampEvent(["1", 0], ["2", 0], 2)]),
-      segue: false,
-    };
-    return new Song("song-id", "1", "Song", undefined, undefined, undefined, ["a.mp3"], [], measures, events, [
-      { measure: "1", time: 0 },
-      { measure: "3", time: 4 },
-    ]);
+  // Measures "1" to "3", the recording plays 1 2 3 2 3.
+  function makeAudioMeasureSong(): Song {
+    return makeSong(["a.mp3"], [], {
+      measures: [new Measure("m1", "1", 4, layoutA), new Measure("m2", "2", 4), new Measure("m3", "3", 4, layoutB)],
+      spans: [{ from: "m1", to: "m3" }, { from: "m2", to: "m3" }],
+      warpMarkers: [{ measure: "m1", occurrence: 1, time: 0 }, { measure: "m3", occurrence: 2, time: 4 }],
+      markers: [{ at: { measure: "m3", beat: 0, occurrence: 1 }, text: "B" }, { at: { measure: "m1", beat: 3, occurrence: 1 }, text: "A" }],
+      sections: [{ kind: "repeat", from: { measure: "m2", beat: 0, occurrence: 1 }, to: { measure: "m3", beat: 3, occurrence: 1 }, passes: 1 }],
+    });
   }
 
   function edit(changes: Partial<MeasureEdit>): MeasureEdit {
-    return { ...createEmptyEdit(), ...changes };
+    return { ...createEmptyMeasureEdit(), ...changes };
   }
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it("applies layouts and beats in one save", async () => {
-    const song = makeMeasureSong();
-    const [one, two] = song.measures.items();
+  it("saves layouts and labels as the score only", async () => {
+    const song = makeAudioMeasureSong();
 
-    await song.applyMeasureEdit(edit({ layouts: new Map([[one!, undefined], [two!, layoutA]]), beats: new Map([[two!, 3]]) }));
+    await song.applyMeasureEdit(edit({ layouts: new Map([["m1", undefined], ["m2", layoutA]]), relabels: new Map([["m3", "3a"]]) }));
 
-    expect(song.measures.items().map(m => [m.beats, m.layout])).toEqual([[4, undefined], [3, layoutA], [4, layoutB]]);
+    expect(song.getMeasures().map(m => [m.id, m.label, m.layout])).toEqual([["m1", "1", undefined], ["m2", "2", layoutA], ["m3", "3a", layoutB]]);
     expect(dbUpdate).toHaveBeenCalledTimes(1);
-    expect(dbUpdate).toHaveBeenCalledWith("songs", "song-id", { measures: expect.any(Array) });
+    expect(lastSave()).toEqual({ score: song.serialize().score });
   });
 
-  it("keeps the list sorted and moves references along with renamed measures", async () => {
-    const song = makeMeasureSong();
-    const three = song.measures.items()[2]!;
+  it("keeps references on relabeled measures, since they use IDs", async () => {
+    const song = makeAudioMeasureSong();
 
-    await song.applyMeasureEdit(edit({ renames: new Map([[three, "0"]]) }));
+    await song.applyMeasureEdit(edit({ relabels: new Map([["m3", "0"]]) }));
 
-    expect(song.measures.items().map(m => m.value)).toEqual(["0", "1", "2"]);
-    expect(song.warpMarkers.map(m => m.measure)).toEqual(["1", "0"]);
-    expect(song.events.markers.items()[0]!.start).toEqual(["0", 0]);
+    expect(song.getMeasures().map(m => m.label)).toEqual(["1", "2", "0"]);
+    expect(song.getMarkers()).toHaveLength(2);
+    expect(song.getWarpMarkers()).toHaveLength(2);
   });
 
-  it("drops the references of deleted measures", async () => {
-    const song = makeMeasureSong();
-    const one = song.measures.items()[0]!;
+  it("removes references and recording entries of removed measures in one save", async () => {
+    const song = makeAudioMeasureSong();
 
-    await song.applyMeasureEdit(edit({ removals: [one] }));
+    await song.applyMeasureEdit(edit({ removals: ["m3"] }));
 
-    expect(song.measures.items().map(m => m.value)).toEqual(["2", "3"]);
-    expect(song.warpMarkers.map(m => m.measure)).toEqual(["3"]);
-    expect(song.events.vamps.items()).toEqual([]);
-    expect(song.events.markers.items()).toHaveLength(1);
+    expect(song.getMeasures().map(m => m.id)).toEqual(["m1", "m2"]);
+    expect(song.getRecording()).toEqual([{ from: "m1", to: "m2" }, { from: "m2", to: "m2" }]);
+    expect(song.getWarpMarkers().map(m => m.measure)).toEqual(["m1"]);
+    expect(song.getMarkers().map(m => m.text)).toEqual(["A"]);
+    expect(song.getSections()).toEqual([]);
+    expect(dbUpdate).toHaveBeenCalledTimes(1);
+    expect(Object.keys(lastSave())).toEqual(["score", "recording", "arrangement"]);
+  });
+
+  it("drops spans that only held a removed measure", async () => {
+    const song = makeSong([], [], {
+      measures: [new Measure("m1", "1", 4), new Measure("m2", "2", 4)],
+      spans: [{ from: "m1", to: "m2" }, { from: "m2", to: "m2" }],
+    });
+
+    await song.applyMeasureEdit(edit({ removals: ["m2"] }));
+
+    expect(song.getRecording()).toEqual([{ from: "m1", to: "m1" }]);
+    expect(Object.keys(lastSave())).toEqual(["score", "recording"]);
+  });
+
+  it("adds measures with fresh IDs at their score index and plays them inside a span", async () => {
+    const song = makeAudioMeasureSong();
+
+    const added = await song.applyMeasureEdit(edit({ additions: [{ label: "2a", beats: 3, layout: layoutB, index: 2 }] }));
+
+    expect(added.map(m => [m.id, m.label, m.beats])).toEqual([["m4", "2a", 3]]);
+    expect(song.getMeasures().map(m => m.label)).toEqual(["1", "2", "2a", "3"]);
+    expect(song.getTimeline().map(e => e.measure)).toEqual(["m1", "m2", "m4", "m3", "m2", "m4", "m3"]);
+    expect(Object.keys(lastSave())).toEqual(["score"]);
+  });
+
+  it("extends the last span ending right before measures added after it", async () => {
+    const song = makeAudioMeasureSong();
+
+    const added = await song.applyMeasureEdit(edit({
+      additions: [{ label: "5", beats: 4, index: 4 }, { label: "4", beats: 4, index: 3 }],
+    }));
+
+    expect(added.map(m => [m.id, m.label])).toEqual([["m4", "5"], ["m5", "4"]]);
+    expect(song.getMeasures().map(m => m.label)).toEqual(["1", "2", "3", "4", "5"]);
+    expect(song.getRecording()).toEqual([{ from: "m1", to: "m3" }, { from: "m2", to: "m4" }]);
+    expect(lastSave().recording).toEqual(song.serialize().recording);
+  });
+
+  it("gives the first measure of an empty song its own span", async () => {
+    const song = makeSong(["a.mp3"]);
+
+    await song.applyMeasureEdit(edit({ additions: [{ label: "1", beats: 4, index: 0 }, { label: "2", beats: 4, index: 1 }] }));
+
+    expect(song.getRecording()).toEqual([{ from: "m1", to: "m2" }]);
+  });
+
+  it("drops references to beats that no longer exist", async () => {
+    const song = makeAudioMeasureSong();
+
+    await song.applyMeasureEdit(edit({ beats: new Map([["m1", 3]]) }));
+
+    expect(song.findMeasure("m1")?.beats).toBe(3);
+    expect(song.getMarkers().map(m => m.text)).toEqual(["B"]);
+    expect(Object.keys(lastSave())).toEqual(["score", "arrangement"]);
+  });
+
+  it("replaces the unnumbered boxes", async () => {
+    const song = makeSong([], [], { unnumberedBoxes: [layoutA, layoutB] });
+
+    await song.applyMeasureEdit(edit({ unnumberedBoxes: [layoutB] }));
+
+    expect(song.getUnnumberedBoxes()).toEqual([layoutB]);
+    expect(lastSave()).toEqual({ score: { measures: [], unnumberedBoxes: [layoutB] } });
   });
 
   it("does not save an empty edit", async () => {
-    await makeMeasureSong().applyMeasureEdit(createEmptyEdit());
+    await makeAudioMeasureSong().applyMeasureEdit(createEmptyMeasureEdit());
 
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid edits without changing anything", async () => {
+    const song = makeAudioMeasureSong();
+    const before = song.serialize();
+
+    await expect(song.applyMeasureEdit(edit({ relabels: new Map([["m1", "2"]]) }))).rejects.toThrow("exists twice");
+    await expect(song.applyMeasureEdit(edit({ additions: [{ label: " ", beats: 4, index: 0 }] }))).rejects.toThrow("must not be empty");
+    await expect(song.applyMeasureEdit(edit({ removals: ["m9"] }))).rejects.toThrow("does not exist");
+    await expect(song.applyMeasureEdit(edit({ beats: new Map([["m1", 0]]) }))).rejects.toThrow("positive");
+
+    expect(song.serialize()).toEqual(before);
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it("allows swapping labels in one edit", async () => {
+    const song = makeAudioMeasureSong();
+
+    await song.applyMeasureEdit(edit({ relabels: new Map([["m1", "2"], ["m2", "1"]]) }));
+
+    expect(song.getMeasures().map(m => m.label)).toEqual(["2", "1", "3"]);
+  });
+
+  it("only attaches layouts and labels in MIDI songs", async () => {
+    const song = makeMidiSong();
+
+    await expect(song.applyMeasureEdit(edit({ additions: [{ label: "9", beats: 4, index: 0 }] }))).rejects.toThrow("beat map");
+    await expect(song.applyMeasureEdit(edit({ removals: [idOf(song, "1")] }))).rejects.toThrow("beat map");
+
+    await song.applyMeasureEdit(edit({ relabels: new Map([[idOf(song, "1"), "1R"]]) }));
+    expect(song.findMeasureByLabel("1R")).toBeDefined();
+  });
+});
+
+describe("Song recording", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function editWarpMarkers(song: Song, change: (warpMarkers: readonly StoredWarpMarker[]) => StoredWarpMarker[]): Promise<void> {
+    await song.editLayers({ warpMarkers: change(song.getWarpMarkers()) });
+  }
+
+  it("adds warp markers in timeline order", async () => {
+    const song = makeAudioSongWithRepeat();
+    const two = idOf(song, "2");
+
+    await editWarpMarkers(song, markers => addWarpMarker(song.getTimeline(), markers, { measure: two, occurrence: 3, time: 1.25 }));
+    await editWarpMarkers(song, markers => addWarpMarker(song.getTimeline(), markers, { measure: two, occurrence: 2, time: 0.75 }));
+
+    expect(song.getWarpMarkers().map(m => [m.measure, m.occurrence])).toEqual([
+      [idOf(song, "1"), 1],
+      [idOf(song, "3"), 1],
+      [two, 2],
+      [two, 3],
+    ]);
+    expect(lastSave()).toEqual({ recording: song.serialize().recording });
+  });
+
+  it("rejects warp markers that do not resolve or already exist", async () => {
+    const song = makeAudioSongWithRepeat();
+    const midi = makeMidiSong();
+    const unplayed = { measure: idOf(song, "2"), occurrence: 4, time: 1 };
+
+    expect(() => addWarpMarker(song.getTimeline(), song.getWarpMarkers(), unplayed)).toThrow("not played 4 times");
+    expect(() => addWarpMarker(song.getTimeline(), song.getWarpMarkers(), { measure: idOf(song, "1"), occurrence: 1, time: 1 })).toThrow("already has");
+    await expect(song.editLayers({ warpMarkers: [...song.getWarpMarkers(), unplayed] })).rejects.toThrow("not played 4 times");
+    await expect(song.editLayers({ warpMarkers: [...song.getWarpMarkers(), { ...song.getWarpMarkers()[0]!, time: 1 }] })).rejects.toThrow("already has");
+    await expect(midi.editLayers({ warpMarkers: [{ measure: idOf(midi, "1"), occurrence: 1, time: 1 }] })).rejects.toThrow("beat map");
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it("moves and removes warp markers by occurrence", async () => {
+    const song = makeAudioSongWithRepeat();
+    const three = { measure: idOf(song, "3"), occurrence: 1 };
+
+    await editWarpMarkers(song, markers => moveWarpMarker(markers, three, 0.6));
+    expect(song.getWarpMarkers()[1]).toEqual({ ...three, time: 0.6 });
+
+    await editWarpMarkers(song, markers => removeWarpMarker(markers, three));
+    expect(song.getWarpMarkers()).toHaveLength(1);
+    expect(lastSave()).toEqual({ recording: song.serialize().recording });
+  });
+
+  it("gives a warp marker to another occurrence and keeps its time", async () => {
+    const song = makeAudioSongWithRepeat();
+    const three = idOf(song, "3");
+    const twoSecond = { measure: idOf(song, "2"), occurrence: 2 };
+    await editWarpMarkers(song, markers => addWarpMarker(song.getTimeline(), markers, { ...twoSecond, time: 0.75 }));
+    vi.clearAllMocks();
+
+    await editWarpMarkers(song, markers => reassignWarpMarker(song.getTimeline(), markers, twoSecond, { measure: three, occurrence: 2 }));
+
+    expect(song.getWarpMarkers().map(m => [m.measure, m.occurrence, m.time])).toEqual([
+      [idOf(song, "1"), 1, 0],
+      [three, 1, 0.5],
+      [three, 2, 0.75],
+    ]);
+    expect(lastSave()).toEqual({ recording: song.serialize().recording });
+  });
+
+  it("reassigns a warp marker only to a free occurrence the recording plays", async () => {
+    const song = makeAudioSongWithRepeat();
+    const timeline = song.getTimeline();
+    const markers = song.getWarpMarkers();
+    const three = { measure: idOf(song, "3"), occurrence: 1 };
+
+    expect(() => reassignWarpMarker(timeline, markers, three, { measure: idOf(song, "1"), occurrence: 1 })).toThrow("already has");
+    expect(() => reassignWarpMarker(timeline, markers, three, { measure: idOf(song, "4"), occurrence: 2 })).toThrow("not played 2 times");
+    expect(() => reassignWarpMarker(timeline, markers, { measure: idOf(song, "2"), occurrence: 1 }, three)).toThrow("no warp marker");
+    await editWarpMarkers(song, current => reassignWarpMarker(timeline, current, three, { measure: idOf(song, "4"), occurrence: 1 }));
+
+    expect(song.getWarpMarkers().map(m => m.measure)).toEqual([idOf(song, "1"), idOf(song, "4")]);
+  });
+
+  it("refuses a reassignment that would break the timeline order", async () => {
+    const song = makeAudioSongWithRepeat();
+    await editWarpMarkers(song, markers => addWarpMarker(song.getTimeline(), markers, { measure: idOf(song, "2"), occurrence: 3, time: 1.25 }));
+
+    expect(() => reassignWarpMarker(song.getTimeline(), song.getWarpMarkers(), { measure: idOf(song, "3"), occurrence: 1 }, { measure: idOf(song, "4"), occurrence: 1 }))
+      .toThrow("neighbouring");
+  });
+
+  it("replaces the spans and drops what no longer resolves", async () => {
+    const song = makeAudioSongWithRepeat();
+    await song.editLayers({ markers: [{ at: locationOf(song, "3", 0, 3), text: "Last time" }] });
+    vi.clearAllMocks();
+
+    await song.setRecordingSpans([{ from: idOf(song, "1"), to: idOf(song, "4") }]);
+
+    expect(song.getTimeline()).toHaveLength(4);
+    expect(song.getMarkers()).toEqual([]);
+    expect(song.getSections()).toHaveLength(1);
+    expect(Object.keys(lastSave())).toEqual(["recording", "arrangement"]);
+  });
+
+  it("rejects spans that do not follow the score", async () => {
+    const song = makeAudioSongWithRepeat();
+
+    await expect(song.setRecordingSpans([{ from: idOf(song, "3"), to: idOf(song, "1") }])).rejects.toThrow(RangeError);
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  // Measures "1" to "4", the recording plays 1 2 3 4 2 3 4. The change below leaves out the first 3.
+  function makeDalSegnoSong(): Song {
+    return makeSong(["a.mp3"], [], {
+      measures: [new Measure("m1", "1", 4), new Measure("m2", "2", 4), new Measure("m3", "3", 4), new Measure("m4", "4", 4)],
+      spans: [{ from: "m1", to: "m4" }, { from: "m2", to: "m4" }],
+      warpMarkers: [
+        { measure: "m1", occurrence: 1, time: 0 },
+        { measure: "m3", occurrence: 1, time: 1 },
+        { measure: "m2", occurrence: 2, time: 2 },
+        { measure: "m4", occurrence: 2, time: 3 },
+      ],
+      markers: [{ at: { measure: "m3", beat: 0, occurrence: 1 }, text: "A" }, { at: { measure: "m3", beat: 1, occurrence: 2 }, text: "B" }],
+      sections: [{ kind: "repeat", from: { measure: "m2", beat: 0, occurrence: 2 }, to: { measure: "m3", beat: 3, occurrence: 2 }, passes: 2 }],
+    });
+  }
+
+  const WITHOUT_FIRST_THREE = [{ from: "m1", to: "m2" }, { from: "m4", to: "m4" }, { from: "m2", to: "m4" }];
+
+  it("moves warp markers, markers and sections with their timeline position and keeps warp marker times", async () => {
+    const song = makeDalSegnoSong();
+
+    await song.setRecordingSpans(WITHOUT_FIRST_THREE);
+
+    expect(song.getTimeline().map(e => e.measure)).toEqual(["m1", "m2", "m4", "m2", "m3", "m4"]);
+    expect(song.getWarpMarkers()).toEqual([
+      { measure: "m1", occurrence: 1, time: 0 },
+      { measure: "m2", occurrence: 2, time: 2 },
+      { measure: "m4", occurrence: 2, time: 3 },
+    ]);
+    expect(song.getMarkers()).toEqual([{ at: { measure: "m3", beat: 1, occurrence: 1 }, text: "B" }]);
+    expect(song.getSections()).toEqual([{ kind: "repeat", from: { measure: "m2", beat: 0, occurrence: 2 }, to: { measure: "m3", beat: 3, occurrence: 1 }, passes: 2 }]);
+    expect(dbUpdate).toHaveBeenCalledTimes(1);
+    expect(lastSave()).toEqual({ recording: song.serialize().recording, arrangement: song.serialize().arrangement });
+  });
+
+  it("previews the length and the dropped references without changing anything", () => {
+    const song = makeDalSegnoSong();
+    const before = song.serialize();
+
+    const preview = song.previewRecordingSpans(WITHOUT_FIRST_THREE);
+
+    expect(preview.spans).toEqual(WITHOUT_FIRST_THREE);
+    expect(preview.length).toBe(6);
+    expect(preview.dropped).toEqual({ warpMarkers: [{ measure: "m3", occurrence: 1, time: 1 }], markers: [song.getMarkers()[0]], sections: [] });
+    expect(song.serialize()).toEqual(before);
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it("saves only the recording when the arrangement keeps its locations", async () => {
+    const song = makeAudioSongWithRepeat();
+
+    await song.setRecordingSpans(setRecordedCount(song.getMeasures(), song.getRecording(), { from: locationOf(song, "2"), to: locationOf(song, "3") }, 4));
+
+    expect(song.getTimeline()).toHaveLength(10);
+    expect(song.getSections()[0]).toMatchObject({ from: locationOf(song, "2"), to: locationOf(song, "3", 3) });
+    expect(Object.keys(lastSave())).toEqual(["recording"]);
+  });
+
+  it("keeps sections on their pass when the recording adds a pass", async () => {
+    const song = makeAudioSongWithRepeat();
+    const range = (occurrence: number): { from: Location; to: Location } => ({ from: locationOf(song, "2", 0, occurrence), to: locationOf(song, "3", 3, occurrence) });
+    await song.editLayers({ sections: [{ kind: "cut", ...range(1) }, { kind: "vamp", ...range(3), out: "onEnd", vocals: "all" }] });
+
+    await song.setRecordingSpans(setRecordedCount(song.getMeasures(), song.getRecording(), { from: locationOf(song, "2"), to: locationOf(song, "3") }, 4));
+
+    const [cut, vamp] = song.getSections();
+    expect(cut).toMatchObject(range(1));
+    expect(vamp).toMatchObject(range(3));
+    expect(getSectionPasses(song.getTimeline(), song.getSections(), vamp!)).toHaveLength(2);
+  });
+
+  it("keeps sections on their pass when the recording puts their passes back to back", () => {
+    const song = makeSong(["a.mp3"], [], {
+      measures: [new Measure("m1", "1", 4), new Measure("m2", "2", 4), new Measure("m3", "3", 4)],
+      spans: [{ from: "m1", to: "m2" }, { from: "m1", to: "m1" }, { from: "m3", to: "m3" }],
+      sections: [
+        { kind: "repeat", from: { measure: "m1", beat: 0, occurrence: 1 }, to: { measure: "m1", beat: 3, occurrence: 1 }, passes: 2 },
+        { kind: "cut", from: { measure: "m1", beat: 0, occurrence: 2 }, to: { measure: "m1", beat: 3, occurrence: 2 } },
+      ],
+    });
+
+    const preview = song.previewRecordingSpans([{ from: "m1", to: "m1" }, { from: "m1", to: "m3" }]);
+
+    expect(preview.dropped.sections).toEqual([]);
+  });
+
+  it("keeps MIDI recordings read-only", async () => {
+    const song = makeMidiSong();
+
+    expect(song.isRecordingEditable()).toBe(false);
+    expect(makeAudioSongWithRepeat().isRecordingEditable()).toBe(true);
+    await expect(song.setRecordingSpans([{ from: idOf(song, "0"), to: idOf(song, "1") }])).rejects.toThrow("beat map");
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 });
 
-describe("Song measure detection", () => {
-  const layout = { page: 1, x: 0.2, y: 0.3, width: 0.2, height: 0.1 };
-  const box = { page: 1, x: 0.6, y: 0.3, width: 0.2, height: 0.1 };
-
+describe("Song arrangement", () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it("places existing measures and inserts new ones in one save", async () => {
-    const song = new Song("song-id", "1", "Song", undefined, undefined, undefined, [], [], new MeasureList([
-      new Measure("1", 4),
-      new Measure("3", 4),
-    ]));
-
-    await song.applyMeasureDetection({
-      placements: [{ measure: song.measures.items()[0]!, layout }],
-      additions: [new Measure("2", 3, layout)],
-      keptPlaced: [],
-      unnumbered: [box],
-      lowConfidence: [],
-    });
-
-    expect(song.measures.items().map(m => [m.value, m.beats, m.layout])).toEqual([
-      ["1", 4, layout],
-      ["2", 3, layout],
-      ["3", 4, undefined],
-    ]);
-    expect(song.getUnnumberedBoxes()).toEqual([box]);
-    expect(dbUpdate).toHaveBeenCalledTimes(1);
-    expect(dbUpdate).toHaveBeenCalledWith("songs", "song-id", { measures: expect.any(Array), unnumberedBoxes: [box] });
-  });
-});
-
-describe("Song unnumbered boxes", () => {
-  const box = { page: 0, x: 0.2, y: 0.3, width: 0.2, height: 0.1 };
-  const record = {
-    id: "song-id",
-    number: "1",
-    title: "Song",
-    audioFiles: [],
-    tracks: [],
-    measures: [{ value: "1", beats: 4, layout: { ...box, review: true } }],
-    events: { markers: [], vamps: [], segue: false },
-    warpMarkers: [],
-  };
-
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("loads records without unnumbered boxes", () => {
-    expect(Song.deserialize(record).getUnnumberedBoxes()).toEqual([]);
-    expect(Song.deserialize({ ...record, unnumberedBoxes: null }).getUnnumberedBoxes()).toEqual([]);
-  });
-
-  it("round-trips unnumbered boxes and review flags", () => {
-    const song = Song.deserialize({ ...record, unnumberedBoxes: [box] });
-
-    expect(song.serialize()).toMatchObject({ unnumberedBoxes: [box], measures: [{ layout: { ...box, review: true } }] });
-  });
-
-  it("removes resolved boxes by position in the same save", async () => {
-    const song = Song.deserialize({ ...record, unnumberedBoxes: [box, { ...box, page: 1 }] });
-
-    await song.applyMeasureEdit({ ...createEmptyEdit(), resolvedBoxes: [{ ...box }] });
-
-    expect(song.getUnnumberedBoxes()).toEqual([{ ...box, page: 1 }]);
-    expect(dbUpdate).toHaveBeenCalledWith("songs", "song-id", { measures: expect.any(Array), unnumberedBoxes: [{ ...box, page: 1 }] });
-  });
-});
-
-describe("Song markers", () => {
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
-  function savedMarkers(): unknown {
-    const fields = vi.mocked(dbUpdate).mock.calls.at(-1)![2] as { events: { markers: unknown } };
-    return fields.events.markers;
+  function savedArrangement(): StoredArrangement {
+    return lastSave().arrangement;
   }
 
-  it("adds markers in measure order", async () => {
-    const song = makeSong();
-    await song.addMarker(["5", 0], "B");
-    await song.addMarker(["1", 0], "A");
+  async function addMarkerAt(song: Song, at: Location, text: string): Promise<Marker> {
+    await song.editLayers({ markers: addMarker(song.getMarkers(), { at, text }) });
+    return song.getMarkers().find(marker => marker.text === text)!;
+  }
 
-    expect(song.events.markers.items().map(m => m.marker)).toEqual(["A", "B"]);
-    expect(savedMarkers()).toEqual([
-      { type: "marker", start: ["1", 0], marker: "A" },
-      { type: "marker", start: ["5", 0], marker: "B" },
+  async function editSections(song: Song, replaced: readonly Section[], added?: Section): Promise<void> {
+    await song.editLayers({ sections: replaceSections(song.getSections(), replaced, added) });
+  }
+
+  it("adds markers in timeline order", async () => {
+    const song = makeAudioSongWithRepeat();
+    await addMarkerAt(song, locationOf(song, "2", 0, 2), "B");
+    await addMarkerAt(song, locationOf(song, "3"), "A");
+
+    expect(song.getMarkers().map(m => m.text)).toEqual(["A", "B"]);
+    expect(savedArrangement().markers).toEqual([
+      { at: { measure: idOf(song, "3"), beat: 0 }, text: "A" },
+      { at: { measure: idOf(song, "2"), beat: 0, occurrence: 2 }, text: "B" },
     ]);
+  });
+
+  it("rejects markers that do not resolve", async () => {
+    const song = makeAudioSongWithRepeat();
+
+    await expect(addMarkerAt(song, locationOf(song, "1", 0, 2), "A")).rejects.toThrow("not played 2 times");
+    expect(song.getMarkers()).toEqual([]);
+    expect(dbUpdate).not.toHaveBeenCalled();
   });
 
   it("keeps the order when a marker moves", async () => {
-    const song = makeSong();
-    const first = await song.addMarker(["1", 0], "A");
-    await song.addMarker(["5", 0], "B");
+    const song = makeAudioSongWithRepeat();
+    const first = await addMarkerAt(song, locationOf(song, "1"), "A");
+    await addMarkerAt(song, locationOf(song, "3"), "B");
 
-    await song.updateMarker(first, ["9", 0], "C");
+    await song.editLayers({ markers: replaceMarker(song.getMarkers(), first, { at: locationOf(song, "4"), text: "C" }) });
 
-    expect(song.events.markers.items().map(m => [m.start[0], m.marker])).toEqual([["5", "B"], ["9", "C"]]);
+    expect(song.getMarkers().map(m => m.text)).toEqual(["B", "C"]);
   });
 
-  it("removes only the given marker when two share a measure", async () => {
+  it("removes only the given marker when two share a location", async () => {
+    const song = makeAudioSongWithRepeat();
+    await addMarkerAt(song, locationOf(song, "3"), "A");
+    const second = await addMarkerAt(song, locationOf(song, "3"), "B");
+
+    await song.editLayers({ markers: removeMarker(song.getMarkers(), second) });
+
+    expect(song.getMarkers().map(m => m.text)).toEqual(["A"]);
+  });
+
+  it("adds, updates and removes sections in timeline order", async () => {
+    const song = makeAudioSongWithRepeat();
+    const cut: Section = { kind: "cut", from: locationOf(song, "1"), to: locationOf(song, "1", 3) };
+
+    await editSections(song, [], cut);
+    expect(song.getSections().map(s => s.kind)).toEqual(["cut", "repeat"]);
+    expect(savedArrangement().sections[0]).toEqual({ kind: "cut", from: { measure: idOf(song, "1"), beat: 0 }, to: { measure: idOf(song, "1"), beat: 3 } });
+
+    const repeat = song.getSections()[1]!;
+    await editSections(song, [repeat], { ...repeat, passes: 2 } as Section);
+    expect(song.getSections()[1]).toMatchObject({ kind: "repeat", passes: 2 });
+
+    await editSections(song, [song.getSections()[0]!]);
+    expect(song.getSections().map(s => s.kind)).toEqual(["repeat"]);
+  });
+
+  it("replaces several sections with one in a single save", async () => {
+    const song = makeAudioSongWithRepeat();
+    await editSections(song, [], { kind: "cut", from: locationOf(song, "1"), to: locationOf(song, "1", 3) });
+    vi.clearAllMocks();
+
+    const vamp: Section = { kind: "vamp", from: locationOf(song, "1"), to: locationOf(song, "3", 3, 3), out: "onEnd", vocals: "all" };
+    await editSections(song, [...song.getSections()], vamp);
+
+    expect(dbUpdate).toHaveBeenCalledTimes(1);
+    expect(song.getSections()).toEqual([vamp]);
+  });
+
+  it("rejects overlapping or invalid sections", async () => {
+    const song = makeAudioSongWithRepeat();
+
+    await expect(editSections(song, [], { kind: "cut", from: locationOf(song, "3"), to: locationOf(song, "4", 3) })).rejects.toThrow("overlap");
+    await expect(editSections(song, [], { kind: "repeat", from: locationOf(song, "4"), to: locationOf(song, "4", 3), passes: 0 })).rejects.toThrow("at least 1");
+    expect(song.getSections()).toHaveLength(1);
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it("toggles the segue", async () => {
     const song = makeSong();
-    await song.addMarker(["3", 0], "A");
-    const second = await song.addMarker(["3", 0], "B");
 
-    await song.removeMarker(second);
+    await song.editLayers({ segue: true });
 
-    expect(song.events.markers.items().map(m => m.marker)).toEqual(["A"]);
+    expect(song.hasSegue()).toBe(true);
+    expect(lastSave()).toEqual({ arrangement: { markers: [], sections: [], segue: true } });
+  });
+});
+
+describe("Song editLayers", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function recordChanges(song: Song): LayersChange[] {
+    const changes: LayersChange[] = [];
+    song.onLayersChange(change => changes.push(change));
+    return changes;
+  }
+
+  it("saves every changed layer in one request and reports the change", async () => {
+    const song = makeAudioSongWithRepeat();
+    const changes = recordChanges(song);
+    const before = song.getLayerSnapshot();
+
+    const change = await song.editLayers({ segue: true, warpMarkers: moveWarpMarker(song.getWarpMarkers(), song.getWarpMarkers()[1]!, 0.6) });
+
+    expect(dbUpdate).toHaveBeenCalledTimes(1);
+    expect(Object.keys(lastSave())).toEqual(["recording", "arrangement"]);
+    expect(change).toEqual({ before, after: song.getLayerSnapshot(), timingChanged: false, origin: "edit" });
+    expect(changes).toEqual([change]);
+  });
+
+  it("reports a timing change only for the measure order, beats and recording", async () => {
+    const song = makeAudioSongWithRepeat();
+    const changes = recordChanges(song);
+    const one = idOf(song, "1");
+
+    await song.applyMeasureEdit({ ...createEmptyMeasureEdit(), relabels: new Map([[one, "1a"]]) });
+    await song.editLayers({ markers: [{ at: locationOf(song, "2"), text: "A" }] });
+    await song.applyMeasureEdit({ ...createEmptyMeasureEdit(), beats: new Map([[one, 3]]) });
+    await song.setRecordingSpans([{ from: one, to: idOf(song, "4") }]);
+
+    expect(changes.map(change => change.timingChanged)).toEqual([false, false, true, true]);
+  });
+
+  it("does nothing when nothing changes", async () => {
+    const song = makeAudioSongWithRepeat();
+    const changes = recordChanges(song);
+
+    expect(await song.editLayers({ sections: [...song.getSections()] })).toBeUndefined();
+    expect(dbUpdate).not.toHaveBeenCalled();
+    expect(changes).toEqual([]);
+  });
+
+  it("keeps the song unchanged when the save fails", async () => {
+    const song = makeAudioSongWithRepeat();
+    const changes = recordChanges(song);
+    const before = song.getLayerSnapshot();
+    const length = song.getTimeline().length;
+    vi.mocked(dbUpdate).mockRejectedValueOnce(new Error("offline"));
+
+    await expect(song.editLayers({ segue: true, spans: [{ from: idOf(song, "1"), to: idOf(song, "4") }] })).rejects.toThrow("offline");
+
+    expect(song.getLayerSnapshot()).toEqual(before);
+    expect(song.getTimeline()).toHaveLength(length);
+    expect(changes).toEqual([]);
+  });
+
+  it("restores a snapshot of every layer", async () => {
+    const song = makeAudioSongWithRepeat();
+    const before = song.getLayerSnapshot();
+    await song.applyMeasureEdit({ ...createEmptyMeasureEdit(), removals: [idOf(song, "3")], unnumberedBoxes: [BOX] });
+    await song.editLayers({ segue: true });
+
+    const change = await song.restoreLayers(before);
+
+    expect(song.getLayerSnapshot()).toEqual(before);
+    expect(change).toMatchObject({ origin: "history", timingChanged: true });
+  });
+
+  it("does not let stored references that predate a rule block other edits", async () => {
+    const song = makeAudioSongWithRepeat();
+    const broken = { at: { ...locationOf(song, "1"), beat: 7 }, text: "Old" };
+    const legacy = makeSong(["a.mp3"], [], { ...song.getLayers(), markers: [broken] });
+
+    await legacy.editLayers({ segue: true });
+
+    expect(legacy.getMarkers()).toEqual([broken]);
+    await expect(legacy.editLayers({ markers: [broken, { at: locationOf(song, "2"), text: "New" }] })).rejects.toThrow("has no beat 8");
+  });
+
+  it("notices when the record was saved elsewhere since its own last save", async () => {
+    const song = Song.deserialize({ id: "song-id", number: "1", title: "Song", audioFiles: [], tracks: [], ...EMPTY_LAYERS, updated: "t1" });
+    vi.mocked(dbGetOne).mockResolvedValueOnce({ id: "song-id", updated: "t1" });
+    expect(await song.isChangedElsewhere()).toBe(false);
+
+    vi.mocked(dbUpdate).mockResolvedValueOnce({ id: "song-id", updated: "t2" });
+    await song.updateDetails({ number: "2", title: "Song" });
+    vi.mocked(dbGetOne).mockResolvedValueOnce({ id: "song-id", updated: "t2" });
+    expect(await song.isChangedElsewhere()).toBe(false);
+
+    vi.mocked(dbGetOne).mockResolvedValueOnce({ id: "song-id", updated: "t3" });
+    expect(await song.isChangedElsewhere()).toBe(true);
+    expect(dbGetOne).toHaveBeenLastCalledWith("songs", "song-id", "updated");
   });
 });

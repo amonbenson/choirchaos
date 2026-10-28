@@ -13,14 +13,11 @@ import { computed, ref, watch } from "vue";
 
 import KbdShortcut from "@/components/base/KbdShortcut.vue";
 import type { ShortcutAction } from "@/composables/useGlobalShortcuts";
-import type { AppearanceSettings, TransportButtonKey } from "@/stores/settings";
+import type { AppearanceSettings, ArrangementKey, TransportButtonKey } from "@/stores/settings";
 import { useSettingsStore } from "@/stores/settings";
 
 const visible = defineModel<boolean>({ default: false });
 const settings = useSettingsStore();
-
-// --- Appearance --------------------------------------------------------------
-
 const TRANSPORT_BUTTON_LABELS: Record<TransportButtonKey, string> = {
   measure: "Measure",
   transposition: "Transpose",
@@ -28,6 +25,13 @@ const TRANSPORT_BUTTON_LABELS: Record<TransportButtonKey, string> = {
   timeSignature: "Time Sig.",
   vamp: "Vamp",
   segue: "Segue",
+};
+
+const ARRANGEMENT_LABELS: Record<ArrangementKey, string> = {
+  vamp: "Vamps",
+  repeat: "Repeats",
+  cut: "Cuts",
+  marker: "Markers",
 };
 
 const THEME_OPTIONS: { label: string; value: AppearanceSettings["theme"] }[] = [
@@ -41,21 +45,31 @@ const theme = computed({
   set: (value: AppearanceSettings["theme"]) => settings.update({ appearance: { theme: value } }),
 });
 
-// Transport buttons as array instead of boolean map
+function toOptions<K extends string>(labels: Record<K, string>): { label: string; value: K }[] {
+  return Object.entries<string>(labels).map(([value, label]) => ({ label, value: value as K }));
+}
+
+function getVisibleKeys<K extends string>(visible: Record<K, boolean>): K[] {
+  return (Object.keys(visible) as K[]).filter(key => visible[key]);
+}
+
+function toVisibleMap<K extends string>(labels: Record<K, string>, visible: K[]): Record<K, boolean> {
+  return Object.fromEntries(Object.keys(labels).map(key => [key, visible.includes(key as K)])) as Record<K, boolean>;
+}
+
 const transportButtons = computed({
-  get: () => Object.entries(settings.current.appearance.transportButtonVisible)
-    .filter(([, visible]) => visible)
-    .map(([key]) => key as TransportButtonKey),
-  set: (visibleButtons: TransportButtonKey[]) => {
-    const updated = Object.fromEntries(
-      Object.keys(TRANSPORT_BUTTON_LABELS).map(key => [key, visibleButtons.includes(key as TransportButtonKey)]),
-    ) as Record<TransportButtonKey, boolean>;
-    settings.update({ appearance: { transportButtonVisible: updated as any } });
-  },
+  get: () => getVisibleKeys<TransportButtonKey>(settings.current.appearance.transportButtonVisible),
+  set: (visible: TransportButtonKey[]) => settings.update({
+    appearance: { transportButtonVisible: toVisibleMap(TRANSPORT_BUTTON_LABELS, visible) },
+  }),
 });
 
-// --- Keyboard shortcuts ------------------------------------------------------
-
+const arrangement = computed({
+  get: () => getVisibleKeys<ArrangementKey>(settings.current.appearance.arrangementVisible),
+  set: (visible: ArrangementKey[]) => settings.update({
+    appearance: { arrangementVisible: toVisibleMap(ARRANGEMENT_LABELS, visible) },
+  }),
+});
 const ACTION_LABELS: Record<ShortcutAction, string> = {
   playPause: "Play / Pause",
   previousMeasure: "Previous Measure",
@@ -204,26 +218,35 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                   Choose which controls are visible in the transport bar.
                 </div>
               </div>
-              <!-- <div class="flex gap-4 rounded bg-black p-2">
-                <Button
-                  v-for="(label, key) in TRANSPORT_BUTTON_LABELS"
-                  :key="key"
-                  :label="label"
-                  :severity="settings.current.appearance.transportButtonVisible[key as TransportButtonKey] ? 'primary' : 'secondary'"
-                  size="small"
-                  fluid
-                  @click="settings.updateAppearance({ transportButtonVisible: { ...settings.current.appearance.transportButtonVisible, [key]: !settings.current.appearance.transportButtonVisible[key as TransportButtonKey] } })"
-                />
-              </div> -->
               <SelectButton
                 v-model="transportButtons"
-                :options="Object.entries(TRANSPORT_BUTTON_LABELS).map(([key, label]) => ({ label, value: key }))"
+                :options="toOptions(TRANSPORT_BUTTON_LABELS)"
                 option-label="label"
                 option-value="value"
                 multiple
                 aria-label="Transport bar buttons"
                 fluid
                 pt:root:class="grid grid-cols-2 @sm:grid-cols-3 @2xl:grid-cols-6"
+              />
+            </div>
+            <div class="@container flex flex-col gap-2">
+              <div>
+                <div class="font-medium">
+                  Arrangement on the score
+                </div>
+                <div class="text-sm text-muted-color">
+                  Choose what the score shows while rehearsing.
+                </div>
+              </div>
+              <SelectButton
+                v-model="arrangement"
+                :options="toOptions(ARRANGEMENT_LABELS)"
+                option-label="label"
+                option-value="value"
+                multiple
+                aria-label="Arrangement on the score"
+                fluid
+                pt:root:class="grid grid-cols-2 @sm:grid-cols-4"
               />
             </div>
           </div>
@@ -278,7 +301,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                 <!-- Recording state -->
                 <button
                   v-if="recording === action"
-                  class="animate-pulse cursor-default rounded border border-primary px-3 py-1 text-sm text-primary"
+                  class="animate-pulse cursor-default rounded border border-primary px-3 py-1 text-sm text-primary-text"
                 >
                   Press a key...
                 </button>

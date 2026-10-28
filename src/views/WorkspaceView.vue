@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { breakpointsTailwind, useBreakpoints, useElementSize } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
@@ -8,15 +9,20 @@ import { useRoute, useRouter } from "vue-router";
 
 import KbdShortcut from "@/components/base/KbdShortcut.vue";
 import SongEditorPanel from "@/components/editor/SongEditorPanel.vue";
-import WarpPanel from "@/components/editor/warp/WarpPanel.vue";
+import TimelinePanel from "@/components/editor/timeline/TimelinePanel.vue";
 import HeaderBar from "@/components/header/HeaderBar.vue";
 import BabySvenja from "@/components/icons/BabySvenja.vue";
 import MarkerPanel from "@/components/player/MarkerPanel.vue";
 import MixerPanel from "@/components/player/MixerPanel.vue";
 import VampCard from "@/components/player/VampCard.vue";
+import MeasureGrid from "@/components/score/MeasureGrid.vue";
 import ScoreViewer from "@/components/score/ScoreViewer.vue";
+import SongDetailsDialog from "@/components/song/SongDetailsDialog.vue";
 import { type ShortcutAction, useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
-import { provideMeasureEditor, useMeasureEditor } from "@/composables/useMeasureEditor";
+import { usePlayerSync } from "@/composables/usePlayerSync";
+import { provideSongEditor } from "@/composables/useSongEditor";
+import { useSongHistory } from "@/composables/useSongHistory";
+import { formatSectionPass } from "@/core/models/scoreOverlays";
 import type Song from "@/core/models/song";
 import { hasUnsyncedAudio } from "@/core/models/songSetup";
 import { getAccessFlags } from "@/pocketbase/auth";
@@ -44,24 +50,33 @@ const song = ref<Song | undefined>();
 const songLoading = ref(true);
 const editMode = computed(() => route.name === "song-edit");
 const canEdit = computed(() => !!show.value && getAccessFlags(show.value.permissions, auth.user?.id).editor);
-const showWarpPanel = computed(() => editMode.value && song.value?.playerMode === "audio");
-const hasMarkers = computed(() => (song.value?.events.markers.items().length ?? 0) > 0);
+const showTimeline = computed(() => editMode.value && !!song.value);
+const hasMarkers = computed(() => (song.value?.getMarkers().length ?? 0) > 0);
 const hasStartPanel = computed(() => editMode.value || hasMarkers.value);
 const isStartPanelOpen = computed(() => hasStartPanel.value && settings.current.workspace.panelVisible.markers);
-const isWarpPanelOpen = computed(() => showWarpPanel.value && settings.current.workspace.panelVisible.warp);
-const showSyncNotice = computed(() => !!song.value && hasUnsyncedAudio(song.value) && !isWarpPanelOpen.value);
+const isTimelineOpen = computed(() => showTimeline.value && settings.current.workspace.panelVisible.timeline);
+const showSyncNotice = computed(() => !!song.value && hasUnsyncedAudio(song.value) && !isTimelineOpen.value);
 
-provideMeasureEditor(useMeasureEditor(song, editMode));
+provideSongEditor(song, editMode);
+usePlayerSync(song);
+const history = useSongHistory(song, editMode);
 
-// Rehearsers have nothing to do with an empty markers panel. Below lg the song editor's panel is a bottom sheet over the score.
+// Rehearsers have nothing to do with an empty markers panel. Below lg the song editor's panel is a bottom sheet
+// over the score and the timeline, which gets a tab of its own since it needs the width.
 const tabs = computed(() => [
   ...(editMode.value || !hasMarkers.value ? [] : [{ value: "markers", label: "Markers" } as const]),
-  { value: "pdf", label: "PDF" } as const,
+  { value: "score", label: "Score" } as const,
+  ...(showTimeline.value ? [{ value: "timeline", label: "Timeline" } as const] : []),
   { value: "mixer", label: "Mixer" } as const,
 ]);
 const selectedTab = computed(() => tabs.value.some(tab => tab.value === settings.current.workspace.selectedTab)
   ? settings.current.workspace.selectedTab
-  : "pdf");
+  : "score");
+
+const isSheetLayout = useBreakpoints(breakpointsTailwind).smaller("lg");
+const editorPanel = ref();
+const { height: editorPanelHeight } = useElementSize(editorPanel, undefined, { box: "border-box" });
+const scoreCoveredBottom = computed(() => editMode.value && isSheetLayout.value ? editorPanelHeight.value : 0);
 
 const songs = computed(() => show.value?.songs ?? []);
 const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
@@ -74,11 +89,13 @@ watch(songIndex, (index) => {
   }
 });
 
+const vampTitle = computed(() => player.currentSection ? formatSectionPass("vamp", player.currentSection) : "Vamp");
+
 const vampCardType = computed(() => {
   if (player.playing) {
-    if (player.currentVamp && !player.currentVamp.manualExit) {
+    if (player.currentSection?.kind === "vamp" && !player.currentSection.released) {
       return "vamp";
-    } else if (player.currentSegue?.enabled && player.currentMeasure[0] === player.finalMeasure[0]) {
+    } else if (player.currentSegue?.enabled && player.currentTimelinePosition?.position === player.finalLocation?.position) {
       return "segue";
     }
   }
@@ -108,30 +125,20 @@ function playPause(): void {
   }
 }
 
-function previousMeasure(): void {
-  if (!player.ready || !song.value) {
-    return;
-  }
-
-  const measures = song.value.measures.items();
-  const i = song.value.findMeasureIndex(player.currentMeasure[0]);
-  const prev = measures[i - 1];
-  if (prev) {
-    player.seek(prev.$beatTicks[0] ?? 0);
+// Stepping follows the recording, so a repeated measure is visited once per pass.
+function stepMeasure(direction: 1 | -1): void {
+  const playing = player.ready ? player.currentTimelinePosition : undefined;
+  if (playing) {
+    player.seekPosition(playing.position + direction);
   }
 }
 
-function nextMeasure(): void {
-  if (!player.ready || !song.value) {
-    return;
-  }
+function previousMeasure(): void {
+  stepMeasure(-1);
+}
 
-  const measures = song.value.measures.items();
-  const i = song.value.findMeasureIndex(player.currentMeasure[0]);
-  const next = measures[i + 1];
-  if (next) {
-    player.seek(next.$beatTicks[0] ?? 0);
-  }
+function nextMeasure(): void {
+  stepMeasure(1);
 }
 
 function rewind(): void {
@@ -193,8 +200,17 @@ function toggleEditMode(): void {
 
 // SONG MANAGEMENT
 
+// The open dialog is part of the URL, so reloading keeps it open and the show page can link to it.
+const detailsVisible = computed({
+  get: () => editMode.value && route.query.details !== undefined,
+  set: (visible: boolean) => {
+    const { details: _, ...query } = route.query;
+    router.replace({ ...route, query: visible ? { ...query, details: "1" } : query });
+  },
+});
+
 function openSongDetails(): void {
-  settings.update({ workspace: { editorTab: "details", selectedTab: "pdf", panelVisible: { markers: true } } });
+  detailsVisible.value = true;
 }
 
 async function onSongSaved(saved: Song, { playbackChanged }: { playbackChanged: boolean }): Promise<void> {
@@ -313,10 +329,8 @@ const pdfLoading = ref(false);
 
 <template>
   <div
-    class="grid size-full grid-cols-1 gap-2 overflow-hidden p-2 lg:grid-cols-[auto_1fr_auto]"
-    :class="showWarpPanel
-      ? 'grid-rows-[auto_auto_1fr_auto] lg:grid-rows-[auto_1fr_auto]'
-      : 'grid-rows-[auto_auto_1fr] lg:grid-rows-[auto_1fr]'"
+    class="grid size-full grid-cols-1 grid-rows-[auto_auto_1fr] gap-2 overflow-hidden p-2 lg:grid-cols-[auto_1fr_auto]"
+    :class="showTimeline ? 'lg:grid-rows-[auto_1fr_auto]' : 'lg:grid-rows-[auto_1fr]'"
   >
     <HeaderBar
       class="lg:col-span-3"
@@ -332,7 +346,21 @@ const pdfLoading = ref(false);
       @toggle-vamp="toggleVamp"
       @toggle-segue="toggleSegue"
       @toggle-edit-mode="toggleEditMode"
-    />
+    >
+      <template #actions>
+        <Button
+          v-if="editMode && song"
+          label="Details"
+          icon="pi pi-file-edit"
+          severity="secondary"
+          aria-label="Details"
+          aria-haspopup="dialog"
+          class="flex-none"
+          pt:label="hidden sm:inline lg:hidden 2xl:inline"
+          @click="openSongDetails"
+        />
+      </template>
+    </HeaderBar>
     <ButtonGroup class="w-full lg:hidden">
       <Button
         v-for="tab in tabs"
@@ -348,25 +376,25 @@ const pdfLoading = ref(false);
       desktop: use lg:contents to make the wrapper div invisible and use its contents as direct grid children
       mobile: div acts as a single grid cell where all panels overlap absolutely
     -->
-    <div class="relative size-full lg:contents">
+    <div class="relative col-start-1 row-start-3 size-full lg:contents">
       <!-- Markers Panel (player) or Song Editor Panel (editor) -->
       <div
         class="absolute inset-0 transition-all lg:relative lg:inset-auto lg:size-full"
         :class="[
           editMode
-            ? ['pointer-events-none z-10 lg:pointer-events-auto', selectedTab !== 'pdf' ? 'invisible lg:visible' : '']
+            ? ['pointer-events-none z-30 lg:pointer-events-auto lg:z-10', selectedTab === 'mixer' ? 'invisible lg:visible' : '']
             : selectedTab !== 'markers' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : '',
           isStartPanelOpen ? 'lg:w-96' : 'lg:w-0',
         ]"
       >
         <SongEditorPanel
           v-if="editMode"
-          class="pointer-events-auto absolute inset-x-0 bottom-0 max-h-[70%] min-h-0 lg:inset-0 lg:max-h-none"
+          ref="editorPanel"
+          class="pointer-events-auto absolute inset-x-0 bottom-0 max-h-1/2 min-h-0 lg:inset-0 lg:max-h-none"
           :class="isStartPanelOpen ? 'lg:opacity-100' : 'lg:pointer-events-none lg:opacity-0'"
-          :show="show"
           :song="song"
-          @saved="onSongSaved"
-          @deleted="onSongDeleted"
+          :history="history"
+          @open-details="openSongDetails"
         />
         <MarkerPanel
           v-else-if="hasMarkers"
@@ -390,21 +418,28 @@ const pdfLoading = ref(false);
       <!-- PDF Panel -->
       <div
         class="absolute inset-0 lg:relative lg:inset-auto lg:size-full"
-        :class="selectedTab !== 'pdf' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : ''"
+        :class="selectedTab !== 'score' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : ''"
       >
         <div class="absolute inset-0">
           <ScoreViewer
             class="size-full"
             :song="song"
             :edit-mode="editMode"
+            :covered-bottom="scoreCoveredBottom"
             @pdf-loading="pdfLoading = $event"
+          />
+          <MeasureGrid
+            v-if="song && !song.pdfFile && song.getMeasures().length > 0"
+            class="absolute inset-0 bg-surface"
+            :song="song"
+            :edit-mode="editMode"
+            :covered-bottom="scoreCoveredBottom"
           />
         </div>
         <!-- The dark theme's message background is translucent and would wash out over the white score. -->
         <div
           v-if="showSyncNotice"
-          class="absolute left-1/2 w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-md bg-surface-0 dark:bg-surface-900"
-          :class="editMode ? 'top-14' : 'top-2'"
+          class="absolute top-2 left-1/2 w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-md bg-surface-0 dark:bg-surface-900"
         >
           <Message
             severity="warn"
@@ -418,7 +453,7 @@ const pdfLoading = ref(false);
           <VampCard
             v-if="vampCardType === 'vamp'"
             class="size-full cursor-pointer"
-            :title="`Vamping (x${(player.currentVamp?.currentIteration ?? 0) + 1})`"
+            :title="vampTitle"
             @click="toggleVamp()"
           >
             <span class="touch:hidden">Press <KbdShortcut action="playPause" /> to exit</span>
@@ -445,12 +480,12 @@ const pdfLoading = ref(false);
         </div>
         <div
           v-if="player.loading || pdfLoading"
-          class="absolute top-0 left-0 flex size-full flex-col items-center justify-center bg-black/50 text-white select-none"
+          class="absolute top-0 left-0 flex size-full flex-col items-center justify-center bg-scrim/50 text-scrim-contrast select-none"
           role="status"
         >
           <BabySvenja class="w-full max-w-lg" />
           <p class="text-xl">
-            Loading {{ player.loading ? "audio data" : "PDF" }} ...
+            Loading {{ player.loading ? "Recording" : "Score" }}...
           </p>
         </div>
       </div>
@@ -468,6 +503,7 @@ const pdfLoading = ref(false);
           :class="[
             settings.current.workspace.panelVisible.mixer ? 'lg:opacity-100' : 'lg:opacity-0',
           ]"
+          :show-id="showId"
           :song="song"
           :edit-mode="editMode"
           @open-song-details="openSongDetails"
@@ -485,10 +521,20 @@ const pdfLoading = ref(false);
       </div>
     </div>
 
-    <!-- Warp Panel (audio mode) -->
-    <WarpPanel
-      v-if="showWarpPanel"
-      class="lg:col-span-3"
+    <SongDetailsDialog
+      v-if="show && song"
+      v-model="detailsVisible"
+      :show="show"
+      :song="song"
+      @saved="onSongSaved"
+      @deleted="onSongDeleted"
+    />
+
+    <!-- Below lg the timeline shares the panels' grid cell and shows only in its tab. -->
+    <TimelinePanel
+      v-if="showTimeline && song"
+      class="z-20 col-start-1 row-start-3 min-h-0 lg:z-auto lg:col-span-3"
+      :class="selectedTab === 'timeline' ? '' : 'max-lg:hidden'"
       :song="song"
     />
   </div>

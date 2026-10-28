@@ -1,77 +1,50 @@
 # E2E Tests — Agent Guide
 
-Extends the root `AGENTS.md`, whose rules apply here too.
+Extends the root `AGENTS.md`.
 
-Playwright tests run the compiled frontend in Chromium against a real PocketBase backend in Docker. They cover what jsdom cannot run: Web Audio, AudioWorklets, pdf.js workers and canvas.
-
-## Commands
+Playwright runs the built frontend in Chromium against a real PocketBase in Docker, covering what jsdom cannot: Web Audio, AudioWorklets, pdf.js workers, canvas.
 
 ```bash
-npm run test:e2e                         # build frontend, start backends, run all e2e tests
-npm run test:e2e -- e2e/tests/foo.spec.ts # single file
-E2E_SKIP_BUILD=1 npm run test:e2e        # reuse the last frontend build (only test files changed)
-npm run e2e:serve                        # seeded backend + Vite dev server for manual checks
-npm run e2e:scores [-- <presetId>]       # regenerate committed score PDFs (needs MuseScore 4)
-npx playwright show-trace <trace.zip>    # inspect a failed test
+npm run test:e2e -- e2e/tests/foo.spec.ts # one file
+E2E_SKIP_BUILD=1 npm run test:e2e         # reuse the last build (only tests changed)
+npm run e2e:scores [-- <presetId>]        # regenerate committed score PDFs (MuseScore 4)
+npx playwright show-trace <trace.zip>     # inspect a failure
 ```
 
-Requirements: Docker running, and Chromium installed once with `npx playwright install chromium`. CI runs the same command.
+Needs Docker and, once, `npx playwright install chromium`.
 
 ## How a Run Works
 
-1. `globalSetup.ts` builds the frontend into `e2e/.cache/dist` and the backend image, once per run.
-2. Each Playwright worker starts its own PocketBase container (Testcontainers, data in tmpfs) and its own `vite preview` server on a random port.
-3. The frontend is built with `VITE_PB_URL="/"`. The preview server proxies `/api` and `/_` to its worker's backend, so one build serves any number of backends and parallel runs never collide.
-4. Before every test, all app collections are truncated. After every passing test, the invariants in `harness/state.ts` check the whole database, so a test that leaves it inconsistent fails.
-
-The backend is built from `BACKEND_REPOSITORY` at `BACKEND_COMMIT` (`config.ts`). Bump the commit whenever the frontend needs newer migrations or hooks. To test unpushed backend changes, set `E2E_BACKEND_SOURCE=../choirchaos-pb` (a local checkout, rebuilt on every run).
+- Each worker runs its own PocketBase container and `vite preview`. The frontend is built once with `VITE_PB_URL="/"` and each preview proxies to its backend.
+- All app collections are truncated before each test; after each passing test the invariants in `harness/state.ts` check the whole database.
+- The backend is built from `BACKEND_REPOSITORY` at `BACKEND_COMMIT` (`config.ts`): bump it when the frontend needs newer migrations or hooks. `E2E_BACKEND_SOURCE=../choirchaos-pb` tests an unpushed local checkout.
 
 ## Writing Tests
 
-Import `test` and `expect` from `harness/fixtures.ts`, never from `@playwright/test`. Otherwise the reset and invariant fixtures do not run.
+- Import `test` and `expect` from `harness/fixtures.ts`, never `@playwright/test`, or reset and invariants do not run. Fixtures: `admin` (superuser, arranges and asserts state), `factory` (creates records as a user, so rules apply), `loginAs(user)` (call before the first `page.goto()`), `snapshot()` (proves a failed operation changed nothing).
+- New cross-record rules go into `DEFAULT_INVARIANTS`. The harness imports nothing from `src/`, so an app bug cannot hide in both; `harness.spec.ts` tests the harness.
+- Assert backend state via `admin` rather than UI text, and references by ID, never label (`measureId()`, `locationAt()` in `generators/song.ts`).
+- Find elements by role and name, never test ids or CSS; an element without a usable name gets one in the app. Scope to regions ("Editor panel", "Score", "Timeline") where names repeat, e.g. inspector section buttons share names with the header's section button. Timeline lanes only hold items in view.
+- Upload with `chooseFiles()`: the app has no permanent `<input type=file>`.
+- Vue reports render errors via `console.error`, not page errors: use `collectPageErrors()`.
+- The "Position" slider's `aria-valuenow` is rounded to a thousandth of the song: compare exact times against stored data.
 
-| Fixture | Use |
-|---|---|
-| `admin` | PocketBase SDK as superuser. Bypasses access rules. Use it to arrange and to assert state. |
-| `factory` | `createUser`, `clientFor(user)`, `createShow(owner)`, `createSong(actor, show, bundle)`. Shows and songs are created as the given user, so access rules apply. |
-| `loginAs(user)` | Seeds the SDK auth store in the page. Call before the first `page.goto()`. |
-| `snapshot()` | All app records. Compare before and after a failed operation to prove nothing changed. |
-| `invariants` | Option. Override with `test.use({ invariants: [...] })` only for tests that deliberately create broken data. |
-| `page`, `baseURL` | Standard Playwright. `page.goto("/")` hits the worker's frontend. |
+### Playback
 
-- When a feature adds a cross-record or cross-field rule, add it to `DEFAULT_INVARIANTS` in `harness/state.ts`, so every test checks it.
-- Prefer asserting backend state through `admin` over asserting UI text.
-- Locate elements by role and accessible name (`getByRole`, `getByLabel`), never by test ids or CSS. When an element has no usable name, give it one in the app (see Accessibility in the root guide) instead of adding a test hook. Song rows are `row`s named by their cells, members are `listitem`s of the "People with access" list.
-- The app opens file dialogs from buttons without a permanent `<input type=file>`, so upload through `chooseFiles()` in `harness/page.ts`, which uses Playwright's file chooser event.
-- In the song editor, each score page is a `group` named "Page N" (the default Move tool pans on a drag, the Draw tool draws, Select or a held Shift marquee-selects). Reach tab content with `getByRole("tabpanel", { name: "Measures" })`. Boxes are buttons named "Measure N" or "Box without a number", and detection preview boxes are images named "Detected measure N" or "Detected box without a number".
-- To test review flows without running detection, arrange `layout.review` on measures and `unnumberedBoxes` on the song through the bundle fields.
-- The waveform is an image named "Waveform". `WaveformView` exposes `data-zoom-scale` (samples per pixel) and `data-sample-rate`, so tests can convert marker times to pixels on the canvas.
-- Vue reports render errors through `console.error`, not as page errors. Use `collectPageErrors()`, which listens to both, to assert that a flow is error-free.
-- `harness.spec.ts` checks the harness itself. Keep it passing when you change the harness.
+`recordPlayback()` samples header, slider and highlighted box in one `page.evaluate()` until a condition holds, so samples never mix two moments; `sequenceOf()` collapses them into playing order. Bars of a second or more keep this reliable, so playback specs skip the PDF (`withPdf: false`) unless they check boxes.
 
 ## Test Data Generators
 
-A `ScoreSpec` (`generators/score/types.ts`, presets in `presets.ts`) is expanded by `buildTimeline()` into bars and notes using a seeded RNG. Every artefact is derived from that one timeline, so they always agree:
-
-| Output | Function | Notes |
-|---|---|---|
-| MusicXML, `.mscz`, PDF, measure layout | `scripts/generateScores.ts` | Needs MuseScore. Output is committed in `assets/scores/<id>/` |
-| MIDI | `toMidiFile()` | One named track per part. The player matches song tracks by MIDI track name |
-| MTI beat map JSON | `toMtiJson()` | Ends with beat 1 of a terminal bar, which gives the last bar its length |
-| MP3 stems | `renderPartStem()` + `encodeMp3()` | Additive synth, deterministic. `renderClickTrack()` for sync checks |
-| WAV | `encodeWav()` | Converted to MP3 by the backend like any other recording |
-| Song record fields and files | `buildSongBundle(spec, { mode })` | `mode`: `"midi"`, `"audio"` or `"none"`. `withPdf: false` skips the committed PDF |
-
-- MIDI, JSON and audio are generated on the fly in tests. Only PDFs are committed, because generating them needs MuseScore.
-- `layout.json` stores a hash of the MusicXML and `assets/conductor.mss`. `loadScoreAssets()` throws when a preset changed without regenerating. Run `npm run e2e:scores -- <id>` and commit the result.
-- Do not reuse a preset's `seed` for a different preset. Changing `timeline.ts` changes every preset's notes, so it also requires regenerating all score assets.
+`buildTimeline()` expands a `ScoreSpec` (presets in `generators/score/presets.ts`) with a seeded RNG; MIDI, beat map, audio stems, PDF and the song's layers all derive from it, and `buildSongBundle()` assembles a song.
+- Only PDFs are committed (they need MuseScore); everything else is generated in tests.
+- `loadScoreAssets()` throws on a changed preset until `npm run e2e:scores -- <id>` is run and committed. Changing the timeline generator changes every preset, so regenerate all. Never reuse a preset's `seed`.
 
 ## Traps
 
-- PocketBase renames uploaded files (`name_<random>.ext`). `createSong()` uploads first and then writes tracks with the stored names, like the frontend does. Do the same in new helpers.
-- `songs` has no list rule, so regular users can only read songs through `shows?expand=songs_via_show` or by id.
-- The backend transcodes every recording, so compare stored audio by duration, never by content.
-- The MIDI player downloads instruments for `webaudiofont` from the internet at load time. MIDI playback tests need network access or a `page.route()` stub.
-- MuseScore's `.mpos` coordinates scale with the image export resolution. `convertWithMuseScore()` pins `--image-resolution`. Keep `MPOS_UNITS_PER_INCH` in sync with it.
-- `e2e:serve` binds fixed ports (8091, 5174). Right after a previous run stops, Testcontainers may need a few seconds to release 8091.
-- `testcontainers` is pinned to 11.x because 12.x requires Node 22.22+, and the project still supports Node 20. The `uuid` override in `package.json` patches its dockerode dependency.
+- PocketBase renames uploads (`name_<random>.ext`): upload first, then write tracks with the stored names.
+- `songs` has no list rule: read songs via `shows?expand=songs_via_show` or by id.
+- The backend transcodes recordings: compare stored audio by duration, never content.
+- MIDI playback downloads `webaudiofont` instruments at load: tests need network or a `page.route()` stub.
+- MuseScore's `.mpos` coordinates scale with export resolution: `convertWithMuseScore()` pins `--image-resolution`, keep `MPOS_UNITS_PER_INCH` in sync.
+- `e2e:serve` binds 8091 and 5174; right after a run, Testcontainers may hold the port a few seconds.
+- `testcontainers` stays on 11.x (12.x needs Node 22.22+, the project supports Node 20); the `uuid` override in `package.json` patches its dockerode dependency.

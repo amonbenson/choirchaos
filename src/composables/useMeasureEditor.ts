@@ -1,237 +1,135 @@
-import { computed, type ComputedRef, inject, type InjectionKey, provide, type Ref, ref, shallowRef, toRaw, watch } from "vue";
+import { computed, type ComputedRef, inject, type InjectionKey, provide, type Ref, ref, shallowRef, watch } from "vue";
 
 import type Measure from "@/core/models/measure";
-import { isSameLayout, type MeasureLayout } from "@/core/models/measure";
-import { changesPlayback, getMeasuresBetween, getReadingOrder, type MeasureEdit, type MeasureEditMode } from "@/core/models/measureEditing";
+import type { MeasureId, MeasureLayout } from "@/core/models/measure";
+import { toMeasureEdit } from "@/core/models/measureDetection";
+import type { BoxTarget, MeasureEditMode, PlannedEdit } from "@/core/models/measureEditing";
 import { getAdjacentReviewItem, getReviewItemAfter, getReviewItems, isSameReviewItem, type ReviewItem } from "@/core/models/measureReview";
+import { type Selection, selectMeasures } from "@/core/models/selection";
 import type Song from "@/core/models/song";
-import type { Numbering } from "@/core/utils/numbering";
-import { usePlayerStore } from "@/stores/player";
 
+import type { EditorSelection } from "./useEditorSelection";
 import { type MeasureDetection, useMeasureDetection } from "./useMeasureDetection";
 import { useNotify } from "./useNotify";
-
-/** Select drags a marquee, Move pans the score and Draw adds boxes. Clicks select with all but Draw. */
-export type MeasureTool = "select" | "move" | "draw";
-
-const DEFAULT_TOOL: MeasureTool = "move";
 
 /** A request to scroll the score to a box. A new object each time, so asking twice scrolls twice. */
 export type RevealRequest = { layout: MeasureLayout };
 
 export type MeasureEditor = {
-  tool: Ref<MeasureTool>;
-  touchMultiSelect: Ref<boolean>;
+  /** While drawing, a drag on the score draws a box instead of panning. */
+  drawing: Ref<boolean>;
   pendingBox: Ref<MeasureLayout | undefined>;
   pendingCount: Ref<number>;
-  placeFrom: Ref<Numbering | undefined>;
+  placeFrom: Ref<string | undefined>;
   saving: Ref<boolean>;
-  measures: ComputedRef<Measure[]>;
+  measures: ComputedRef<readonly Measure[]>;
   mode: ComputedRef<MeasureEditMode>;
-  selection: ComputedRef<Measure[]>;
   unnumberedBoxes: ComputedRef<readonly MeasureLayout[]>;
-  selectedBoxes: ComputedRef<MeasureLayout[]>;
-  selectedBox: ComputedRef<MeasureLayout | undefined>;
-  selectionCount: ComputedRef<number>;
   reviewItems: ComputedRef<ReviewItem[]>;
   currentReviewItem: ComputedRef<ReviewItem | undefined>;
   revealRequest: Ref<RevealRequest | undefined>;
   detection: MeasureDetection;
-  isSelected: (measure: Measure) => boolean;
-  isBoxSelected: (box: MeasureLayout) => boolean;
-  selectBox: (box: MeasureLayout) => void;
-  toggleBox: (box: MeasureLayout) => void;
-  selectOnly: (measure: Measure) => void;
-  toggle: (measure: Measure) => void;
-  selectRange: (measure: Measure) => void;
-  addToSelection: (measures: Measure[], boxes?: MeasureLayout[]) => void;
-  setSelection: (measures: Measure[], boxes?: MeasureLayout[]) => void;
-  selectAll: () => void;
-  clearSelection: () => void;
-  setTool: (tool: MeasureTool) => void;
-  startPlacing: (value: Numbering) => void;
-  apply: (edit: MeasureEdit) => Promise<void>;
-  addMeasures: (measures: Measure[]) => Promise<void>;
+  startDrawing: (from?: string) => void;
+  stopDrawing: () => void;
+  apply: (planned: PlannedEdit) => Promise<void>;
+  placePendingBox: (planned: PlannedEdit) => Promise<void>;
   showReviewItem: (item: ReviewItem) => void;
   stepReview: (direction: 1 | -1) => void;
-  resolveReview: (edit: MeasureEdit) => Promise<void>;
+  resolveReview: (planned: PlannedEdit) => Promise<void>;
   applyDetection: () => Promise<void>;
 };
 
 /**
- * Selection, tool and pending box of the song editor, shared by the score and the Measures panel.
- * Measures are kept raw, because the song hands out reactive proxies while new measures of an
- * edit are plain objects.
+ * Drawing, saving and reviewing boxes in the song editor. A form that planned an edit is left before
+ * the edit is saved, so it never plans again against its own saved result, which would see its new
+ * measures as conflicts.
  */
-export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<boolean>): MeasureEditor {
-  const player = usePlayerStore();
+export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<boolean>, selection: EditorSelection): MeasureEditor {
   const { notifyError } = useNotify();
 
-  const tool = ref<MeasureTool>(DEFAULT_TOOL);
-  const selected = shallowRef(new Set<Measure>());
-  const anchor = shallowRef<Measure>();
-  const touchMultiSelect = ref(false);
+  const drawing = ref(false);
   const pendingBox = ref<MeasureLayout>();
   const pendingCount = ref(4);
-  const placeFrom = ref<Numbering>();
+  const placeFrom = ref<string>();
   const saving = ref(false);
-  const selectedBoxKeys = shallowRef<MeasureLayout[]>([]);
   const revealRequest = shallowRef<RevealRequest>();
   const detection = useMeasureDetection(song, error => notifyError("Could not detect measures", error));
 
-  const measures = computed(() => song.value?.measures.items() ?? []);
+  const measures = computed(() => song.value?.getMeasures() ?? []);
   const mode = computed<MeasureEditMode>(() => song.value?.playerMode === "midi" ? "midi" : "audio");
-  const selection = computed(() => measures.value.filter(measure => measure.layout && selected.value.has(toRaw(measure))));
   const unnumberedBoxes = computed(() => song.value?.getUnnumberedBoxes() ?? []);
-  const selectedBoxes = computed(() => unnumberedBoxes.value.filter(box => isBoxSelected(box)));
-  const selectionCount = computed(() => selection.value.length + selectedBoxes.value.length);
-  // A box without a number has its own form, which only fits when it is the whole selection.
-  const selectedBox = computed(() => selection.value.length === 0 && selectedBoxes.value.length === 1 ? selectedBoxes.value[0] : undefined);
 
   const reviewItems = computed(() => getReviewItems(measures.value, unnumberedBoxes.value));
   const currentReviewItem = computed<ReviewItem | undefined>(() => {
-    const single = selection.value.length === 1 ? selection.value[0] : undefined;
-    const current = selectedBox.value ? { layout: selectedBox.value } : single && { layout: single.layout!, measure: single };
-    return current && reviewItems.value.find(item => isSameReviewItem(item, current));
+    const current = selection.selected.value;
+    const item = current.kind === "measures" && current.measures.length === 1
+      ? { layout: current.measures[0]!.layout!, measure: current.measures[0] }
+      : current.kind === "boxes" && current.boxes.length === 1 ? { layout: current.boxes[0]! } : undefined;
+    return item && reviewItems.value.find(other => isSameReviewItem(other, item));
   });
 
-  // With a single box selected the score shows its resize handles, so touch multi-select ends there
-  // and needs another long press.
-  function endTouchMultiSelectIfSingle(): void {
-    if (selected.value.size + selectedBoxKeys.value.length <= 1) {
-      touchMultiSelect.value = false;
-    }
-  }
-
-  function setSelection(next: Measure[], boxes: MeasureLayout[] = []): void {
-    selectedBoxKeys.value = boxes.map(box => toRaw(box));
-    selected.value = new Set(next.map(measure => toRaw(measure)));
-    anchor.value = next.at(-1) && toRaw(next.at(-1));
-    endTouchMultiSelectIfSingle();
-  }
-
-  function isSelected(measure: Measure): boolean {
-    return selected.value.has(toRaw(measure));
-  }
-
-  function isBoxSelected(box: MeasureLayout): boolean {
-    return selectedBoxKeys.value.some(key => isSameLayout(box, key));
-  }
-
-  function selectBox(box: MeasureLayout): void {
-    setSelection([], [box]);
-  }
-
-  function toggleBox(box: MeasureLayout): void {
-    const boxes = isBoxSelected(box)
-      ? selectedBoxes.value.filter(other => !isSameLayout(other, box))
-      : [...selectedBoxes.value, box];
-    const keptAnchor = anchor.value;
-    setSelection(selection.value, boxes);
-    anchor.value = keptAnchor;
-  }
-
-  function selectOnly(measure: Measure): void {
-    setSelection([measure]);
-  }
-
-  function toggle(measure: Measure): void {
-    const next = isSelected(measure)
-      ? selection.value.filter(other => toRaw(other) !== toRaw(measure))
-      : [...selection.value, measure];
-    setSelection(next, selectedBoxes.value);
-    anchor.value = toRaw(measure);
-  }
-
-  function selectRange(measure: Measure): void {
-    const from = measures.value.find(other => toRaw(other) === anchor.value) ?? measure;
-    const range = getMeasuresBetween(measures.value, from, measure);
-    selectedBoxKeys.value = [];
-    selected.value = new Set(range.map(other => toRaw(other)));
-  }
-
-  function addToSelection(added: Measure[], boxes: MeasureLayout[] = []): void {
-    setSelection(
-      [...selection.value, ...added.filter(measure => !isSelected(measure))],
-      [...selectedBoxes.value, ...boxes.filter(box => !isBoxSelected(box))],
-    );
-  }
-
-  function selectAll(): void {
-    stopDrawing();
-    setSelection(getReadingOrder(measures.value.filter(measure => measure.layout)), [...unnumberedBoxes.value]);
-  }
-
-  function clearSelection(): void {
-    setSelection([]);
-  }
-
-  function setTool(next: MeasureTool): void {
-    tool.value = next;
+  function startDrawing(from?: string): void {
+    selection.clear();
     pendingBox.value = undefined;
-    if (next === "draw") {
-      clearSelection();
-    } else {
-      placeFrom.value = undefined;
-    }
+    placeFrom.value = from;
+    drawing.value = true;
+  }
+
+  function stopDrawing(): void {
+    drawing.value = false;
+    pendingBox.value = undefined;
+    placeFrom.value = undefined;
   }
 
   // Drawing starts from an empty selection, so selecting something ends it.
-  function stopDrawing(): void {
-    if (tool.value === "draw") {
-      setTool(DEFAULT_TOOL);
+  watch(() => selection.selection.value, (next) => {
+    if (next.kind !== "none") {
+      stopDrawing();
     }
+  });
+
+  function resolveTarget(target: BoxTarget, added: readonly Measure[]): MeasureId | undefined {
+    return "addition" in target ? added[target.addition]?.id : target.measure;
   }
 
-  function startPlacing(value: Numbering): void {
-    setTool("draw");
-    placeFrom.value = value;
-  }
-
-  async function reloadPlayer(target: Song): Promise<void> {
-    const position = player.position;
-    await player.load(target);
-    player.seek(position);
-  }
-
-  /** Saves an edit once, reloads the player only when timing changed, and selects the edited boxes. */
-  async function apply(edit: MeasureEdit): Promise<void> {
+  async function save({ edit }: PlannedEdit): Promise<readonly Measure[]> {
     const target = song.value;
     if (!target) {
-      return;
+      return [];
     }
 
     saving.value = true;
     try {
-      await target.applyMeasureEdit(edit);
-      const boxes = new Set(edit.boxes.map(measure => toRaw(measure)));
-      setSelection(measures.value.filter(measure => measure.layout && boxes.has(toRaw(measure))));
-      if (changesPlayback(edit)) {
-        await reloadPlayer(target);
-      }
+      return await target.applyMeasureEdit(edit);
     } finally {
       saving.value = false;
     }
   }
 
-  async function addMeasures(added: Measure[]): Promise<void> {
-    const target = song.value;
-    if (!target) {
-      return;
-    }
+  /** Saves an edit and selects the boxes it places. The player follows the save on its own, so this never waits for audio. */
+  async function apply(planned: PlannedEdit): Promise<void> {
+    const added = await save(planned);
+    const ids = planned.boxes.map(box => resolveTarget(box, added)).filter(id => id !== undefined);
+    selection.select(selectMeasures(ids));
+  }
 
-    await target.addMeasures(added);
-    await reloadPlayer(target);
+  /** Places the drawn box and keeps drawing, so the next box continues where this one ends. */
+  async function placePendingBox(planned: PlannedEdit): Promise<void> {
+    const box = pendingBox.value;
+    const from = placeFrom.value;
+    pendingBox.value = undefined;
+    placeFrom.value = undefined;
+    try {
+      await save(planned);
+    } catch (error) {
+      pendingBox.value = box;
+      placeFrom.value = from;
+      throw error;
+    }
   }
 
   function showReviewItem(item: ReviewItem): void {
-    stopDrawing();
-    if (item.measure) {
-      selectOnly(item.measure);
-    } else {
-      selectBox(item.layout);
-    }
-
+    selection.select(item.measure ? selectMeasures([item.measure.id]) : { kind: "boxes", boxes: [item.layout] });
     revealRequest.value = { layout: item.layout };
   }
 
@@ -242,16 +140,22 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
     }
   }
 
-  /** Applies an edit that resolves the current review item and moves on to the next one. */
-  async function resolveReview(edit: MeasureEdit): Promise<void> {
+  /** Moves on to the next item to review and saves the edit that resolves the current one. */
+  async function resolveReview(planned: PlannedEdit): Promise<void> {
     const current = currentReviewItem.value;
     const next = current && getReviewItemAfter(reviewItems.value, current);
-    await apply(edit);
-    const fresh = next && reviewItems.value.find(item => isSameReviewItem(item, next));
-    if (fresh) {
-      showReviewItem(fresh);
-    } else if (current) {
-      clearSelection();
+    const previous: Selection = selection.selection.value;
+    if (next) {
+      showReviewItem(next);
+    } else {
+      selection.clear();
+    }
+
+    try {
+      await save(planned);
+    } catch (error) {
+      selection.select(previous);
+      throw error;
     }
   }
 
@@ -262,22 +166,13 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
       return;
     }
 
-    saving.value = true;
-    try {
-      await target.applyMeasureDetection(plan);
-      detection.discard();
-      clearSelection();
-      if (plan.additions.length > 0) {
-        await reloadPlayer(target);
-      }
-    } finally {
-      saving.value = false;
-    }
+    await save(toMeasureEdit(plan, target.getUnnumberedBoxes()));
+    detection.discard();
+    selection.clear();
   }
 
   function reset(): void {
-    setTool(DEFAULT_TOOL);
-    clearSelection();
+    stopDrawing();
     detection.discard();
   }
 
@@ -285,38 +180,22 @@ export function useMeasureEditor(song: Ref<Song | undefined>, editMode: Ref<bool
   watch(editMode, reset);
 
   return {
-    tool,
-    touchMultiSelect,
+    drawing,
     pendingBox,
     pendingCount,
     placeFrom,
     saving,
     measures,
     mode,
-    selection,
     unnumberedBoxes,
-    selectedBoxes,
-    selectedBox,
-    selectionCount,
     reviewItems,
     currentReviewItem,
     revealRequest,
     detection,
-    isSelected,
-    isBoxSelected,
-    selectBox,
-    toggleBox,
-    selectOnly,
-    toggle,
-    selectRange,
-    addToSelection,
-    setSelection,
-    selectAll,
-    clearSelection,
-    setTool,
-    startPlacing,
+    startDrawing,
+    stopDrawing,
     apply,
-    addMeasures,
+    placePendingBox,
     showReviewItem,
     stepReview,
     resolveReview,

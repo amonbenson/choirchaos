@@ -43,7 +43,7 @@ export function useMeasureDetection(song: Ref<Song | undefined>, onError: (error
       return undefined;
     }
 
-    return planMeasureDetection(target.measures.items(), detected.value, {
+    return planMeasureDetection(target.getMeasures(), detected.value, {
       replacePlaced: replacePlaced.value,
       createMissing: canCreateMeasures.value && createMissing.value,
       beats: beats.value,

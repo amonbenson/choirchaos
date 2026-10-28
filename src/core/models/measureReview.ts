@@ -1,14 +1,14 @@
-import type { Numbering } from "../utils/numbering";
 import type Measure from "./measure";
-import { isSameLayout, type MeasureLayout, needsReview, withoutReview } from "./measure";
+import { createEmptyMeasureEdit, isSameLayout, type MeasureLayout, needsReview, withoutReview } from "./measure";
 import {
-  createEmptyEdit,
+  createPlannedEdit,
   getDefaultBeats,
-  type MeasureEdit,
   type MeasureEditMode,
   type MeasureEditResult,
+  type PlannedEdit,
   planNewBox,
   sortInReadingOrder,
+  withoutBoxes,
 } from "./measureEditing";
 
 /**
@@ -33,7 +33,7 @@ export function getReviewItems(measures: readonly Measure[], unnumbered: readonl
 
 export function isSameReviewItem(a: ReviewItem, b: ReviewItem): boolean {
   if (a.measure || b.measure) {
-    return a.measure === b.measure;
+    return a.measure?.id === b.measure?.id;
   }
 
   return isSameLayout(a.layout, b.layout);
@@ -67,38 +67,38 @@ export function getReviewItemAfter(items: readonly ReviewItem[], current: Review
 }
 
 /** Accepts the boxes as detected. */
-export function planConfirm(measures: readonly Measure[]): MeasureEdit {
-  const edit = createEmptyEdit();
+export function planConfirm(measures: readonly Measure[]): PlannedEdit {
+  const edit = createEmptyMeasureEdit();
   measures
     .filter(measure => needsReview(measure.layout))
-    .forEach(measure => edit.layouts.set(measure, withoutReview(measure.layout!)));
-  edit.boxes = [...measures];
-  return edit;
+    .forEach(measure => edit.layouts.set(measure.id, withoutReview(measure.layout!)));
+  return createPlannedEdit(edit, measures.map(measure => ({ measure: measure.id })));
 }
 
 /**
- * Turns a box without a number into the layout of measure `value`. Audio songs create the measure
- * when it is missing. MIDI songs only accept measures of their beat map.
+ * Turns a box without a number into the layout of the measure labeled `label`. Audio songs create
+ * the measure when it is missing. MIDI songs only accept measures of their beat map.
  */
 export function planNumberBox(
   measures: readonly Measure[],
+  unnumbered: readonly MeasureLayout[],
   box: MeasureLayout,
-  value: Numbering,
+  label: string,
   mode: MeasureEditMode,
   resolution?: "shift",
 ): MeasureEditResult {
   const layout = withoutReview(box);
-  const options = { count: 1, start: value, beats: getDefaultBeats(measures, layout) };
+  const options = { count: 1, start: label, beats: getDefaultBeats(measures, layout) };
   const result = planNewBox(measures, layout, options, mode, resolution);
   if (result.status === "ok") {
-    result.edit.resolvedBoxes = [box];
+    result.edit.unnumberedBoxes = withoutBoxes(unnumbered, [box]);
   }
 
   return result;
 }
 
-export function planRemoveUnnumberedBox(box: MeasureLayout): MeasureEdit {
-  const edit = createEmptyEdit();
-  edit.resolvedBoxes = [box];
-  return edit;
+export function planRemoveUnnumberedBox(unnumbered: readonly MeasureLayout[], box: MeasureLayout): PlannedEdit {
+  const edit = createEmptyMeasureEdit();
+  edit.unnumberedBoxes = withoutBoxes(unnumbered, [box]);
+  return createPlannedEdit(edit);
 }

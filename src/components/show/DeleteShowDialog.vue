@@ -50,7 +50,7 @@ async function deleteShow(): Promise<void> {
   <Dialog
     v-model:visible="visible"
     header="Delete show"
-    class="w-[30rem] max-w-[calc(100vw-2rem)]"
+    class="w-120 max-w-[calc(100vw-2rem)]"
     modal
     dismissable-mask
   >
@@ -60,7 +60,7 @@ async function deleteShow(): Promise<void> {
     >
       <div class="flex gap-3">
         <i
-          class="pi pi-exclamation-triangle mt-0.5 text-2xl text-red-500"
+          class="pi pi-exclamation-triangle mt-0.5 text-2xl text-danger-text"
           aria-hidden="true"
         />
         <span>

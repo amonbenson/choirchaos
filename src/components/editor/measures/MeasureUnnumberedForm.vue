@@ -7,7 +7,7 @@ import { computed, ref, watch } from "vue";
 import { injectMeasureEditor } from "@/composables/useMeasureEditor";
 import { useNotify } from "@/composables/useNotify";
 import type { MeasureLayout } from "@/core/models/measure";
-import { getDefaultFirstNumber, type MeasureEdit, type MeasureEditResult } from "@/core/models/measureEditing";
+import { getDefaultLabel, type MeasureEditResult, type PlannedEdit } from "@/core/models/measureEditing";
 import { planNumberBox, planRemoveUnnumberedBox } from "@/core/models/measureReview";
 
 const props = defineProps<{
@@ -15,29 +15,29 @@ const props = defineProps<{
 }>();
 
 const editor = injectMeasureEditor();
-const { measures, mode, saving } = editor;
+const { measures, mode, unnumberedBoxes, saving } = editor;
 const { notifyError } = useNotify();
 
 const number = ref("");
 
 watch(() => props.box, (box) => {
-  number.value = getDefaultFirstNumber(measures.value, box, mode.value) ?? "";
+  number.value = getDefaultLabel(measures.value, box, mode.value) ?? "";
 }, { immediate: true });
 
 function plan(resolution?: "shift"): MeasureEditResult {
-  return planNumberBox(measures.value, props.box, number.value.trim(), mode.value, resolution);
+  return planNumberBox(measures.value, unnumberedBoxes.value, props.box, number.value.trim(), mode.value, resolution);
 }
 
 const result = computed(() => plan());
 const shiftResult = computed(() => result.value.status === "conflict" ? plan("shift") : undefined);
 
-async function resolve(edit: MeasureEdit, failure: string): Promise<void> {
+async function resolve(planned: PlannedEdit, failure: string): Promise<void> {
   if (saving.value) {
     return;
   }
 
   try {
-    await editor.resolveReview(edit);
+    await editor.resolveReview(planned);
   } catch (error) {
     notifyError(failure, error);
   }
@@ -46,12 +46,12 @@ async function resolve(edit: MeasureEdit, failure: string): Promise<void> {
 function place(resolution?: "shift"): void {
   const planned = resolution ? shiftResult.value : result.value;
   if (planned?.status === "ok") {
-    resolve(planned.edit, "Could not number the box");
+    resolve(planned, "Could not number the box");
   }
 }
 
 function remove(): void {
-  resolve(planRemoveUnnumberedBox(props.box), "Could not remove the box");
+  resolve(planRemoveUnnumberedBox(unnumberedBoxes.value, props.box), "Could not remove the box");
 }
 
 defineExpose({ place, remove });
@@ -72,7 +72,7 @@ defineExpose({ place, remove });
       <InputText
         id="box-number"
         v-model="number"
-        class="w-[7.5rem] text-center"
+        class="w-30 text-center"
         size="small"
         :invalid="!!number.trim() && result.status === 'invalid'"
       />
@@ -95,10 +95,10 @@ defineExpose({ place, remove });
         size="small"
         variant="simple"
       >
-        Measure {{ result.conflict.value }} already has a box.
+        Measure {{ result.conflict.label }} is already on the score.
       </Message>
       <Button
-        :label="`Shift ${result.conflict.value} and later by +1`"
+        :label="`Shift ${result.conflict.label} and later by +1`"
         severity="secondary"
         size="small"
         :disabled="shiftResult?.status !== 'ok' || saving"

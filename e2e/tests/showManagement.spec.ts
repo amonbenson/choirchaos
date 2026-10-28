@@ -1,7 +1,7 @@
 import type { RecordModel } from "pocketbase";
 
 import { CONDUCTOR, MINIMAL } from "../generators/score/presets";
-import { buildSongBundle } from "../generators/song";
+import { buildSongBundle, withoutBoxes } from "../generators/song";
 import { expect, test } from "../harness/fixtures";
 import { chooseFiles, collectPageErrors, toUploadFile, type UploadFile } from "../harness/page";
 
@@ -116,7 +116,9 @@ test.describe("show management", () => {
     expect(midiSong.midiFile).not.toBe("");
     expect(midiSong.jsonFile).not.toBe("");
     expect(midiSong.tracks.map((t: { title: string }) => t.title)).toEqual(CONDUCTOR.parts.map(part => part.name));
-    expect(midiSong.measures.length).toBeGreaterThan(0);
+    const expected = (await buildSongBundle(CONDUCTOR, { mode: "midi", withPdf: false })).fields;
+    expect(withoutBoxes(midiSong.score)).toEqual(expected.score);
+    expect(midiSong.recording).toEqual(expected.recording);
 
     await expect(page.getByRole("row", { name: "Minimal" })).toContainText("2 recordings");
     await expect(page.getByRole("row", { name: "Conductor" })).toContainText("MIDI");
@@ -154,8 +156,8 @@ test.describe("show management", () => {
     await page.getByRole("button", { name: `Options for ${song.title}` }).click();
     await expect(page.getByRole("menuitem", { name: "Details", exact: true })).toHaveCount(0);
     await page.getByRole("menuitem", { name: "Edit" }).click();
-    await page.getByRole("tab", { name: "Details" }).click();
-    const panel = page.getByRole("tabpanel", { name: "Details" });
+    await page.getByRole("button", { name: "Details", exact: true }).click();
+    const panel = page.getByRole("dialog", { name: "Song details" });
 
     await panel.getByLabel("No.").fill(CONDUCTOR.number);
     await panel.getByRole("button", { name: "Save" }).click();
@@ -164,10 +166,11 @@ test.describe("show management", () => {
     await panel.getByLabel("No.").fill("12a");
     await panel.getByLabel("Title").fill("Renamed");
     await panel.getByRole("button", { name: "Save" }).click();
-    await expect(panel.getByRole("button", { name: "Save" })).toBeDisabled();
+    await expect(panel).toBeHidden();
     await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).title).toBe("Renamed");
     expect((await admin.collection("songs").getOne(song.id)).number).toBe("12a");
 
+    await page.getByRole("button", { name: "Details", exact: true }).click();
     await panel.getByRole("button", { name: "Delete song" }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: "Delete song" }).click();
     await expect(page).toHaveURL(new RegExp(`/song/${other.id}/edit$`));
@@ -261,7 +264,7 @@ test.describe("navigation", () => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const bundle = await buildSongBundle(MINIMAL, { mode: "audio" });
-    bundle.fields.measures = bundle.fields.measures.map(({ value, beats }) => ({ value, beats }));
+    bundle.fields.score = withoutBoxes(bundle.fields.score);
     const song = await factory.createSong(owner, show, bundle);
     await loginAs(owner);
     await page.goto(`/show/${show.id}/edit`);
@@ -320,7 +323,7 @@ test.describe("navigation", () => {
     await page.goto(`/show/${show.id}/song/${song.id}/edit`);
 
     await expect(page).toHaveURL(new RegExp(`/show/${show.id}/song/${song.id}$`));
-    await expect(page.getByRole("tab", { name: "Details" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Details", exact: true })).toHaveCount(0);
   });
 });
 

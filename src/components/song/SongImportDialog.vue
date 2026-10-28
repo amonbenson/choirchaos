@@ -173,7 +173,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
   <Dialog
     v-model:visible="visible"
     :header="`Import ${fileCount} ${fileCount === 1 ? 'file' : 'files'}`"
-    class="w-[60rem] max-w-[calc(100vw-2rem)]"
+    class="w-240 max-w-[calc(100vw-2rem)]"
     :closable="!importing"
     modal
   >
@@ -187,9 +187,9 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
       v-else
       class="flex flex-col gap-4"
     >
-      <span class="text-muted-color">Files are grouped into songs by the number at the start of each file name. Check the numbers and titles, then import.</span>
+      <span class="text-muted-color">Files are grouped into songs by the number at the start of each file name. Check the song numbers and titles, then import. Track names can be changed later in the song details.</span>
       <div class="overflow-x-auto">
-        <table class="w-full min-w-[40rem] border-collapse text-left">
+        <table class="w-full min-w-160 border-collapse text-left">
           <thead>
             <tr class="text-sm text-muted-color">
               <th class="w-8" />
@@ -197,7 +197,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
                 No.
               </th>
               <th class="pb-2 font-medium">
-                Title
+                Song title
               </th>
               <th class="pb-2 font-medium">
                 Files
@@ -258,7 +258,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
                 <div
                   v-for="warning in resolve(row).warnings"
                   :key="warning"
-                  class="mt-1 text-xs text-orange-600 dark:text-orange-400"
+                  class="mt-1 text-xs text-warn-text"
                 >
                   {{ warning }}
                 </div>
@@ -267,7 +267,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
                 <div class="flex items-center gap-2">
                   <i
                     v-if="row.status === 'running'"
-                    class="pi pi-spin pi-spinner text-primary"
+                    class="pi pi-spin pi-spinner text-primary-text"
                     role="img"
                     aria-label="Importing"
                   />
@@ -290,7 +290,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
                 </div>
                 <div
                   v-if="row.status === 'error'"
-                  class="mt-1 text-xs text-red-500"
+                  class="mt-1 text-xs text-danger-text"
                 >
                   {{ row.error }}
                 </div>

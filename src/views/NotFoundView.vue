@@ -33,7 +33,7 @@ function signIn(): void {
 
     <main class="flex flex-1 items-center justify-center overflow-y-auto p-4">
       <div class="flex max-w-md flex-col items-center gap-4 text-center">
-        <span class="text-7xl font-bold text-primary">404</span>
+        <span class="text-7xl font-bold text-primary-text">404</span>
         <h2 class="text-2xl font-semibold">
           {{ isShowPath ? "Show not found" : "Page not found" }}
         </h2>

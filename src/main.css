@@ -2,9 +2,73 @@
 @import "tailwindcss-primeui";
 @import "primeicons/primeicons.css";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Overwrites to PrimeVue's colors. Aura changes the primary shade and its contrast per color scheme,
+ * this app keeps them the same. Unlayered, so they win over PrimeVue's layered theme.
+ */
+:root {
+  --p-primary-color: var(--p-primary-400);
+  --p-primary-hover-color: var(--p-primary-500);
+  --p-primary-active-color: var(--p-primary-600);
+  --p-primary-contrast-color: var(--p-surface-900);
+
+  --p-mask-background: color-mix(in srgb, var(--color-scrim) 50%, transparent);
+  --p-mask-color: var(--color-scrim-contrast);
+}
+
 @theme {
   --color-surface: var(--p-content-background);
-  --color-surface-alt: var(--p-content-hover-background);
+
+  /*
+   * Fixed colors, which no theme changes. Colored surfaces use the 400 shade in both color schemes,
+   * colored text the 600 shade in light and the 400 shade in dark mode.
+   */
+  --color-section-repeat: var(--color-sky-400);
+  --color-section-vamp: var(--color-violet-400);
+  --color-section-cut: var(--color-slate-300);
+  --color-section-contrast: var(--color-slate-950);
+
+  /* Orange, so sync points never look like the primary colored playhead. */
+  --color-sync: var(--color-orange-400);
+  --color-sync-text: var(--color-orange-600);
+
+  --color-track-highlight: var(--color-sky-400);
+
+  /* TODO: only used by the jump chips on the score, remove together with them. */
+  --color-score-chip: var(--color-white);
+  --color-score-chip-border: var(--color-slate-700);
+  --color-score-chip-contrast: var(--color-slate-800);
+
+  /* Behind every full page overlay, PrimeVue's dialog masks included. */
+  --color-scrim: var(--color-black);
+  --color-scrim-contrast: var(--color-white);
+
+  /*
+   * Theme colors. PrimeVue only defines severities per component, and only once that component's
+   * style is loaded, so they are repeated here with Aura's palettes.
+   */
+  --color-primary-text: var(--color-primary-600);
+
+  --color-marker: var(--color-primary);
+  --color-marker-contrast: var(--color-primary-contrast);
+
+  --color-info: var(--color-sky-400);
+  --color-info-contrast: var(--color-slate-950);
+  --color-info-text: var(--color-sky-600);
+  --color-success: var(--color-green-400);
+  --color-success-contrast: var(--color-slate-950);
+  --color-success-text: var(--color-green-600);
+  --color-warn: var(--color-orange-400);
+  --color-warn-contrast: var(--color-slate-950);
+  --color-warn-text: var(--color-orange-600);
+  --color-help: var(--color-purple-400);
+  --color-help-contrast: var(--color-slate-950);
+  --color-help-text: var(--color-purple-600);
+  --color-danger: var(--color-red-400);
+  --color-danger-contrast: var(--color-slate-950);
+  --color-danger-text: var(--color-red-600);
 }
 
 @layer base {
@@ -12,10 +76,51 @@
     @apply size-full select-none bg-surface;
   }
 
+  .dark {
+    --color-sync-text: var(--color-orange-400);
+
+    --color-primary-text: var(--color-primary-400);
+    --color-info-text: var(--color-sky-400);
+    --color-success-text: var(--color-green-400);
+    --color-warn-text: var(--color-orange-400);
+    --color-help-text: var(--color-purple-400);
+    --color-danger-text: var(--color-red-400);
+  }
+
   kbd {
     @apply bg-(--p-button-secondary-background) text-(--p-button-secondary-color) border border-(--p-button-secondary-color)/20 px-1.5 py-0.5 rounded shadow-sm not-italic font-[80%] text-xs;
   }
 }
 
+@utility hatch-section-cut {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-section-cut) 30%, transparent) 0 0.375rem,
+    transparent 0.375rem 0.75rem
+  );
+  background-attachment: fixed;
+}
+
 @custom-variant touch (@media (pointer: coarse));
 @custom-variant mouse (@media (pointer: fine));
+
+/*
+  A canvas locks its cursor while a gesture runs or a held key changes what a press does, so the cursor shows
+  what happens next instead of what a click on the element below would do. Handles keep their own cursor.
+  Unlayered, so it wins over the cursor utilities of the elements inside.
+*/
+[data-cursor-lock="grabbing"] {
+  --cursor-lock: grabbing;
+}
+
+[data-cursor-lock="default"] {
+  --cursor-lock: default;
+}
+
+[data-cursor-lock="ew-resize"] {
+  --cursor-lock: ew-resize;
+}
+
+[data-cursor-lock], [data-cursor-lock] :not([data-handle], [data-handle] *) {
+  cursor: var(--cursor-lock);
+}

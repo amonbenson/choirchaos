@@ -101,7 +101,7 @@ function showLink(show: Show): RouteLocationRaw {
             <button
               v-if="section.id === 'mine' && auth.user"
               type="button"
-              class="flex aspect-square w-40 cursor-pointer flex-col items-center justify-center gap-2 self-start rounded border-2 border-dashed border-surface-300 text-muted-color transition-colors hover:border-primary hover:text-primary sm:w-52 dark:border-surface-700"
+              class="flex aspect-square w-40 cursor-pointer flex-col items-center justify-center gap-2 self-start rounded border-2 border-dashed border-surface-300 text-muted-color transition-colors hover:border-primary hover:text-primary-text sm:w-52 dark:border-surface-700"
               @click="newShowVisible = true"
             >
               <i

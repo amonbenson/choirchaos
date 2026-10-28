@@ -1,26 +1,61 @@
 <script setup lang="ts">
-import { onLongPress, useEventListener } from "@vueuse/core";
-import SelectButton from "primevue/selectbutton";
-import { computed, type ComputedRef, type Ref, ref, shallowRef, watch } from "vue";
+import { onLongPress, useEventListener, useKeyModifier } from "@vueuse/core";
+import { computed, ref, shallowRef, watch } from "vue";
 
-import Draggable from "@/components/base/Draggable.vue";
-import { injectMeasureEditor, type MeasureTool } from "@/composables/useMeasureEditor";
-import Measure, { type MeasureLayout, needsReview } from "@/core/models/measure";
-import { getReadingOrder, intersects, normalizeLayout, splitLayout } from "@/core/models/measureEditing";
+import { type ClickIntent, getClickIntent, injectEditorSelection } from "@/composables/useEditorSelection";
+import { useMarqueeSelection } from "@/composables/useMarqueeSelection";
+import { injectMeasureEditor } from "@/composables/useMeasureEditor";
+import { useNotify } from "@/composables/useNotify";
+import type { Marker } from "@/core/models/markers";
+import Measure, { type MeasureId, type MeasureLayout, needsReview } from "@/core/models/measure";
+import { type BoxEdge, planLayouts, resizeBox } from "@/core/models/measureEditing";
+import {
+  type BoxOverlays,
+  findRecordingJumps,
+  getBoxOverlays,
+  getSectionBars,
+  getSectionOverlays,
+} from "@/core/models/scoreOverlays";
+import { getSectionRun, type Section } from "@/core/models/sections";
+import {
+  getSelectableMeasures,
+  isBoxSelected,
+  isMeasureSelected,
+  isSectionSelected,
+  NO_SELECTION,
+  type Selection,
+  selectMeasures,
+  toggleBox,
+  toggleMeasure,
+} from "@/core/models/selection";
 import Song from "@/core/models/song";
+import { getSyncedOccurrences } from "@/core/models/warpEditing";
 import type { PageCoordinate } from "@/core/pdf/pageTransform";
 import { resolveUrl } from "@/core/utils/file";
 import { usePlayerStore } from "@/stores/player";
+import { type ArrangementKey, useSettingsStore } from "@/stores/settings";
 
-import PdfViewer from "./PdfViewer.vue";
+import DrawLayer from "./DrawLayer.vue";
+import MeasureBox from "./MeasureBox.vue";
+import PdfViewer, { type ViewInsets } from "./PdfViewer.vue";
+import ScoreBadge from "./ScoreBadge.vue";
+import ScoreBox from "./ScoreBox.vue";
+import ScorePage from "./ScorePage.vue";
+import SectionBar from "./SectionBar.vue";
+import SectionRange from "./SectionRange.vue";
 
 const player = usePlayerStore();
+const { notifyError } = useNotify();
 const editor = injectMeasureEditor();
-const { tool, pendingBox, pendingCount, touchMultiSelect, detection, revealRequest } = editor;
+const { drawing, pendingBox, detection, revealRequest } = editor;
+const editorSelection = injectEditorSelection();
+const { selection, selected, touchMultiSelect } = editorSelection;
 
 const props = defineProps<{
   song?: Song;
   editMode?: boolean;
+  /** Pixels at the bottom of the score that a panel covers, such as the inspector's bottom sheet. */
+  coveredBottom?: number;
 }>();
 
 const emit = defineEmits<{
@@ -30,32 +65,44 @@ const emit = defineEmits<{
 const pdfViewer = ref();
 const overlayRoot = ref<HTMLElement>();
 
-// ── Measure data ──────────────────────────────────────────────────────────────
-
-const measuresByPage = computed<{ [key: number]: Measure[] }>(() => {
-  if (!props.song) {
-    return {};
-  }
-
-  const groups: { [key: number]: Measure[] } = {};
-  for (const measure of props.song.measures.items()) {
-    if (measure.layout) {
-      const p = measure.layout.page;
-      if (!Array.isArray(groups[p])) {
-        groups[p] = [];
-      }
-
-      groups[p].push(measure);
+function groupByPage<T>(items: readonly T[], layoutOf: (item: T) => MeasureLayout | undefined): Map<number, T[]> {
+  const groups = new Map<number, T[]>();
+  for (const item of items) {
+    const page = layoutOf(item)?.page;
+    if (page !== undefined) {
+      groups.set(page, [...groups.get(page) ?? [], item]);
     }
   }
 
   return groups;
-});
+}
 
-// ── Detection preview and review marks ───────────────────────────────────────
+// Measures
+
+/** Layouts of a running resize drag, shown until the drag ends and the edit is saved. */
+const resizePreview = shallowRef(new Map<MeasureId, MeasureLayout>());
+
+function layoutOf(measure: Measure): MeasureLayout | undefined {
+  return resizePreview.value.get(measure.id) ?? measure.layout;
+}
+
+const measuresByPage = computed(() => groupByPage(props.song?.getMeasures() ?? [], layoutOf));
+
+const highlightedTracks = computed(() => new Set(props.song?.tracks.flatMap((track, i) => track.mixer.highlight ? [i] : []) ?? []));
+
+const highlightedMeasures = computed(() => new Set([...player.measureTrackIndices]
+  .filter(([, tracks]) => [...tracks].some(track => highlightedTracks.value.has(track)))
+  .map(([measure]) => measure)));
+
+function isResizable(measure: Measure): boolean {
+  const current = selected.value;
+  return !!props.editMode && !drawing.value && current.kind === "measures" && current.measures.length === 1 && current.measures[0]!.id === measure.id;
+}
+
+// Detection preview and boxes without a number
 
 type PreviewBox = {
-  value?: string;
+  label?: string;
   layout: MeasureLayout;
 };
 
@@ -64,146 +111,126 @@ const previewing = computed(() => !!props.editMode && !!detection.plan.value);
 const previewByPage = computed(() => {
   const plan = props.editMode ? detection.plan.value : undefined;
   if (!plan) {
-    return {};
+    return new Map<number, PreviewBox[]>();
   }
 
   const boxes: PreviewBox[] = [
-    ...plan.placements.map(({ measure, layout }) => ({ value: measure.value, layout })),
-    ...plan.additions.map(measure => ({ value: measure.value, layout: measure.layout! })),
+    ...plan.placements.map(({ measure, layout }) => ({ label: measure.label, layout })),
+    ...plan.additions.map(addition => ({ label: addition.label, layout: addition.layout! })),
     ...plan.unnumbered.map(layout => ({ layout })),
   ];
   return groupByPage(boxes, box => box.layout);
 });
 
-const replacedMeasures = computed(() => new Set(detection.plan.value?.placements.map(placement => placement.measure.value)));
+const replacedMeasures = computed(() => new Set(detection.plan.value?.placements.map(placement => placement.measure.id)));
 
-const unnumberedByPage = computed(() => props.editMode ? groupByPage(editor.unnumberedBoxes.value, box => box) : {});
-
-function groupByPage<T>(items: readonly T[], layoutOf: (item: T) => MeasureLayout): { [key: number]: T[] } {
-  const groups: { [key: number]: T[] } = {};
-  for (const item of items) {
-    const page = layoutOf(item).page;
-    groups[page] = [...groups[page] ?? [], item];
-  }
-
-  return groups;
-}
+const unnumberedByPage = computed(() => props.editMode ? groupByPage(editor.unnumberedBoxes.value, box => box) : new Map<number, MeasureLayout[]>());
 
 function visibleMeasures(page: number): Measure[] {
-  const measures = measuresByPage.value[page] ?? [];
-  return previewing.value ? measures.filter(measure => !replacedMeasures.value.has(measure.value)) : measures;
+  const measures = measuresByPage.value.get(page) ?? [];
+  return previewing.value ? measures.filter(measure => !replacedMeasures.value.has(measure.id)) : measures;
 }
 
-const CHIP_CLASS = "pointer-events-none absolute top-0 left-0 rounded-br-sm px-1 text-[0.625rem] leading-4 font-semibold";
+type PreviewTone = "unnumbered" | "review" | "primary";
 
-function chipClass(layout: MeasureLayout | undefined, numbered: boolean): string[] {
-  if (!numbered) {
-    return [CHIP_CLASS, "bg-red-500 text-white"];
+const PREVIEW_SURFACES: Record<PreviewTone, string> = {
+  unnumbered: "outline-danger bg-danger/10",
+  review: "outline-warn bg-warn/15",
+  primary: "outline-primary bg-primary/10",
+};
+
+function previewTone(box: PreviewBox): PreviewTone {
+  if (box.label === undefined) {
+    return "unnumbered";
   }
 
-  return [CHIP_CLASS, needsReview(layout) ? "bg-amber-400 text-amber-950" : "bg-primary text-primary-contrast"];
+  return needsReview(box.layout) ? "review" : "primary";
 }
 
-function previewClass(box: PreviewBox): string {
-  if (box.value === undefined) {
-    return "border-red-500 bg-red-500/10";
+function unnumberedClass(box: MeasureLayout): string {
+  return isBoxSelected(selection.value, box)
+    ? "outline-2 outline-primary bg-primary/30"
+    : "outline-2 outline-danger/80 bg-danger/10 hover:bg-danger/20";
+}
+
+// Playback
+
+const currentMeasureId = computed(() => player.currentTimelinePosition?.measure);
+
+// Arrangement
+
+const settings = useSettingsStore();
+
+/** Rehearsers choose which parts of the arrangement the score shows. */
+const isArrangementVisible = (key: ArrangementKey): boolean => !!props.editMode || settings.current.appearance.arrangementVisible[key];
+
+const sectionOverlays = computed(() => props.song
+  ? getSectionOverlays(
+      props.song.getMeasures(),
+      props.song.getTimeline(),
+      props.song.getSections().filter(section => isArrangementVisible(section.kind)),
+      { cutBars: !!props.editMode },
+    )
+  : []);
+
+const sectionBars = computed(() => props.song ? getSectionBars(props.song.getMeasures(), sectionOverlays.value) : []);
+
+const cutBoxes = computed(() => sectionOverlays.value
+  .filter(overlay => overlay.section.kind === "cut")
+  .flatMap(overlay => overlay.measures.flatMap(id => props.song?.findMeasure(id)?.layout ?? [])));
+
+/** Sync points only matter while editing an audio song. */
+const syncedOccurrences = computed(() => props.editMode && props.song?.playerMode === "audio"
+  ? getSyncedOccurrences(props.song.getTimeline(), props.song.getWarpMarkers())
+  : new Map<MeasureId, number[]>());
+
+const boxOverlays = computed(() => {
+  const song = props.song;
+  if (!song) {
+    return new Map<MeasureId, BoxOverlays>();
   }
 
-  return needsReview(box.layout) ? "border-amber-500 bg-amber-400/15" : "border-primary bg-primary/10";
-}
-
-function unnumberedClass(box: MeasureLayout): string[] {
-  const interaction = activeTool.value === "draw" || previewing.value ? "pointer-events-none" : "";
-  const state = editor.isBoxSelected(box)
-    ? "border-2 border-primary bg-primary/30"
-    : "border-2 border-red-500/80 bg-red-500/10 hover:bg-red-500/20";
-  return [interaction, state, previewing.value ? "opacity-40" : ""];
-}
-
-const highlightedTracks: ComputedRef<Set<number>> = computed(
-  () => new Set(props.song?.tracks.flatMap((t, i) => t.mixer.highlight ? [i] : []) ?? []),
-);
-
-function isMeasureHighlighted(measure: Measure): boolean {
-  for (const i of measure.$activeTrackIndices) {
-    if (highlightedTracks.value.has(i)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function boxStyle(layout: MeasureLayout): Record<string, string> {
-  return {
-    left: `${layout.x * 100}%`,
-    top: `${layout.y * 100}%`,
-    width: `${layout.width * 100}%`,
-    height: `${layout.height * 100}%`,
-  };
-}
-
-function boxClass(measure: Measure): string[] {
-  if (!props.editMode) {
-    return ["cursor-pointer", isMeasureHighlighted(measure) ? "bg-sky-400/25 hover:bg-sky-400/45" : "bg-primary/0 hover:bg-primary/25"];
-  }
-
-  const interaction = activeTool.value === "draw" || previewing.value ? "pointer-events-none" : "";
-  return [interaction, measureStateClass(measure), previewing.value ? "opacity-40" : ""];
-}
-
-function measureStateClass(measure: Measure): string {
-  if (editor.isSelected(measure)) {
-    return "border-2 border-primary bg-primary/30";
-  }
-
-  return needsReview(measure.layout)
-    ? "border-2 border-amber-500 bg-amber-400/15 hover:bg-amber-400/30"
-    : "border border-primary/70 bg-primary/10 hover:bg-primary/25";
-}
-
-function hasHandles(measure: Measure): boolean {
-  return activeTool.value !== "draw" && editor.selection.value.length === 1 && editor.isSelected(measure);
-}
-
-// ── Playback sync ─────────────────────────────────────────────────────────────
-
-const currentPlayingMeasure: Ref<Measure | undefined> = ref();
-const currentWrittenMeasure: Ref<Measure | undefined> = ref();
-
-watch(() => player.position, () => {
-  currentPlayingMeasure.value = props.song?.findMeasure(player.currentMeasure[0]);
-  currentWrittenMeasure.value = props.song?.findMeasure(player.currentMeasure[0], true);
-  pdfViewer.value?.redrawOverlay();
+  const timeline = song.getTimeline();
+  return getBoxOverlays({
+    measures: song.getMeasures(),
+    timeline,
+    sections: sectionOverlays.value,
+    markers: isArrangementVisible("marker") ? song.getMarkers() : [],
+    jumps: props.editMode ? findRecordingJumps(song.getMeasures(), timeline) : [],
+    synced: syncedOccurrences.value,
+  });
 });
+
+/** The selected section gets range handles, unless the score is busy drawing or previewing. */
+const rangeTarget = computed(() => {
+  const current = selected.value;
+  const section = props.editMode && !drawing.value && !previewing.value && current.kind === "section" ? current.section : undefined;
+  const lane = sectionOverlays.value.find(overlay => overlay.section === section)?.lane ?? 0;
+  return section && props.song && getSectionRun(props.song.getTimeline(), section) ? { section, lane } : undefined;
+});
+
+/** A click on a section or marker badge selects it in the editor. While rehearsing it only moves the playhead there. */
+function selectObject(object: { section: Section } | { marker: Marker }): void {
+  const next = "section" in object
+    ? { kind: "section" as const, from: object.section.from }
+    : { kind: "marker" as const, marker: object.marker };
+  if (props.editMode) {
+    editorSelection.selectAndSeek(next);
+  } else {
+    player.seekLocation("section" in object ? object.section.from : object.marker.at);
+  }
+}
 
 watch(() => props.song, () => {
   if (props.song) {
     pdfViewer.value?.zoomToPage(0);
-    pdfViewer.value?.redrawAll();
-    currentPlayingMeasure.value = props.song?.measures.first();
-    currentWrittenMeasure.value = props.song?.measures.first();
   }
 });
 
-const currentPlayingMeasureProgress = computed(() => {
-  if (!currentPlayingMeasure.value) {
-    return 0;
-  }
+// Keeping boxes in view
 
-  const mStart = currentPlayingMeasure.value.$beatTicks[0] ?? 0;
-  const mLength = currentPlayingMeasure.value.$tickLength ?? 960;
-  return Math.max(0, Math.min(1, (player.position - mStart) / mLength));
-});
-
-watch(highlightedTracks, () => {
-  pdfViewer.value?.redrawOverlay();
-});
-
-// ── Auto-scroll to current measure ───────────────────────────────────────────
-
-watch(currentWrittenMeasure, () => {
-  const layout = currentWrittenMeasure.value?.layout;
+watch(currentMeasureId, (id) => {
+  const layout = id === undefined ? undefined : props.song?.findMeasure(id)?.layout;
   if (layout) {
     scrollToLayout(layout);
   }
@@ -214,6 +241,36 @@ watch(revealRequest, (request) => {
     scrollToLayout(request.layout);
   }
 });
+
+const viewInsets = computed<ViewInsets>(() => ({ top: 0, bottom: props.coveredBottom ?? 0 }));
+
+type ClickedBox = { measureId: MeasureId } | { box: MeasureLayout };
+
+/** The box clicked last, kept in view while it stays selected. */
+let lastClicked: ClickedBox | undefined;
+
+function getLastClickedLayout(): MeasureLayout | undefined {
+  const clicked = lastClicked;
+  if (!clicked) {
+    return undefined;
+  }
+
+  if ("box" in clicked) {
+    return isBoxSelected(selection.value, clicked.box) ? clicked.box : undefined;
+  }
+
+  const current = selected.value;
+  return current.kind === "measures" ? current.measures.find(measure => measure.id === clicked.measureId)?.layout : undefined;
+}
+
+// Selecting expands the bottom sheet, which would otherwise cover the box that was just clicked.
+// Post flush, so the viewer already knows the new insets.
+watch(() => props.coveredBottom ?? 0, (covered, previous) => {
+  const layout = getLastClickedLayout();
+  if (layout && covered > previous) {
+    scrollToLayout(layout);
+  }
+}, { flush: "post" });
 
 function scrollToLayout(layout: MeasureLayout): void {
   if (!pdfViewer.value) {
@@ -242,27 +299,10 @@ function scrollToLayout(layout: MeasureLayout): void {
     );
   }
 
-  pdfViewer.value.redrawAll();
+  pdfViewer.value.redraw();
 }
 
-// ── Tools ─────────────────────────────────────────────────────────────────────
-
-const TOOL_OPTIONS: { label: string; value: MeasureTool; icon: string }[] = [
-  { label: "Select", value: "select", icon: "pi pi-arrow-up-left" },
-  { label: "Move", value: "move", icon: "pi pi-arrows-alt" },
-  { label: "Draw", value: "draw", icon: "pi pi-stop" },
-];
-
-const TOOL_CURSORS: Record<MeasureTool, string> = {
-  select: "cursor-default",
-  move: "cursor-grab active:cursor-grabbing",
-  draw: "cursor-crosshair",
-};
-
-const shiftHeld = ref(false);
-
-/** The tool the score works with. Holding Shift switches to Select for as long as it is held. */
-const activeTool = computed<MeasureTool>(() => shiftHeld.value ? "select" : tool.value);
+// Keys
 
 function isTyping(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
@@ -278,35 +318,32 @@ useEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "Shift") {
-    shiftHeld.value = true;
-  } else if (isSelectAll(event) && !previewing.value) {
+  if (isSelectAll(event) && !previewing.value) {
     event.preventDefault();
-    editor.selectAll();
+    editorSelection.selectAllMeasures();
   } else if (event.key === "Escape") {
-    cancelOrDeselect();
+    stepBack();
   }
 });
 
-useEventListener("keyup", (event: KeyboardEvent) => {
-  if (event.key === "Shift") {
-    shiftHeld.value = false;
+/** Escape steps back once: from a selection box to the selection before it, from a drawn box to drawing, from drawing to selecting, and from a selection to none. */
+function stepBack(): void {
+  if (marquee.cancel()) {
+    return;
   }
-});
 
-useEventListener("blur", () => {
-  shiftHeld.value = false;
-});
-
-function cancelOrDeselect(): void {
   if (pendingBox.value) {
     pendingBox.value = undefined;
+  } else if (drawing.value) {
+    editor.stopDrawing();
   } else {
-    editor.clearSelection();
+    editorSelection.clear();
   }
 }
 
-// ── Clicking boxes ────────────────────────────────────────────────────────────
+// Clicking
+// A drag pans the score, and the viewer swallows the click that ends it, so only real clicks get here.
+// Clicks on boxes stop at the box, so the overlay only gets clicks on empty space.
 
 let lastPointerType: string = "mouse";
 let suppressNextClick = false;
@@ -315,9 +352,19 @@ function rememberPointerType(event: PointerEvent): void {
   lastPointerType = event.pointerType;
 }
 
+function getIntent(event: MouseEvent): ClickIntent {
+  return getClickIntent(event, lastPointerType, touchMultiSelect.value);
+}
+
+/** A repeated measure is always entered at its first pass. Other passes are reached through the inspector or the timeline. */
+function seekMeasure(measure: Measure): void {
+  player.seekLocation({ measure: measure.id, occurrence: 1, beat: 0 });
+}
+
+/** A click always moves the playhead. In edit mode it also selects. */
 function onBoxClick(event: MouseEvent, measure: Measure): void {
   if (!props.editMode) {
-    player.setMeasure(measure.value);
+    seekMeasure(measure);
     return;
   }
 
@@ -326,18 +373,11 @@ function onBoxClick(event: MouseEvent, measure: Measure): void {
     return;
   }
 
-  if (lastPointerType !== "mouse") {
-    if (touchMultiSelect.value) {
-      editor.toggle(measure);
-    } else {
-      editor.selectOnly(measure);
-    }
-  } else if (event.shiftKey) {
-    editor.selectRange(measure);
-  } else if (event.ctrlKey || event.metaKey) {
-    editor.toggle(measure);
-  } else {
-    editor.selectOnly(measure);
+  lastClicked = { measureId: measure.id };
+  editorSelection.clickMeasure(measure.id, getIntent(event));
+
+  if (isMeasureSelected(selection.value, measure.id)) {
+    seekMeasure(measure);
   }
 }
 
@@ -347,301 +387,137 @@ function onUnnumberedClick(event: MouseEvent, box: MeasureLayout): void {
     return;
   }
 
-  const toggles = lastPointerType === "mouse" ? event.shiftKey || event.ctrlKey || event.metaKey : touchMultiSelect.value;
-  if (toggles) {
-    editor.toggleBox(box);
-  } else {
-    editor.selectBox(box);
+  lastClicked = { box };
+  editorSelection.select(getIntent(event) === "select" ? { kind: "boxes", boxes: [box] } : toggleBox(selection.value, box));
+}
+
+/** A click on empty space clears the selection, unless a modifier asks to add to it. */
+function onEmptyClick(event: MouseEvent): void {
+  if (drawing.value || previewing.value || event.shiftKey || event.ctrlKey || event.metaKey) {
+    return;
   }
+
+  editorSelection.clear();
 }
 
-function pageAt(target: EventTarget | null): number | undefined {
-  const value = (target as Element | null)?.closest<HTMLElement>("[data-page]")?.dataset.page;
-  return value === undefined ? undefined : Number(value);
-}
-
-function isOnBox(target: EventTarget | null): boolean {
-  return !!(target as Element | null)?.closest("[data-measure], [data-unnumbered-box]");
+function findDataAt(target: EventTarget | null, attribute: string): string | undefined {
+  return (target as Element | null)?.closest<HTMLElement>(`[data-${attribute}]`)?.getAttribute(`data-${attribute}`) ?? undefined;
 }
 
 function findMeasureAt(target: EventTarget | null): Measure | undefined {
-  const value = (target as Element | null)?.closest<HTMLElement>("[data-measure]")?.dataset.measure;
-  return value === undefined ? undefined : editor.measures.value.find(measure => measure.value === value);
+  const id = findDataAt(target, "measure");
+  return id === undefined ? undefined : editor.measures.value.find(measure => measure.id === id);
 }
 
 function findUnnumberedBoxAt(target: EventTarget | null): MeasureLayout | undefined {
-  const index = (target as Element | null)?.closest<HTMLElement>("[data-unnumbered-box]")?.dataset.unnumberedBox;
-  const page = pageAt(target);
-  return index === undefined || page === undefined ? undefined : unnumberedByPage.value[page]?.[Number(index)];
+  const index = findDataAt(target, "unnumbered-box");
+  const page = findDataAt(target, "page");
+  return index === undefined || page === undefined ? undefined : unnumberedByPage.value.get(Number(page))?.[Number(index)];
 }
 
-function selectForMultiSelect(target: EventTarget | null): boolean {
+/** Adds what was pressed to the selection. True when a measure or a box was pressed. */
+function addForMultiSelect(target: EventTarget | null): boolean {
   const measure = findMeasureAt(target);
   if (measure) {
-    if (!editor.isSelected(measure)) {
-      editor.toggle(measure);
+    if (!isMeasureSelected(selection.value, measure.id)) {
+      editorSelection.select(toggleMeasure(selection.value, measure.id));
     }
 
     return true;
   }
 
   const box = findUnnumberedBoxAt(target);
-  if (box && !editor.isBoxSelected(box)) {
-    editor.toggleBox(box);
+  if (box && !isBoxSelected(selection.value, box)) {
+    editorSelection.select(toggleBox(selection.value, box));
   }
 
   return !!box;
 }
 
-// On touch a long press starts multi-select, after which taps add and remove boxes. The box is
-// selected before the mode starts, because a selection of one box ends multi-select.
+// On touch a long press starts multi-select. The pressed box is selected before the mode starts,
+// because a selection of one measure ends multi-select.
 onLongPress(overlayRoot, (event) => {
-  if (!props.editMode || activeTool.value === "draw" || event.pointerType === "mouse" || previewing.value) {
+  if (!props.editMode || drawing.value || event.pointerType === "mouse" || previewing.value) {
     return;
   }
 
-  if (selectForMultiSelect(event.target)) {
+  if (addForMultiSelect(event.target)) {
     touchMultiSelect.value = true;
     suppressNextClick = true;
   }
 });
 
-// ── Gestures ──────────────────────────────────────────────────────────────────
+// Selection box
+// Shift and a drag select the measures the box touches while it moves. Ctrl/Cmd adds them to the selection.
 
-type ScreenPoint = { x: number; y: number };
+const canDrawMarquee = computed(() => !!props.editMode && !drawing.value && !previewing.value);
 
-/**
- * One press on the score, in screen coordinates so a marquee can start beside the pages and reach
- * across them. It keeps the tool it started with and becomes a drag once it moves. With the Move
- * tool the viewer pans the drag, so only its taps matter here.
- */
-type Gesture = {
-  tool: MeasureTool;
-  page?: number;
-  start: ScreenPoint;
-  end: ScreenPoint;
-  dragging: boolean;
-  onBox: boolean;
-  additive: boolean;
-  keepsSelection: boolean;
-};
+// Mouse events too, so a Shift released while another window had focus is noticed on the next move.
+const shiftHeld = useKeyModifier("Shift", { events: ["mousedown", "mouseup", "mousemove", "keydown", "keyup"] });
 
-const MIN_DRAG_PIXELS = 4;
-const MIN_BOX_SIZE = 0.005;
-const gesture = shallowRef<Gesture>();
+let selectionBeforeMarquee: Selection = NO_SELECTION;
+let addsToSelection = false;
 
-function screenPoint(e: PointerEvent): ScreenPoint {
-  return { x: e.clientX, y: e.clientY };
-}
-
-function onPointerDown(e: PointerEvent): void {
-  if (e.button !== 0 || !e.isPrimary || previewing.value) {
-    return;
-  }
-
-  gesture.value = {
-    tool: activeTool.value,
-    page: pageAt(e.target),
-    start: screenPoint(e),
-    end: screenPoint(e),
-    dragging: false,
-    onBox: isOnBox(e.target),
-    additive: e.ctrlKey || e.metaKey,
-    keepsSelection: e.shiftKey || e.ctrlKey || e.metaKey,
-  };
-}
-
-// The pointer is captured only once a drag starts, because a capture retargets the click of a tap
-// away from the box under the pointer.
-function onPointerMove(e: PointerEvent): void {
-  const current = gesture.value;
-  if (!current) {
-    return;
-  }
-
-  const end = screenPoint(e);
-  const dragging = current.dragging || Math.hypot(end.x - current.start.x, end.y - current.start.y) >= MIN_DRAG_PIXELS;
-  if (dragging && !current.dragging && current.tool !== "move") {
-    overlayRoot.value?.setPointerCapture(e.pointerId);
-  }
-
-  gesture.value = { ...current, end, dragging };
-}
-
-function onPointerUp(): void {
-  const current = gesture.value;
-  gesture.value = undefined;
-  if (!current) {
-    return;
-  }
-
-  if (!current.dragging) {
-    finishTap(current);
-  } else if (current.tool === "select") {
-    finishMarquee(current);
-  } else if (current.tool === "draw" && current.page !== undefined) {
-    finishDrawing(current, current.page);
-  }
-}
-
-/** Boxes handle their own clicks, so a tap here only clears the selection on empty space. */
-function finishTap(current: Gesture): void {
-  if (current.tool !== "draw" && !current.onBox && !current.keepsSelection) {
-    editor.clearSelection();
-  }
-}
-
-function finishMarquee(current: Gesture): void {
-  const { measures, boxes } = findMarqueeHits(current);
-  if (current.additive) {
-    editor.addToSelection(measures, boxes);
-  } else {
-    editor.setSelection(measures, boxes);
-  }
-}
-
-function finishDrawing(current: Gesture, page: number): void {
-  const rect = dragOnPage(current, page);
-  if (rect && rect.width >= MIN_BOX_SIZE && rect.height >= MIN_BOX_SIZE) {
-    pendingBox.value = clampToPage(rect);
-  }
-}
-
-/** The gesture relative to a page. It may reach beyond the page. */
-function dragOnPage(current: Gesture, page: number): MeasureLayout | undefined {
-  const rect = pageDivRefs.get(page)?.getBoundingClientRect();
-  if (!rect || rect.width === 0 || rect.height === 0) {
-    return undefined;
-  }
-
-  return normalizeLayout({
-    page,
-    x: (current.start.x - rect.left) / rect.width,
-    y: (current.start.y - rect.top) / rect.height,
-    width: (current.end.x - current.start.x) / rect.width,
-    height: (current.end.y - current.start.y) / rect.height,
-  });
-}
-
-function clampToPage(layout: MeasureLayout): MeasureLayout {
-  const x = Math.max(0, layout.x);
-  const y = Math.max(0, layout.y);
-  return { page: layout.page, x, y, width: Math.min(1, layout.x + layout.width) - x, height: Math.min(1, layout.y + layout.height) - y };
-}
-
-function findMarqueeHits(current: Gesture): { measures: Measure[]; boxes: MeasureLayout[] } {
-  const measures: Measure[] = [];
-  const boxes: MeasureLayout[] = [];
-  for (const page of pageDivRefs.keys()) {
-    const rect = dragOnPage(current, page);
-    if (rect) {
-      measures.push(...visibleMeasures(page).filter(measure => intersects(measure.layout!, rect)));
-      boxes.push(...(unnumberedByPage.value[page] ?? []).filter(box => intersects(box, rect)));
-    }
-  }
-
-  return { measures: getReadingOrder(measures), boxes };
-}
-
-const drawnRect = computed(() => {
-  const current = gesture.value;
-  return current?.dragging && current.tool === "draw" && current.page !== undefined ? dragOnPage(current, current.page) : undefined;
+const marquee = useMarqueeSelection(overlayRoot, {
+  canStart: () => canDrawMarquee.value,
+  onStart: (event) => {
+    selectionBeforeMarquee = selection.value;
+    addsToSelection = event.ctrlKey || event.metaKey;
+  },
+  onChange: selectInBox,
+  onCancel: () => editorSelection.select(selectionBeforeMarquee),
 });
 
-const marqueeStyle = computed(() => {
-  const current = gesture.value;
-  const root = overlayRoot.value?.getBoundingClientRect();
-  if (!current?.dragging || current.tool !== "select" || !root) {
-    return undefined;
-  }
-
-  const { start, end } = current;
-  return {
-    left: `${Math.min(start.x, end.x) - root.left}px`,
-    top: `${Math.min(start.y, end.y) - root.top}px`,
-    width: `${Math.abs(end.x - start.x)}px`,
-    height: `${Math.abs(end.y - start.y)}px`,
-  };
-});
-
-const pendingParts = computed(() => pendingBox.value ? splitLayout(pendingBox.value, Math.max(1, pendingCount.value)) : []);
-
-// ── Resize handles ────────────────────────────────────────────────────────────
-
-type HandleDirection = "top" | "right" | "bottom" | "left";
-
-const HANDLES: { direction: HandleDirection; position: string; cursor: string }[] = [
-  { direction: "top", position: "top-0 left-1/2", cursor: "cursor-ns-resize" },
-  { direction: "right", position: "top-1/2 left-full", cursor: "cursor-ew-resize" },
-  { direction: "bottom", position: "top-full left-1/2", cursor: "cursor-ns-resize" },
-  { direction: "left", position: "top-1/2 left-0", cursor: "cursor-ew-resize" },
-];
-
-const pageDivRefs = new Map<number, HTMLElement>();
-
-function setPageDivRef(el: Element | null, pageNumber: number): void {
-  if (el instanceof HTMLElement) {
-    pageDivRefs.set(pageNumber, el);
-  } else {
-    pageDivRefs.delete(pageNumber);
-  }
+/** Measures whose box, as drawn, overlaps the selection box. */
+function findMeasuresInBox(box: DOMRect): Set<MeasureId> {
+  const elements = overlayRoot.value?.querySelectorAll<HTMLElement>("[data-measure]") ?? [];
+  return new Set([...elements].flatMap((element) => {
+    const rect = element.getBoundingClientRect();
+    const overlaps = rect.right > box.left && rect.left < box.right && rect.bottom > box.top && rect.top < box.bottom;
+    return overlaps && element.dataset.measure ? [element.dataset.measure] : [];
+  }));
 }
 
-function isSimilar(a: number, b: number): boolean {
-  return Math.abs(a - b) < 0.01;
-}
-
-function sameStaff(measure: Measure): Measure[] {
-  return (measuresByPage.value[measure.layout!.page] ?? []).filter(other =>
-    isSimilar(other.layout!.y, measure.layout!.y)
-    && isSimilar(other.layout!.y + other.layout!.height, measure.layout!.y + measure.layout!.height),
-  );
-}
-
-function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): void {
+function selectInBox(box: DOMRect): void {
   if (!props.song) {
     return;
   }
 
-  const pageEl = pageDivRefs.get(measure.layout!.page);
-  if (!pageEl) {
-    return;
-  }
+  const ids = findMeasuresInBox(box);
+  const before = selectionBeforeMarquee;
+  const kept = addsToSelection && before.kind === "measures" ? before.ids : [];
+  const next = getSelectableMeasures(props.song)
+    .map(measure => measure.id)
+    .filter(id => ids.has(id) || kept.includes(id));
+  editorSelection.select(selectMeasures(next));
+}
 
-  const dx = event.delta.x / pageEl.clientWidth;
-  const dy = event.delta.y / pageEl.clientHeight;
-  const staff = sameStaff(measure);
+/** While Shift is held a press draws a selection box, so the score shows the arrow instead of the hand. */
+const cursorLock = computed(() => marquee.area.value || (shiftHeld.value && canDrawMarquee.value) ? "default" as const : undefined);
 
-  switch (handle) {
-    case "top":
-      staff.forEach((m) => {
-        props.song!.applyMeasureLayout(m, { ...m.layout!, y: m.layout!.y + dy, height: m.layout!.height - dy });
-      });
-      break;
-    case "bottom":
-      staff.forEach((m) => {
-        props.song!.applyMeasureLayout(m, { ...m.layout!, height: m.layout!.height + dy });
-      });
-      break;
-    case "left": {
-      const left = staff[staff.indexOf(measure) - 1];
-      if (left) {
-        props.song.applyMeasureLayout(left, { ...left.layout!, width: left.layout!.width + dx });
-      }
+// Resizing
 
-      props.song.applyMeasureLayout(measure, { ...measure.layout!, x: measure.layout!.x + dx, width: measure.layout!.width - dx });
-      break;
+function onResize(measure: Measure, edge: BoxEdge, delta: { x: number; y: number }): void {
+  const layouts = resizeBox(editor.measures.value, measure, edge, delta);
+  resizePreview.value = new Map(layouts.map(([box, layout]) => [box.id, layout]));
+}
+
+/** Saves the drag as one edit. The neighbours it moved stay unselected, so the handles stay on the dragged box. */
+async function onResizeEnd(measure: Measure): Promise<void> {
+  const changes = editor.measures.value.flatMap((other) => {
+    const layout = resizePreview.value.get(other.id);
+    return layout ? [[other, layout] as [Measure, MeasureLayout]] : [];
+  });
+
+  try {
+    if (changes.length > 0) {
+      await editor.apply(planLayouts(changes));
+      editorSelection.select(selectMeasures([measure.id]));
     }
-
-    case "right": {
-      const right = staff[staff.indexOf(measure) + 1];
-      props.song.applyMeasureLayout(measure, { ...measure.layout!, width: measure.layout!.width + dx });
-      if (right) {
-        props.song.applyMeasureLayout(right, { ...right.layout!, x: right.layout!.x + dx, width: right.layout!.width - dx });
-      }
-
-      break;
-    }
+  } catch (error) {
+    notifyError("Could not save the measure boxes", error);
+  } finally {
+    resizePreview.value = new Map();
   }
 }
 </script>
@@ -649,161 +525,126 @@ function onHandleDrag(event: any, measure: Measure, handle: HandleDirection): vo
 <template>
   <PdfViewer
     ref="pdfViewer"
-    class="@container"
     :url="song?.pdfFile ? resolveUrl(song.pdfFile, 'songs', song.id) : undefined"
-    :pannable="!editMode || activeTool === 'move'"
+    :pannable="!editMode || !drawing"
+    :insets="viewInsets"
+    :cursor-lock="cursorLock"
     role="region"
     aria-label="Score"
     @loading-change="emit('pdf-loading', $event)"
   >
     <template #default="{ visiblePages }">
-      <!-- While editing, the overlay takes every press on the score and turns it into a gesture -->
+      <!-- While editing, the overlay takes the clicks on empty space, which clear the selection -->
       <div
         ref="overlayRoot"
         class="absolute inset-0"
-        :class="editMode ? ['pointer-events-auto', TOOL_CURSORS[activeTool]] : 'pointer-events-none'"
+        :class="editMode ? 'pointer-events-auto' : 'pointer-events-none'"
         @pointerdown.capture="rememberPointerType"
-        @pointerdown="editMode && onPointerDown($event)"
-        @pointermove="onPointerMove"
-        @pointerup="onPointerUp"
-        @pointercancel="gesture = undefined"
+        @click="editMode && onEmptyClick($event)"
       >
-        <div
+        <ScorePage
           v-for="page of visiblePages"
           :key="page.pageNumber"
-          :ref="(el) => setPageDivRef(el as Element | null, page.pageNumber)"
-          class="absolute"
-          :style="{
-            left: `${page.x * 100}%`,
-            top: `${page.y * 100}%`,
-            width: `${page.width * 100}%`,
-            height: `${page.height * 100}%`,
-          }"
+          :page="page"
+          :class="previewing ? '**:pointer-events-none' : ''"
           role="group"
           :aria-label="`Page ${page.pageNumber + 1}`"
           :data-page="page.pageNumber"
         >
-          <div
+          <ScoreBox
+            v-for="(layout, i) of cutBoxes.filter(box => box.page === page.pageNumber)"
+            :key="`cut-${i}`"
+            :layout="layout"
+            class="hatch-section-cut"
+          />
+
+          <MeasureBox
             v-for="measure of visibleMeasures(page.pageNumber)"
-            :key="measure.value"
-            class="pointer-events-auto absolute transition-colors select-none"
-            :class="boxClass(measure)"
-            :style="boxStyle(measure.layout!)"
-            role="button"
-            :aria-label="`Measure ${measure.value}`"
-            :aria-pressed="editMode ? editor.isSelected(measure) : undefined"
-            :data-measure="measure.value"
+            :key="measure.id"
+            :measure="measure"
+            :layout="layoutOf(measure)!"
+            :edit-mode="!!editMode"
+            :selection="selection"
+            :overlays="boxOverlays.get(measure.id)"
+            :playing="currentMeasureId === measure.id"
+            :highlighted="highlightedMeasures.has(measure.id)"
+            :resizable="isResizable(measure)"
+            :dimmed="previewing"
+            @click.stop="onBoxClick($event, measure)"
             @contextmenu.stop.prevent
-            @click="onBoxClick($event, measure)"
-          >
-            <span
-              v-if="editMode"
-              :class="chipClass(measure.layout, true)"
-            >{{ measure.value }}</span>
+            @select-marker="marker => selectObject({ marker })"
+            @resize="(edge, delta) => onResize(measure, edge, delta)"
+            @resize-end="onResizeEnd(measure)"
+          />
 
-            <!-- Playbar -->
-            <div
-              v-if="currentWrittenMeasure?.value === measure.value && currentPlayingMeasure"
-              class="pointer-events-none absolute top-0 h-full w-1 -translate-x-1/2 rounded-full bg-primary"
-              :style="{ left: `${currentPlayingMeasureProgress * 100}%` }"
-            />
-
-            <template v-if="editMode && hasHandles(measure)">
-              <Draggable
-                v-for="handle in HANDLES"
-                :key="handle.direction"
-                @drag="onHandleDrag($event, measure, handle.direction)"
-                @dragend="song?.saveMeasures()"
-              >
-                <template #default="{ passRef }">
-                  <div
-                    :ref="(el) => el && passRef(el)"
-                    class="absolute flex size-5 -translate-1/2 items-center justify-center"
-                    :class="[handle.position, handle.cursor]"
-                    aria-hidden="true"
-                    @pointerdown.stop
-                    @click.stop
-                    @touchstart.stop
-                    @touchmove.stop
-                  >
-                    <span class="pointer-events-none size-2.5 rounded-full bg-primary ring-2 ring-surface-0 dark:ring-surface-900" />
-                  </div>
-                </template>
-              </Draggable>
-            </template>
-          </div>
-
-          <div
-            v-for="(box, i) of unnumberedByPage[page.pageNumber] ?? []"
+          <ScoreBox
+            v-for="(box, i) of unnumberedByPage.get(page.pageNumber) ?? []"
             :key="`unnumbered-${i}`"
-            class="pointer-events-auto absolute transition-colors select-none"
-            :class="unnumberedClass(box)"
-            :style="boxStyle(box)"
-            role="button"
-            aria-label="Box without a number"
-            :aria-pressed="editor.isBoxSelected(box)"
+            :layout="box"
+            :class="previewing ? 'opacity-40' : ''"
             :data-unnumbered-box="i"
+            @click.stop="onUnnumberedClick($event, box)"
             @contextmenu.stop.prevent
-            @click="onUnnumberedClick($event, box)"
           >
-            <span :class="chipClass(box, false)">?</span>
-          </div>
+            <div
+              class="pointer-events-auto absolute inset-0 cursor-pointer transition-colors select-none"
+              :class="unnumberedClass(box)"
+              role="button"
+              aria-label="Box without a number"
+              :aria-pressed="isBoxSelected(selection, box)"
+            />
+            <template #top-start>
+              <ScoreBadge tone="unnumbered">
+                ?
+              </ScoreBadge>
+            </template>
+          </ScoreBox>
 
-          <div
-            v-for="(box, i) of previewByPage[page.pageNumber] ?? []"
+          <ScoreBox
+            v-for="(box, i) of previewByPage.get(page.pageNumber) ?? []"
             :key="`preview-${i}`"
-            class="pointer-events-none absolute border-2 border-dashed"
-            :class="previewClass(box)"
-            :style="boxStyle(box.layout)"
+            :layout="box.layout"
+            class="outline-2 outline-dashed"
+            :class="PREVIEW_SURFACES[previewTone(box)]"
             role="img"
-            :aria-label="box.value === undefined ? 'Detected box without a number' : `Detected measure ${box.value}`"
+            :aria-label="box.label === undefined ? 'Detected box without a number' : `Detected measure ${box.label}`"
           >
-            <span :class="chipClass(box.layout, box.value !== undefined)">{{ box.value ?? "?" }}</span>
-          </div>
+            <template #top-start>
+              <ScoreBadge :tone="previewTone(box)">
+                {{ box.label ?? "?" }}
+              </ScoreBadge>
+            </template>
+          </ScoreBox>
 
-          <!-- Box waiting for the panel to say what it holds -->
-          <div
-            v-for="(part, i) in pendingBox?.page === page.pageNumber ? pendingParts : []"
-            :key="`pending-${i}`"
-            class="pointer-events-none absolute border border-dashed border-primary bg-primary/20"
-            :style="boxStyle(part)"
+          <SectionBar
+            v-for="bar of sectionBars.filter(item => item.run.page === page.pageNumber)"
+            :key="bar.key"
+            :bar="bar"
+            :selected="!!editMode && isSectionSelected(selection, bar.section)"
+            @select="selectObject({ section: bar.section })"
           />
+        </ScorePage>
 
-          <div
-            v-if="drawnRect?.page === page.pageNumber"
-            class="pointer-events-none absolute border border-primary bg-primary/20"
-            :style="boxStyle(drawnRect)"
-          />
-        </div>
+        <SectionRange
+          v-if="song && rangeTarget"
+          :song="song"
+          :section="rangeTarget.section"
+          :lane="rangeTarget.lane"
+          :pages="visiblePages"
+        />
 
-        <div
-          v-if="marqueeStyle"
-          class="pointer-events-none absolute border border-dashed border-primary bg-primary/10"
-          :style="marqueeStyle"
+        <DrawLayer
+          v-if="editMode && drawing && !previewing"
+          :pages="visiblePages"
+        />
+
+        <ScoreBox
+          v-if="marquee.area.value"
+          :layout="{ page: 0, ...marquee.area.value }"
+          class="bg-primary/10 outline outline-primary"
+          aria-hidden="true"
         />
       </div>
-
-      <SelectButton
-        v-if="editMode"
-        :model-value="activeTool"
-        class="absolute top-2 left-1/2 -translate-x-1/2 shadow-sm"
-        :options="TOOL_OPTIONS"
-        option-label="label"
-        option-value="value"
-        :allow-empty="false"
-        :disabled="previewing"
-        aria-label="Score tool"
-        size="small"
-        @update:model-value="editor.setTool($event)"
-      >
-        <template #option="{ option }">
-          <i
-            :class="option.icon"
-            aria-hidden="true"
-          />
-          <span class="sr-only @sm:not-sr-only">{{ option.label }}</span>
-        </template>
-      </SelectButton>
     </template>
   </PdfViewer>
 </template>

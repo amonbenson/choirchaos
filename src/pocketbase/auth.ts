@@ -45,12 +45,6 @@ export type UserAccess = {
   viewer: boolean;
 };
 
-export const NoAccess: UserAccess = Object.freeze({
-  owner: false,
-  editor: false,
-  viewer: false,
-});
-
 export function getAccessFlags(context: Partial<Permissions>, userId?: string): UserAccess {
   // Use the logged in user if no explicit id was provided
   const resolvedUserId = userId ?? pb.authStore.record?.id;
