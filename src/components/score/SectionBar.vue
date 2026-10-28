@@ -40,7 +40,7 @@ const runStyle = computed(() => ({
     </ScoreBadge>
     <template #bar>
       <div
-        class="absolute inset-0 rounded-full"
+        class="absolute inset-0 mx-0.5 rounded-full"
         :class="SECTION_COLORS[bar.section.kind].background"
       />
     </template>

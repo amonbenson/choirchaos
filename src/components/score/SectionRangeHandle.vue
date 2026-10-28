@@ -53,7 +53,7 @@ defineExpose({
     @touchmove.stop
   >
     <span
-      class="pointer-events-none h-4 w-2 rounded-sm ring-2 ring-surface-0 dark:ring-surface-900"
+      class="pointer-events-none h-4 w-2 rounded-sm ring-2 ring-primary"
       :class="SECTION_COLORS[kind].background"
     />
   </div>

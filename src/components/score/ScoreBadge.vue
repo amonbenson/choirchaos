@@ -37,7 +37,7 @@ const toneClass = computed(() => isSectionTone(props.tone)
 
 const stateClass = computed(() => [
   props.selectable ? "cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary" : "",
-  props.selected ? "ring-2 ring-primary ring-offset-1 ring-offset-surface-0" : "",
+  props.selected ? "ring-2 ring-primary" : "",
 ]);
 
 /**
