@@ -2,6 +2,8 @@ import type { TrackEvents } from "../player/types";
 
 export type TrackClassification = "Accompaniment" | "Percussion" | "Vocal";
 
+export const DEFAULT_TRACK_GAIN = 0.8;
+
 export default class Track {
   constructor(
     public readonly title: string,
@@ -21,9 +23,9 @@ export default class Track {
       mute: false,
       solo: false,
       highlight: false,
-      gain: 1.0,
+      gain: DEFAULT_TRACK_GAIN,
       effectiveMute: false,
-      effectiveGain: 1.0,
+      effectiveGain: DEFAULT_TRACK_GAIN,
     },
     public $midiTrackEvents: TrackEvents | object = {},
   ) {}

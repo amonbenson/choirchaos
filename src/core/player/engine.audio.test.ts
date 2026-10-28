@@ -1,6 +1,7 @@
 import axios from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DEFAULT_TRACK_GAIN } from "@/core/models/track";
 import type { VampVocals } from "@/core/player/types";
 import { makeAudioSong, makeAudioSongWithVamp, makeAudioSongWithVampOut, makeAudioSongWithVocalVamp } from "@/test/fixtures";
 import { ManualUpdater } from "@/test/updater";
@@ -274,7 +275,7 @@ describe("PlayerEngine – audio mode", () => {
     vu.step(0.02);
 
     expect(ap.setGain).not.toHaveBeenCalledWith(1, 0); // vocal not muted
-    expect(ap.setGain).toHaveBeenCalledWith(0, 1); // accompaniment plays
+    expect(ap.setGain).toHaveBeenCalledWith(0, DEFAULT_TRACK_GAIN); // accompaniment plays
 
     vp.unload();
     await vc.close();
@@ -296,7 +297,7 @@ describe("PlayerEngine – audio mode", () => {
     vu.step(0.02);
 
     expect(ap.setGain).toHaveBeenCalledWith(1, 0); // vocal muted
-    expect(ap.setGain).toHaveBeenCalledWith(0, 1); // accompaniment plays
+    expect(ap.setGain).toHaveBeenCalledWith(0, DEFAULT_TRACK_GAIN); // accompaniment plays
 
     vp.unload();
     await vc.close();
@@ -322,7 +323,7 @@ describe("PlayerEngine – audio mode", () => {
     vu.step(0.02);
 
     expect(ap.setGain).not.toHaveBeenCalledWith(1, 0); // vocal not muted
-    expect(ap.setGain).toHaveBeenCalledWith(0, 1); // accompaniment plays
+    expect(ap.setGain).toHaveBeenCalledWith(0, DEFAULT_TRACK_GAIN); // accompaniment plays
 
     vp.unload();
     await vc.close();
@@ -356,7 +357,7 @@ describe("PlayerEngine – audio mode", () => {
     vu.step(0.02);
 
     expect(ap.setGain).not.toHaveBeenCalledWith(1, 0); // vocal not muted
-    expect(ap.setGain).toHaveBeenCalledWith(0, 1); // accompaniment plays
+    expect(ap.setGain).toHaveBeenCalledWith(0, DEFAULT_TRACK_GAIN); // accompaniment plays
 
     vp.unload();
     await vc.close();
