@@ -103,7 +103,7 @@ test.describe("timeline and audio sync", () => {
     await expect(panel.getByRole("heading", { name: "Sync point at 4" })).toBeVisible();
   });
 
-  test("timeline objects select themselves, while measure cells only move the playhead", async ({ page, factory, loginAs }) => {
+  test("timeline objects select themselves and measure cells follow the score selection", async ({ page, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const bundle = await buildSongBundle(MINIMAL, { mode: "audio" });
@@ -118,10 +118,19 @@ test.describe("timeline and audio sync", () => {
     const timeline = page.getByRole("region", { name: "Timeline" });
     const panel = page.getByRole("region", { name: "Editor panel" });
 
+    const measures = timeline.getByRole("list", { name: "Measures" });
     await page.getByRole("button", { name: "Measure 1", exact: true }).click();
-    await timeline.getByRole("list", { name: "Measures" }).getByRole("button", { name: "4", exact: true }).click();
+    await expect(measures.getByRole("button", { name: "1", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+    await measures.getByRole("button", { name: "4", exact: true }).click();
     await expect(page.getByRole("slider", { name: "Position" })).toHaveAttribute("aria-valuetext", /^4/);
-    await expect(panel.getByRole("heading", { name: "Measure 1" })).toBeVisible();
+    await expect(panel.getByRole("heading", { name: "Measure 4" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Measure 4", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(measures.getByRole("button", { name: "1", exact: true })).toHaveAttribute("aria-pressed", "false");
+
+    await timeline.getByRole("list", { name: "Markers" }).click();
+    await expect(measures.getByRole("button", { name: "4", exact: true })).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByRole("button", { name: "Measure 4", exact: true })).toHaveAttribute("aria-pressed", "false");
 
     await timeline.getByRole("list", { name: "Sections" }).getByRole("button", { name: "Cut 3" }).click();
     await expect(panel.getByRole("heading", { name: "Cut 3" })).toBeVisible();

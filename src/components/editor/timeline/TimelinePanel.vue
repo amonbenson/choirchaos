@@ -41,7 +41,7 @@ const LANES: LaneName[] = ["Markers", "Sections", "Recording", "Measures"];
 
 const player = usePlayerStore();
 const settings = useSettingsStore();
-const { selectAndSeek } = injectEditorSelection();
+const { selectAndSeek, clear } = injectEditorSelection();
 const sync = useSyncEditor(() => props.song);
 const titleId = useId();
 const laneIdPrefix = useId();
@@ -147,9 +147,13 @@ function seekTo(event: MouseEvent): void {
   player.seek(Math.min(player.duration, Math.max(0, axis.toTick(toAxisX(event)))));
 }
 
+function isOnWaveform(event: MouseEvent): boolean {
+  return event.target instanceof Node && !!waveform.value?.$el.contains(event.target);
+}
+
 /** The sync point drawn under the pointer. Sync points only take presses on the waveform. */
 function findSyncPointAt(event: MouseEvent): PositionedWarpMarker | undefined {
-  if (!(event.target instanceof Node) || !waveform.value?.$el.contains(event.target)) {
+  if (!isOnWaveform(event)) {
     return undefined;
   }
 
@@ -201,6 +205,10 @@ function onClickCapture(event: MouseEvent): void {
   }
 }
 
+/**
+ * A click on empty lane space clears the selection and moves the playhead there. The waveform only moves
+ * the playhead, so a selected measure can be synced to where it really starts.
+ */
 function onClick(event: MouseEvent): void {
   if (event.target instanceof Element && event.target.closest("button")) {
     return;
@@ -209,9 +217,14 @@ function onClick(event: MouseEvent): void {
   const marker = findSyncPointAt(event);
   if (marker) {
     selectSyncPoint(marker);
-  } else {
-    seekTo(event);
+    return;
   }
+
+  if (!isOnWaveform(event)) {
+    clear();
+  }
+
+  seekTo(event);
 }
 
 function onContextMenu(event: MouseEvent): void {
