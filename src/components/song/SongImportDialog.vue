@@ -187,7 +187,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
       v-else
       class="flex flex-col gap-4"
     >
-      <span class="text-muted-color">Files are grouped into songs by the number at the start of each file name. Check the numbers and titles, then import.</span>
+      <span class="text-muted-color">Files are grouped into songs by the number at the start of each file name. Check the song numbers and titles, then import. Track names can be changed later in the song details.</span>
       <div class="overflow-x-auto">
         <table class="w-full min-w-[40rem] border-collapse text-left">
           <thead>
@@ -197,7 +197,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
                 No.
               </th>
               <th class="pb-2 font-medium">
-                Title
+                Song title
               </th>
               <th class="pb-2 font-medium">
                 Files

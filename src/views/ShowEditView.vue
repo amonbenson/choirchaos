@@ -229,7 +229,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
             <label
               for="show-title"
               class="text-sm font-medium text-muted-color"
-            >Title</label>
+            >Show title</label>
             <InputText
               id="show-title"
               v-model="title"

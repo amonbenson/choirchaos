@@ -70,7 +70,7 @@ async function create(): Promise<void> {
         <label
           for="new-show-title"
           class="font-medium"
-        >Title</label>
+        >Show title</label>
         <InputText
           id="new-show-title"
           v-model="title"
