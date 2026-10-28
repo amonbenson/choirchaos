@@ -3,9 +3,11 @@ import { computed, markRaw, onScopeDispose } from "vue";
 
 import { useEvent } from "@/composables/event";
 import type { NoteEvent } from "@/core/midi/events";
+import type { MeasureId } from "@/core/models/measure";
+import type { Occurrence } from "@/core/models/recording";
 import type Song from "@/core/models/song";
-import PlayerEngine, { type PlayerSegueState, type PlayerVampState } from "@/core/player/engine";
-import { isNumbering } from "@/core/utils/numbering";
+import PlayerEngine, { type PlayerLocation, type PlayerSectionState, type PlayerSegueState } from "@/core/player/engine";
+import { getLocationTick as findLocationTick, groupPositionsByMeasure } from "@/core/player/timeline";
 
 const globalPlayer = new PlayerEngine();
 
@@ -22,14 +24,18 @@ export const usePlayerStore = defineStore("player", () => {
   const playing = useEvent(globalPlayer.onPlayingChange, globalPlayer.isPlaying());
   const position = useEvent(globalPlayer.onPositionChange, globalPlayer.getPosition());
   const duration = useEvent(globalPlayer.onDurationChange, globalPlayer.getDuration());
+  const timeline = useEvent(globalPlayer.onTimelineChange, globalPlayer.getTimeline());
+  const activeTrackIndices = useEvent(globalPlayer.onActiveTrackIndicesChange, globalPlayer.getActiveTrackIndices());
   const currentTempo = useEvent(globalPlayer.onCurrentTempoChange, globalPlayer.getCurrentTempo());
   const currentTimeSignature = useEvent(globalPlayer.onCurrentTimeSignatureChange, globalPlayer.getCurrentTimeSignature());
-  const currentMeasure = useEvent(globalPlayer.onCurrentMeasureChange, globalPlayer.getCurrentMeasure());
-  const finalMeasure = useEvent(globalPlayer.onFinalMeasureChange, globalPlayer.getFinalMeasure());
+  const currentLocation = useEvent<PlayerLocation | undefined>(globalPlayer.onCurrentLocationChange, globalPlayer.getCurrentLocation());
+  const finalLocation = useEvent<PlayerLocation | undefined>(globalPlayer.onFinalLocationChange, globalPlayer.getFinalLocation());
+  /** The timeline entry being played. It stays the same object for all its beats, so readers update once per measure. */
+  const currentTimelinePosition = computed(() => currentLocation.value ? timeline.value[currentLocation.value.position] : undefined);
 
-  const currentVamp = useEvent<PlayerVampState | undefined>(
-    globalPlayer.onCurrentVampChange,
-    globalPlayer.getCurrentVamp(),
+  const currentSection = useEvent<PlayerSectionState | undefined>(
+    globalPlayer.onCurrentSectionChange,
+    globalPlayer.getCurrentSection(),
   );
   const currentSegue = useEvent<PlayerSegueState | undefined>(
     globalPlayer.onCurrentSegueChange,
@@ -49,37 +55,53 @@ export const usePlayerStore = defineStore("player", () => {
 
   const trackAmplitudes = useEvent<number[]>(globalPlayer.onTrackAmplitudesChange, []);
 
+  /** The tracks that start a note anywhere the measure plays, since one box stands for all its occurrences. */
+  const measureTrackIndices = computed(() => {
+    const result = new Map<MeasureId, Set<number>>();
+    for (const [measure, positions] of groupPositionsByMeasure(timeline.value)) {
+      result.set(measure, new Set(positions.flatMap(p => [...activeTrackIndices.value[p] ?? []])));
+    }
+
+    return result;
+  });
+
+  /** Reactive: recomputes when the timeline is re-resolved. */
+  function getLocationTick(location: Occurrence & { beat: number }): number | undefined {
+    return findLocationTick(timeline.value, location);
+  }
+
   function seek(position: number): void {
     globalPlayer.seek(position);
   }
 
-  function setMeasure(value: string): void {
-    if (!globalPlayer.getCurrentSong()) {
-      return;
+  function seekLocation(location: Occurrence & { beat: number }): void {
+    const tick = globalPlayer.getLocationTick(location);
+    if (tick !== undefined) {
+      globalPlayer.seek(tick);
     }
-
-    if (!isNumbering(value)) {
-      value = "1";
-    }
-
-    const measure = globalPlayer.getCurrentSong()!.findMeasure(value);
-    globalPlayer.seek(measure?.$beatTicks[0] ?? 0);
   }
 
-  function setBeat(value: number): void {
-    if (!globalPlayer.getCurrentSong()) {
-      return;
+  function seekPosition(position: number, beat = 0): void {
+    const tick = globalPlayer.getPositionTick(position, beat);
+    if (tick !== undefined) {
+      globalPlayer.seek(tick);
     }
+  }
 
-    const measure = globalPlayer.getCurrentSong()!.findMeasure(globalPlayer.getCurrentMeasure()[0]);
-    const beats = measure?.beats ?? 1;
-    if (value < 0) {
-      value = 0;
-    } else if (value >= beats) {
-      value = beats - 1;
+  /** Seeks to the first time the measure with this label plays. Unknown labels are ignored. */
+  function setMeasure(label: string): void {
+    const measure = globalPlayer.getCurrentSong()?.findMeasureByLabel(label.trim());
+    if (measure) {
+      seekLocation({ measure: measure.id, occurrence: 1, beat: 0 });
     }
+  }
 
-    globalPlayer.seek(measure?.$beatTicks[value] ?? 0);
+  /** Seeks to a 0-based beat of the current position, clamped to its beats. */
+  function setBeat(beat: number): void {
+    const location = globalPlayer.getCurrentLocation();
+    if (location) {
+      seekPosition(location.position, beat);
+    }
   }
 
   function onSegue(callback: () => void): void {
@@ -93,21 +115,24 @@ export const usePlayerStore = defineStore("player", () => {
   }
 
   return {
-    load: (song: Song) => globalPlayer.load(song),
+    load: (song: Song, startPosition?: number) => globalPlayer.load(song, startPosition),
     syncWarp: () => globalPlayer.syncWarp(),
     unload: () => globalPlayer.unload(),
     play: () => globalPlayer.play(),
     pause: () => globalPlayer.pause(),
     stop: () => globalPlayer.stop(),
-    exitVamp: () => globalPlayer.exitVamp(),
+    releaseVamp: () => globalPlayer.releaseVamp(),
     resetVamp: () => globalPlayer.resetVamp(),
     toggleVamp: () => globalPlayer.toggleVamp(),
     setVampsEnabled: (enabled: boolean) => globalPlayer.setVampsEnabled(enabled),
     setSegueEnabled: (enabled: boolean) => globalPlayer.setSegueEnabled(enabled),
     toggleSegue: () => globalPlayer.toggleSegue(),
     seek,
+    seekLocation,
+    seekPosition,
     setMeasure,
     setBeat,
+    getLocationTick,
     onNote,
     onSegue,
     status,
@@ -116,12 +141,16 @@ export const usePlayerStore = defineStore("player", () => {
     playing,
     position,
     duration,
+    timeline,
+    activeTrackIndices,
+    measureTrackIndices,
     currentTempo,
     currentTimeSignature,
-    currentVamp,
+    currentLocation,
+    currentTimelinePosition,
+    finalLocation,
+    currentSection,
     currentSegue,
-    currentMeasure,
-    finalMeasure,
     events,
     mode,
     playbackSpeed,

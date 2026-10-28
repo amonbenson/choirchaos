@@ -70,9 +70,9 @@ export type ShortcutAction
 // Registers global keyboard shortcuts from a key-string -> action mapping and
 // an action -> handler mapping. The split between bindings and handlers allows
 // bindings to be serialised to settings while handlers stay as live functions.
-export function useGlobalShortcuts(
-  bindings: Readonly<Record<string, ShortcutAction>>,
-  actions: Record<ShortcutAction, () => void>,
+export function useGlobalShortcuts<A extends string = ShortcutAction>(
+  bindings: Readonly<Record<string, A>>,
+  actions: Record<A, () => void>,
 ): void {
   useEventListener(window, "keydown", (e: KeyboardEvent) => {
     if (isInputFocused()) {

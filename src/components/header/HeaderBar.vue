@@ -1,20 +1,25 @@
 <script setup lang="ts">
+import { breakpointsTailwind, useBreakpoints, useResizeObserver, useScroll } from "@vueuse/core";
 import Button from "primevue/button";
 import InputNumber from "primevue/inputnumber";
-import InputText from "primevue/inputtext";
-import Slider from "primevue/slider";
 import Toolbar from "primevue/toolbar";
-import { computed, type ComputedRef } from "vue";
+import { computed, type ComputedRef, useTemplateRef } from "vue";
 
 import PopoverButton from "@/components/base/PopoverButton.vue";
 import DottedHalfNoteIcon from "@/components/icons/DottedHalfNoteIcon.vue";
 import DottedQuarterNoteIcon from "@/components/icons/DottedQuarterNoteIcon.vue";
 import HalfNoteIcon from "@/components/icons/HalfNoteIcon.vue";
 import QuarterNoteIcon from "@/components/icons/QuarterNoteIcon.vue";
+import { SECTION_COLORS, SECTION_CONTRAST_TEXT } from "@/components/score/sectionColors";
+import { formatLocation } from "@/core/models/locationFormat";
+import { findRecordedRepeats, formatPlayingSection, formatSectionPass, getRecordedRepeatPass } from "@/core/models/scoreOverlays";
 import type Show from "@/core/models/show";
+import { getSectionTicks } from "@/core/player/route";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
+import LocationButtons from "./LocationButtons.vue";
+import PositionSlider from "./PositionSlider.vue";
 import ShowBreadcrumb from "./ShowBreadcrumb.vue";
 import UserMenuButton from "./UserMenuButton.vue";
 
@@ -33,9 +38,7 @@ const NOTE_VALUE_SVG_MAP: Record<NoteValue, object> = {
   dottedHalf: DottedHalfNoteIcon,
 };
 
-// The breadcrumb shares the row with the Edit toggle. Below sm, and from lg up where the transport
-// shares the row too, it only fits when they drop their labels.
-const NARROW_HIDDEN_LABEL = "hidden sm:inline lg:hidden xl:inline";
+const BAR_GAP = "gap-2 sm:gap-4 2xl:gap-8";
 
 const props = defineProps<{
   show?: Show;
@@ -63,7 +66,90 @@ const settingsStore = useSettingsStore();
 
 const visibleButtons = computed(() => settingsStore.current.appearance.transportButtonVisible);
 
-const vampState = computed(() => player.ready && player.currentVamp ? (player.currentVamp.manualExit ? "exiting" : "vamping") : "none");
+const isEditLabelled = useBreakpoints(breakpointsTailwind).greaterOrEqual("sm");
+
+const controls = useTemplateRef("controls");
+const controlsContent = useTemplateRef("controlsContent");
+const { arrivedState, measure: measureControlsScroll } = useScroll(controls);
+useResizeObserver([controls, controlsContent], () => measureControlsScroll());
+
+/** Fades the edges of the playback controls where more of them are scrolled out of view. */
+const controlsMask = computed(() => [
+  arrivedState.left ? "" : "mask-l-from-[calc(100%-2rem)]",
+  arrivedState.right ? "" : "mask-r-from-[calc(100%-2rem)]",
+]);
+
+const currentSong = computed(() => songs.value.find(song => song.id === props.songId));
+
+const section = computed(() => player.ready ? player.currentSection : undefined);
+
+const atStart = computed(() => player.position <= 0);
+
+const recordedRepeats = computed(() => currentSong.value ? findRecordedRepeats(currentSong.value.getTimeline()) : []);
+
+/** The section button shows the playing section, else a written repeat. Playback skips cuts, so it only plays one after a seek into it. */
+const shownSection = computed(() => {
+  if (section.value) {
+    return section.value;
+  }
+
+  const playing = player.ready ? player.currentTimelinePosition : undefined;
+  const pass = playing ? getRecordedRepeatPass(recordedRepeats.value, playing.position) : undefined;
+  return pass ? { kind: "repeat" as const, ...pass, released: false } : undefined;
+});
+
+const sectionLabel = computed(() => {
+  const current = shownSection.value;
+  if (!current) {
+    return "Vamp";
+  }
+
+  if (current.kind === "cut") {
+    return "Cut";
+  }
+
+  return current.kind === "vamp" && current.released ? "Exiting" : formatSectionPass(current.kind, current);
+});
+
+/** A released vamp drops its color, so the button shows it will exit. */
+const sectionButtonClass = computed(() => {
+  const current = shownSection.value;
+  return current && !current.released ? [SECTION_COLORS[current.kind].background, SECTION_CONTRAST_TEXT, "border-transparent"] : [];
+});
+
+function toggleVamp(): void {
+  if (section.value?.kind === "vamp") {
+    emit("toggleVamp");
+  }
+}
+
+/** Where each section's recorded passes lie on the playbar, as fractions of the song. */
+const sectionRanges = computed(() => {
+  const song = currentSong.value;
+  const { timeline, duration } = player;
+  if (!player.ready || !song || duration <= 0) {
+    return [];
+  }
+
+  const sections = song.getSections();
+  return sections.flatMap((section, index) => {
+    const ticks = getSectionTicks(timeline, sections, section);
+    return ticks ? [{ key: index, kind: section.kind, left: ticks.start / duration, width: (ticks.end - ticks.start) / duration }] : [];
+  });
+});
+
+/** The measure and section the playbar is at, e.g. "19, 2nd time, Vamp pass 2". */
+const positionText = computed(() => {
+  const playing = player.ready ? player.currentTimelinePosition : undefined;
+  const song = currentSong.value;
+  if (!playing || !song) {
+    return undefined;
+  }
+
+  const current = section.value;
+  const measure = formatLocation(song, playing);
+  return current && current.kind !== "cut" ? `${measure}, ${formatPlayingSection(current.kind, current)}` : measure;
+});
 
 const tempoNoteValue: ComputedRef<NoteValue> = computed(() => {
   if (player.currentTimeSignature[0] % 3 === 0) {
@@ -73,34 +159,34 @@ const tempoNoteValue: ComputedRef<NoteValue> = computed(() => {
   }
 });
 const writtenTempo = computed(() => player.currentTempo / NOTE_VALUE_QUARTER_MAP[tempoNoteValue.value]);
+const playedTempo = computed(() => player.ready ? String(Math.round(player.playbackSpeed * writtenTempo.value)) : "-");
 
 const playbackSpeedPercentage = computed({
-  get: () => player.playbackSpeed * 100,
+  get: () => Math.round(player.playbackSpeed * 100),
   set: value => player.playbackSpeed = value / 100,
 });
 
-const tempoLabel = computed(() => {
-  if (player.mode === "midi") {
-    return player.ready ? `Tempo ${Math.round(player.playbackSpeed * writtenTempo.value)}` : "Tempo";
-  }
+const tempoLabel = computed(() => player.ready ? `Tempo ${playedTempo.value}` : "Tempo");
 
-  const percentage = Math.round(playbackSpeedPercentage.value);
-  return percentage === 100 ? "Tempo" : `Tempo ${percentage} %`;
-});
+const transpositionText = computed(() => `${player.playbackTransposition > 0 ? "+" : ""}${player.playbackTransposition}`);
+
+const timeSignatureText = computed(() => player.mode === "midi"
+  ? `${player.currentTimeSignature[0]}/${Math.pow(2, player.currentTimeSignature[1])}`
+  : "-/-");
 
 const timeSignatureLabel = computed(() => player.mode === "midi"
-  ? `Time signature ${player.currentTimeSignature[0]}/${Math.pow(2, player.currentTimeSignature[1])}`
+  ? `Time signature ${timeSignatureText.value}`
   : "Time signature");
 </script>
 
 <template>
   <div class="relative">
     <Toolbar
-      class="relative px-4"
-      :class="playback ? 'grid grid-cols-[auto_auto] lg:grid-cols-[repeat(3,auto)] lg:overflow-x-auto' : 'flex-nowrap'"
-      pt:start="col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center gap-4 sm:gap-8 min-w-0 overflow-hidden"
+      class="relative px-2 sm:px-4"
+      :class="playback ? 'grid grid-cols-[auto_minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,auto)_auto_minmax(0,auto)_auto]' : 'flex-nowrap'"
+      :pt:start="`col-span-2 lg:col-span-1 flex justify-stretch lg:justify-start items-center min-w-0 overflow-hidden ${BAR_GAP}`"
       pt:center="flex justify-center items-center"
-      :pt:end="playback ? 'overflow-x-auto lg:overflow-x-visible min-w-0' : 'flex-none'"
+      :pt:end="playback ? 'contents' : 'flex-none'"
     >
       <template #start>
         <ShowBreadcrumb
@@ -110,13 +196,14 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
         />
         <Button
           v-if="canEdit && songId"
-          label="Edit"
+          :label="isEditLabelled ? 'Edit' : undefined"
           icon="pi pi-pencil"
           :severity="editMode ? 'primary' : 'secondary'"
           :aria-pressed="editMode"
           aria-label="Edit"
           class="flex-none"
-          :pt:label="NARROW_HIDDEN_LABEL"
+          :rounded="!isEditLabelled"
+          :text="!isEditLabelled && !editMode"
           @click="emit('toggleEditMode')"
         />
         <slot name="actions" />
@@ -127,8 +214,8 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
         #center
       >
         <Button
-          :disabled="songIndex === 0 && player.position <= 0"
-          :icon="`pi ${player.position > 0 ? 'pi-backward' : 'pi-step-backward'}`"
+          :disabled="songIndex === 0 && atStart"
+          :icon="`pi ${atStart ? 'pi-step-backward' : 'pi-backward'}`"
           severity="secondary"
           aria-label="Rewind / Previous Song"
           rounded
@@ -156,93 +243,47 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
       </template>
 
       <template #end>
-        <div class="flex items-center justify-end gap-4 sm:gap-8">
-          <template v-if="playback">
-            <!-- Measure -->
-            <div
+        <!-- Below lg the account sits next to the breadcrumb, so the playback controls have the second row to themselves. -->
+        <div
+          v-if="playback"
+          ref="controls"
+          class="col-span-2 col-start-2 row-start-2 min-w-0 overflow-x-auto lg:col-span-1 lg:col-start-3 lg:row-start-1"
+          :class="controlsMask"
+        >
+          <div
+            ref="controlsContent"
+            class="ml-auto flex w-max items-center"
+            :class="BAR_GAP"
+          >
+            <LocationButtons
               v-if="visibleButtons.measure"
-              class="flex items-center justify-end gap-1"
-            >
-              <PopoverButton
-                button-class="w-12 whitespace-nowrap"
-                :aria-label="player.ready ? `Current measure ${player.currentMeasure[0]}` : 'Current measure'"
-                :label="player.ready ? player.currentMeasure[0] : '-'"
-                :disabled="!player.ready"
-              >
-                <template #default="{ setFocusTarget }">
-                  <InputText
-                    :ref="setFocusTarget"
-                    :model-value="player.currentMeasure[0]"
-                    aria-label="Current measure"
-                    class="w-16"
-                    fluid
-                    @change="player.setMeasure(($event.target as HTMLInputElement).value)"
-                  />
-                </template>
-              </PopoverButton>
-              .
-              <PopoverButton
-                button-class="w-8 whitespace-nowrap"
-                :aria-label="player.ready && player.mode === 'midi' ? `Current beat ${player.currentMeasure[1] + 1}` : 'Current beat'"
-                :label="player.ready && player.mode === 'midi' ? String(player.currentMeasure[1] + 1) : '-'"
-                :disabled="!player.ready || player.mode !== 'midi'"
-              >
-                <template #default="{ setFocusTarget }">
-                  <InputNumber
-                    :ref="setFocusTarget"
-                    :model-value="player.currentMeasure[1] + 1"
-                    aria-label="Current beat"
-                    class="w-16"
-                    fluid
-                    @update:model-value="player.setBeat($event - 1)"
-                  />
-                </template>
-              </PopoverButton>
-            </div>
+              :song="currentSong"
+            />
 
             <!-- Transposition -->
             <PopoverButton
               v-if="visibleButtons.transposition"
               button-class="w-16 whitespace-nowrap"
-              :aria-label="`Transposition ${player.playbackTransposition > 0 ? '+' : ''}${player.playbackTransposition} semitones`"
-              :label="`${player.playbackTransposition > 0 ? '+' : ''}${player.playbackTransposition}&nbsp;HT`"
+              :aria-label="`Transposition ${transpositionText} semitones`"
+              :label="`${transpositionText}&nbsp;HT`"
               :active="player.playbackTransposition !== 0"
             >
               <template #default="{ setFocusTarget }">
-                <div class="flex items-center justify-stretch gap-1">
-                  <Button
-                    icon="pi pi-minus"
-                    severity="secondary"
-                    size="small"
-                    rounded
-                    text
-                    :disabled="player.playbackTransposition <= -12"
-                    aria-label="Transpose down"
-                    @click="player.playbackTransposition--"
-                  />
-                  <InputNumber
-                    :ref="setFocusTarget"
-                    v-model="player.playbackTransposition"
-                    aria-label="Transposition in semitones"
-                    class="w-20"
-                    :min="-12"
-                    :max="12"
-                    :step="1"
-                    :prefix="player.playbackTransposition > 0 ? '+' : ''"
-                    suffix=" HT"
-                    fluid
-                  />
-                  <Button
-                    icon="pi pi-plus"
-                    severity="secondary"
-                    size="small"
-                    rounded
-                    text
-                    :disabled="player.playbackTransposition >= 12"
-                    aria-label="Transpose up"
-                    @click="player.playbackTransposition++"
-                  />
-                </div>
+                <InputNumber
+                  :ref="setFocusTarget"
+                  v-model="player.playbackTransposition"
+                  aria-label="Transposition in semitones"
+                  class="w-36"
+                  :min="-12"
+                  :max="12"
+                  :prefix="player.playbackTransposition > 0 ? '+' : ''"
+                  suffix=" HT"
+                  show-buttons
+                  button-layout="horizontal"
+                  increment-button-icon="pi pi-plus"
+                  decrement-button-icon="pi pi-minus"
+                  fluid
+                />
               </template>
             </PopoverButton>
 
@@ -251,54 +292,30 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
               v-if="visibleButtons.tempo"
               button-class="w-22 whitespace-nowrap"
               :aria-label="tempoLabel"
-              :active="Math.round(playbackSpeedPercentage) !== 100"
+              :active="playbackSpeedPercentage !== 100"
             >
               <template #button>
-                <template v-if="player.mode === 'midi'">
-                  <component
-                    :is="NOTE_VALUE_SVG_MAP[tempoNoteValue]"
-                    class="mx-[-15%] inline size-6 fill-current"
-                  />=&nbsp;{{ player.ready ? Math.round(player.playbackSpeed * writtenTempo) : "-" }}
-                </template>
-                <template v-else>
-                  {{ Math.round(playbackSpeedPercentage) === 100 ? 'Tempo' : `${Math.round(playbackSpeedPercentage)} %` }}
-                </template>
+                <component
+                  :is="NOTE_VALUE_SVG_MAP[tempoNoteValue]"
+                  class="mx-[-15%] inline size-6 fill-current"
+                />=&nbsp;{{ playedTempo }}
               </template>
 
               <template #default="{ setFocusTarget }">
-                <div class="flex items-center justify-stretch gap-4">
-                  <Button
-                    icon="pi pi-minus"
-                    severity="secondary"
-                    size="small"
-                    rounded
-                    text
-                    :disabled="playbackSpeedPercentage <= 10"
-                    aria-label="Slower"
-                    @click="playbackSpeedPercentage--"
-                  />
-                  <InputNumber
-                    :ref="setFocusTarget"
-                    v-model="playbackSpeedPercentage"
-                    aria-label="Playback speed in percent"
-                    class="w-18"
-                    :min="10"
-                    :max="300"
-                    :step="1"
-                    suffix=" %"
-                    fluid
-                  />
-                  <Button
-                    icon="pi pi-plus"
-                    severity="secondary"
-                    size="small"
-                    rounded
-                    text
-                    :disabled="playbackSpeedPercentage >= 300"
-                    aria-label="Faster"
-                    @click="playbackSpeedPercentage++"
-                  />
-                </div>
+                <InputNumber
+                  :ref="setFocusTarget"
+                  v-model="playbackSpeedPercentage"
+                  aria-label="Playback speed in percent"
+                  class="w-36"
+                  :min="10"
+                  :max="300"
+                  suffix=" %"
+                  show-buttons
+                  button-layout="horizontal"
+                  increment-button-icon="pi pi-plus"
+                  decrement-button-icon="pi pi-minus"
+                  fluid
+                />
               </template>
             </PopoverButton>
 
@@ -307,30 +324,19 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
               v-if="visibleButtons.timeSignature"
               class="cursor-default"
               severity="secondary"
+              :label="timeSignatureText"
               :aria-label="timeSignatureLabel"
-            >
-              <template v-if="player.mode === 'midi'">
-                {{ player.currentTimeSignature[0] }}&nbsp;/&nbsp;{{ Math.pow(2, player.currentTimeSignature[1]) }}
-              </template>
-              <template v-else>
-                &ndash;&nbsp;/&nbsp;&ndash;
-              </template>
-            </Button>
+            />
 
-            <!-- Vamp -->
+            <!-- Section: releases or resets a vamp, and shows the pass of a repeat section or a written repeat -->
             <Button
               v-if="visibleButtons.vamp"
-              class="w-24 whitespace-nowrap"
-              :disabled="vampState === 'none'"
-              :label="{
-                'none': 'Vamp',
-                'vamping': player.currentVamp?.iterations
-                  ? `Vamp ${(player.currentVamp?.currentIteration ?? 0) + 1}/${player.currentVamp?.iterations}`
-                  : `Vamp ${(player.currentVamp?.currentIteration ?? 0) + 1}`,
-                'exiting': 'Exiting...'
-              }[vampState]"
-              :severity="vampState === 'vamping' ? 'primary': 'secondary'"
-              @click="emit('toggleVamp')"
+              class="w-28 whitespace-nowrap"
+              :class="sectionButtonClass"
+              :disabled="!shownSection"
+              :label="sectionLabel"
+              severity="secondary"
+              @click="toggleVamp"
             />
 
             <!-- Segue -->
@@ -339,14 +345,15 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
               class="w-24 whitespace-nowrap"
               :disabled="player.currentSegue === undefined"
               label="Segue"
+              :aria-pressed="!!player.currentSegue?.enabled"
               :severity="player.currentSegue?.enabled ? 'primary': 'secondary'"
               @click="emit('toggleSegue')"
             />
-          </template>
-
-          <!-- User menu -->
-          <UserMenuButton class="-ml-1" />
+          </div>
         </div>
+
+        <!-- User menu -->
+        <UserMenuButton :class="playback ? 'col-start-3 row-start-1 justify-self-end lg:col-start-4' : '-ml-1'" />
       </template>
     </Toolbar>
 
@@ -370,16 +377,20 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
       v-if="playback"
       class="absolute -bottom-0.5 left-2 h-1 w-[calc(100%-1rem)]"
     >
-      <Slider
-        :model-value="player.position"
-        :min="0"
-        :max="player.duration"
-        aria-label="Position"
-        class="group w-full bg-transparent"
-        pt:handle:class="scale-50 group-hover:scale-100 active:scale-100 transition-transform z-1"
-        pt:range:class="h-1"
-        @update:model-value="player.seek($event as number)"
-      />
+      <PositionSlider :value-text="positionText" />
+      <!-- Drawn over the played range, so the sections stay visible, and under the handle -->
+      <div
+        class="pointer-events-none absolute inset-0"
+        aria-hidden="true"
+      >
+        <div
+          v-for="range of sectionRanges"
+          :key="range.key"
+          class="absolute inset-y-0"
+          :class="SECTION_COLORS[range.kind].background"
+          :style="{ left: `${range.left * 100}%`, width: `${range.width * 100}%` }"
+        />
+      </div>
     </div>
   </div>
 </template>

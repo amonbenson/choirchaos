@@ -16,6 +16,11 @@ export type PageCoordinate = {
   y: number;
 };
 
+export type ScreenArea = ScreenCoordinate & {
+  width: number;
+  height: number;
+};
+
 export default class PageTransform {
   public static PAGE_GAP = 0.02;
   public static MIN_ZOOM = 10;
@@ -129,9 +134,9 @@ export default class PageTransform {
     return [Math.max(0, left.p), Math.min(numPages, right.p + 1)];
   }
 
-  public contains(pc: PageCoordinate, screenWidth: number, screenHeight: number): boolean {
+  public contains(pc: PageCoordinate, area: ScreenArea): boolean {
     const sc = this.pageToScreen(pc);
 
-    return sc.x >= 0 && sc.x < screenWidth && sc.y >= 0 && sc.y < screenHeight;
+    return sc.x >= area.x && sc.x < area.x + area.width && sc.y >= area.y && sc.y < area.y + area.height;
   }
 }

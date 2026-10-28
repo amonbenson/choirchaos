@@ -1,81 +1,38 @@
 # Player — Agent Guide
 
-Extends the root `AGENTS.md`, whose rules apply here too.
+Extends the root `AGENTS.md`.
 
-Playback engine shared by both modes:
-- **MIDI:** `.mid` plus an MTIMidiJson `.json` that maps ticks to measures and beats.
-- **Audio:** one `.mp3`/`.wav` per track, pitch- and tempo-shifted with `rubberband-web`.
+`PlayerEngine` (`engine.ts`) drives one of two backends; `stores/player.ts` exposes it to Vue. Both count in ticks:
+- **MIDI** (`midi/backend.ts`): MIDI ticks, timed by the MTI beat map; notes play through `webaudiofont`.
+- **Audio** (`audio/`): recording milliseconds, placed by the `WarpMap` built from sync points; stretched by `rubberband-web`.
 
-## Files
+`timeline.ts` turns `song.getTimeline()` into `TimelinePosition`s, the only timing source. MIDI: beat map bar k is position k (`readBeatMapBars()`, shared with the import), and a count mismatch fails the load. Audio: beats are spread evenly between sync points; unresolvable warp markers are dropped. Audio has no time signature.
 
-| File | Role |
-|---|---|
-| `engine.ts` | `PlayerEngine`: transport, seeking, vamps, segues, display state |
-| `backend.ts` | Abstract backend interface |
-| `midi/backend.ts` | `MidiBackend`: schedules notes through `webaudiofont` |
-| `audio/backend.ts` | `AudioBackend`: decodes files, builds warp events, mutes vocals |
-| `audio/driver.ts` | `AudioDriver`: Web Audio graph, chunk scheduling, crossfade seeks |
-| `audio/chunkDetector.ts` | `detectChunks()` strips silence, `AudioChunk` type |
-| `../midi/warp.ts` | `WarpMap`: tick to time mapping |
-| `audio/mixdown.ts` | Sums all tracks into one mono buffer for the warp panel waveform |
-| `src/stores/player.ts` | Pinia wrapper exposing engine state through `useEvent()` |
+## Sections and Route
 
-## Engine Invariants
+`route.ts` is pure section logic, rebuilt whenever timeline, sections or vamp enabling change.
+- `getSectionPasses()` (`models/sections.ts`) is the one rule for which recorded passes a section covers, shared by route, validation and all overlays. Never compute passes elsewhere.
+- Desired passes map onto recorded ones (`getRecordedPassIndex()`): the last desired pass always plays the last recorded pass (it leads out), extra passes repeat the one before it (it leads back in). With 4 recorded passes a repeat of 6 plays P1 P2 P3 P3 P3 P4.
+- When the last pass is decided mid-pass (a vamp release), the route jumps at the next barline or beat to the same offset in the last recorded pass (`mapTick()`).
+- `stateAt(tick)` derives the state from the position alone, so seeking, stopping and resetting need no bookkeeping. A cut has no state: it only plays after a seek into it.
+- Vocal roles (entering, repeating, exiting) decide muting; only vamps mute.
 
-- `unload()` aborts an in-progress load and resets all `current*` Properties, `vamps`, and `mode`. Do not rely on `load()` to clear stale state. `WorkspaceView` unloads on unmount, since the engine is global and would keep playing on other pages.
-- In `syncStateAt`, call `backend.seek(pos)` BEFORE `backend.onTempoRestored(bpm)`.
-- `syncWarp()` (audio mode) re-resolves warp and vamp ticks and resyncs display Properties. It does NOT touch `currentSegue` and does NOT seek the backend.
-- End-of-song fires in the same step as the overshoot (`pos >= duration`).
-- `MeasureReference` is `[MeasureNumber, BeatNumber]`. `BeatNumber` is 0-based.
-- `Measure.$beatTicks` and `$tickLength` are populated by `AudioBackend.buildWarpEvents()`. Code that reads them before that sees `undefined`.
+## Stepping
 
-## WarpMap vs SongWarpMarker
-
-- `WarpMap` takes integer array indices. `SongWarpMarker` (`models/song.ts`) stores a measure `Numbering`, which stays stable when measures are reordered.
-- `AudioBackend` converts markers to indices. Markers whose measure no longer exists are silently dropped.
-
-## Warp Editing
-
-- `WaveformView` draws `mixdownChunks()` with peaks.js. Audio mode positions are milliseconds, peaks.js works in seconds.
-- `warpEditing.ts` keeps markers in measure order: new markers only go between their neighbours and dragging is clamped between them, since the backend requires strictly increasing marker times.
-- peaks.js caches every zoom level it resamples, so zoom only moves along `ZoomLadder` levels to keep the cache bounded. The base waveform has one sample per pixel (coarser for very long recordings), which allows zooming to single samples.
-
-## Vamps
-
-- `setVampsEnabled(false)` force-exits an active vamp and makes `vampAt()` return `undefined`.
-- `VampPhase` is internal to `PlayerEngine`. Together with the vamp's vocals setting it decides `muteVocals`, the 4th argument of `backend.step()`, which makes `AudioBackend` mute Vocal tracks.
+- Time comes from the engine's one `AudioClock`, never `context.currentTime`: Firefox on Android advances it only every ~0.1 s and Firefox rounds it, which would make steps leap and notes land late. Test changes in Chrome, Firefox and Safari, desktop and mobile.
+- The engine plans each step up to the next jump or muting change and passes it as `limit`; a backend never steps past it. `MidiBackend` holds back notes within `AUDIO_CLOCK_OFFSET` of the limit. After every step the engine announces the next jump through `prepareJump()`, so audio can schedule its crossfade in advance.
+- MIDI consumes step time exactly, so the loop keeps stepping after a stop (dropping it would shrink the lookahead). End of song fires in the step that overshoots.
+- In `syncStateAt`, `backend.seek()` must come before `backend.onTempoRestored()`.
+- `unload()` aborts loading and resets all state; never rely on `load()` to clear it. `syncWarp()` re-times audio and re-resolves sections without seeking.
 
 ## Audio
 
-- `AudioDriver` takes `AudioChunk[][]`: one array of mono chunks per track. `sampleOffset` is the chunk's start in the original file, in samples.
-- `scheduleSeek()` is a crossfade seek, used for vamp jumps. `seek()` is a hard cut, used only for initial seeks.
-- `AUDIO_LOOKAHEAD` in `audio/driver.ts` must equal `AUDIO_CLOCK_OFFSET` in `midi/backend.ts`. The visual position leads audio by this margin in both modes.
-- Decoding is memory-bounded for mobile by `MAX_CONCURRENT_DECODE_BYTES`. Do not replace it with an unbounded `Promise.all`.
+- A segment is one continuous run through the recording; seeks, jumps and tempo changes replace it. `seek()` cuts hard, `jump()` crossfades. Until `jump()` commits a prepared jump, `getPosition()` runs on past it so the engine still reaches it.
+- Stop every source once: Safari throws on a second `stop()`.
+- `MAX_CONCURRENT_DECODE_BYTES` bounds decoding memory on phones; never replace it with an unbounded `Promise.all`.
 
 ## Testing
 
-Fixture tick layout (120 BPM, ppqn 480), exported as `TICKS`:
-
-```
-Measure "0" (pickup, 1 beat): tick    0
-Measure "1" (4/4):            tick  480
-Measure "2" (4/4):            tick 2400
-Measure "3" (4/4, 140 BPM):   tick 4320
-Measure "4" (4/4):            tick 6240
-Measure "5" (terminal):       tick 8160 = duration
-```
-
-- Use `stepPast(updater, player, tick)` to play past a tick. It adds the extra step needed for end-of-song and segue to fire.
-- Use `stepUntil(updater, () => condition)` for state-based waits. `getCurrentVamp()` is `undefined` until the playhead enters the vamp region, so wait for entry before waiting for exit.
-
-**Audio mode tests** (`engine.audio.test.ts`) mock `AudioDriver` entirely:
-- The mock must include `scheduleSeek`, since vamp jumps call it instead of `seek`.
-- Keep the position in sync: `ap.scheduleSeek.mockImplementation(pos => ap.getPosition.mockReturnValue(pos))`.
-- Clear `seek`/`scheduleSeek` after `load()`. The initial seek to 0 pollutes call counts.
-- Entering a vamp takes two steps: one to enter the region, one to hit the end and trigger the jump.
-- Use the `makeAudioSong*()` fixtures. Their vamp variants place measures 0.25 s apart.
-
-**Silent failure traps:**
-- `setSegueEnabled()` does nothing if `load()` never ran, because the segue was never initialized.
-- JSON mocks without `$beatTicks` silently break vamp and duration logic.
-- `setGain(1, 0)` means the vocal track is muted. Clear the spy before the step you assert on.
+- `src/test/fixtures.ts` documents its tick layout; `src/test/route.ts` builds timelines and sections for route tests; `src/test/updater.ts` steps the engine (`stepPast()` adds the extra step end of song and segues need).
+- `engine.audio.test.ts` mocks `AudioDriver`. Where muting changes inside a step the engine stops there, costing an extra step.
+- `setSegueEnabled()` does nothing before `load()`. `setGain(i, 0)` on the vocals track is how muting shows; clear the spy before the asserted step.

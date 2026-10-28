@@ -19,7 +19,7 @@ export abstract class SettingsBase {
   // Merges a raw stored value into this instance, using `this` as the source of
   // defaults. Unknown or wrongly-typed fields in `raw` are silently ignored and
   // fall back to the default. Nested SettingsBase fields are recursed into
-  // automatically — no extra wiring needed when adding new nested groups.
+  // automatically, so no extra wiring is needed when adding new nested groups.
   fromPartial(raw: unknown): this {
     if (!isPlainObject(raw)) {
       return this;
@@ -40,7 +40,7 @@ export abstract class SettingsBase {
       } else if (storedVal !== null && typeof storedVal === typeof defaultVal) {
         overrides[key] = storedVal;
       }
-      // type mismatch or null → key omitted → default is kept via Object.assign below
+      // A type mismatch or null omits the key, so Object.assign below keeps the default
     }
 
     return Object.assign(Object.create(Object.getPrototypeOf(this)), this, overrides) as this;

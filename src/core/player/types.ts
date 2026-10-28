@@ -1,25 +1,26 @@
-import type { MeasureEvent, MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "../midi/events";
-import type { VampOut, VampVocals } from "../models/measureEvent";
+import type { BeatEvent, MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "../midi/events";
+import type { MeasureId } from "../models/measure";
+import type { SectionKind, VampOut, VampVocals } from "../models/sections";
 
 export type { VampOut, VampVocals };
 
 export type PlayerStatus = "idle" | "loading" | "ready";
 
-export type VampPhase = "entering" | "repeating" | "exiting";
-
 export type PlayerMode = "none" | "midi" | "audio";
 
-export type PlayerVamp = {
-  start: number;
-  end: number;
-  iterations: number;
-  out: VampOut;
-  vocals: VampVocals;
-};
+/** A beat at a timeline position, together with the measure occurrence it plays. */
+export type PlayerLocation = { position: number; measure: MeasureId; occurrence: number; beat: number };
 
-export type PlayerVampState = PlayerVamp & {
-  currentIteration: number;
-  manualExit: boolean;
+export type PlayerSectionState = {
+  /** Index into `song.getSections()`. */
+  section: number;
+  kind: SectionKind;
+  /** The 1-based pass being played. */
+  pass: number;
+  /** Total passes, undefined for a vamp until it is released. */
+  passes?: number;
+  recordedPasses: number;
+  released: boolean;
 };
 
 export type PlayerSegueState = {
@@ -27,7 +28,8 @@ export type PlayerSegueState = {
 };
 
 export type SystemEvents = {
-  measure: MidiEventList<MeasureEvent>;
+  /** One event per beat of every timeline position, in tick order. */
+  beat: MidiEventList<BeatEvent>;
   tempo: MidiEventList<TempoEvent>;
   timeSignature: MidiEventList<TimeSignatureEvent>;
 };

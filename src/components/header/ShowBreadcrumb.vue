@@ -88,7 +88,7 @@ function crumbClass(isLast: boolean): string {
           text
           rounded
           class="whitespace-nowrap max-sm:px-2"
-          :class="[crumbClass(!song), song ? 'flex-none sm:min-w-12 sm:shrink-[2]' : 'min-w-12 shrink-[2]']"
+          :class="[crumbClass(!song), song ? 'flex-none sm:min-w-12 sm:shrink-2' : 'min-w-12 shrink-2']"
           :aria-label="show.title"
           :aria-current="song ? undefined : 'page'"
           :title="show.title"

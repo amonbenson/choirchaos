@@ -16,9 +16,9 @@ const SONG_RECORD = {
   title: "Song",
   audioFiles: [],
   tracks: [],
-  measures: [],
-  events: { markers: [], vamps: [], segue: false },
-  warpMarkers: [],
+  score: { measures: [], unnumberedBoxes: [] },
+  recording: { spans: [], warpMarkers: [] },
+  arrangement: { markers: [], sections: [], segue: false },
 };
 
 function makeShow(): Show {

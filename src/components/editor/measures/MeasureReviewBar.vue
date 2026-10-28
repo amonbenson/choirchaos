@@ -55,7 +55,7 @@ defineExpose({ confirmCurrent });
         class="flex items-center gap-2 text-sm font-semibold"
         aria-live="polite"
       >
-        <span class="size-2 rounded-full bg-amber-500" />
+        <span class="size-2 rounded-full bg-warn" />
         {{ label }}
       </span>
       <div
@@ -106,6 +106,6 @@ defineExpose({ confirmCurrent });
     <span
       v-if="currentReviewItem"
       class="text-xs text-muted-color pointer-coarse:hidden"
-    >Enter confirms, typing corrects the number, Delete removes the box.</span>
+    >Enter confirms, typing corrects the number, Delete removes it.</span>
   </div>
 </template>

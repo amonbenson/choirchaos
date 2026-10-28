@@ -1,3 +1,5 @@
+import { DEFAULT_TRACK_GAIN } from "@/core/models/track";
+
 import { isPlainObject, SettingsBase } from "./base";
 
 export type TrackMixerEntry = {
@@ -7,15 +9,17 @@ export type TrackMixerEntry = {
   highlight: boolean;
 };
 
+export type ShowMixer = Record<string, TrackMixerEntry>;
+
 export const DEFAULT_TRACK_MIXER: Readonly<TrackMixerEntry> = {
-  gain: 1.0,
+  gain: DEFAULT_TRACK_GAIN,
   mute: false,
   solo: false,
   highlight: false,
 };
 
 export function isDefaultTrackMixer(entry: TrackMixerEntry): boolean {
-  return entry.gain === 1.0 && !entry.mute && !entry.solo && !entry.highlight;
+  return entry.gain === DEFAULT_TRACK_GAIN && !entry.mute && !entry.solo && !entry.highlight;
 }
 
 function isTrackMixerEntry(v: unknown): v is TrackMixerEntry {
@@ -28,9 +32,19 @@ function isTrackMixerEntry(v: unknown): v is TrackMixerEntry {
   );
 }
 
+function parseShowMixer(raw: unknown): ShowMixer {
+  if (!isPlainObject(raw)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(raw).filter((entry): entry is [string, TrackMixerEntry] => isTrackMixerEntry(entry[1])),
+  );
+}
+
 export class MixerSettings extends SettingsBase {
   constructor(
-    public readonly tracks: Record<string, TrackMixerEntry> = {},
+    public readonly shows: Record<string, ShowMixer> = {},
   ) {
     super();
   }
@@ -38,14 +52,15 @@ export class MixerSettings extends SettingsBase {
   // Overrides the generic fromPartial to validate each track entry individually.
   // Invalid entries are dropped rather than failing the whole load.
   override fromPartial(raw: unknown): this {
-    if (!isPlainObject(raw) || !isPlainObject(raw.tracks)) {
+    if (!isPlainObject(raw) || !isPlainObject(raw.shows)) {
       return this;
     }
 
-    const tracks = Object.fromEntries(
-      Object.entries(raw.tracks)
-        .filter((entry): entry is [string, TrackMixerEntry] => isTrackMixerEntry(entry[1])),
+    const shows = Object.fromEntries(
+      Object.entries(raw.shows)
+        .map(([showId, tracks]): [string, ShowMixer] => [showId, parseShowMixer(tracks)])
+        .filter(([, tracks]) => Object.keys(tracks).length > 0),
     );
-    return Object.assign(Object.create(Object.getPrototypeOf(this)), this, { tracks }) as this;
+    return Object.assign(Object.create(Object.getPrototypeOf(this)), this, { shows }) as this;
   }
 }

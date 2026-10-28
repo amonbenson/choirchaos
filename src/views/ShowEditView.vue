@@ -7,9 +7,8 @@ import Menu from "primevue/menu";
 import type { MenuItem } from "primevue/menuitem";
 import Panel from "primevue/panel";
 import ProgressSpinner from "primevue/progressspinner";
-import { useConfirm } from "primevue/useconfirm";
 import { computed, ref, useTemplateRef, watch } from "vue";
-import { type RouteLocationRaw, useRouter } from "vue-router";
+import { type RouteLocationNamedRaw, useRouter } from "vue-router";
 
 import HeaderBar from "@/components/header/HeaderBar.vue";
 import CoverPicker from "@/components/show/CoverPicker.vue";
@@ -18,13 +17,13 @@ import ShareDialog from "@/components/show/ShareDialog.vue";
 import NewSongDialog from "@/components/song/NewSongDialog.vue";
 import SongImportDialog from "@/components/song/SongImportDialog.vue";
 import SongSetupStatus from "@/components/song/SongSetupStatus.vue";
+import { useDeleteSong } from "@/composables/useDeleteSong";
 import { useNotify } from "@/composables/useNotify";
 import { RECORDING_FILE_ACCEPT } from "@/core/import/songImport";
 import type Song from "@/core/models/song";
 import { getSongSetup, isFileStep } from "@/core/models/songSetup";
 import { displayFilename } from "@/core/utils/file";
 import { useAuthStore } from "@/stores/auth";
-import { useSettingsStore } from "@/stores/settings";
 import { useShowStore } from "@/stores/show";
 
 const props = defineProps<{
@@ -32,10 +31,9 @@ const props = defineProps<{
 }>();
 
 const auth = useAuthStore();
-const settings = useSettingsStore();
 const showStore = useShowStore();
 const router = useRouter();
-const confirm = useConfirm();
+const deleteSong = useDeleteSong();
 const { notifyError } = useNotify();
 
 const VISIBILITY_SUMMARY = {
@@ -74,7 +72,10 @@ const accessSummary = computed(() => {
     viewers.length > 0 ? `${viewers.length} ${viewers.length === 1 ? "viewer" : "viewers"}` : "",
   ].filter(Boolean).join(", ");
 
-  return { ...VISIBILITY_SUMMARY[visibility], people: people || "Not shared with anyone yet" };
+  return {
+    ...VISIBILITY_SUMMARY[visibility],
+    people: people || (visibility === "private" ? "Not shared with anyone yet" : undefined),
+  };
 });
 
 async function loadShow(): Promise<void> {
@@ -138,38 +139,20 @@ const { isOverDropZone } = useDropZone(dropZone, {
 const fileDialog = useFileDialog({ multiple: true, reset: true, accept: `.pdf,.mid,.midi,.json,application/pdf,audio/midi,application/json,${RECORDING_FILE_ACCEPT}` });
 fileDialog.onChange(files => startImport(Array.from(files ?? [])));
 
-function songRoute(song: Song, name: "song" | "song-edit"): RouteLocationRaw {
+function songRoute(song: Song, name: "song" | "song-edit"): RouteLocationNamedRaw {
   return { name, params: { showId: props.showId, songId: song.id } };
 }
 
 function continueSetup(song: Song): void {
   const next = getSongSetup(song).next;
-  settings.update({ workspace: { editorTab: next && isFileStep(next.id) ? "details" : "measures" } });
-  router.push(songRoute(song, "song-edit"));
-}
-
-function confirmDeleteSong(song: Song): void {
-  confirm.require({
-    header: "Delete song",
-    message: `Song ${song.number} "${song.title}" will be deleted permanently, including its score and recordings.`,
-    icon: "pi pi-exclamation-triangle",
-    rejectProps: { label: "Cancel", severity: "secondary", text: true },
-    acceptProps: { label: "Delete song", severity: "danger" },
-    accept: async () => {
-      try {
-        await show.value?.deleteSong(song);
-      } catch (error) {
-        notifyError("Could not delete the song", error);
-      }
-    },
-  });
+  router.push({ ...songRoute(song, "song-edit"), query: next && isFileStep(next.id) ? { details: "1" } : {} });
 }
 
 function openSongMenu(event: Event, song: Song): void {
   songMenuItems.value = [
     { label: "Edit", icon: "pi pi-pencil", command: () => router.push(songRoute(song, "song-edit")) },
     { separator: true },
-    { label: "Delete song", icon: "pi pi-trash", command: () => confirmDeleteSong(song) },
+    { label: "Delete song", icon: "pi pi-trash", command: () => show.value && deleteSong(show.value, song) },
   ];
   songMenu.value.toggle(event);
 }
@@ -229,7 +212,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
             <label
               for="show-title"
               class="text-sm font-medium text-muted-color"
-            >Title</label>
+            >Show title</label>
             <InputText
               id="show-title"
               v-model="title"
@@ -253,7 +236,10 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
               <div class="font-medium">
                 {{ accessSummary!.label }}
               </div>
-              <div class="truncate text-sm text-muted-color">
+              <div
+                v-if="accessSummary!.people"
+                class="truncate text-sm text-muted-color"
+              >
                 {{ accessSummary!.people }}
               </div>
             </div>
@@ -330,7 +316,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
         >
           <div class="flex w-full max-w-2xl flex-col items-center gap-4 rounded-lg border-2 border-dashed border-surface-300 px-4 py-12 text-center sm:px-8 dark:border-surface-700">
             <i
-              class="pi pi-cloud-upload text-6xl text-primary"
+              class="pi pi-cloud-upload text-6xl text-primary-text"
               aria-hidden="true"
             />
             <div class="text-xl font-semibold">
@@ -499,9 +485,9 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
     <!-- Drop overlay -->
     <div
       v-if="isOverDropZone && show"
-      class="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-primary/10 backdrop-blur-sm"
+      class="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-scrim/50 backdrop-blur-sm"
     >
-      <div class="flex flex-col items-center gap-2 text-primary">
+      <div class="flex flex-col items-center gap-2 text-scrim-contrast">
         <i
           class="pi pi-cloud-upload text-6xl"
           aria-hidden="true"

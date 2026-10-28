@@ -51,7 +51,7 @@ async function create(): Promise<void> {
   <Dialog
     v-model:visible="visible"
     header="New show"
-    class="w-[32rem] max-w-[calc(100vw-2rem)]"
+    class="w-lg max-w-[calc(100vw-2rem)]"
     modal
     dismissable-mask
   >
@@ -70,7 +70,7 @@ async function create(): Promise<void> {
         <label
           for="new-show-title"
           class="font-medium"
-        >Title</label>
+        >Show title</label>
         <InputText
           id="new-show-title"
           v-model="title"

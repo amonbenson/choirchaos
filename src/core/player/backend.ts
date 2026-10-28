@@ -1,7 +1,8 @@
 import type { NoteEvent } from "../midi/events";
 import type { Tick, TimeSignature } from "../midi/types";
-import type { MeasureReference } from "../models/measure";
 import type Song from "../models/song";
+import type AudioClock from "./audioClock";
+import type { TimelinePosition } from "./timeline";
 import type { SystemEvents } from "./types";
 
 export type StepResult = {
@@ -11,7 +12,6 @@ export type StepResult = {
 };
 
 export type BackendCallbacks = {
-  onMeasureChanged: (measure: MeasureReference) => void;
   onTempoChanged: (bpm: number) => void;
   onTimeSignatureChanged: (sig: TimeSignature) => void;
   onNote: (event: NoteEvent) => void;
@@ -20,7 +20,7 @@ export type BackendCallbacks = {
 
 export type LoadResult = {
   duration: Tick;
-  finalMeasure: MeasureReference;
+  timeline: TimelinePosition[];
 };
 
 export abstract class PlayerBackend {
@@ -29,12 +29,13 @@ export abstract class PlayerBackend {
 
   constructor(
     protected readonly context: AudioContext,
+    protected readonly clock: AudioClock,
     protected readonly masterInput: AudioNode,
     protected readonly systemEvents: SystemEvents,
     protected readonly callbacks: BackendCallbacks,
   ) {}
 
-  /** Load the song and return its duration and final measure. Aborted via `signal`. */
+  /** Load the song and return its duration and timed timeline. Aborted via `signal`. */
   abstract load(song: Song, signal: AbortSignal): Promise<LoadResult>;
 
   /** Begin audio output from `currentPosition`. */
@@ -49,12 +50,19 @@ export abstract class PlayerBackend {
   /**
    * Advance playback by `deltaTime` seconds from `currentPosition`.
    * Must not cross `limit` (if given); returns the actual tick range consumed and wall-clock time spent.
-   * Fire callbacks for any events (notes, measure/tempo/time-signature changes) encountered in the range.
+   * Fire callbacks for any events (notes, tempo and time signature changes) encountered in the range.
+   * A `limit` is where the engine jumps, so notes that would sound past it must not be queued.
    */
   abstract step(currentPosition: Tick, deltaTime: number, limit?: Tick, muteVocals?: boolean): StepResult;
 
-  /** Called when the engine jumps the position by `offset` ticks (e.g. a vamp loop). */
+  /** Called when the engine jumps the position by `offset` ticks to `newPosition` (a section pass or cut). */
   abstract onPositionJump(offset: Tick, newPosition: Tick): void;
+
+  /**
+   * Called every step with the next jump ahead, if any, so a backend can schedule it before the engine
+   * reaches it. MIDI needs nothing: it holds back the notes before a limit.
+   */
+  prepareJump(_jump: { at: Tick; to: Tick } | undefined): void {}
 
   /** Called after a seek so the backend can re-anchor its tempo clock to `bpm`. */
   abstract onTempoRestored(bpm: number): void;

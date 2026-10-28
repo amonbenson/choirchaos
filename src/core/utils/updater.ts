@@ -1,6 +1,3 @@
-type UpdateProvider = "setTimeout" | "requestAnimationFrame";
-export type UpdateProviderOption = UpdateProvider | "auto";
-
 export type UpdateCallback = (delta: number) => void;
 export type TimeProvider = () => number;
 
@@ -90,22 +87,4 @@ export class SetIntervalUpdater extends Updater {
   }
 
   protected updateCompleteImpl(): void {}
-}
-
-export class AnimationFrameUpdater extends Updater {
-  private animationFrameHandle?: number;
-
-  protected startImpl(): void {
-    this.animationFrameHandle = requestAnimationFrame(() => this.update());
-  }
-
-  protected stopImpl(): void {
-    cancelAnimationFrame(this.animationFrameHandle!);
-  }
-
-  protected updateCompleteImpl(): void {
-    if (this.isRunning()) {
-      this.animationFrameHandle = requestAnimationFrame(() => this.update());
-    }
-  }
 }

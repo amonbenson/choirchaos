@@ -71,14 +71,16 @@ export default defineConfigWithVueTs(
     },
     settings: {
       "better-tailwindcss": {
-        // Path to your Tailwind v4 CSS entry file (the one with @import "tailwindcss")
-        entryPoint: "src/assets/main.css",
+        // The Tailwind v4 entry file, so the rules know the theme tokens.
+        entryPoint: "src/main.css",
       },
     },
+    // Errors, not warnings, so CI fails on them. All of them are fixed by lint:fix.
     rules: {
-      "better-tailwindcss/enforce-consistent-class-order": "warn",
-      "better-tailwindcss/no-unnecessary-whitespace": "warn",
-      "better-tailwindcss/no-duplicate-classes": "warn",
+      "better-tailwindcss/enforce-canonical-classes": "error",
+      "better-tailwindcss/enforce-consistent-class-order": "error",
+      "better-tailwindcss/no-unnecessary-whitespace": "error",
+      "better-tailwindcss/no-duplicate-classes": "error",
     },
   },
 

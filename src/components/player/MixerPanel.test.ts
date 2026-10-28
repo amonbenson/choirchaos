@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { reactive } from "vue";
 
 import Song from "@/core/models/song";
-import Track, { type TrackClassification } from "@/core/models/track";
+import Track, { DEFAULT_TRACK_GAIN, type TrackClassification } from "@/core/models/track";
 import { useSettingsStore } from "@/stores/settings";
 
 import MixerPanel from "./MixerPanel.vue";
@@ -35,9 +35,9 @@ function makeEmptySong(): Song {
   return new Song("song-id", "1", "Song", undefined, undefined, undefined);
 }
 
-function mountPanel(song: Song, editMode = false): VueWrapper {
+function mountPanel(song: Song, editMode = false, showId = "show-id"): VueWrapper {
   return mount(MixerPanel, {
-    props: { song: reactive(song) as Song, editMode },
+    props: { showId, song: reactive(song) as Song, editMode },
     global: { plugins: [PrimeVue], directives: { tooltip: Tooltip } },
   });
 }
@@ -99,12 +99,28 @@ describe("MixerPanel", () => {
 
   it("applies the stored mixer settings to replaced tracks", async () => {
     const song = reactive(makeAudioSong(["Vocal"])) as Song;
-    useSettingsStore().updateTrackMixer("Alto", { mute: true });
+    useSettingsStore().updateTrackMixer("show-id", "Alto", { mute: true });
     mountPanel(song);
 
     await song.setTracks([new Track("Alto", "Vocal", 0, "track0.mp3")]);
     await flushPromises();
 
     expect(song.tracks[0]!.mixer.mute).toBe(true);
+  });
+
+  it("starts every track at the default gain", () => {
+    const song = reactive(makeAudioSong(["Vocal", "Accompaniment"])) as Song;
+    mountPanel(song);
+
+    expect(song.tracks.map(t => t.mixer.gain)).toEqual([DEFAULT_TRACK_GAIN, DEFAULT_TRACK_GAIN]);
+  });
+
+  it("keeps the mixer settings of each show apart", () => {
+    useSettingsStore().updateTrackMixer("other-show", "Track 0", { gain: 0.2, mute: true });
+    const song = reactive(makeAudioSong(["Vocal"])) as Song;
+    mountPanel(song, false, "show-id");
+
+    expect(song.tracks[0]!.mixer.gain).toBe(DEFAULT_TRACK_GAIN);
+    expect(song.tracks[0]!.mixer.mute).toBe(false);
   });
 });

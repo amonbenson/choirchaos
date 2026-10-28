@@ -9,10 +9,10 @@ import type { MenuItem } from "primevue/menuitem";
 import Message from "primevue/message";
 import Select from "primevue/select";
 import SelectButton from "primevue/selectbutton";
-import { useConfirm } from "primevue/useconfirm";
 import { computed, nextTick, reactive, ref, useTemplateRef, watch } from "vue";
 
 import FileSlot from "@/components/base/FileSlot.vue";
+import { useDeleteSong } from "@/composables/useDeleteSong";
 import { useNotify } from "@/composables/useNotify";
 import { RECORDING_FILE_ACCEPT } from "@/core/import/songImport";
 import type Show from "@/core/models/show";
@@ -32,7 +32,7 @@ const emit = defineEmits<{
   cancel: [];
 }>();
 
-const confirm = useConfirm();
+const deleteSongAfterAsking = useDeleteSong();
 const { notifyError } = useNotify();
 
 const PLAYBACK_OPTIONS: { label: string; value: PlaybackMode }[] = [
@@ -134,27 +134,11 @@ async function save(): Promise<void> {
   }
 }
 
-function deleteSong(): void {
+async function deleteSong(): Promise<void> {
   const song = props.song;
-  if (!song) {
-    return;
+  if (song && await deleteSongAfterAsking(props.show, song)) {
+    emit("deleted", song);
   }
-
-  confirm.require({
-    header: "Delete song",
-    message: `Song ${song.number} "${song.title}" will be deleted permanently, including its score and recordings.`,
-    icon: "pi pi-exclamation-triangle",
-    rejectProps: { label: "Cancel", severity: "secondary", text: true },
-    acceptProps: { label: "Delete song", severity: "danger" },
-    accept: async () => {
-      try {
-        await props.show.deleteSong(song);
-        emit("deleted", song);
-      } catch (error) {
-        notifyError("Could not delete the song", error);
-      }
-    },
-  });
 }
 </script>
 
@@ -182,7 +166,7 @@ function deleteSong(): void {
           <label
             for="song-title"
             class="text-sm font-medium text-muted-color"
-          >Title</label>
+          >Song title</label>
           <InputText
             id="song-title"
             v-model="draft.title"
@@ -251,17 +235,25 @@ function deleteSong(): void {
           />
         </template>
 
+        <span
+          v-if="draft.playback !== 'none'"
+          id="song-tracks"
+          class="mt-2 text-sm font-medium text-muted-color"
+        >Tracks</span>
         <div
           v-if="draft.playback !== 'none'"
           class="flex flex-col rounded-md border border-(--p-content-border-color)"
         >
           <div
             ref="trackList"
+            role="list"
+            aria-labelledby="song-tracks"
             class="flex flex-col"
           >
             <div
               v-for="track, i in tracks"
               :key="track.key"
+              role="listitem"
               class="flex items-center gap-2 border-b border-(--p-content-border-color) bg-(--p-content-background) p-2 pl-1"
             >
               <button
@@ -287,6 +279,7 @@ function deleteSong(): void {
                     size="small"
                     :invalid="!!errors.tracks && !track.title.trim()"
                     :aria-label="`Name of track ${i + 1}`"
+                    placeholder="Track name"
                     fluid
                   />
                   <span
@@ -394,19 +387,10 @@ function deleteSong(): void {
       />
       <div class="ml-auto flex gap-2">
         <Button
-          v-if="isNew"
           label="Cancel"
           severity="secondary"
           text
           @click="emit('cancel')"
-        />
-        <Button
-          v-else
-          label="Revert"
-          severity="secondary"
-          text
-          :disabled="!hasChanges || saving"
-          @click="resetDraft"
         />
         <Button
           type="submit"

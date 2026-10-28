@@ -2,7 +2,7 @@ import type { ShortcutAction } from "@/composables/useGlobalShortcuts";
 
 import { isPlainObject, SettingsBase } from "./base";
 
-// Kept in sync with the ShortcutAction union — the `satisfies` produces a
+// Kept in sync with the ShortcutAction union: the `satisfies` produces a
 // compile error if the two ever diverge.
 const SHORTCUT_ACTIONS = [
   "playPause",

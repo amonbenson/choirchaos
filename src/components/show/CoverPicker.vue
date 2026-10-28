@@ -41,7 +41,7 @@ onChange((files) => {
     >
       <Button
         v-if="props.thumbnail"
-        icon="pi pi-trash"
+        icon="pi pi-times"
         severity="secondary"
         size="small"
         aria-label="Remove cover"

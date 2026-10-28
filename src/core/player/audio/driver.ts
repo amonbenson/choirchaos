@@ -1,9 +1,10 @@
 import type { RubberBandNode } from "rubberband-web";
 import { createRubberBandNode } from "rubberband-web";
 
+import type AudioClock from "../audioClock";
 import type { AudioChunk } from "./chunkDetector";
 
-// Processor is served from public/ — copied there by the postinstall script.
+// Processor is served from public/, where the postinstall script copies it.
 // BASE_URL handles deployments at subpaths correctly.
 const processorUrl = `${import.meta.env.BASE_URL}rubberband-processor.js`;
 
@@ -13,10 +14,10 @@ const ANALYSER_GAIN = Math.pow(10, 10 / 20);
 const ANALYSER_ATTACK = 0.9;
 const ANALYSER_RELEASE = 0.97;
 
-// Must match MIDI's AUDIO_CLOCK_OFFSET — visual position leads audio by the same margin.
-const AUDIO_LOOKAHEAD = 0.1;
 // Bridges render-quantum gaps: old sources fade out, new ones fade in over this window.
-const SEEK_CROSSFADE = 0.02;
+const CROSSFADE = 0.02;
+// Longer than the main thread stalls on slow phones, so a jump is scheduled before the recording reaches it.
+const JUMP_LOOKAHEAD = 0.3;
 
 export type TrackOptions = {
   highPassFilter?: boolean;
@@ -27,6 +28,37 @@ export type AudioDriverOptions = {
   tracks: TrackOptions[];
   onAmplitudes: (amplitudes: number[]) => void;
 };
+
+/** A linear gain ramp over `CROSSFADE`, kept so a fade cut short continues from the value it reached. */
+type Fade = { start: number; from: number; to: number };
+
+/**
+ * One continuous run through the recording: the sources of every track from `position` on, starting at
+ * context time `start`. Seeks, jumps and tempo changes replace the playing segment with a new one.
+ */
+type Segment = {
+  position: number;
+  start: number;
+  tempo: number;
+  fadeGains: GainNode[];
+  sources: (AudioBufferSourceNode | undefined)[];
+  fade: Fade;
+  stopTime?: number;
+};
+
+/** A jump scheduled ahead: `segment` takes over at its start, where the playing segment reaches `from`. */
+type PendingJump = { from: number; to: number; segment: Segment; restoreFade: Fade };
+
+const FULL_GAIN: Fade = { start: 0, from: 1, to: 1 };
+
+function getFadeValue(fade: Fade, time: number): number {
+  const progress = Math.min(1, Math.max(0, (time - fade.start) / CROSSFADE));
+  return fade.from + (fade.to - fade.from) * progress;
+}
+
+function getChunkStart(chunk: AudioChunk): number {
+  return chunk.sampleOffset / chunk.audioBuffer.sampleRate;
+}
 
 export default class AudioDriver {
   private rubberBandNode: RubberBandNode;
@@ -42,16 +74,13 @@ export default class AudioDriver {
 
   private tempoValue = 1;
   private pitchValue = 0;
-  private scheduledStartTime = 0;
-  private refPosition = 0;
-  private playing = false;
-  private generation = 0;
-
-  private activeSources: (AudioBufferSourceNode | null)[] = [];
-  private sourceFadeGains: GainNode[] = [];
+  private pausedPosition = 0;
+  private current: Segment | undefined = undefined;
+  private pendingJump: PendingJump | undefined = undefined;
 
   static async create(
     context: AudioContext,
+    clock: AudioClock,
     trackChunks: AudioChunk[][],
     options: AudioDriverOptions,
   ): Promise<AudioDriver> {
@@ -60,11 +89,12 @@ export default class AudioDriver {
       numberOfOutputs: 1,
       outputChannelCount: [2],
     });
-    return new AudioDriver(context, trackChunks, options, rubberBandNode);
+    return new AudioDriver(context, clock, trackChunks, options, rubberBandNode);
   }
 
   private constructor(
     private context: AudioContext,
+    private clock: AudioClock,
     private trackChunks: AudioChunk[][],
     options: AudioDriverOptions,
     rubberBandNode: RubberBandNode,
@@ -141,27 +171,14 @@ export default class AudioDriver {
       this.amplitudeInterval = null;
     }
 
-    this.generation++;
-    this.activeSources.forEach((src) => {
-      if (!src) {
-        return;
-      }
-
-      try {
-        src.stop();
-      } catch {}
-    });
+    this.stopPlayback();
     this.keepAlive.stop();
     this.rubberBandNode.close();
   }
 
+  /** The recording time being played, in seconds. Before a scheduled jump it runs on past the jump's start. */
   getPosition(): number {
-    if (this.playing) {
-      const elapsed = Math.max(0, this.context.currentTime - this.scheduledStartTime);
-      return this.refPosition + elapsed * this.tempoValue;
-    }
-
-    return this.refPosition;
+    return this.current ? this.getSegmentPosition(this.current, this.clock.now()) : this.pausedPosition;
   }
 
   setGain(trackIndex: number, gain: number): void {
@@ -178,16 +195,13 @@ export default class AudioDriver {
       return;
     }
 
-    if (this.playing) {
-      this.refPosition = this.getPosition();
-      this.scheduledStartTime = this.context.currentTime;
-    }
-
+    const position = this.getPosition();
     this.tempoValue = tempo;
     this.applyPitch();
 
-    if (this.playing) {
-      this.crossfadeToPosition(this.refPosition, 0);
+    if (this.current) {
+      this.cancelJump();
+      this.crossfadeTo(position);
     }
   }
 
@@ -201,192 +215,225 @@ export default class AudioDriver {
   }
 
   play(): void {
-    if (this.playing) {
+    if (this.current) {
       return;
     }
 
-    this.scheduledStartTime = this.context.currentTime;
-    this.generation++;
-    const gen = this.generation;
-
-    this.activeSources = new Array(this.trackChunks.length).fill(null);
-    this.sourceFadeGains = this.trackChunks.map((_, i) => {
-      const g = this.context.createGain();
-      g.gain.value = 1;
-      g.connect(this.trackInputs[i]!);
-      return g;
-    });
-
-    for (let i = 0; i < this.trackChunks.length; i++) {
-      this.scheduleTrackFrom(i, this.refPosition, this.context.currentTime, this.sourceFadeGains[i]!, gen);
-    }
-
-    this.playing = true;
+    this.current = this.startSegment(this.pausedPosition, this.clock.now(), FULL_GAIN);
   }
 
   pause(): void {
-    if (!this.playing) {
+    if (!this.current) {
       return;
     }
 
-    this.refPosition = this.getPosition();
-    this.generation++;
-
-    this.activeSources.forEach((src) => {
-      if (!src) {
-        return;
-      }
-
-      try {
-        src.stop();
-      } catch {}
-    });
-    this.activeSources = [];
-    this.sourceFadeGains.forEach(g => g.disconnect());
-    this.sourceFadeGains = [];
-    this.playing = false;
+    this.pausedPosition = this.getPosition();
+    this.stopPlayback();
     this.smoothedAmplitudes.fill(0);
   }
 
+  /** Moves playback to `seconds` at once, cutting hard (user seeks). */
   seek(seconds: number): void {
-    const wasPlaying = this.playing;
-    if (wasPlaying) {
-      this.pause();
-    }
-
-    this.refPosition = seconds;
+    const wasPlaying = !!this.current;
+    this.pause();
+    this.pausedPosition = seconds;
     if (wasPlaying) {
       this.play();
     }
   }
 
-  scheduleSeek(positionSeconds: number, lookahead = AUDIO_LOOKAHEAD): void {
-    if (!this.playing) {
-      this.refPosition = positionSeconds;
+  /**
+   * Schedules a jump from recording time `from` to `to` for the moment playback reaches `from`, once that is
+   * within the lookahead. A different jump replaces it. Announcing the next jump early makes it land exactly
+   * where the recording reaches it, however late the main thread notices.
+   */
+  prepareJump(from: number, to: number): void {
+    const segment = this.current;
+    if (!segment || this.getSegmentTime(segment, from) - this.clock.now() > JUMP_LOOKAHEAD) {
+      this.cancelJump();
       return;
     }
 
-    this.crossfadeToPosition(positionSeconds, lookahead);
+    this.scheduleJump(from, to);
+  }
+
+  /** Drops the jump scheduled by `prepareJump()`, so playback runs on. */
+  cancelJump(): void {
+    const pending = this.pendingJump;
+    const segment = this.current;
+    if (!pending || !segment) {
+      return;
+    }
+
+    this.pendingJump = undefined;
+    const { start } = pending.segment;
+    if (start > this.context.currentTime) {
+      this.stopSegment(pending.segment, this.clock.now());
+      this.restoreFade(segment, pending.restoreFade, start);
+      return;
+    }
+
+    // The crossfade is already being rendered, so playback fades back to where the playing segment is.
+    const now = this.clock.now();
+    this.retireSegment(pending.segment, now);
+    this.crossfadeTo(this.getSegmentPosition(segment, now));
+  }
+
+  /** Jumps from recording time `from` to `to` (route jumps), as prepared or, if the jump came late, at once. */
+  jump(from: number, to: number): void {
+    if (!this.current) {
+      this.pausedPosition = to;
+      return;
+    }
+
+    const pending = this.scheduleJump(from, to);
+    this.pendingJump = undefined;
+    this.stopSegment(this.current, pending.segment.start + CROSSFADE);
+    this.current = pending.segment;
   }
 
   connect(destination: AudioNode): void {
     this.rubberBandNode.connect(destination);
   }
 
-  private crossfadeToPosition(positionSeconds: number, lookahead: number): void {
-    const when = this.context.currentTime + lookahead;
-    const xfadeEnd = when + SEEK_CROSSFADE;
+  private scheduleJump(from: number, to: number): PendingJump {
+    const pending = this.pendingJump;
+    if (pending?.from === from && pending.to === to) {
+      return pending;
+    }
 
-    const oldFadeGains = this.sourceFadeGains;
-    const oldSources = this.activeSources;
+    this.cancelJump();
+    const segment = this.current!;
+    const start = Math.max(this.getSegmentTime(segment, from), this.clock.now());
+    const restoreFade = segment.fade;
+    this.fadeOut(segment, start);
+    this.pendingJump = { from, to, segment: this.startSegment(to, start, { start, from: 0, to: 1 }), restoreFade };
+    return this.pendingJump;
+  }
 
-    oldFadeGains.forEach((g) => {
-      g.gain.setValueAtTime(1, when);
-      g.gain.linearRampToValueAtTime(0, xfadeEnd);
-    });
-    oldSources.forEach((src, i) => {
-      if (!src) {
+  private crossfadeTo(position: number): void {
+    const now = this.clock.now();
+    this.retireSegment(this.current!, now);
+    this.current = this.startSegment(position, now, { start: now, from: 0, to: 1 });
+  }
+
+  private stopPlayback(): void {
+    const now = this.context.currentTime;
+    if (this.pendingJump) {
+      this.stopSegment(this.pendingJump.segment, now);
+      this.pendingJump = undefined;
+    }
+
+    if (this.current) {
+      this.stopSegment(this.current, now);
+      this.current = undefined;
+    }
+  }
+
+  private getSegmentPosition(segment: Segment, time: number): number {
+    return segment.position + Math.max(0, time - segment.start) * segment.tempo;
+  }
+
+  private getSegmentTime(segment: Segment, position: number): number {
+    return segment.start + (position - segment.position) / segment.tempo;
+  }
+
+  private startSegment(position: number, start: number, fade: Fade): Segment {
+    const segment: Segment = {
+      position,
+      start,
+      tempo: this.tempoValue,
+      fadeGains: this.trackChunks.map((_, i) => {
+        const gain = this.context.createGain();
+        gain.gain.setValueAtTime(fade.from, start);
+        gain.gain.linearRampToValueAtTime(fade.to, start + CROSSFADE);
+        gain.connect(this.trackInputs[i]!);
+        return gain;
+      }),
+      sources: this.trackChunks.map(() => undefined),
+      fade,
+    };
+
+    this.trackChunks.forEach((chunks, track) => {
+      const index = chunks.findIndex(chunk => position < getChunkStart(chunk) + chunk.audioBuffer.duration);
+      if (index === -1) {
+        segment.fadeGains[track]!.disconnect();
         return;
       }
 
-      src.onended = () => oldFadeGains[i]?.disconnect();
+      this.startChunk(segment, track, index);
+    });
+
+    return segment;
+  }
+
+  /** Starts a chunk where the segment reaches it, or at once and further in if the segment already passed its start. */
+  private startChunk(segment: Segment, track: number, index: number): void {
+    const chunk = this.trackChunks[track]![index]!;
+    const when = this.getSegmentTime(segment, getChunkStart(chunk));
+    const start = Math.max(when, segment.start, this.context.currentTime);
+    const source = this.context.createBufferSource();
+    source.buffer = chunk.audioBuffer;
+    source.playbackRate.value = segment.tempo;
+    source.connect(segment.fadeGains[track]!);
+    source.start(start, (start - when) * segment.tempo);
+    if (segment.stopTime !== undefined) {
+      source.stop(segment.stopTime);
+    }
+
+    source.onended = () => this.onChunkEnded(segment, track, index);
+    segment.sources[track] = source;
+  }
+
+  private onChunkEnded(segment: Segment, track: number, index: number): void {
+    const next = this.trackChunks[track]![index + 1];
+    const stopped = segment.stopTime !== undefined;
+    if (!next || (stopped && this.getSegmentTime(segment, getChunkStart(next)) >= segment.stopTime!)) {
+      segment.sources[track] = undefined;
+      segment.fadeGains[track]!.disconnect();
+      return;
+    }
+
+    this.startChunk(segment, track, index + 1);
+  }
+
+  /** Ramps the segment's gains to silence from `time`, continuing from wherever an earlier fade got to. */
+  private fadeOut(segment: Segment, time: number): void {
+    const from = getFadeValue(segment.fade, time);
+    segment.fadeGains.forEach((gain) => {
+      gain.gain.cancelScheduledValues(time);
+      gain.gain.setValueAtTime(from, time);
+      gain.gain.linearRampToValueAtTime(0, time + CROSSFADE);
+    });
+    segment.fade = { start: time, from, to: 0 };
+  }
+
+  /** Takes back a fade scheduled from `time` on, finishing the fade the segment had before. */
+  private restoreFade(segment: Segment, fade: Fade, time: number): void {
+    segment.fadeGains.forEach((gain) => {
+      gain.gain.cancelScheduledValues(time);
+      gain.gain.linearRampToValueAtTime(fade.to, Math.max(time, fade.start + CROSSFADE));
+    });
+    segment.fade = fade;
+  }
+
+  private retireSegment(segment: Segment, time: number): void {
+    this.fadeOut(segment, time);
+    this.stopSegment(segment, time + CROSSFADE);
+  }
+
+  /** Stops every source of the segment at `time`. Each source is stopped once, since Safari throws on a second stop(). */
+  private stopSegment(segment: Segment, time: number): void {
+    if (segment.stopTime !== undefined) {
+      return;
+    }
+
+    segment.stopTime = time;
+    segment.sources.forEach((source) => {
       try {
-        src.stop(xfadeEnd);
+        source?.stop(time);
       } catch {}
     });
-
-    this.generation++;
-    const gen = this.generation;
-
-    this.activeSources = new Array(this.trackChunks.length).fill(null);
-    this.sourceFadeGains = this.trackChunks.map((_, i) => {
-      const g = this.context.createGain();
-      g.gain.setValueAtTime(0, when);
-      g.gain.linearRampToValueAtTime(1, xfadeEnd);
-      g.connect(this.trackInputs[i]!);
-      return g;
-    });
-
-    for (let i = 0; i < this.trackChunks.length; i++) {
-      this.scheduleTrackFrom(i, positionSeconds, when, this.sourceFadeGains[i]!, gen);
-    }
-
-    this.refPosition = positionSeconds;
-    this.scheduledStartTime = when;
-  }
-
-  private scheduleTrackFrom(
-    trackIndex: number,
-    positionSeconds: number,
-    when: number,
-    fadeGain: GainNode,
-    gen: number,
-  ): void {
-    const chunks = this.trackChunks[trackIndex]!;
-
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i]!;
-      const chunkStart = chunk.sampleOffset / chunk.audioBuffer.sampleRate;
-      const chunkEnd = chunkStart + chunk.audioBuffer.duration;
-
-      if (positionSeconds >= chunkStart && positionSeconds < chunkEnd) {
-        const offsetInChunk = positionSeconds - chunkStart;
-        const src = this.createSource(chunk.audioBuffer, fadeGain);
-        src.start(when, offsetInChunk);
-        this.activeSources[trackIndex] = src;
-        src.onended = () => this.scheduleNextChunk(trackIndex, i, fadeGain, gen);
-        return;
-      }
-
-      if (positionSeconds < chunkStart) {
-        const timeToChunk = (chunkStart - positionSeconds) / this.tempoValue;
-        const src = this.createSource(chunk.audioBuffer, fadeGain);
-        src.start(when + timeToChunk, 0);
-        this.activeSources[trackIndex] = src;
-        src.onended = () => this.scheduleNextChunk(trackIndex, i, fadeGain, gen);
-        return;
-      }
-    }
-
-    this.activeSources[trackIndex] = null;
-  }
-
-  private scheduleNextChunk(
-    trackIndex: number,
-    currentChunkIndex: number,
-    fadeGain: GainNode,
-    gen: number,
-  ): void {
-    if (this.generation !== gen) {
-      return;
-    }
-
-    const chunks = this.trackChunks[trackIndex]!;
-    const nextChunk = chunks[currentChunkIndex + 1];
-    if (!nextChunk) {
-      this.activeSources[trackIndex] = null;
-      return;
-    }
-
-    const currentChunk = chunks[currentChunkIndex]!;
-    const sr = currentChunk.audioBuffer.sampleRate;
-    const currentChunkEnd = (currentChunk.sampleOffset + currentChunk.audioBuffer.length) / sr;
-    const nextChunkStart = nextChunk.sampleOffset / nextChunk.audioBuffer.sampleRate;
-    const silenceGap = nextChunkStart - currentChunkEnd;
-
-    const when = this.context.currentTime;
-    const src = this.createSource(nextChunk.audioBuffer, fadeGain);
-    src.start(when + silenceGap / this.tempoValue, 0);
-    this.activeSources[trackIndex] = src;
-    src.onended = () => this.scheduleNextChunk(trackIndex, currentChunkIndex + 1, fadeGain, gen);
-  }
-
-  private createSource(audioBuffer: AudioBuffer, fadeGain: GainNode): AudioBufferSourceNode {
-    const src = this.context.createBufferSource();
-    src.buffer = audioBuffer;
-    src.playbackRate.value = this.tempoValue;
-    src.connect(fadeGain);
-    return src;
   }
 
   private applyPitch(): void {

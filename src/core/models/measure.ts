@@ -1,6 +1,3 @@
-import { BinarySortedList } from "../utils/binarySearch";
-import { compareNumberings, type Numbering } from "../utils/numbering";
-
 export type MeasureLayout = {
   readonly page: number;
   readonly x: number;
@@ -28,62 +25,73 @@ export function isSameLayout(a: MeasureLayout, b: MeasureLayout): boolean {
   return a.page === b.page && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 }
 
-export type MeasureNumber = Numbering;
-export type BeatNumber = number;
-export type MeasureReference = [MeasureNumber, BeatNumber];
+/** Stable identity of a measure. Labels are display only and may change. */
+export type MeasureId = string;
 
-export function compareMeasureReferences(a: MeasureReference, b: MeasureReference): number {
-  const nrDiff = compareNumberings(a[0], b[0]);
-  if (nrDiff !== 0) {
-    return nrDiff;
-  } else {
-    return a[1] - b[1];
-  }
-}
+export type StoredMeasure = {
+  id: MeasureId;
+  label: string;
+  beats: number;
+  layout?: MeasureLayout;
+};
+
+const MEASURE_ID_PREFIX = "m";
+const MEASURE_ID_PATTERN = /^m(\d+)$/;
 
 export default class Measure {
   constructor(
-    public value: MeasureNumber,
-    public readonly beats: number,
-    public readonly layout?: MeasureLayout,
-    public $beatTicks: number[] = [],
-    public $tickLength?: number,
-    public $activeTrackIndices: Set<number> = new Set(),
+    public readonly id: MeasureId,
+    public label: string,
+    public beats: number,
+    public layout?: MeasureLayout,
   ) {}
 
-  public _applyBeats(n: number): void {
-    (this as any).beats = Math.max(1, n);
+  public serialize(): StoredMeasure {
+    const stored: StoredMeasure = { id: this.id, label: this.label, beats: this.beats };
+    if (this.layout) {
+      stored.layout = this.layout;
+    }
+
+    return stored;
   }
 
-  public _applyLayout(layout: MeasureLayout | undefined): void {
-    (this as any).layout = layout;
-  }
-
-  public reference(beat: BeatNumber): MeasureReference {
-    return [this.value, beat];
-  }
-
-  public serialize(): any {
-    return {
-      value: this.value,
-      beats: this.beats,
-      layout: this.layout,
-    };
-  }
-
-  public static deserialize({ value, beats, layout }: any): Measure {
-    return new Measure(value, beats, layout);
+  public static deserialize({ id, label, beats, layout }: StoredMeasure): Measure {
+    return new Measure(id, label, beats, layout);
   }
 }
 
-export function compareMeasures(a: Measure, b: Measure): number {
-  return compareNumberings(a.value, b.value);
+/** The IDs following the highest existing one, so removed IDs are never handed out again within the song. */
+export function nextMeasureIds(measures: readonly Measure[], count: number): MeasureId[] {
+  const highest = measures
+    .map(measure => parseInt(measure.id.match(MEASURE_ID_PATTERN)?.[1] ?? "0", 10))
+    .reduce((max, value) => Math.max(max, value), 0);
+  return Array.from({ length: count }, (_, i) => `${MEASURE_ID_PREFIX}${highest + i + 1}`);
 }
 
-export class MeasureList extends BinarySortedList<Measure> {
-  constructor(items?: Measure[]) {
-    super(items, {
-      comparator: (a, b) => compareMeasures(a, b),
-    });
-  }
+export type MeasureAddition = {
+  label: string;
+  beats: number;
+  layout?: MeasureLayout;
+  /** Index in the score after the edit. */
+  index: number;
+};
+
+/** Every change of one inspector box action, saved by `Song.applyMeasureEdit()` in one request. */
+export type MeasureEdit = {
+  additions: MeasureAddition[];
+  removals: MeasureId[];
+  relabels: Map<MeasureId, string>;
+  layouts: Map<MeasureId, MeasureLayout | undefined>;
+  beats: Map<MeasureId, number>;
+  /** The new list of boxes without a measure, or undefined to keep the current one. */
+  unnumberedBoxes?: MeasureLayout[];
+};
+
+export function createEmptyMeasureEdit(): MeasureEdit {
+  return { additions: [], removals: [], relabels: new Map(), layouts: new Map(), beats: new Map() };
+}
+
+export function isEmptyMeasureEdit(edit: MeasureEdit): boolean {
+  return edit.additions.length === 0 && edit.removals.length === 0 && edit.relabels.size === 0
+    && edit.layouts.size === 0 && edit.beats.size === 0 && edit.unnumberedBoxes === undefined;
 }
