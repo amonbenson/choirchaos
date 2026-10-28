@@ -2,7 +2,7 @@
   <svg
     aria-hidden="true"
     xmlns="http://www.w3.org/2000/svg"
-    class="h-2.5 w-[0.4375rem]"
+    class="h-2.5 w-1.75"
     viewBox="0 0 7 12"
   >
     <circle

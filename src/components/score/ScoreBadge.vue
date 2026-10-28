@@ -64,7 +64,7 @@ function onClick(event: MouseEvent): void {
   <component
     :is="isButton ? 'button' : 'span'"
     v-bind="ariaAttrs"
-    class="pointer-events-auto inline-flex h-4 max-w-32 shrink-0 items-center gap-1 rounded-sm px-1 text-[0.625rem] leading-4 font-semibold whitespace-nowrap shadow-sm select-none"
+    class="pointer-events-auto inline-flex h-4 max-w-32 shrink-0 items-center gap-1 rounded-sm px-1 text-[0.625rem]/4 font-semibold whitespace-nowrap shadow-sm select-none"
     :class="[toneClass, stateClass]"
     @click="onClick"
   >

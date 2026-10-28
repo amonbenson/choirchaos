@@ -7,7 +7,7 @@ Nested guides, read before working in their folder: `src/views/AGENTS.md` (pages
 ## Rules
 
 - Never copy content from `tmp/exampleMidi/` (proprietary, format reference only).
-- Never format by hand: `npm run lint:fix`.
+- Never format by hand: `npm run lint:fix`, which also orders Tailwind classes and rewrites them to their canonical form (`shrink-2`, not `shrink-[2]`).
 - No `_` prefixes (use access modifiers; `_` only for ignored callback args). No TypeScript getters: use `get*()`/`is*()`.
 - Avoid comments. If needed, explain why, not what, without special characters (emojis, arrows, decorative lines).
 - Prefer early returns and extracted functions over nesting.

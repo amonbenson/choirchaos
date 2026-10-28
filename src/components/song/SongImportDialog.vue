@@ -173,7 +173,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
   <Dialog
     v-model:visible="visible"
     :header="`Import ${fileCount} ${fileCount === 1 ? 'file' : 'files'}`"
-    class="w-[60rem] max-w-[calc(100vw-2rem)]"
+    class="w-240 max-w-[calc(100vw-2rem)]"
     :closable="!importing"
     modal
   >
@@ -189,7 +189,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
     >
       <span class="text-muted-color">Files are grouped into songs by the number at the start of each file name. Check the numbers and titles, then import.</span>
       <div class="overflow-x-auto">
-        <table class="w-full min-w-[40rem] border-collapse text-left">
+        <table class="w-full min-w-160 border-collapse text-left">
           <thead>
             <tr class="text-sm text-muted-color">
               <th class="w-8" />

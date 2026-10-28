@@ -89,7 +89,7 @@ function cancel(): void {
       <InputText
         id="new-box-start"
         v-model="start"
-        class="w-[7.5rem] text-center"
+        class="w-30 text-center"
         size="small"
         :invalid="result.status === 'invalid'"
       />

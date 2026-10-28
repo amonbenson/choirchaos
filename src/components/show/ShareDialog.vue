@@ -132,7 +132,7 @@ async function copyLink(): Promise<void> {
   <Dialog
     v-model:visible="visible"
     :header="`Share &quot;${show.title}&quot;`"
-    class="w-[34rem] max-w-[calc(100vw-2rem)]"
+    class="w-136 max-w-[calc(100vw-2rem)]"
     modal
     dismissable-mask
   >

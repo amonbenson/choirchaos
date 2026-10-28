@@ -33,7 +33,7 @@ function onDeleted(song: Song): void {
   <Dialog
     v-model:visible="visible"
     header="Song details"
-    class="w-[36rem] max-w-[calc(100vw-2rem)]"
+    class="w-xl max-w-[calc(100vw-2rem)]"
     modal
   >
     <SongDetailsForm

@@ -72,7 +72,7 @@ defineExpose({ place, remove });
       <InputText
         id="box-number"
         v-model="number"
-        class="w-[7.5rem] text-center"
+        class="w-30 text-center"
         size="small"
         :invalid="!!number.trim() && result.status === 'invalid'"
       />
