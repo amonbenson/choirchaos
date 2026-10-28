@@ -34,7 +34,7 @@ Before finishing: `lint:fix`, `typecheck`, `vitest run`, plus `test:e2e` when ba
 |---|---|
 | `src/views/` | Routed pages |
 | `src/components/` | Components by area (`header/`, `show/`, `song/`, `player/`, `editor/`, `score/`), plus generic `base/` and `icons/` |
-| `src/composables/` | Reactive logic: `useEvent()` (core events into Vue), the editor's `useEditorSelection`, `useMeasureEditor` (drawing, placing, review; both set up by `provideSongEditor`), `useRecordingEditor`, `useSyncEditor`, `usePlayerSync`, `useSongHistory`, `useTimelineAxis`, `usePanZoom`, `useConfirmDestructive` |
+| `src/composables/` | Reactive logic: `useEvent()` (core events into Vue), the editor's `useEditorSelection`, `useMeasureEditor` (drawing, placing, review; both set up by `provideSongEditor`), `useRecordingEditor`, `useSyncEditor`, `usePlayerSync`, `useSongHistory`, `useTimelineAxis` (zoom steps in `zoom.ts`), `usePanZoom`, `useConfirmDestructive` |
 | `src/stores/` | Pinia stores, persisted settings in `settings/` (one file per category) |
 | `src/router/` | Routes and guards |
 | `src/theme/` | PrimeVue preset: the only place for accent and surface palettes |
@@ -43,7 +43,7 @@ Before finishing: `lint:fix`, `typecheck`, `vitest run`, plus `test:e2e` when ba
 | `src/core/player/` | Playback engine (MIDI and audio backends) |
 | `src/core/midi/` | MIDI events, beat map import, `WarpMap` (timeline position to recording time) |
 | `src/core/pdf/` | PDF rendering in a worker, measure detection |
-| `src/core/utils/` | `Property`/`Emitter`, song `Numbering`, `Updater`, `ZoomLadder`, small helpers |
+| `src/core/utils/` | `Property`/`Emitter`, song `Numbering`, `Updater`, small helpers |
 | `src/pocketbase/` | Client, auth, DB access |
 | `src/test/` | Unit test setup, fixtures, helpers |
 | `e2e/` | Playwright tests and test data generators |

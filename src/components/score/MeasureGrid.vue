@@ -78,7 +78,7 @@ watch(playingId, (id) => {
 <template>
   <section
     class="size-full overflow-y-auto p-4 lg:px-14"
-    :style="{ paddingBottom: `${(coveredBottom ?? 0) + 16}px` }"
+    :style="{ paddingBottom: `calc(${coveredBottom ?? 0}px + 1rem)` }"
     :aria-labelledby="titleId"
     @pointerdown.capture="rememberPointerType"
   >

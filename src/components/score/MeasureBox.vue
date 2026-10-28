@@ -117,7 +117,7 @@ const surfaceClass = computed(() => {
 
     <i
       v-if="overlays?.synced"
-      class="pi pi-map-marker absolute top-full left-0 mt-px -translate-x-1/2 text-[0.625rem]"
+      class="pi pi-map-marker absolute top-full left-0 mt-0.25 -translate-x-1/2 text-[0.625rem]"
       :class="SYNC_POINT_COLORS.onScore"
       aria-hidden="true"
     />

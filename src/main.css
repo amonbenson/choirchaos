@@ -74,9 +74,10 @@
 @utility hatch-section-cut {
   background-image: repeating-linear-gradient(
     135deg,
-    color-mix(in srgb, var(--color-section-cut) 30%, transparent) 0 6px,
-    transparent 6px 12px
+    color-mix(in srgb, var(--color-section-cut) 30%, transparent) 0 0.375rem,
+    transparent 0.375rem 0.75rem
   );
+  background-attachment: fixed;
 }
 
 @custom-variant touch (@media (pointer: coarse));

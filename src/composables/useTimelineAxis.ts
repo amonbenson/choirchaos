@@ -1,7 +1,7 @@
 import { useElementSize, useEventListener } from "@vueuse/core";
 import { computed, type ComputedRef, type MaybeRefOrGetter, type Ref, shallowRef, toValue } from "vue";
 
-import { getAnchoredOffset, normalizeWheelDelta, ZoomLadder } from "@/core/utils/zoom";
+import { getAnchoredOffset, normalizeWheelDelta, ZoomLadder } from "./zoom";
 
 const ZOOM_STEPS_PER_DOUBLING = 4;
 const BUTTON_ZOOM_STEPS = 2;
