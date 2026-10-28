@@ -26,6 +26,7 @@ const player = vi.hoisted(() => ({
   timeline: [] as TimelinePosition[],
   ready: true,
   currentLocation: undefined as PlayerLocation | undefined,
+  currentTimelinePosition: undefined as TimelinePosition | undefined,
   currentSection: undefined as PlayerSectionState | undefined,
   measureTrackIndices: new Map<MeasureId, Set<number>>(),
   seekPosition: vi.fn(),
@@ -79,6 +80,7 @@ function playAt(position: number, ticksIn = 0): void {
   const state = fakePlayer();
   const entry = state.timeline[position]!;
   state.currentLocation = { position, measure: entry.measure, occurrence: entry.occurrence, beat: 0 };
+  state.currentTimelinePosition = entry;
   state.position = position * TICKS_PER_POSITION + ticksIn;
 }
 
@@ -139,6 +141,7 @@ describe("ScoreViewer", () => {
     vi.clearAllMocks();
     const state = fakePlayer();
     state.currentLocation = undefined;
+    state.currentTimelinePosition = undefined;
     state.currentSection = undefined;
     state.position = 0;
     state.measureTrackIndices = new Map();

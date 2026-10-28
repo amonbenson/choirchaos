@@ -75,7 +75,7 @@ export function useEditorSelection(song: Ref<Song | undefined>, editMode: Ref<bo
     return findMeasureRuns(target.getMeasures(), target.getTimeline(), current.measures.map(measure => measure.id));
   });
 
-  const run = computed(() => pickRun(runs.value, player.currentLocation?.position));
+  const run = computed(() => pickRun(runs.value, player.currentTimelinePosition?.position));
 
   // A single measure shows its resize handles, so touch multi-select ends there and needs another long press.
   watch(selected, (current) => {

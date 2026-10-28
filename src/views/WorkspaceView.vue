@@ -95,7 +95,7 @@ const vampCardType = computed(() => {
   if (player.playing) {
     if (player.currentSection?.kind === "vamp" && !player.currentSection.released) {
       return "vamp";
-    } else if (player.currentSegue?.enabled && player.currentLocation?.position === player.finalLocation?.position) {
+    } else if (player.currentSegue?.enabled && player.currentTimelinePosition?.position === player.finalLocation?.position) {
       return "segue";
     }
   }
@@ -127,9 +127,9 @@ function playPause(): void {
 
 // Stepping follows the recording, so a repeated measure is visited once per pass.
 function stepMeasure(direction: 1 | -1): void {
-  const location = player.ready ? player.currentLocation : undefined;
-  if (location) {
-    player.seekPosition(location.position + direction);
+  const playing = player.ready ? player.currentTimelinePosition : undefined;
+  if (playing) {
+    player.seekPosition(playing.position + direction);
   }
 }
 

@@ -2,8 +2,6 @@
 import { breakpointsTailwind, useBreakpoints, useResizeObserver, useScroll } from "@vueuse/core";
 import Button from "primevue/button";
 import InputNumber from "primevue/inputnumber";
-import InputText from "primevue/inputtext";
-import Slider from "primevue/slider";
 import Toolbar from "primevue/toolbar";
 import { computed, type ComputedRef, useTemplateRef } from "vue";
 
@@ -20,6 +18,8 @@ import { getSectionTicks } from "@/core/player/route";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
 
+import LocationButtons from "./LocationButtons.vue";
+import PositionSlider from "./PositionSlider.vue";
 import ShowBreadcrumb from "./ShowBreadcrumb.vue";
 import UserMenuButton from "./UserMenuButton.vue";
 
@@ -81,16 +81,9 @@ const controlsMask = computed(() => [
 
 const currentSong = computed(() => songs.value.find(song => song.id === props.songId));
 
-const measureLabel = computed(() => {
-  const location = player.ready ? player.currentLocation : undefined;
-  return location ? currentSong.value?.findMeasure(location.measure)?.label : undefined;
-});
-
-const beatLabel = computed(() => player.ready && player.currentLocation
-  ? String(player.currentLocation.beat + 1)
-  : undefined);
-
 const section = computed(() => player.ready ? player.currentSection : undefined);
+
+const atStart = computed(() => player.position <= 0);
 
 const recordedRepeats = computed(() => currentSong.value ? findRecordedRepeats(currentSong.value.getTimeline()) : []);
 
@@ -100,8 +93,8 @@ const shownSection = computed(() => {
     return section.value;
   }
 
-  const location = player.ready ? player.currentLocation : undefined;
-  const pass = location ? getRecordedRepeatPass(recordedRepeats.value, location.position) : undefined;
+  const playing = player.ready ? player.currentTimelinePosition : undefined;
+  const pass = playing ? getRecordedRepeatPass(recordedRepeats.value, playing.position) : undefined;
   return pass ? { kind: "repeat" as const, ...pass, released: false } : undefined;
 });
 
@@ -147,14 +140,14 @@ const sectionRanges = computed(() => {
 
 /** The measure and section the playbar is at, e.g. "19, 2nd time, Vamp pass 2". */
 const positionText = computed(() => {
-  const location = player.ready ? player.currentLocation : undefined;
+  const playing = player.ready ? player.currentTimelinePosition : undefined;
   const song = currentSong.value;
-  if (!location || !song) {
+  if (!playing || !song) {
     return undefined;
   }
 
   const current = section.value;
-  const measure = formatLocation(song, location);
+  const measure = formatLocation(song, playing);
   return current && current.kind !== "cut" ? `${measure}, ${formatPlayingSection(current.kind, current)}` : measure;
 });
 
@@ -221,8 +214,8 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
         #center
       >
         <Button
-          :disabled="songIndex === 0 && player.position <= 0"
-          :icon="`pi ${player.position > 0 ? 'pi-backward' : 'pi-step-backward'}`"
+          :disabled="songIndex === 0 && atStart"
+          :icon="`pi ${atStart ? 'pi-step-backward' : 'pi-backward'}`"
           severity="secondary"
           aria-label="Rewind / Previous Song"
           rounded
@@ -262,47 +255,10 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
             class="ml-auto flex w-max items-center"
             :class="BAR_GAP"
           >
-            <!-- Measure -->
-            <div
+            <LocationButtons
               v-if="visibleButtons.measure"
-              class="flex items-center gap-1"
-            >
-              <PopoverButton
-                button-class="w-12 whitespace-nowrap"
-                :aria-label="measureLabel === undefined ? 'Current measure' : `Current measure ${measureLabel}`"
-                :label="measureLabel ?? '-'"
-                :disabled="!player.ready"
-              >
-                <template #default="{ setFocusTarget }">
-                  <InputText
-                    :ref="setFocusTarget"
-                    :model-value="measureLabel"
-                    aria-label="Current measure"
-                    class="w-16"
-                    fluid
-                    @change="player.setMeasure(($event.target as HTMLInputElement).value)"
-                  />
-                </template>
-              </PopoverButton>
-              .
-              <PopoverButton
-                button-class="w-8 whitespace-nowrap"
-                :aria-label="beatLabel === undefined ? 'Current beat' : `Current beat ${beatLabel}`"
-                :label="beatLabel ?? '-'"
-                :disabled="!player.ready"
-              >
-                <template #default="{ setFocusTarget }">
-                  <InputNumber
-                    :ref="setFocusTarget"
-                    :model-value="(player.currentLocation?.beat ?? 0) + 1"
-                    aria-label="Current beat"
-                    class="w-16"
-                    fluid
-                    @update:model-value="player.setBeat($event - 1)"
-                  />
-                </template>
-              </PopoverButton>
-            </div>
+              :song="currentSong"
+            />
 
             <!-- Transposition -->
             <PopoverButton
@@ -421,17 +377,7 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
       v-if="playback"
       class="absolute -bottom-0.5 left-2 h-1 w-[calc(100%-1rem)]"
     >
-      <Slider
-        :model-value="player.position"
-        :min="0"
-        :max="player.duration"
-        aria-label="Position"
-        class="group w-full bg-transparent"
-        pt:handle:class="scale-50 group-hover:scale-100 active:scale-100 transition-transform z-1"
-        :pt:handle:aria-valuetext="positionText"
-        pt:range:class="h-1"
-        @update:model-value="player.seek($event as number)"
-      />
+      <PositionSlider :value-text="positionText" />
       <!-- Drawn over the played range, so the sections stay visible, and under the handle -->
       <div
         class="pointer-events-none absolute inset-0"

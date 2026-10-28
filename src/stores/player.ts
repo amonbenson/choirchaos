@@ -30,6 +30,8 @@ export const usePlayerStore = defineStore("player", () => {
   const currentTimeSignature = useEvent(globalPlayer.onCurrentTimeSignatureChange, globalPlayer.getCurrentTimeSignature());
   const currentLocation = useEvent<PlayerLocation | undefined>(globalPlayer.onCurrentLocationChange, globalPlayer.getCurrentLocation());
   const finalLocation = useEvent<PlayerLocation | undefined>(globalPlayer.onFinalLocationChange, globalPlayer.getFinalLocation());
+  /** The timeline entry being played. It stays the same object for all its beats, so readers update once per measure. */
+  const currentTimelinePosition = computed(() => currentLocation.value ? timeline.value[currentLocation.value.position] : undefined);
 
   const currentSection = useEvent<PlayerSectionState | undefined>(
     globalPlayer.onCurrentSectionChange,
@@ -145,6 +147,7 @@ export const usePlayerStore = defineStore("player", () => {
     currentTempo,
     currentTimeSignature,
     currentLocation,
+    currentTimelinePosition,
     finalLocation,
     currentSection,
     currentSegue,

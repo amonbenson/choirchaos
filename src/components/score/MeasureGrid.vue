@@ -21,7 +21,7 @@ const { selection, touchMultiSelect } = editorSelection;
 const titleId = useId();
 const list = useTemplateRef<HTMLElement>("list");
 
-const playingId = computed(() => player.currentLocation?.measure);
+const playingId = computed(() => player.currentTimelinePosition?.measure);
 
 let lastPointerType = "mouse";
 let suppressNextClick = false;

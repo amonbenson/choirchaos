@@ -23,6 +23,7 @@ const player = vi.hoisted(() => ({
   playbackTransposition: 0,
   currentSegue: undefined,
   currentLocation: undefined as PlayerLocation | undefined,
+  currentTimelinePosition: undefined as TimelinePosition | undefined,
   currentSection: undefined as PlayerSectionState | undefined,
   timeline: [] as TimelinePosition[],
   setMeasure: () => {},
@@ -75,6 +76,14 @@ function resolveTimeline(): TimelinePosition[] {
   });
 }
 
+/** Plays a beat of a timeline position, as the store reports it. */
+function playAt(position: number, beat = 0): void {
+  const state = fakePlayer();
+  const entry = state.timeline[position]!;
+  state.currentLocation = { position, measure: entry.measure, occurrence: entry.occurrence, beat };
+  state.currentTimelinePosition = entry;
+}
+
 function sectionButton(wrapper: VueWrapper): VueWrapper["element"] {
   return wrapper.findAll("button").find(button => /^(Vamp|Repeat|Exiting|Cut)/.test(button.text()))!.element;
 }
@@ -84,11 +93,11 @@ describe("HeaderBar", () => {
     localStorage.clear();
     setActivePinia(createPinia());
     const state = fakePlayer();
-    state.currentLocation = { position: 4, ...locationOf(song, "2", 0, 2), beat: 1 };
     state.currentSection = undefined;
     state.mode = "midi";
     state.playbackSpeed = 1;
     state.timeline = resolveTimeline();
+    playAt(4, 1);
     state.duration = state.timeline.length * TICKS_PER_POSITION;
   });
 
@@ -151,7 +160,7 @@ describe("HeaderBar", () => {
   });
 
   it("shows Vamp, disabled, outside sections and repeats", () => {
-    fakePlayer().currentLocation = { position: 1, ...locationOf(song, "1"), beat: 0 };
+    playAt(1);
     const button = sectionButton(mountHeader()) as HTMLButtonElement;
 
     expect(button.textContent?.trim()).toBe("Vamp");

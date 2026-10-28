@@ -12,6 +12,7 @@ import type { SongHistoryControls } from "@/composables/useSongHistory";
 import { addMarker } from "@/core/models/markers";
 import { selectMeasures } from "@/core/models/selection";
 import type Song from "@/core/models/song";
+import type { PlayerLocation } from "@/core/player/types";
 import { dbUpdate } from "@/pocketbase/db";
 import { usePlayerStore } from "@/stores/player";
 import { idOf, locationOf, makeAudioSong, makeAudioSongWithRepeat, makeAudioSongWithVamp, makeMidiSong, makeMidiSongWithRepeat } from "@/test/fixtures";
@@ -25,7 +26,8 @@ type FakePosition = { position: number; beatTicks: number[]; endTick: number };
 const player = vi.hoisted(() => ({
   ready: true,
   position: 0,
-  currentLocation: undefined as { position: number; measure: string; occurrence: number; beat: number } | undefined,
+  currentLocation: undefined as PlayerLocation | undefined,
+  currentTimelinePosition: undefined as Omit<PlayerLocation, "beat"> | undefined,
   duration: 2000,
   timeline: [] as FakePosition[],
   seekPosition: (() => {}) as (position: number) => void,
@@ -40,6 +42,13 @@ vi.mock("@/stores/player", async () => {
 
 /** The mocked store, which tests change to move the playhead. */
 const fakePlayer = (): typeof player => usePlayerStore() as unknown as typeof player;
+
+/** Moves the playhead, setting the playing timeline entry as the store derives it. */
+function playAt(location: PlayerLocation | undefined): void {
+  const state = fakePlayer();
+  state.currentLocation = location;
+  state.currentTimelinePosition = location && { position: location.position, measure: location.measure, occurrence: location.occurrence };
+}
 
 vi.mock("@/core/pdf/measureDetector", () => ({ detectMeasures: vi.fn() }));
 
@@ -116,7 +125,7 @@ describe("SongEditorPanel", () => {
     localStorage.clear();
     setActivePinia(createPinia());
     player.position = 0;
-    player.currentLocation = undefined;
+    playAt(undefined);
     player.seekPosition = vi.fn();
     player.seekLocation = vi.fn();
     confirmation.messages = [];
@@ -179,7 +188,7 @@ describe("SongEditorPanel", () => {
 
     it("asks before a new section replaces the ones it overlaps", async () => {
       const mounted = mountPanel(makeMidiSongWithRepeat());
-      fakePlayer().currentLocation = { position: 7, measure: idOf(mounted.song, "3"), occurrence: 3, beat: 0 };
+      playAt({ position: 7, measure: idOf(mounted.song, "3"), occurrence: 3, beat: 0 });
       await select(mounted, ["3", "4"]);
 
       await button(mounted.wrapper, "Add cut").trigger("click");
@@ -221,7 +230,7 @@ describe("SongEditorPanel", () => {
 
     it("adds a marker and selects it with its name ready to type", async () => {
       const mounted = mountPanel(makeMidiSongWithRepeat());
-      fakePlayer().currentLocation = { position: 4, measure: idOf(mounted.song, "2"), occurrence: 2, beat: 0 };
+      playAt({ position: 4, measure: idOf(mounted.song, "2"), occurrence: 2, beat: 0 });
       await select(mounted, ["2"]);
 
       await button(mounted.wrapper, "Add marker at 2, 2nd time").trigger("click");
@@ -300,7 +309,7 @@ describe("SongEditorPanel", () => {
 
     it("moves it to the playhead", async () => {
       const mounted = await mountWithMarker();
-      fakePlayer().currentLocation = { position: 5, measure: idOf(mounted.song, "3"), occurrence: 2, beat: 2 };
+      playAt({ position: 5, measure: idOf(mounted.song, "3"), occurrence: 2, beat: 2 });
       await flushPromises();
 
       await button(mounted.wrapper, "Move to playhead").trigger("click");

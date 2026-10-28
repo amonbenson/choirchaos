@@ -134,6 +134,7 @@ Rehearsers (viewers) only play songs. Editors (editors, owners) also set up show
 
 - `base/` only holds components that know nothing of shows, songs or playback. A component shared by two areas lives with the area that owns the action.
 - Repeated UI is one component: `base/FieldRow` (label and control), `base/StepperInput`, `RemoveButton` (inspector delete). Reuse before writing markup another file already has.
+- Playback must stay smooth on low-end phones, where re-renders compete with audio. The player store changes `position` every step, `currentLocation` every beat, `currentTimelinePosition` every played measure: read the slowest that suffices. Only small leaf components read the faster ones (`MeasurePlaybar`, `TimelinePlayhead`, `PositionSlider`, `LocationButtons`, `TrackGainSlider` for notes and levels), so the page around them never re-renders per step. Computeds that follow playback return primitives or reuse their previous value. Hidden phone tabs stay mounted, so this holds for every panel.
 - PrimeVue components styled with Tailwind. Never `px` sizes: Tailwind classes, else `rem` in the style. For missing behaviour prefer a library (vueuse, peaks.js) over hand-written pointer, scroll or drag code.
 - Reorderable lists: `useSortable` (`@vueuse/integrations`) with a drag handle; in `onUpdate` undo Sortable's DOM move and change the model. Every drag has a non-drag alternative (menu, arrow keys; see `SongDetailsForm`).
 - No `prompt()`/`confirm()`: destructive confirmations use `useConfirmDestructive()`, errors `useNotify()` toasts.

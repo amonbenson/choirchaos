@@ -2,14 +2,14 @@
 import Button from "primevue/button";
 import ButtonGroup from "primevue/buttongroup";
 import Panel from "primevue/panel";
-import Slider from "primevue/slider";
-import { computed, ref, watch } from "vue";
+import { computed, watch } from "vue";
 
 import type Song from "@/core/models/song";
 import type Track from "@/core/models/track";
 import type { TrackClassification } from "@/core/models/track";
-import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
+
+import TrackGainSlider from "./TrackGainSlider.vue";
 
 class MergedTrack {
   constructor(
@@ -28,7 +28,6 @@ class MergedTrack {
   }
 }
 
-const player = usePlayerStore();
 const settingsStore = useSettingsStore();
 
 const props = defineProps<{
@@ -65,6 +64,10 @@ const tracksByClassification = computed<Record<string, (Track | MergedTrack)[]>>
 
   return groups;
 });
+
+function getMembers(track: Track | MergedTrack): Track[] {
+  return track instanceof MergedTrack ? track.tracks : [track];
+}
 
 function trackName(track: Track | MergedTrack): string {
   return track.title.replace(/^-*/, "");
@@ -113,31 +116,6 @@ function setTrackGain(track: Track | MergedTrack, value: number): void {
   }
 }
 
-const trackFlashTriggered = ref<boolean[]>([]);
-
-player.onNote((event) => {
-  if (trackFlashTriggered.value[event.trackIndex] || (tracks.value[event.trackIndex]?.mixer.effectiveGain ?? 0) < 0.01) {
-    return;
-  }
-
-  trackFlashTriggered.value[event.trackIndex] = true;
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      trackFlashTriggered.value[event.trackIndex] = false;
-    });
-  });
-});
-
-const isAudioMode = computed(() => player.mode === "audio");
-
-function trackAmplitude(track: Track | MergedTrack): number {
-  const indices = track instanceof MergedTrack
-    ? track.tracks.map(t => t.mixer.index)
-    : [track.mixer.index];
-
-  return Math.max(0, ...indices.map(i => player.trackAmplitudes[i] ?? 0));
-}
-
 // Tracks are replaced when the song details are saved, so the stored mixer settings are applied again.
 watch(() => [props.showId, props.song, ...(props.song?.tracks ?? [])], () => {
   const song = props.song;
@@ -148,16 +126,13 @@ watch(() => [props.showId, props.song, ...(props.song?.tracks ?? [])], () => {
   for (const metaTrack of Object.values(tracksByClassification.value).flat()) {
     const stored = settingsStore.getTrackMixer(props.showId, metaTrack.title);
 
-    const tracks = metaTrack instanceof MergedTrack ? metaTrack.tracks : [metaTrack];
-    for (const track of tracks) {
+    for (const track of getMembers(metaTrack)) {
       song.setTrackGain(track.mixer.index, stored.gain);
       song.setTrackMute(track.mixer.index, stored.mute);
       song.setTrackSolo(track.mixer.index, stored.solo);
       song.setTrackHighlight(track.mixer.index, stored.highlight);
     }
   }
-
-  trackFlashTriggered.value = Array(song.tracks.length).fill(false);
 }, { immediate: true });
 </script>
 
@@ -236,29 +211,12 @@ watch(() => [props.showId, props.song, ...(props.song?.tracks ?? [])], () => {
                   @click="setTrackHighlight(track)"
                 />
               </ButtonGroup>
-              <div class="relative mx-2 flex-1">
-                <Slider
-                  :model-value="track.mixer.gain"
-                  class="w-full"
-                  :min="0"
-                  :max="1"
-                  :step="0.001"
-                  :aria-label="`Volume of ${trackName(track)}`"
-                  :pt:range:class="!isAudioMode && trackFlashTriggered[track.mixer.index] ? 'bg-primary transition-none' : 'bg-(--p-slider-track-background) transition-colors duration-500'"
-                  pt:handle="!z-[2]"
-                  @update:model-value="setTrackGain(track, $event as number)"
-                />
-                <div
-                  v-if="isAudioMode"
-                  class="pointer-events-none absolute inset-0 z-1 flex items-center"
-                  aria-hidden="true"
-                >
-                  <div
-                    class="h-0.75 rounded-full bg-primary/70 transition-none"
-                    :style="{ width: `${trackAmplitude(track) * 100}%` }"
-                  />
-                </div>
-              </div>
+              <TrackGainSlider
+                :tracks="getMembers(track)"
+                :gain="track.mixer.gain"
+                :name="trackName(track)"
+                @update:gain="setTrackGain(track, $event)"
+              />
             </div>
           </div>
         </div>

@@ -19,6 +19,7 @@ import {
   getSyncPlaceKey,
   getWarpMarkerCandidates,
   isRecordingEnd,
+  isSameSyncPlace,
   type PositionedSyncPoint,
   type SyncPlace,
 } from "@/core/models/warpEditing";
@@ -30,6 +31,7 @@ import { useSettingsStore } from "@/stores/settings";
 import { SYNC_POINT_COLORS } from "./syncColors";
 import TimelineLanes, { type LaneName } from "./TimelineLanes.vue";
 import TimelineMeasureRuler from "./TimelineMeasureRuler.vue";
+import TimelinePlayhead from "./TimelinePlayhead.vue";
 import TimelineScrollbar from "./TimelineScrollbar.vue";
 import TimelineTimeRuler from "./TimelineTimeRuler.vue";
 import WaveformView, { getWaveformBaseScale } from "./WaveformView.vue";
@@ -82,7 +84,6 @@ const axis = useTimelineAxis(axisElement, {
 
 const currentTime = computed(() => player.position / MILLISECONDS_PER_SECOND);
 const duration = computed(() => player.duration / MILLISECONDS_PER_SECOND);
-const playheadX = computed(() => player.ready && axis.isVisible(player.position) ? Math.round(axis.toX(player.position)) : undefined);
 
 const positionedMarkers = computed(() => getPositionedSyncPoints(player.timeline, props.song.getSyncPoints()));
 const markersByKey = computed(() => new Map(positionedMarkers.value.map(marker => [getSyncPlaceKey(marker.place), marker])));
@@ -100,7 +101,12 @@ const syncLines = computed(() => markers.value.flatMap(({ id, time }) => {
   return axis.isVisible(tick) ? [{ id, x: Math.round(axis.toX(tick)) }] : [];
 }));
 
-const candidates = computed(() => getWarpMarkerCandidates(player.timeline, props.song.getSyncPoints(), currentTime.value, duration.value));
+// The places only change where the playhead passes a sync point, so the timeline does not re-render on every player step.
+const candidates = computed<SyncPlace[]>((previous) => {
+  const next = getWarpMarkerCandidates(player.timeline, props.song.getSyncPoints(), currentTime.value, duration.value);
+  const isSame = previous?.length === next.length && next.every((place, i) => isSameSyncPlace(place, previous[i]!));
+  return isSame ? previous : next;
+});
 
 const candidateOptions = computed(() => candidates.value.map(candidate => ({
   label: upperFirst(getLabel(candidate)),
@@ -402,12 +408,7 @@ watch(() => player.position, (tick) => {
               aria-hidden="true"
             />
           </div>
-          <div
-            v-if="playheadX !== undefined"
-            class="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-primary"
-            :style="{ left: `${playheadX}px` }"
-            aria-hidden="true"
-          />
+          <TimelinePlayhead :axis="axis" />
         </div>
         <TimelineScrollbar :axis="axis" />
       </div>

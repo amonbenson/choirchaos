@@ -36,7 +36,7 @@ import { usePlayerStore } from "@/stores/player";
 import { type ArrangementKey, useSettingsStore } from "@/stores/settings";
 
 import DrawLayer from "./DrawLayer.vue";
-import MeasureBox, { type PlayingBox } from "./MeasureBox.vue";
+import MeasureBox from "./MeasureBox.vue";
 import PdfViewer, { type ViewInsets } from "./PdfViewer.vue";
 import ScoreBadge from "./ScoreBadge.vue";
 import ScoreBox from "./ScoreBox.vue";
@@ -90,9 +90,9 @@ const measuresByPage = computed(() => groupByPage(props.song?.getMeasures() ?? [
 
 const highlightedTracks = computed(() => new Set(props.song?.tracks.flatMap((track, i) => track.mixer.highlight ? [i] : []) ?? []));
 
-function isHighlighted(measure: Measure): boolean {
-  return [...player.measureTrackIndices.get(measure.id) ?? []].some(track => highlightedTracks.value.has(track));
-}
+const highlightedMeasures = computed(() => new Set([...player.measureTrackIndices]
+  .filter(([, tracks]) => [...tracks].some(track => highlightedTracks.value.has(track)))
+  .map(([measure]) => measure)));
 
 function isResizable(measure: Measure): boolean {
   const current = selected.value;
@@ -155,21 +155,7 @@ function unnumberedClass(box: MeasureLayout): string {
 
 // Playback
 
-const currentMeasureId = computed(() => player.currentLocation?.measure);
-
-const playingBox = computed<PlayingBox | undefined>(() => {
-  const location = player.currentLocation;
-  const position = location ? player.timeline[location.position] : undefined;
-  if (!location || !position || !props.song) {
-    return undefined;
-  }
-
-  // Every pass of a measure moves the playbar of the same box.
-  const start = position.beatTicks[0] ?? 0;
-  const length = position.endTick - start;
-  const progress = length > 0 ? Math.max(0, Math.min(1, (player.position - start) / length)) : 0;
-  return { progress };
-});
+const currentMeasureId = computed(() => player.currentTimelinePosition?.measure);
 
 // Arrangement
 
@@ -580,8 +566,8 @@ async function onResizeEnd(measure: Measure): Promise<void> {
             :edit-mode="!!editMode"
             :selection="selection"
             :overlays="boxOverlays.get(measure.id)"
-            :playing="currentMeasureId === measure.id ? playingBox : undefined"
-            :highlighted="isHighlighted(measure)"
+            :playing="currentMeasureId === measure.id"
+            :highlighted="highlightedMeasures.has(measure.id)"
             :resizable="isResizable(measure)"
             :dimmed="previewing"
             @click.stop="onBoxClick($event, measure)"

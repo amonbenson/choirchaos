@@ -9,14 +9,10 @@ import type { BoxOverlays } from "@/core/models/scoreOverlays";
 import { isMarkerSelected, isMeasureSelected, type Selection } from "@/core/models/selection";
 
 import BoxResizeHandle from "./BoxResizeHandle.vue";
+import MeasurePlaybar from "./MeasurePlaybar.vue";
 import ScoreBadge from "./ScoreBadge.vue";
 import ScoreBox from "./ScoreBox.vue";
 import ScoreLane from "./ScoreLane.vue";
-
-export type PlayingBox = {
-  /** How far the playing pass has got through the measure, from 0 to 1. */
-  progress: number;
-};
 
 const props = defineProps<{
   measure: Measure;
@@ -25,7 +21,8 @@ const props = defineProps<{
   editMode: boolean;
   selection: Selection;
   overlays?: BoxOverlays;
-  playing?: PlayingBox;
+  /** The playhead is in this measure. */
+  playing: boolean;
   /** A highlighted track plays in this measure. */
   highlighted: boolean;
   resizable: boolean;
@@ -82,11 +79,7 @@ const surfaceClass = computed(() => {
       hidden
     >{{ overlays.description }}</span>
 
-    <div
-      v-if="playing"
-      class="pointer-events-none absolute top-0 h-full w-1 -translate-x-1/2 rounded-full bg-primary"
-      :style="{ left: `${playing.progress * 100}%` }"
-    />
+    <MeasurePlaybar v-if="playing" />
 
     <ScoreLane
       v-if="overlays?.markers.length"

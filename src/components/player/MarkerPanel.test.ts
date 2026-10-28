@@ -6,14 +6,14 @@ import { reactive } from "vue";
 import { addMarker } from "@/core/models/markers";
 import type { Location } from "@/core/models/recording";
 import type Song from "@/core/models/song";
-import type { PlayerLocation } from "@/core/player/types";
+import type { TimelinePosition } from "@/core/player/timeline";
 import { usePlayerStore } from "@/stores/player";
 import { locationOf, makeMidiSongWithRepeat } from "@/test/fixtures";
 
 import MarkerPanel from "./MarkerPanel.vue";
 
 const player = vi.hoisted(() => ({
-  currentLocation: undefined as PlayerLocation | undefined,
+  currentTimelinePosition: undefined as Pick<TimelinePosition, "position" | "measure" | "occurrence"> | undefined,
   duration: 1000,
   seekLocation: vi.fn(),
   getLocationTick: vi.fn((_location: Location): number | undefined => 250),
@@ -51,7 +51,7 @@ function mountPanel(song: Song): VueWrapper {
 describe("MarkerPanel", () => {
   afterEach(() => {
     vi.clearAllMocks();
-    player.currentLocation = undefined;
+    player.currentTimelinePosition = undefined;
   });
 
   it("names each marker with its location and occurrence", async () => {
@@ -83,11 +83,11 @@ describe("MarkerPanel", () => {
 
   it("highlights the marker of the playing occurrence only", async () => {
     const song = await makeSongWithMarkers();
-    player.currentLocation = { position: 2, ...locationOf(song, "2"), beat: 0 };
+    player.currentTimelinePosition = { position: 2, ...locationOf(song, "2") };
     const wrapper = mountPanel(song);
     expect(wrapper.findAll("li button").map(button => button.classes("bg-marker"))).toEqual([false, false]);
 
-    fakePlayer().currentLocation = { position: 4, ...locationOf(song, "2", 0, 2), beat: 0 };
+    fakePlayer().currentTimelinePosition = { position: 4, ...locationOf(song, "2", 0, 2) };
     await flushPromises();
 
     expect(wrapper.findAll("li button").map(button => button.classes("bg-marker"))).toEqual([false, true]);
