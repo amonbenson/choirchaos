@@ -56,7 +56,7 @@ const surfaceClass = computed(() => {
   }
 
   return review.value
-    ? "outline-2 outline-review bg-review-fill/15 hover:bg-review-fill/30"
+    ? "outline-2 outline-warn bg-warn/15 hover:bg-warn/30"
     : "outline outline-primary/70 bg-primary/10 hover:bg-primary/25";
 });
 </script>

@@ -79,7 +79,7 @@ Icon-only "Undo"/"Redo" sit in the inspector's title row, visible on phones with
 
 ### Detection Review
 
-- While a result exists, the score shows dashed boxes (`review` color when unsure, `unnumbered` color with "?" without a number), dims existing boxes and is not editable until applied or discarded. Applied leftovers stay marked the same way.
+- While a result exists, the score shows dashed boxes (`warn` when unsure, `danger` with "?" without a number), dims existing boxes and is not editable until applied or discarded. Applied leftovers stay marked the same way.
 - Boxes without a number are their own selection kind: one is numbered or removed, several only removed.
 - The review bar steps through leftovers in reading order. Without a focused field, Enter confirms, typing corrects the number, Delete removes. Review buttons release focus after a click, or Enter would hit them again.
 

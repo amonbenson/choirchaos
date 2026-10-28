@@ -30,7 +30,7 @@ const summary = computed(() => {
     <span class="flex items-start gap-2 text-sm">
       <i
         class="pi mt-0.5"
-        :class="count >= MIN_SYNC_POINTS ? 'pi-check text-primary' : 'pi-info-circle text-muted-color'"
+        :class="count >= MIN_SYNC_POINTS ? 'pi-check text-primary-text' : 'pi-info-circle text-muted-color'"
         aria-hidden="true"
       />
       {{ summary }}

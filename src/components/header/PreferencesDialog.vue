@@ -301,7 +301,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                 <!-- Recording state -->
                 <button
                   v-if="recording === action"
-                  class="animate-pulse cursor-default rounded border border-primary px-3 py-1 text-sm text-primary"
+                  class="animate-pulse cursor-default rounded border border-primary px-3 py-1 text-sm text-primary-text"
                 >
                   Press a key...
                 </button>

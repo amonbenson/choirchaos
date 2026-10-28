@@ -4,53 +4,71 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Overwrites to PrimeVue's colors. Aura changes the primary shade and its contrast per color scheme,
+ * this app keeps them the same. Unlayered, so they win over PrimeVue's layered theme.
+ */
+:root {
+  --p-primary-color: var(--p-primary-400);
+  --p-primary-hover-color: var(--p-primary-500);
+  --p-primary-active-color: var(--p-primary-600);
+  --p-primary-contrast-color: var(--p-surface-900);
+
+  --p-mask-background: color-mix(in srgb, var(--color-scrim) 50%, transparent);
+  --p-mask-color: var(--color-scrim-contrast);
+}
+
 @theme {
   --color-surface: var(--p-content-background);
 
-  /* Overwrite PrimeVue's primary contrat color in light mode. */
-  --color-primary-contrast: var(--color-surface-900);
-
-  /* Section kinds on the score, the playbar and the editor. Text on them uses section-contrast. */
+  /*
+   * Fixed colors, which no theme changes. Colored surfaces use the 400 shade in both color schemes,
+   * colored text the 600 shade in light and the 400 shade in dark mode.
+   */
   --color-section-repeat: var(--color-sky-400);
   --color-section-vamp: var(--color-violet-400);
   --color-section-cut: var(--color-slate-300);
   --color-section-contrast: var(--color-slate-950);
 
-  /* Markers wherever they show. */
-  --color-marker: var(--color-primary-500);
-  --color-marker-contrast: var(--color-slate-950);
+  /* Orange, so sync points never look like the primary colored playhead. */
+  --color-sync: var(--color-orange-400);
+  --color-sync-text: var(--color-orange-600);
 
-  /* Text and icons that name an open issue, such as import warnings or the next setup step. */
-  --color-attention: var(--color-orange-600);
-  /* PrimeVue only defines danger per component, and only once that component's style is loaded. */
-  --color-danger: var(--color-red-500);
-
-  /* Sync points, orange so they never look like the primary colored playhead. */
-  --color-sync: var(--color-orange-600);
-
-  /* Detection results still to review, in panels. */
-  --color-review-text: var(--color-amber-700);
-  --color-review-surface: var(--color-amber-50);
-  --color-review-border: var(--color-amber-300);
-
-  /*
-   * Drawn on the score page, which stays white in dark mode, so these have no dark override.
-   * The legends and marks in panels reuse them to match the score.
-   */
-  --color-review: var(--color-amber-500);
-  --color-review-fill: var(--color-amber-400);
-  --color-review-contrast: var(--color-amber-950);
-  --color-unnumbered: var(--color-red-500);
-  --color-unnumbered-contrast: var(--color-white);
-  --color-score-sync: var(--color-orange-600);
   --color-track-highlight: var(--color-sky-400);
+
+  /* TODO: only used by the jump chips on the score, remove together with them. */
   --color-score-chip: var(--color-white);
   --color-score-chip-border: var(--color-slate-700);
   --color-score-chip-contrast: var(--color-slate-800);
 
-  /* Covers the page while it loads. */
+  /* Behind every full page overlay, PrimeVue's dialog masks included. */
   --color-scrim: var(--color-black);
   --color-scrim-contrast: var(--color-white);
+
+  /*
+   * Theme colors. PrimeVue only defines severities per component, and only once that component's
+   * style is loaded, so they are repeated here with Aura's palettes.
+   */
+  --color-primary-text: var(--color-primary-600);
+
+  --color-marker: var(--color-primary);
+  --color-marker-contrast: var(--color-primary-contrast);
+
+  --color-info: var(--color-sky-400);
+  --color-info-contrast: var(--color-slate-950);
+  --color-info-text: var(--color-sky-600);
+  --color-success: var(--color-green-400);
+  --color-success-contrast: var(--color-slate-950);
+  --color-success-text: var(--color-green-600);
+  --color-warn: var(--color-orange-400);
+  --color-warn-contrast: var(--color-slate-950);
+  --color-warn-text: var(--color-orange-600);
+  --color-help: var(--color-purple-400);
+  --color-help-contrast: var(--color-slate-950);
+  --color-help-text: var(--color-purple-600);
+  --color-danger: var(--color-red-400);
+  --color-danger-contrast: var(--color-slate-950);
+  --color-danger-text: var(--color-red-600);
 }
 
 @layer base {
@@ -58,16 +76,15 @@
     @apply size-full select-none bg-surface;
   }
 
-  /* Optional overwrites in dark mode */
   .dark {
-    --color-primary-contrast: var(--color-surface-900);
+    --color-sync-text: var(--color-orange-400);
 
-    --color-attention: var(--color-orange-400);
-    --color-sync: var(--color-orange-400);
-
-    --color-review-text: var(--color-amber-400);
-    --color-review-surface: color-mix(in oklab, var(--color-amber-950) 40%, transparent);
-    --color-review-border: var(--color-amber-700);
+    --color-primary-text: var(--color-primary-400);
+    --color-info-text: var(--color-sky-400);
+    --color-success-text: var(--color-green-400);
+    --color-warn-text: var(--color-orange-400);
+    --color-help-text: var(--color-purple-400);
+    --color-danger-text: var(--color-red-400);
   }
 
   kbd {

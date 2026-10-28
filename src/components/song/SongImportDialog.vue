@@ -258,7 +258,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
                 <div
                   v-for="warning in resolve(row).warnings"
                   :key="warning"
-                  class="mt-1 text-xs text-attention"
+                  class="mt-1 text-xs text-warn-text"
                 >
                   {{ warning }}
                 </div>
@@ -267,7 +267,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
                 <div class="flex items-center gap-2">
                   <i
                     v-if="row.status === 'running'"
-                    class="pi pi-spin pi-spinner text-primary"
+                    class="pi pi-spin pi-spinner text-primary-text"
                     role="img"
                     aria-label="Importing"
                   />
@@ -290,7 +290,7 @@ function fileChips(row: EditableRow): { icon: string; label: string }[] {
                 </div>
                 <div
                   v-if="row.status === 'error'"
-                  class="mt-1 text-xs text-danger"
+                  class="mt-1 text-xs text-danger-text"
                 >
                   {{ row.error }}
                 </div>

@@ -130,8 +130,8 @@ function visibleMeasures(page: number): Measure[] {
 type PreviewTone = "unnumbered" | "review" | "primary";
 
 const PREVIEW_SURFACES: Record<PreviewTone, string> = {
-  unnumbered: "outline-unnumbered bg-unnumbered/10",
-  review: "outline-review bg-review-fill/15",
+  unnumbered: "outline-danger bg-danger/10",
+  review: "outline-warn bg-warn/15",
   primary: "outline-primary bg-primary/10",
 };
 
@@ -146,7 +146,7 @@ function previewTone(box: PreviewBox): PreviewTone {
 function unnumberedClass(box: MeasureLayout): string {
   return isBoxSelected(selection.value, box)
     ? "outline-2 outline-primary bg-primary/30"
-    : "outline-2 outline-unnumbered/80 bg-unnumbered/10 hover:bg-unnumbered/20";
+    : "outline-2 outline-danger/80 bg-danger/10 hover:bg-danger/20";
 }
 
 // Playback

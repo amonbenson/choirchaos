@@ -238,7 +238,7 @@ async function copyLink(): Promise<void> {
           class="text-sm font-medium text-muted-color"
         >General access</span>
         <div class="flex items-center gap-3">
-          <span class="flex size-10 flex-none items-center justify-center rounded-full bg-primary/15 text-primary">
+          <span class="flex size-10 flex-none items-center justify-center rounded-full bg-primary/15 text-primary-text">
             <i
               :class="`pi ${visibility.icon}`"
               aria-hidden="true"

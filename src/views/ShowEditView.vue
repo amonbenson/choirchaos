@@ -310,7 +310,7 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
         >
           <div class="flex w-full max-w-2xl flex-col items-center gap-4 rounded-lg border-2 border-dashed border-surface-300 px-4 py-12 text-center sm:px-8 dark:border-surface-700">
             <i
-              class="pi pi-cloud-upload text-6xl text-primary"
+              class="pi pi-cloud-upload text-6xl text-primary-text"
               aria-hidden="true"
             />
             <div class="text-xl font-semibold">
@@ -479,9 +479,9 @@ function playbackSummary(song: Song): { icon: string; label: string } | undefine
     <!-- Drop overlay -->
     <div
       v-if="isOverDropZone && show"
-      class="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-primary/10 backdrop-blur-sm"
+      class="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-scrim/50 backdrop-blur-sm"
     >
-      <div class="flex flex-col items-center gap-2 text-primary">
+      <div class="flex flex-col items-center gap-2 text-scrim-contrast">
         <i
           class="pi pi-cloud-upload text-6xl"
           aria-hidden="true"

@@ -60,7 +60,7 @@ async function deleteShow(): Promise<void> {
     >
       <div class="flex gap-3">
         <i
-          class="pi pi-exclamation-triangle mt-0.5 text-2xl text-danger"
+          class="pi pi-exclamation-triangle mt-0.5 text-2xl text-danger-text"
           aria-hidden="true"
         />
         <span>

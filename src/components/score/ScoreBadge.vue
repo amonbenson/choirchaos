@@ -23,8 +23,8 @@ const emit = defineEmits<{
 const TONES: Record<Exclude<BadgeTone, SectionKind>, string> = {
   primary: "bg-primary text-primary-contrast",
   marker: `${MARKER_COLORS.background} ${MARKER_COLORS.contrast}`,
-  review: "bg-review-fill text-review-contrast",
-  unnumbered: "bg-unnumbered text-unnumbered-contrast",
+  review: "bg-warn text-warn-contrast",
+  unnumbered: "bg-danger text-danger-contrast",
   neutral: "bg-score-chip/95 text-score-chip-contrast inset-ring inset-ring-score-chip-border",
 };
 
