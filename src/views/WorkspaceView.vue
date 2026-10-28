@@ -9,7 +9,7 @@ import { useRoute, useRouter } from "vue-router";
 
 import KbdShortcut from "@/components/base/KbdShortcut.vue";
 import SongEditorPanel from "@/components/editor/SongEditorPanel.vue";
-import TimelinePanel from "@/components/editor/warp/TimelinePanel.vue";
+import TimelinePanel from "@/components/editor/timeline/TimelinePanel.vue";
 import HeaderBar from "@/components/header/HeaderBar.vue";
 import BabySvenja from "@/components/icons/BabySvenja.vue";
 import MarkerPanel from "@/components/player/MarkerPanel.vue";
@@ -54,7 +54,7 @@ const showTimeline = computed(() => editMode.value && !!song.value);
 const hasMarkers = computed(() => (song.value?.getMarkers().length ?? 0) > 0);
 const hasStartPanel = computed(() => editMode.value || hasMarkers.value);
 const isStartPanelOpen = computed(() => hasStartPanel.value && settings.current.workspace.panelVisible.markers);
-const isTimelineOpen = computed(() => showTimeline.value && settings.current.workspace.panelVisible.warp);
+const isTimelineOpen = computed(() => showTimeline.value && settings.current.workspace.panelVisible.timeline);
 const showSyncNotice = computed(() => !!song.value && hasUnsyncedAudio(song.value) && !isTimelineOpen.value);
 
 provideSongEditor(song, editMode);
@@ -65,13 +65,13 @@ const history = useSongHistory(song, editMode);
 // over the score and the timeline, which gets a tab of its own since it needs the width.
 const tabs = computed(() => [
   ...(editMode.value || !hasMarkers.value ? [] : [{ value: "markers", label: "Markers" } as const]),
-  { value: "pdf", label: "Score" } as const,
+  { value: "score", label: "Score" } as const,
   ...(showTimeline.value ? [{ value: "timeline", label: "Timeline" } as const] : []),
   { value: "mixer", label: "Mixer" } as const,
 ]);
 const selectedTab = computed(() => tabs.value.some(tab => tab.value === settings.current.workspace.selectedTab)
   ? settings.current.workspace.selectedTab
-  : "pdf");
+  : "score");
 
 const isSheetLayout = useBreakpoints(breakpointsTailwind).smaller("lg");
 const editorPanel = ref();
@@ -418,7 +418,7 @@ const pdfLoading = ref(false);
       <!-- PDF Panel -->
       <div
         class="absolute inset-0 lg:relative lg:inset-auto lg:size-full"
-        :class="selectedTab !== 'pdf' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : ''"
+        :class="selectedTab !== 'score' ? 'pointer-events-none invisible lg:pointer-events-auto lg:visible' : ''"
       >
         <div class="absolute inset-0">
           <ScoreViewer

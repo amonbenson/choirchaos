@@ -49,7 +49,7 @@ const laneTitleIds = Object.fromEntries(LANES.map(lane => [lane, `${laneIdPrefix
 
 // Below lg the timeline is a tab of its own, so it is always open there.
 const isDesktop = useMediaQuery("(min-width: 64rem)");
-const collapsed = computed(() => isDesktop.value && !settings.current.workspace.panelVisible.warp);
+const collapsed = computed(() => isDesktop.value && !settings.current.workspace.panelVisible.timeline);
 const isAudio = computed(() => props.song.playerMode === "audio");
 const rootClass = computed(() => {
   if (!isDesktop.value) {
@@ -238,7 +238,7 @@ watch(() => player.position, (tick) => {
     pt:content-container="flex-1 min-h-0 overflow-hidden"
     pt:content-wrapper="h-full min-w-0"
     pt:content="h-full pt-0 pb-2"
-    @update:collapsed="settings.togglePanelVisible('warp')"
+    @update:collapsed="settings.togglePanelVisible('timeline')"
   >
     <template #header>
       <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1">

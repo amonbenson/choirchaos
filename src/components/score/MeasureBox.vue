@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, useId } from "vue";
 
-import { SYNC_POINT_COLORS } from "@/components/editor/warp/syncColors";
+import { SYNC_POINT_COLORS } from "@/components/editor/timeline/syncColors";
 import RepeatSignIcon from "@/components/icons/RepeatSignIcon.vue";
 import type { Marker } from "@/core/models/markers";
 import Measure, { type MeasureLayout, needsReview } from "@/core/models/measure";

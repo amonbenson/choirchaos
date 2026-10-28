@@ -59,7 +59,7 @@ Icon-only "Undo"/"Redo" sit in the inspector's title row, visible on phones with
 
 ### Timeline
 
-`editor/warp/TimelinePanel`: lanes for markers, sections, recording passes and measures, plus the waveform with sync points for audio songs (MIDI songs: same component without waveform).
+`editor/timeline/TimelinePanel`: lanes for markers, sections, recording passes and measures, plus the waveform with sync points for audio songs (MIDI songs: same component without waveform).
 
 - **One axis:** `useTimelineAxis` owns zoom and scroll for lanes, waveform, the single playhead element and `TimelineScrollbar`. Scale is whole units (samples or ticks) per pixel, offset whole pixels, matching how peaks.js draws and scrolls, so everything lines up on the same pixel. Ctrl or pinch wheel zooms around the pointer, sideways or shift wheel scrolls, and a playhead that leaves the view is scrolled back in (except while scrubbing).
 - **peaks.js only draws** the waveform, its time axis and sync points: transparent playhead, no pointer events, no own scrolling or zooming. The scrollbar is our own, since a native one cannot be as wide as a song zoomed to single samples.
@@ -84,7 +84,7 @@ Icon-only "Undo"/"Redo" sit in the inspector's title row, visible on phones with
 
 ## Layout Across Screen Sizes
 
-- **Panels:** from `lg`, side panels sit next to the score and the timeline collapses to its header (`workspace.panelVisible.warp`). Below `lg` one panel shows at a time behind tabs ("Markers", "Score", "Timeline", "Mixer"; a new panel needs a tab). Panels and the timeline share a grid cell and both name `row-start-3 col-start-1`, since auto-placement would add implicit rows or columns.
+- **Panels:** from `lg`, side panels sit next to the score and the timeline collapses to its header (`workspace.panelVisible.timeline`). Below `lg` one panel shows at a time behind tabs ("Markers", "Score", "Timeline", "Mixer"; a new panel needs a tab). Panels and the timeline share a grid cell and both name `row-start-3 col-start-1`, since auto-placement would add implicit rows or columns.
 - **Bottom sheet:** below `lg` the inspector is a sheet over at most half the score, collapsed to its title row until tapped, selected or drawing. It is one instance moved by CSS (inputs never exist twice). Its height reaches the score as `coveredBottom`, so the last clicked box moves above the sheet when it grows.
 - **Header:** below `lg` the breadcrumb shares row one with the account, transport and playback controls take row two. Playback controls never collapse into a menu: they scroll sideways with faded edges, so the account stays visible. Below `sm` (viewport breakpoint only) "Edit" is an icon-only round button like the logo and the show crumb shrinks to "..." while a song is shown. Crumbs truncate, never wrap. Start and end buttons share `BAR_GAP`; never add own margins.
 - The header shows the same information in both modes; only the time signature reads "-/-" for audio (measures store beats, no beat unit). The section button shows a repeat's pass (disabled), releases or resets a playing vamp, and otherwise reads "Vamp", disabled.
