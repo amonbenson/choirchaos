@@ -33,11 +33,12 @@ Playback engine shared by both modes:
 ## Sections
 
 `Route` is rebuilt whenever the timeline, the sections or `setVampsEnabled` change. The engine owns the `RouteState { section, pass, released }`.
-- A section's recorded passes come from `findRecordedPasses()`, each as a tick range from `from`'s beat to the end of `to`'s beat. Cuts play 0 passes, repeats `passes`, vamps until released. A disabled vamp is left out of the route, which plays it as recorded.
+- A section's recorded passes come from `getSectionPasses()` in `../models/sections.ts`, the one rule that the route, `getSectionExtent()`, `validateSections()` and every overlay share. Each pass is a tick range from `from`'s beat to the end of `to`'s beat. A cut covers exactly its own range, which may span several passes of a recorded repeat. A repeat or vamp starts at its own pass and also takes in the directly following repetitions of its range, up to the first position where another section starts, so sections can sit on different passes of one recorded repeat. Two sections on the same pass overlap and are invalid.
+- Cuts play 0 passes, repeats `passes`, vamps until released. A disabled vamp is left out of the route, which plays it as recorded, but it still bounds the passes of the section before it.
 - Desired pass `i` plays the last recorded pass if it is the last pass, recorded pass `i` while `i` is below the recorded count, and otherwise the filler, the recorded pass before the last. With 4 recorded passes, a repeat of 2 passes plays P1 P4 and one of 6 plays P1 P2 P3 P3 P3 P4. A vamp loops P1 P2 P3 P3 ... and, once released, finishes in P4.
 - When the last pass is decided while another recording plays (a release, or 1 pass of several), the route jumps at the first barline up to that pass's midpoint to the same measure offset, beat and beat fraction in the last pass (`mapTick()`). Past the midpoint the pass finishes and the last pass follows in full.
 - A released vamp with `anyBar`/`anyBeat` jumps at the next barline or beat to the end of its last pass.
-- A cut jumps from its start to the end of its last pass when playback reaches or starts there. Seeking strictly inside plays on.
+- A cut jumps from its start to its end when playback reaches or starts there. Seeking strictly inside plays on. A jump whose target is a cut's start (a vamp's exit, a section's end) goes straight to the cut's end, through neighbouring cuts too, so the audio does one crossfade seek instead of two.
 - `stateAt(tick)` derives the state from the position, so seeking, stopping and `resetVamp()` need no bookkeeping. Recorded pass k is pass k. For a repeat with several recorded passes, the last one, and passes beyond the total, count as the last pass.
 - `nextJump()` returns `{ at, to, next }`. `to === at` is a pass boundary that only changes the state.
 - Vocal roles: `entering` in the first recorded pass, `exiting` in the last, `repeating` between. A single recorded pass is entering before its midpoint and exiting after it. Entering material outside desired pass 1 and exiting material outside the last pass count as repeating. Only vamps mute.
@@ -77,7 +78,7 @@ Fixtures (`src/test/fixtures.ts`) use 120 BPM, ppqn 480: position 0 is a 1-beat 
 - Baked passes: `makeMidiSongWithBakedVamp()` and `makeAudioSongWithBakedVamp()` record measure "2" four times, `make*SongWithRepeat()` records "2" and "3" three times.
 - Use `stepPast(updater, player, tick)` to play past a tick. It adds the extra step needed for end-of-song and segue to fire.
 - Use `stepUntil(updater, () => condition)` for state-based waits. Record `onCurrentLocationChange` to assert the order positions play in.
-- `route.test.ts` builds timelines directly with `makeTimeline()` and walks them with `playPositions()`.
+- `route.test.ts` and `route.passes.test.ts` (sections on single passes of a recorded repeat) build timelines directly with `makeTimeline()` from `src/test/route.ts` and walk them with `playPositions()` or `followJumps()`. `route.bakedRepeat.test.ts` reproduces a real recording with an incomplete last pass.
 
 **Audio mode tests** (`engine.audio.test.ts`) mock `AudioDriver` entirely:
 - `makeMockAP()` makes `scheduleSeek` move the reported position, as jumps call it instead of `seek`. `loadSong()` clears the initial seek to 0.

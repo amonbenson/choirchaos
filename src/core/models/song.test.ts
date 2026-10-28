@@ -8,7 +8,7 @@ import { EMPTY_LAYERS, type SongLayers, type StoredArrangement, type StoredScore
 import { addMarker, type Marker, removeMarker, replaceMarker } from "./markers";
 import Measure, { createEmptyMeasureEdit, type MeasureEdit } from "./measure";
 import { type Location, setRecordedCount, type StoredRecording, type StoredWarpMarker } from "./recording";
-import { replaceSections, type Section } from "./sections";
+import { getSectionPasses, replaceSections, type Section } from "./sections";
 import Song, { type LayersChange } from "./song";
 import Track from "./track";
 import { addWarpMarker, moveWarpMarker, reassignWarpMarker, removeWarpMarker } from "./warpEditing";
@@ -615,7 +615,20 @@ describe("Song recording", () => {
     expect(Object.keys(lastSave())).toEqual(["recording"]);
   });
 
-  it("drops sections that end up inside the recorded passes of another", () => {
+  it("keeps sections on their pass when the recording adds a pass", async () => {
+    const song = makeAudioSongWithRepeat();
+    const range = (occurrence: number): { from: Location; to: Location } => ({ from: locationOf(song, "2", 0, occurrence), to: locationOf(song, "3", 3, occurrence) });
+    await song.editLayers({ sections: [{ kind: "cut", ...range(1) }, { kind: "vamp", ...range(3), out: "onEnd", vocals: "all" }] });
+
+    await song.setRecordingSpans(setRecordedCount(song.getMeasures(), song.getRecording(), { from: locationOf(song, "2"), to: locationOf(song, "3") }, 4));
+
+    const [cut, vamp] = song.getSections();
+    expect(cut).toMatchObject(range(1));
+    expect(vamp).toMatchObject(range(3));
+    expect(getSectionPasses(song.getTimeline(), song.getSections(), vamp!)).toHaveLength(2);
+  });
+
+  it("keeps sections on their pass when the recording puts their passes back to back", () => {
     const song = makeSong(["a.mp3"], [], {
       measures: [new Measure("m1", "1", 4), new Measure("m2", "2", 4), new Measure("m3", "3", 4)],
       spans: [{ from: "m1", to: "m2" }, { from: "m1", to: "m1" }, { from: "m3", to: "m3" }],
@@ -627,7 +640,7 @@ describe("Song recording", () => {
 
     const preview = song.previewRecordingSpans([{ from: "m1", to: "m1" }, { from: "m1", to: "m3" }]);
 
-    expect(preview.dropped.sections).toEqual([song.getSections()[1]]);
+    expect(preview.dropped.sections).toEqual([]);
   });
 
   it("keeps MIDI recordings read-only", async () => {
@@ -729,7 +742,7 @@ describe("Song arrangement", () => {
   it("rejects overlapping or invalid sections", async () => {
     const song = makeAudioSongWithRepeat();
 
-    await expect(editSections(song, [], { kind: "cut", from: locationOf(song, "3", 0, 3), to: locationOf(song, "4", 3) })).rejects.toThrow("overlap");
+    await expect(editSections(song, [], { kind: "cut", from: locationOf(song, "3"), to: locationOf(song, "4", 3) })).rejects.toThrow("overlap");
     await expect(editSections(song, [], { kind: "repeat", from: locationOf(song, "4"), to: locationOf(song, "4", 3), passes: 0 })).rejects.toThrow("at least 1");
     expect(song.getSections()).toHaveLength(1);
     expect(dbUpdate).not.toHaveBeenCalled();

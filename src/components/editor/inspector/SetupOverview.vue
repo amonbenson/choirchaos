@@ -122,13 +122,23 @@ async function addMeasures(): Promise<void> {
       <li
         v-for="hint in setup.hints"
         :key="hint.id"
-        class="flex items-center gap-2 text-sm"
+        class="flex items-start gap-2 text-sm"
       >
         <i
-          class="pi pi-info-circle text-muted-color"
+          class="pi pi-info-circle mt-0.5 text-muted-color"
           aria-hidden="true"
         />
-        {{ hint.label }}
+        <span class="flex flex-col items-start">
+          {{ hint.label }}
+          <Button
+            v-if="hint.target"
+            :label="hint.target.action"
+            size="small"
+            text
+            class="-ml-2"
+            @click="selection.selectPosition(hint.target.position)"
+          />
+        </span>
       </li>
     </ul>
 

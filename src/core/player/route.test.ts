@@ -2,34 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import type { Location } from "@/core/models/recording";
 import type { Section, VampOut, VampVocals } from "@/core/models/sections";
+import { BEAT_TICKS, BEATS, makeTimeline, playPositions, POSITION_TICKS } from "@/test/route";
 
 import Route, { type RouteState, type VocalRole } from "./route";
-import { findPositionAt, type TimelinePosition } from "./timeline";
-
-const BEATS = 4;
-const POSITION_TICKS = 400;
-const BEAT_TICKS = POSITION_TICKS / BEATS;
-
-/** One position per label with 4 beats, 400 ticks long unless `lengths` says otherwise. */
-function makeTimeline(labels: string[], lengths: number[] = []): TimelinePosition[] {
-  const occurrences = new Map<string, number>();
-  let tick = 0;
-  return labels.map((measure, position) => {
-    const occurrence = (occurrences.get(measure) ?? 0) + 1;
-    occurrences.set(measure, occurrence);
-    const length = lengths[position] ?? POSITION_TICKS;
-    const start = tick;
-    tick += length;
-    return {
-      position,
-      measure,
-      occurrence,
-      beats: BEATS,
-      beatTicks: Array.from({ length: BEATS }, (_, beat) => start + beat * length / BEATS),
-      endTick: tick,
-    };
-  });
-}
+import { findPositionAt } from "./timeline";
 
 function at(measure: string, beat = 0, occurrence = 1): Location {
   return { measure, beat, occurrence };
@@ -45,41 +21,6 @@ function repeat(from: string, to: string, passes: number): Section {
 
 function cut(from: string, to: string): Section {
   return { kind: "cut", from: at(from), to: at(to, BEATS - 1) };
-}
-
-/** Plays the route from `start` to the end and lists the positions in the order they sound. */
-function playPositions(timeline: TimelinePosition[], route: Route, start = 0): number[] {
-  const end = timeline.at(-1)!.endTick;
-  const played: number[] = [];
-  const playRange = (from: number, to: number): void => {
-    for (const position of timeline) {
-      const overlaps = position.beatTicks[0]! < to && position.endTick > from;
-      if (overlaps && played.at(-1) !== position.position) {
-        played.push(position.position);
-      }
-    }
-  };
-
-  let state = route.stateAt(start);
-  let tick = start;
-  for (let i = 0; i < 100; i++) {
-    const jump = route.nextJump(state, tick);
-    if (!jump) {
-      break;
-    }
-
-    playRange(tick, jump.at);
-    if (jump.to !== jump.at) {
-      // A jump to the same position starts it again.
-      played.push(-1);
-    }
-
-    tick = jump.to;
-    state = jump.next;
-  }
-
-  playRange(tick, end);
-  return played.filter(p => p !== -1);
 }
 
 // Measure "2" recorded four times back to back (B = 4), at positions 1 to 4.
@@ -254,10 +195,10 @@ describe("Route cuts", () => {
     expect(playPositions(timeline, route)).toEqual([3]);
   });
 
-  it("skips every recorded pass of the cut range", () => {
+  it("skips only its own pass of a recorded repeat", () => {
     const timeline = makeTimeline(BAKED);
     const route = new Route(timeline, [cut("2", "2")], { vampsEnabled: true });
-    expect(playPositions(timeline, route)).toEqual([0, 5]);
+    expect(playPositions(timeline, route)).toEqual([0, 2, 3, 4, 5]);
   });
 
   it("plays from a seek strictly inside a cut", () => {

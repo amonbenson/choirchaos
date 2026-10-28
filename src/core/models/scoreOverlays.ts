@@ -2,8 +2,8 @@ import { formatOccurrence, formatOrdinal, formatTimes } from "./locationFormat";
 import type { Marker } from "./markers";
 import type Measure from "./measure";
 import type { MeasureId, MeasureLayout } from "./measure";
-import { countOccurrences, findRecordedPasses, type Occurrence, type Timeline } from "./recording";
-import type { Section } from "./sections";
+import { countOccurrences, type Occurrence, type Timeline } from "./recording";
+import { getSectionRun, type Section } from "./sections";
 
 /**
  * One line of boxes that an overlay covers, in page fractions: from the left edge of its first box to the
@@ -128,7 +128,7 @@ function findLane(earlier: readonly SectionOverlay[], measures: readonly Measure
 export function getSectionOverlays(measures: readonly Measure[], timeline: Timeline, sections: readonly Section[]): SectionOverlay[] {
   const overlays: SectionOverlay[] = [];
   sections.forEach((section, index) => {
-    const [pass] = findRecordedPasses(timeline, section);
+    const pass = getSectionRun(timeline, section);
     if (!pass) {
       return;
     }
@@ -245,7 +245,12 @@ function formatCount(times: number): string {
   return times === 1 ? "once" : `${times} times`;
 }
 
+/** "14 to 15", "14 to 15, 2nd time", or "14, 1st time to 15, 2nd time" for a range across passes. */
 function formatRange(measures: readonly Measure[], { from, to }: Section): string {
+  if (from.occurrence !== to.occurrence) {
+    return `${labelOf(measures, from.measure)}, ${formatTimes(from.occurrence)} to ${labelOf(measures, to.measure)}, ${formatTimes(to.occurrence)}`;
+  }
+
   const range = from.measure === to.measure
     ? labelOf(measures, from.measure)
     : `${labelOf(measures, from.measure)} to ${labelOf(measures, to.measure)}`;

@@ -4,10 +4,8 @@ import { computed } from "vue";
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { formatOccurrence, formatTimes } from "@/core/models/locationFormat";
 import { getRecordingStretches, type RecordedPass, type TimelineEntry } from "@/core/models/recording";
-import { selectMeasures } from "@/core/models/selection";
 import type Song from "@/core/models/song";
 import { getSyncStatus } from "@/core/models/warpEditing";
-import { usePlayerStore } from "@/stores/player";
 
 import InspectorSection from "./InspectorSection.vue";
 
@@ -15,7 +13,6 @@ const props = defineProps<{
   song: Song;
 }>();
 
-const player = usePlayerStore();
 const selection = injectEditorSelection();
 
 const status = computed(() => getSyncStatus(
@@ -69,12 +66,6 @@ const summary = computed(() => {
   return status.value.unsyncedPasses.length === 0 ? `${points}, every pass covered` : points;
 });
 
-/** Selects the measure where the issue starts and moves the playhead there, so it can be synced. */
-function showIssue({ position }: StatusIssue): void {
-  const measure = props.song.findMeasure(props.song.getTimeline()[position]!.measure);
-  selection.select(measure?.layout ? selectMeasures([measure.id]) : { kind: "none" });
-  player.seekPosition(position);
-}
 </script>
 
 <template>
@@ -100,7 +91,7 @@ function showIssue({ position }: StatusIssue): void {
         <button
           type="button"
           class="rounded-sm text-left underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-primary"
-          @click="showIssue(issue)"
+          @click="selection.selectPosition(issue.position)"
         >
           {{ issue.text }}
         </button>

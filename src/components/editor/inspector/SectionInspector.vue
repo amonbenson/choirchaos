@@ -203,7 +203,7 @@ defineExpose({ remove });
       {{ error }}
     </Message>
 
-    <span class="text-xs text-muted-color">Drag the handles at the ends of the section on the score to change its range.</span>
+    <span class="text-xs text-muted-color">Drag the handles at the ends of the section on the score or the timeline to change its range. On the timeline they reach every pass.</span>
 
     <RemoveButton
       label="Remove section"

@@ -12,6 +12,7 @@ import {
   findSection,
   findSectionsAt,
   getSectionExtent,
+  getSectionPasses,
   getSectionRun,
   holdsRun,
   type Section,
@@ -37,6 +38,10 @@ function at(measure: string, beat = 0, occurrence = 1): Location {
 
 function cut(from: Location, to: Location): Section {
   return { kind: "cut", from, to };
+}
+
+function repeat(from: Location, to: Location, passes = 2): Section {
+  return { kind: "repeat", from, to, passes };
 }
 
 describe("section defaults", () => {
@@ -98,20 +103,42 @@ describe("validateSection", () => {
 });
 
 describe("section extents and overlaps", () => {
-  it("covers all recorded passes", () => {
-    expect(getSectionExtent(TIMELINE, cut(at("2", 1), at("3", 2)))).toEqual({
+  it("covers exactly the range of a cut", () => {
+    expect(getSectionExtent(TIMELINE, [], cut(at("2", 1), at("3", 2)))).toEqual({
       from: { position: 1, beat: 1 },
-      to: { position: 6, beat: 2 },
+      to: { position: 2, beat: 2 },
     });
-    expect(getSectionExtent(TIMELINE, cut(at("9"), at("1")))).toBeUndefined();
+    expect(getSectionExtent(TIMELINE, [], cut(at("2"), at("3", 3, 2)))).toEqual({
+      from: { position: 1, beat: 0 },
+      to: { position: 4, beat: 3 },
+    });
+    expect(getSectionExtent(TIMELINE, [], cut(at("9"), at("1")))).toBeUndefined();
   });
 
-  it("reports sections that overlap counting recorded passes", () => {
-    const sections = [
-      cut(at("2"), at("3", 3)),
-      cut(at("3", 0, 3), at("4", 3)),
-      cut(at("5"), at("5", 3)),
-    ];
+  it("covers all recorded passes of a repeat or vamp", () => {
+    expect(getSectionExtent(TIMELINE, [], repeat(at("2"), at("3", 3)))).toEqual({
+      from: { position: 1, beat: 0 },
+      to: { position: 6, beat: 3 },
+    });
+  });
+
+  it("stops the recorded passes where another section starts", () => {
+    const later = cut(at("2", 0, 3), at("3", 3, 3));
+    const first = repeat(at("2"), at("3", 3));
+
+    expect(getSectionPasses(TIMELINE, [first, later], first)).toEqual([{ first: 1, last: 2 }, { first: 3, last: 4 }]);
+    expect(getSectionPasses(TIMELINE, [first, later], later)).toEqual([{ first: 5, last: 6 }]);
+    expect(validateSections(SCORE, TIMELINE, [first, later])).toEqual([]);
+  });
+
+  it("starts the recorded passes at the section's own pass", () => {
+    const second = repeat(at("2", 0, 2), at("3", 3, 2));
+
+    expect(getSectionPasses(TIMELINE, [second], second)).toEqual([{ first: 3, last: 4 }, { first: 5, last: 6 }]);
+  });
+
+  it("rejects two sections on the same pass", () => {
+    const sections = [repeat(at("2", 0, 2), at("3", 3, 2)), cut(at("3", 0, 2), at("3", 3, 2))];
 
     expect(validateSections(SCORE, TIMELINE, sections)).toEqual([{ index: 1, reason: "Sections must not overlap." }]);
   });
@@ -136,15 +163,15 @@ describe("sections over runs of the recording", () => {
     const [repeat] = song.getSections();
 
     expect(findSectionsAt(timeline, song.getSections(), { first: 5, last: 5 })).toEqual([repeat]);
-    expect(holdsRun(timeline, repeat!, { first: 5, last: 5 })).toBe(true);
-    expect(holdsRun(timeline, repeat!, { first: 7, last: 8 })).toBe(false);
+    expect(holdsRun(timeline, song.getSections(), repeat!, { first: 5, last: 5 })).toBe(true);
+    expect(holdsRun(timeline, song.getSections(), repeat!, { first: 7, last: 8 })).toBe(false);
     expect(findSectionsAt(timeline, song.getSections(), { first: 0, last: 1 })).toEqual([]);
   });
 
   it("counts the recorded passes of a section as part of it", () => {
     const song = makeMidiSongWithBakedVamp();
 
-    expect(holdsRun(song.getTimeline(), song.getSections()[0]!, { first: 4, last: 4 })).toBe(true);
+    expect(holdsRun(song.getTimeline(), song.getSections(), song.getSections()[0]!, { first: 4, last: 4 })).toBe(true);
   });
 
   it("finds a section by its start", () => {

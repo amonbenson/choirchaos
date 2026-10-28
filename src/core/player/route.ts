@@ -1,6 +1,6 @@
 import type { Tick } from "../midi/types";
-import { findRecordedPasses, type RecordedPass } from "../models/recording";
-import type { Section, VampOut } from "../models/sections";
+import type { RecordedPass } from "../models/recording";
+import { getSectionPasses, type Section, type VampOut } from "../models/sections";
 import { findBeatAt, findPositionAt, getBeatTick, getStartTick, type ResolvedTimeline, type TimelinePosition } from "./timeline";
 import type { PlayerSectionState } from "./types";
 
@@ -28,6 +28,14 @@ type LineKind = "bar" | "beat";
 
 const EARLY_EXIT_LINES: Record<VampOut, LineKind | undefined> = { onEnd: undefined, anyBar: "bar", anyBeat: "beat" };
 
+/** The ticks a section covers with all the recorded passes it plays, `end` exclusive, as its overlays draw it. */
+export function getSectionTicks(timeline: ResolvedTimeline, sections: readonly Section[], section: Section): { start: Tick; end: Tick } | undefined {
+  const passes = getSectionPasses(timeline, sections, section);
+  const first = passes[0] && timeline[passes[0].first];
+  const last = passes.at(-1) && timeline[passes.at(-1)!.last];
+  return first && last ? { start: getBeatTick(first, section.from.beat), end: getBeatTick(last, section.to.beat + 1) } : undefined;
+}
+
 /**
  * Decides where playback goes next through the song's sections. Pure: the engine owns the state and
  * passes it in, so seeking only needs `stateAt()`.
@@ -42,7 +50,7 @@ export default class Route {
         return [];
       }
 
-      const passes = findRecordedPasses(timeline, section).map(pass => this.toPassRange(section, pass));
+      const passes = getSectionPasses(timeline, sections, section).map(pass => this.toPassRange(section, pass));
       return passes.length > 0 ? [{ index, section, passes }] : [];
     });
   }
@@ -261,7 +269,14 @@ export default class Route {
   }
 
   private exit(at: Tick, to: Tick): RouteJump {
-    return { at, to, next: this.stateAt(to) };
+    const target = this.skipCuts(to);
+    return { at, to: target, next: this.stateAt(target) };
+  }
+
+  /** A jump that lands on a cut's start goes straight to its end, so playback seeks once instead of twice. */
+  private skipCuts(tick: Tick): Tick {
+    const cut = this.sections.find(({ section, passes }) => section.kind === "cut" && passes[0]!.start === tick);
+    return cut ? this.skipCuts(cut.passes[0]!.end) : tick;
   }
 
   /** Which line a released vamp may leave at before its end, if any. */
