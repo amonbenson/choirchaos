@@ -21,6 +21,24 @@ function palette(name: string): PaletteDesignToken {
   return Object.fromEntries(SHADES.map(shade => [shade, `{${name}.${shade}}`]));
 }
 
+const TOAST_SEVERITY_PALETTES = { info: "sky", success: "green", warn: "orange", error: "red" };
+
+/**
+ * Aura tints toasts translucently, so the page and colored buttons inside a toast clash with the tint.
+ * Toasts here are opaque popovers that show their severity in the border, icon and summary only.
+ */
+function toastColorScheme(textShade: number): Record<string, unknown> {
+  const severities = Object.entries(TOAST_SEVERITY_PALETTES).map(([severity, name]) => [severity, {
+    background: "{overlay.popover.background}",
+    borderColor: `{${name}.400}`,
+    color: `{${name}.${textShade}}`,
+    detailColor: "{text.color}",
+    shadow: "{overlay.popover.shadow}",
+    closeButton: { hoverBackground: "{content.hover.background}", focusRing: { color: `{${name}.${textShade}}` } },
+  }]);
+  return { root: { blur: "0" }, ...Object.fromEntries(severities) };
+}
+
 /**
  * The only place that picks the accent and surface palettes. Tailwind's primary and surface classes
  * and every token in main.css derive from them, so another theme or a chosen accent only changes
@@ -34,6 +52,9 @@ export function createPreset(palettes: ThemePalettes): Preset {
         light: { surface: { 0: "#ffffff", ...palette(palettes.lightSurface) } },
         dark: { surface: { 0: "#ffffff", ...palette(palettes.darkSurface) } },
       },
+    },
+    components: {
+      toast: { colorScheme: { light: toastColorScheme(600), dark: toastColorScheme(400) } },
     },
   });
 }
