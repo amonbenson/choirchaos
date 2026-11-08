@@ -449,6 +449,27 @@ function trackViolations(song: RecordModel): string[] {
     .map(track => `track '${track.title}' uses audio file '${track.audioFile}', which is not in audioFiles`);
 }
 
+/** The player streams recordings through the seek index, which must list exactly the stored recordings. */
+async function audioIndexViolations(admin: PocketBase, song: RecordModel): Promise<string[]> {
+  const audioFiles = asArray(song.audioFiles);
+  if (audioFiles.length === 0) {
+    return song.audioIndex ? ["has an audio index but no recordings"] : [];
+  }
+
+  if (!song.audioIndex) {
+    return ["has recordings but no audio index, so audio playback cannot load"];
+  }
+
+  const response = await fetch(admin.files.getURL(song, song.audioIndex));
+  const indexed = Object.keys(await response.json() as Record<string, unknown>);
+  const missing = audioFiles.filter(name => !indexed.includes(name));
+  const extra = indexed.filter(name => !audioFiles.includes(name));
+  return [
+    ...missing.map(name => `audio index misses recording '${name}'`),
+    ...extra.map(name => `audio index lists '${name}', which is not in audioFiles`),
+  ];
+}
+
 async function songViolations(admin: PocketBase, song: RecordModel): Promise<string[]> {
   const shape = layerShapeViolations(song);
   if (shape.length > 0) {
@@ -464,6 +485,7 @@ async function songViolations(admin: PocketBase, song: RecordModel): Promise<str
     ...warpMarkerViolations(song, layers, timeline),
     ...arrangementViolations(layers, timeline),
     ...await beatMapViolations(admin, song, timeline),
+    ...await audioIndexViolations(admin, song),
   ];
 }
 

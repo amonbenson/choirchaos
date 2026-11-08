@@ -16,6 +16,8 @@ export type BackendCallbacks = {
   onTimeSignatureChanged: (sig: TimeSignature) => void;
   onNote: (event: NoteEvent) => void;
   onAmplitudes: (amplitudes: number[]) => void;
+  /** Playback waits for the recording to load, or continues. */
+  onBufferingChanged: (buffering: boolean) => void;
 };
 
 export type LoadResult = {
@@ -63,6 +65,12 @@ export abstract class PlayerBackend {
    * reaches it. MIDI needs nothing: it holds back the notes before a limit.
    */
   prepareJump(_jump: { at: Tick; to: Tick } | undefined): void {}
+
+  /**
+   * Called every step and after seeks with where playback may jump to next, a vamp's release included,
+   * so a streaming backend can load those places in time.
+   */
+  prefetch(_targets: Tick[]): void {}
 
   /** Called after a seek so the backend can re-anchor its tempo clock to `bpm`. */
   abstract onTempoRestored(bpm: number): void;
