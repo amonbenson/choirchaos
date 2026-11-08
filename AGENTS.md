@@ -59,7 +59,7 @@ Invariants:
 
 PocketBase lives in the separate repo `choirchaos-pb`; the URL is `VITE_PB_URL` in `.env`.
 - Writing a multi-file field (`audioFiles`) by its plain name replaces all files: use `audioFiles+` / `audioFiles-`.
-- `pb_hooks/audio.pb.js` converts uploads to MP3: map stored files to uploads by order, never by extension.
+- `pb_hooks/audio.pb.js` converts uploads to mono Ogg Opus and rewrites the song's `audioIndex` file (the player's seek index) with every recording change: map stored files to uploads by order, never by extension.
 - Users only read their own user record: member names and lookups go through `pb_hooks/members.pb.js`.
 
 ## UI
@@ -89,6 +89,7 @@ Icons have one meaning each. Icon-only buttons only for universally known contro
 | `pi-plus` | Create or add |
 | `pi-file-pdf`, `pi-sliders-h`, `pi-map`, `pi-volume-up` | Score PDF, MIDI file, beat map, audio recording |
 | `pi-undo` | Undo; mirrored (`-scale-x-100`) Redo |
+| `pi-spinner` (spinning) | Playback waits for the recording to load |
 
 Conventions:
 - **Performance:** playback must stay smooth on low-end phones. The player store changes `position` every step, `currentLocation` every beat, `currentTimelinePosition` every measure: read the slowest that suffices, and only in small leaf components, so pages never re-render per step. Computeds following playback return primitives. Hidden phone tabs stay mounted, so this holds for every panel.

@@ -21,6 +21,7 @@ export const usePlayerStore = defineStore("player", () => {
   });
 
   const playing = useEvent(globalPlayer.onPlayingChange, globalPlayer.isPlaying());
+  const buffering = useEvent(globalPlayer.onBufferingChange, globalPlayer.isBuffering());
   const position = useEvent(globalPlayer.onPositionChange, globalPlayer.getPosition());
   const duration = useEvent(globalPlayer.onDurationChange, globalPlayer.getDuration());
   const timeline = useEvent(globalPlayer.onTimelineChange, globalPlayer.getTimeline());
@@ -127,6 +128,7 @@ export const usePlayerStore = defineStore("player", () => {
     loading,
     ready,
     playing,
+    buffering,
     position,
     duration,
     timeline,

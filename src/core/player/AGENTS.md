@@ -27,9 +27,14 @@ Extends the root `AGENTS.md`.
 
 ## Audio
 
+Recordings stream: the backend stores each as mono Ogg Opus plus a seek index per song (`audioIndex`, one entry per file). `BlockStore` loads 5 s blocks per track by HTTP range request, decodes them in a Web Worker (`opus-decoder`, WASM, identical on every browser) and holds only the blocks around the playhead and the jump targets, so memory stays bounded however long the song is. A whole recording is never decoded at once: that is what crashed phones.
+- After a decoder reset Opus needs a 400 ms lead-in to match a continuous decode (80 ms, as RFC 7845 suggests, is audibly off). Packets are timed forward from the first fetched page: the last page's granule position is cut to the recording's end.
+- Blocks overlap by 5 ms and crossfade. Sources started back to back click on every browser at tempos other than 1 or at 44.1 kHz. An envelope must be 0 before its source starts, or its first frame plays at full volume.
+- The driver schedules blocks a second ahead instead of chaining them in `onended`, which fires late. Where a block is missing it reports the position, and the backend waits there (`buffering`) until enough is loaded.
+- The engine announces every place playback may jump to (`prefetch()`), a vamp's release target included: a release jumps within a beat, too soon to fetch.
+- Downloaded bytes live in `sharedCompressedCache`, so reloads after timing edits fetch nothing. The editor's waveform downloads and decodes everything (in the worker, chunk by chunk): only the timeline asks for it.
 - A segment is one continuous run through the recording; seeks, jumps and tempo changes replace it. `seek()` cuts hard, `jump()` crossfades. Until `jump()` commits a prepared jump, `getPosition()` runs on past it so the engine still reaches it.
 - Stop every source once: Safari throws on a second `stop()`.
-- `MAX_CONCURRENT_DECODE_BYTES` bounds decoding memory on phones; never replace it with an unbounded `Promise.all`.
 
 ## Testing
 

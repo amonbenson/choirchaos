@@ -117,7 +117,7 @@ export async function encodeMp3(audio: PcmAudio, { vbrQuality = 4 }: Mp3Options 
   return result;
 }
 
-/** 16-bit PCM WAV. The backend converts it to MP3 on upload. */
+/** 16-bit PCM WAV. The backend converts it to Opus on upload. */
 export function encodeWav(audio: PcmAudio): Uint8Array<ArrayBuffer> {
   const channelCount = audio.channels.length;
   const frameCount = audio.channels[0]!.length;

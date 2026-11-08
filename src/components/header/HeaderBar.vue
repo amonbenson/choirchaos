@@ -224,7 +224,8 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
         />
         <Button
           :disabled="!player.ready"
-          :icon="`pi ${player.playing ? 'pi-pause' : 'pi-play'}`"
+          :icon="`pi ${player.buffering ? 'pi-spin pi-spinner' : player.playing ? 'pi-pause' : 'pi-play'}`"
+          :aria-busy="player.buffering"
           aria-label="Play / Pause"
           rounded
           text

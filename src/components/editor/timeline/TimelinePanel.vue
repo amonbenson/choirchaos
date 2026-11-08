@@ -9,6 +9,7 @@ import { computed, ref, shallowRef, useId, useTemplateRef, watch } from "vue";
 
 import CollapsiblePanel from "@/components/base/CollapsiblePanel.vue";
 import { injectEditorSelection } from "@/composables/useEditorSelection";
+import { useNotify } from "@/composables/useNotify";
 import { useSyncEditor } from "@/composables/useSyncEditor";
 import { useTimelineAxis } from "@/composables/useTimelineAxis";
 import { formatOccurrence, formatSyncPlace } from "@/core/models/locationFormat";
@@ -23,7 +24,8 @@ import {
   type PositionedSyncPoint,
   type SyncPlace,
 } from "@/core/models/warpEditing";
-import { mixdownChunks } from "@/core/player/audio/mixdown";
+import { OPUS_SAMPLE_RATE } from "@/core/player/audio/oggOpus";
+import { type RecordingWaveform, WAVEFORM_SAMPLES_PER_PIXEL } from "@/core/player/audio/waveformData";
 import { upperFirst } from "@/core/utils/text";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
@@ -34,7 +36,7 @@ import TimelineMeasureRuler from "./TimelineMeasureRuler.vue";
 import TimelinePlayhead from "./TimelinePlayhead.vue";
 import TimelineScrollbar from "./TimelineScrollbar.vue";
 import TimelineTimeRuler from "./TimelineTimeRuler.vue";
-import WaveformView, { getWaveformBaseScale } from "./WaveformView.vue";
+import WaveformView from "./WaveformView.vue";
 
 const props = defineProps<{ song: Song }>();
 
@@ -50,6 +52,7 @@ const player = usePlayerStore();
 const settings = useSettingsStore();
 const { selectAndSeek, clear } = injectEditorSelection();
 const sync = useSyncEditor(() => props.song);
+const { notifyError } = useNotify();
 const titleId = useId();
 const laneIdPrefix = useId();
 const laneTitleIds = Object.fromEntries(LANES.map(lane => [lane, `${laneIdPrefix}-${lane}`])) as Record<LaneName, string>;
@@ -71,15 +74,16 @@ const audioArea = useTemplateRef<HTMLElement>("audioArea");
 const markerMenu = ref();
 const markerMenuItems = ref<MenuItem[]>([]);
 const addPopover = ref();
-const audioBuffer = shallowRef<AudioBuffer>();
+const waveform = shallowRef<RecordingWaveform>();
+const waveformLoading = ref(false);
 const dragged = shallowRef<{ id: string; time: number }>();
 const pointsAtSyncPoint = ref(false);
 
-// Audio songs zoom in whole samples of the recording, MIDI songs in ticks.
+// Audio songs zoom in samples of the recording, down to the waveform's resolution, MIDI songs in ticks.
 const axis = useTimelineAxis(axisElement, {
   duration: () => player.duration,
-  ticksPerUnit: () => audioBuffer.value ? MILLISECONDS_PER_SECOND / audioBuffer.value.sampleRate : 1,
-  minScale: () => audioBuffer.value ? getWaveformBaseScale(audioBuffer.value) : 1,
+  ticksPerUnit: () => isAudio.value ? MILLISECONDS_PER_SECOND / OPUS_SAMPLE_RATE : 1,
+  minScale: () => isAudio.value ? WAVEFORM_SAMPLES_PER_PIXEL : 1,
 });
 
 const currentTime = computed(() => player.position / MILLISECONDS_PER_SECOND);
@@ -123,11 +127,42 @@ function getLabel(place: SyncPlace): string {
   return formatOccurrence(props.song.findMeasure(place.measure)?.label ?? place.measure, place.occurrence);
 }
 
-watch(() => [player.status, props.song] as const, ([status, song]) => {
-  audioBuffer.value = status === "ready" && song.playerMode === "audio"
-    ? mixdownChunks(player.player.getTrackChunks())
-    : undefined;
+async function showWaveform(loading: Promise<RecordingWaveform>, isCurrent: () => boolean): Promise<void> {
+  waveformLoading.value = true;
+  try {
+    const loaded = await loading;
+    if (isCurrent()) {
+      waveform.value = loaded;
+    }
+  } catch (error) {
+    if (isCurrent()) {
+      notifyError("Could not load the waveform", error);
+    }
+  } finally {
+    if (isCurrent()) {
+      waveformLoading.value = false;
+    }
+  }
+}
+
+// A reload after a timing edit keeps the waveform, which only changes with the recordings.
+watch(() => [player.status, props.song] as const, ([status, song], _, onCleanup) => {
   axis.fit();
+  if (status !== "ready") {
+    return;
+  }
+
+  const loading = song.playerMode === "audio" ? player.player.loadWaveform() : undefined;
+  if (!loading) {
+    waveform.value = undefined;
+    return;
+  }
+
+  let current = true;
+  onCleanup(() => {
+    current = false;
+  });
+  void showWaveform(loading, () => current);
 }, { immediate: true });
 
 async function addMarker(key: string): Promise<void> {
@@ -390,7 +425,8 @@ watch(() => player.position, (tick) => {
             >
               <WaveformView
                 class="min-h-0 flex-1"
-                :audio-buffer="audioBuffer"
+                :waveform="waveform"
+                :loading="waveformLoading"
                 :scale="axis.scale.value"
                 :offset="axis.offset.value"
               />

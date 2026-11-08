@@ -22,7 +22,8 @@ Score and timeline are the canvases; the inspector (`SongEditorPanel`, `componen
 ### Timeline
 
 - `useTimelineAxis` owns zoom and scroll for every lane, the waveform, the playhead and `TimelineScrollbar`. Scale is whole units (samples or ticks) per pixel and offset whole pixels, matching how peaks.js draws, so everything lines up on the same pixel. Zoom steps follow `ZoomLadder` levels only, since peaks.js caches every resampled level.
-- peaks.js only draws the waveform: no axis, points, playhead, pointer events, scrolling or zooming of its own. Rulers, sync point lines and the playhead are HTML on the shared axis. The scrollbar is our own, since a native one cannot be as wide as a song zoomed to single samples.
+- peaks.js only draws the waveform: no axis, points, playhead, pointer events, scrolling or zooming of its own. Rulers, sync point lines and the playhead are HTML on the shared axis. The scrollbar is our own, since a native one cannot be as wide as a song zoomed in all the way.
+- The waveform comes from `player.loadWaveform()`, built at 32 samples per pixel, the finest zoom. It downloads every recording, so only the timeline asks for it, and a reload after a timing edit keeps it.
 - peaks.js cannot start in a hidden container (an unshown phone tab), so `WaveformView` builds it once the container has a size. Its times are seconds, ours milliseconds.
 - One pointer handler on the axis (`usePointerSwipe`): a drag on a sync point moves it, any other drag scrubs, and the click ending a drag is swallowed. Lanes render only items in view (`axis.toBlock()`).
 

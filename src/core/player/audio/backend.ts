@@ -9,25 +9,37 @@ import type AudioClock from "../audioClock";
 import { type BackendCallbacks, type LoadResult, PlayerBackend, type StepResult } from "../backend";
 import { buildAudioTempoEvents, resolveAudioTimeline, type TimelinePosition } from "../timeline";
 import type { SystemEvents } from "../types";
-import { type AudioChunk, detectChunks } from "./chunkDetector";
+import { parseAudioIndex, SeekIndex } from "./audioIndex";
+import BlockStore, { type SecondsRange, type TrackSource } from "./blockStore";
+import { sharedCompressedCache } from "./compressedCache";
 import AudioDriver from "./driver";
+import { OPUS_SAMPLE_RATE } from "./oggOpus";
+import { WorkerOpusDecoding } from "./opusDecoding";
+import { type RecordingWaveform, WAVEFORM_SAMPLES_PER_PIXEL } from "./waveformData";
 
-const MAX_CONCURRENT_DECODE_BYTES = 750 * 1024 * 1024;
-const DECODED_BYTES_PER_COMPRESSED_BYTE = 128; // Rough estimate for spares MP3s with VBR and stereo channels
 const MILLISECONDS_PER_SECOND = 1000;
+/** Recording kept loaded ahead of the playhead and after every jump target. */
+const PLAY_AHEAD_SECONDS = 10;
+const TARGET_AHEAD_SECONDS = 5;
+/** Playback waits for this much loaded recording before it resumes. */
+const RESUME_AHEAD_SECONDS = 2;
+/** Playback stops this close to a missing block rather than run into silence. */
+const STARVE_MARGIN_SECONDS = 0.05;
 
-function medianRatio(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
-}
+let lastWaveform: { key: string; waveform: Promise<RecordingWaveform> } | undefined;
 
 export default class AudioBackend extends PlayerBackend {
   private audioDriver: AudioDriver | undefined = undefined;
-  private trackChunks: AudioChunk[][] = [];
+  private blockStore: BlockStore | undefined = undefined;
+  private readonly decoding = new WorkerOpusDecoding();
+  private readonly cache = sharedCompressedCache;
+  private trackSources: TrackSource[] = [];
   private warpMap = new WarpMap();
   private currentSong: Song | undefined = undefined;
   private currentBpm: number | undefined = undefined;
+  private playing = false;
+  private buffering = false;
+  private targets: number[] = [];
 
   constructor(
     context: AudioContext,
@@ -39,121 +51,110 @@ export default class AudioBackend extends PlayerBackend {
     super(context, clock, masterInput, systemEvents, callbacks);
   }
 
-  getTrackChunks(): AudioChunk[][] {
-    return this.trackChunks;
-  }
-
   /** Re-times the timeline after warp marker edits. */
   syncWarp(): TimelinePosition[] {
     return this.buildTimeline();
   }
 
   async load(song: Song, signal: AbortSignal): Promise<LoadResult> {
-    if (song.audioFiles.length === 0) {
-      throw new Error(`No audio files in song '${song.title}'`);
+    const indexFile = song.getAudioIndexFile();
+    if (song.audioFiles.length === 0 || !indexFile) {
+      throw new Error(`No streamable audio files in song '${song.title}'`);
     }
 
-    // Load all MP3s in raw (compressed) form
-    const compressedBuffers = await Promise.all(
-      song.audioFiles.map(async (file) => {
-        const res = await axios.get(resolveUrl(file, "songs", song.id), {
-          validateStatus: status => status === 200,
-          responseType: "arraybuffer",
-          signal,
-        });
-        return res.data as ArrayBuffer;
-      }),
-    );
-
+    const res = await axios.get(resolveUrl(indexFile, "songs", song.id), { signal });
+    const index = parseAudioIndex(res.data);
     signal.throwIfAborted();
 
-    // Decode and split each audio file into non-silent chunks.
-    // Files are decoded in parallel up to MAX_CONCURRENT_DECODE_BYTES to avoid out-of-memory crashes.
-    let bytesInFlight = 0;
-    const decodeWaiters: Array<() => void> = [];
-    const completedRatios: number[] = [];
-
-    const decodeResults = await Promise.all(
-      compressedBuffers.map(async (compressed) => {
-        const ratio = completedRatios.length > 0 ? medianRatio(completedRatios) : DECODED_BYTES_PER_COMPRESSED_BYTE;
-        const estimate = compressed.byteLength * ratio;
-        while (bytesInFlight > 0 && bytesInFlight + estimate > MAX_CONCURRENT_DECODE_BYTES) {
-          await new Promise<void>(resolve => decodeWaiters.push(resolve));
-          signal.throwIfAborted();
-        }
-
-        bytesInFlight += estimate;
-        let actualBytes = 0;
-        try {
-          const decoded = await this.context.decodeAudioData(compressed);
-          actualBytes = decoded.numberOfChannels * decoded.length * 4;
-          return { duration: decoded.duration, chunks: detectChunks(decoded, this.context) };
-        } finally {
-          bytesInFlight -= estimate;
-          if (actualBytes > 0) {
-            completedRatios.push(actualBytes / compressed.byteLength);
-          }
-
-          decodeWaiters.splice(0).forEach(r => r());
-        }
-      }),
-    );
-
-    const fileChunks = decodeResults.map(r => r.chunks);
-    const fileDurations = decodeResults.map(r => r.duration);
-
-    signal.throwIfAborted();
-
-    // Organize all chunks by track
-    this.trackChunks = song.tracks.map((track) => {
-      const fileIndex = song.audioFiles.findIndex(file => file === track.audioFile);
-      const chunks = fileChunks[fileIndex];
-      if (!chunks) {
-        throw new Error(
-          `Audio file '${track.audioFile}' for track '${track.title}' not found in song '${song.title}'`,
-        );
+    // Like the recordings' common length, whether or not tracks use them yet.
+    const samples = Math.min(...song.audioFiles.map((file) => {
+      const entry = typeof file === "string" ? index[file] : undefined;
+      if (!entry) {
+        throw new Error(`Audio file '${file}' has no seek index in song '${song.title}'`);
       }
 
-      return chunks;
+      return new SeekIndex(entry).getSampleCount();
+    }));
+
+    this.trackSources = song.tracks.map((track) => {
+      const entry = typeof track.audioFile === "string" ? index[track.audioFile] : undefined;
+      if (!entry) {
+        throw new Error(`Audio file '${track.audioFile}' for track '${track.title}' not found in song '${song.title}'`);
+      }
+
+      return { url: resolveUrl(track.audioFile, "songs", song.id), index: new SeekIndex(entry) };
     });
+
+    const store = new BlockStore(this.context, this.trackSources, this.decoding, this.cache);
+    store.onBlockLoaded(() => this.onBlockLoaded());
+    store.onBlockFailed(error => console.error("Could not load audio", error));
+    this.blockStore = store;
 
     this.currentSong = song;
     const timeline = this.buildTimeline();
 
-    // Setup the underlying audio player
     this.audioDriver?.dispose();
-    this.audioDriver = await AudioDriver.create(
-      this.context,
-      this.clock,
-      this.trackChunks,
-      {
-        tracks: song.tracks.map(t => ({
-          highPassFilter: t.classification === "Vocal",
-          compressor: t.classification === "Vocal",
-        })),
-        onAmplitudes: (amplitudes: number[]) => this.callbacks.onAmplitudes(amplitudes),
-      },
-    );
+    this.audioDriver = await AudioDriver.create(this.context, this.clock, store, {
+      tracks: song.tracks.map(t => ({
+        highPassFilter: t.classification === "Vocal",
+        compressor: t.classification === "Vocal",
+      })),
+      onAmplitudes: (amplitudes: number[]) => this.callbacks.onAmplitudes(amplitudes),
+    });
 
     signal.throwIfAborted();
-    this.audioDriver!.connect(this.masterInput);
+    this.audioDriver.connect(this.masterInput);
 
-    return { duration: Math.min(...fileDurations) * MILLISECONDS_PER_SECOND, timeline };
+    return { duration: (samples / OPUS_SAMPLE_RATE) * MILLISECONDS_PER_SECOND, timeline };
+  }
+
+  /**
+   * The mixdown of all tracks for the editor's timeline. It downloads and decodes every recording in
+   * full, so only the editor asks for it, and the last one is kept.
+   */
+  loadWaveform(): Promise<RecordingWaveform> | undefined {
+    const sources = this.trackSources;
+    const store = this.blockStore;
+    if (!store || sources.length === 0) {
+      return undefined;
+    }
+
+    const key = sources.map(source => source.url).join("\n");
+    if (lastWaveform?.key !== key) {
+      const waveform = this.buildWaveform(sources, store.getSampleCount());
+      lastWaveform = { key, waveform };
+      waveform.catch(() => {
+        if (lastWaveform?.waveform === waveform) {
+          lastWaveform = undefined;
+        }
+      });
+    }
+
+    return lastWaveform.waveform;
   }
 
   play(_currentPosition: Tick): void {
+    this.playing = true;
     this.audioDriver?.play();
+    this.audioDriver?.update();
   }
 
   pause(_currentPosition: Tick): void {
+    this.playing = false;
+    this.setBuffering(false);
     this.audioDriver?.pause();
   }
 
   seek(position: Tick): void {
     this.audioDriver?.seek(position / MILLISECONDS_PER_SECOND);
+    this.updateWanted();
   }
 
   step(currentPosition: Tick, deltaTime: number, limit?: Tick, muteVocals?: boolean): StepResult {
+    this.updateWanted();
+    this.audioDriver?.update();
+    this.followLoading();
+
     const driverPosition = (this.audioDriver?.getPosition() ?? 0) * MILLISECONDS_PER_SECOND;
     const p1 = limit !== undefined ? Math.min(driverPosition, limit) : driverPosition;
 
@@ -183,6 +184,11 @@ export default class AudioBackend extends PlayerBackend {
     }
   }
 
+  override prefetch(targets: Tick[]): void {
+    this.targets = targets.map(target => target / MILLISECONDS_PER_SECOND);
+    this.updateWanted();
+  }
+
   onTempoRestored(bpm: number): void {
     this.currentBpm = bpm;
   }
@@ -198,10 +204,78 @@ export default class AudioBackend extends PlayerBackend {
   }
 
   dispose(): void {
+    this.setBuffering(false);
     this.audioDriver?.dispose();
     this.audioDriver = undefined;
-    this.trackChunks = [];
+    this.blockStore?.dispose();
+    this.blockStore = undefined;
+    this.decoding.dispose();
+    this.trackSources = [];
     this.currentSong = undefined;
+  }
+
+  /** Loads what plays next from the playhead and from every jump target the engine announced. */
+  private updateWanted(): void {
+    const position = this.audioDriver?.getPosition() ?? 0;
+    const ranges: SecondsRange[] = [
+      { from: position, to: position + PLAY_AHEAD_SECONDS },
+      ...this.targets.map(target => ({ from: target, to: target + TARGET_AHEAD_SECONDS })),
+    ];
+    this.blockStore?.want(ranges);
+  }
+
+  /** Waits where the recording is not loaded yet, and resumes once enough of it is. */
+  private followLoading(): void {
+    const driver = this.audioDriver;
+    const store = this.blockStore;
+    if (!driver || !store || !this.playing) {
+      return;
+    }
+
+    if (this.buffering) {
+      const position = driver.getPosition();
+      if (store.isLoaded({ from: position, to: position + RESUME_AHEAD_SECONDS })) {
+        this.setBuffering(false);
+        driver.play();
+        driver.update();
+      }
+
+      return;
+    }
+
+    const missing = driver.getMissingPosition();
+    if (missing !== undefined && driver.getPosition() >= missing - STARVE_MARGIN_SECONDS) {
+      driver.pause(missing);
+      this.setBuffering(true);
+    }
+  }
+
+  private onBlockLoaded(): void {
+    if (this.playing && !this.buffering) {
+      this.audioDriver?.update();
+    }
+  }
+
+  private setBuffering(buffering: boolean): void {
+    if (this.buffering !== buffering) {
+      this.buffering = buffering;
+      this.callbacks.onBufferingChanged(buffering);
+    }
+  }
+
+  private async buildWaveform(sources: TrackSource[], length: number): Promise<RecordingWaveform> {
+    const tracks = await Promise.all(sources.map(async ({ url, index }) => {
+      const bytes = await this.cache.fetchAll(url);
+      return { pages: bytes.subarray(index.getByteRange(0, 0, 0).start), preSkip: index.getPreSkip() };
+    }));
+    // Its own worker, so a reload of the song, which disposes the backend, does not cut it short.
+    const decoding = new WorkerOpusDecoding();
+    try {
+      const data = await decoding.buildWaveform({ tracks, length, samplesPerPixel: WAVEFORM_SAMPLES_PER_PIXEL });
+      return { data, sampleRate: OPUS_SAMPLE_RATE, samplesPerPixel: WAVEFORM_SAMPLES_PER_PIXEL, length };
+    } finally {
+      decoding.dispose();
+    }
   }
 
   private buildTimeline(): TimelinePosition[] {

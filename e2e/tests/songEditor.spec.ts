@@ -357,7 +357,7 @@ test.describe("timeline waveform", () => {
     };
   }
 
-  test("ctrl and wheel zoom in down to single samples", async ({ page, factory, loginAs }) => {
+  test("ctrl and wheel zoom in down to the waveform's resolution", async ({ page, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "audio" }));
@@ -382,7 +382,8 @@ test.describe("timeline waveform", () => {
       await page.getByRole("button", { name: "Zoom in" }).click();
     }
 
-    expect((await waveformState(page)).scale).toBe(1);
+    // The waveform is built at 32 samples per pixel, about 0.7 ms.
+    expect((await waveformState(page)).scale).toBe(32);
     expect(errors).toEqual([]);
   });
 
