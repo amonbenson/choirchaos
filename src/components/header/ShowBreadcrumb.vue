@@ -8,6 +8,8 @@ import type { RouteLocationRaw } from "vue-router";
 import type Show from "@/core/models/show";
 import { useAuthStore } from "@/stores/auth";
 
+import DinoLogo from "./DinoLogo.vue";
+
 const props = defineProps<{
   show?: Show;
   songId?: string;
@@ -63,11 +65,7 @@ function crumbClass(isLast: boolean): string {
         aria-label="Home"
         @click="navigate"
       >
-        <img
-          src="/favicon.svg"
-          alt=""
-          class="size-8 rounded-full"
-        >
+        <DinoLogo />
       </Button>
     </RouterLink>
 

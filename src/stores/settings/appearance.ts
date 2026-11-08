@@ -35,6 +35,7 @@ export class AppearanceSettings extends SettingsBase {
     public readonly mergeAccompaniment: boolean = true,
     public readonly transportButtonVisible: TransportButtonSettings = new TransportButtonSettings(),
     public readonly arrangementVisible: ArrangementVisibleSettings = new ArrangementVisibleSettings(),
+    public readonly logoHeadBob: boolean = true,
   ) {
     super();
   }

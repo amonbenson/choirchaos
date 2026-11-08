@@ -6,6 +6,7 @@ import type { NoteEvent } from "@/core/midi/events";
 import type { Occurrence } from "@/core/models/recording";
 import type Song from "@/core/models/song";
 import PlayerEngine, { type PlayerLocation, type PlayerSectionState, type PlayerSegueState } from "@/core/player/engine";
+import { getPulse } from "@/core/player/pulse";
 import { getLocationTick as findLocationTick } from "@/core/player/timeline";
 
 const globalPlayer = new PlayerEngine();
@@ -31,6 +32,17 @@ export const usePlayerStore = defineStore("player", () => {
   const finalLocation = useEvent<PlayerLocation | undefined>(globalPlayer.onFinalLocationChange, globalPlayer.getFinalLocation());
   /** The timeline entry being played. It stays the same object for all its beats, so readers update once per measure. */
   const currentTimelinePosition = computed(() => currentLocation.value ? timeline.value[currentLocation.value.position] : undefined);
+  /** MIDI bars follow the time signature. Audio has none, so its bars are their measures' beats. */
+  const currentBarBeats = computed(() => mode.value === "midi" ? currentTimeSignature.value[0] : currentTimelinePosition.value?.beats ?? 4);
+  /** MIDI tempos count quarter notes, audio tempos the measure's beats. */
+  const currentPulse = computed(() => {
+    if (mode.value !== "midi") {
+      return getPulse(currentTempo.value, currentBarBeats.value);
+    }
+
+    const beatQuarters = 4 / Math.pow(2, currentTimeSignature.value[1]);
+    return getPulse(currentTempo.value / beatQuarters, currentBarBeats.value, beatQuarters);
+  });
 
   const currentSection = useEvent<PlayerSectionState | undefined>(
     globalPlayer.onCurrentSectionChange,
@@ -136,6 +148,7 @@ export const usePlayerStore = defineStore("player", () => {
     currentTimeSignature,
     currentLocation,
     currentTimelinePosition,
+    currentPulse,
     finalLocation,
     currentSection,
     currentSegue,

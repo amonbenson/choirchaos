@@ -3,7 +3,7 @@ import { breakpointsTailwind, useBreakpoints, useResizeObserver, useScroll } fro
 import Button from "primevue/button";
 import InputNumber from "primevue/inputnumber";
 import Toolbar from "primevue/toolbar";
-import { computed, type ComputedRef, useTemplateRef } from "vue";
+import { computed, useTemplateRef } from "vue";
 
 import PopoverButton from "@/components/base/PopoverButton.vue";
 import DottedHalfNoteIcon from "@/components/icons/DottedHalfNoteIcon.vue";
@@ -14,6 +14,7 @@ import { SECTION_COLORS, SECTION_CONTRAST_TEXT } from "@/components/score/sectio
 import { formatLocation } from "@/core/models/locationFormat";
 import { findRecordedRepeats, formatPlayingSection, formatSectionPass, getRecordedRepeatPass } from "@/core/models/scoreOverlays";
 import type Show from "@/core/models/show";
+import type { NoteValue } from "@/core/player/pulse";
 import { getSectionTicks } from "@/core/player/route";
 import { usePlayerStore } from "@/stores/player";
 import { useSettingsStore } from "@/stores/settings";
@@ -23,14 +24,6 @@ import PositionSlider from "./PositionSlider.vue";
 import ShowBreadcrumb from "./ShowBreadcrumb.vue";
 import UserMenuButton from "./UserMenuButton.vue";
 
-type NoteValue = "quarter" | "half" | "dottedQuarter" | "dottedHalf";
-
-const NOTE_VALUE_QUARTER_MAP: Record<NoteValue, number> = {
-  quarter: 1,
-  half: 2,
-  dottedQuarter: 1.5,
-  dottedHalf: 3,
-};
 const NOTE_VALUE_SVG_MAP: Record<NoteValue, object> = {
   quarter: QuarterNoteIcon,
   half: HalfNoteIcon,
@@ -151,15 +144,7 @@ const positionText = computed(() => {
   return current && current.kind !== "cut" ? `${measure}, ${formatPlayingSection(current.kind, current)}` : measure;
 });
 
-const tempoNoteValue: ComputedRef<NoteValue> = computed(() => {
-  if (player.currentTimeSignature[0] % 3 === 0) {
-    return player.currentTempo / 1.5 < 170 ? "dottedQuarter" : "dottedHalf";
-  } else {
-    return player.currentTempo < 170 ? "quarter" : "half";
-  }
-});
-const writtenTempo = computed(() => player.currentTempo / NOTE_VALUE_QUARTER_MAP[tempoNoteValue.value]);
-const playedTempo = computed(() => player.ready ? String(Math.round(player.playbackSpeed * writtenTempo.value)) : "-");
+const playedTempo = computed(() => player.ready ? String(Math.round(player.playbackSpeed * player.currentPulse.bpm)) : "-");
 
 const playbackSpeedPercentage = computed({
   get: () => Math.round(player.playbackSpeed * 100),
@@ -297,7 +282,7 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
             >
               <template #button>
                 <component
-                  :is="NOTE_VALUE_SVG_MAP[tempoNoteValue]"
+                  :is="NOTE_VALUE_SVG_MAP[player.currentPulse.noteValue]"
                   class="mx-[-15%] inline size-6 fill-current"
                 />=&nbsp;{{ playedTempo }}
               </template>
