@@ -43,7 +43,7 @@ const summary = computed(() => setup.value.steps.map(step => `${step.label}: ${s
     class="flex items-center gap-3"
   >
     <div
-      class="flex w-23 gap-1"
+      class="flex w-23 shrink-0 gap-1"
       role="img"
       :aria-label="summary"
       :title="summary"
