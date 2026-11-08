@@ -265,6 +265,14 @@ export function makeAudioSong(): Song {
   return makeAudioFixture("test-audio-song", "Audio Test Song", { spans: AUDIO_PLAIN });
 }
 
+/** Plays measures "1" to "4" (0 ms to 1000 ms), so a recording that lasts longer has a tail after the last measure. */
+export function makeAudioSongWithTail(): Song {
+  return makeAudioFixture("test-audio-song-tail", "Audio Test Song with Tail", {
+    spans: AUDIO_PLAIN,
+    warpMarkers: QUARTER_SECOND_POSITIONS,
+  });
+}
+
 /** Vamps measure "2" (250 ms to 500 ms) on the plain layout. */
 export function makeAudioSongWithVamp(): Song {
   return makeAudioFixture("test-audio-song-vamp", "Audio Test Song with Vamp", {

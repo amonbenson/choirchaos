@@ -629,7 +629,7 @@ export default class PlayerEngine {
   }
 
   /** Ends playback when the song is over. Returns whether it did. */
-  private finishIfEnded(position: Tick): boolean {
+  private finishIfEnded(from: Tick, position: Tick): boolean {
     if (position < this.duration.get()) {
       return false;
     }
@@ -637,11 +637,22 @@ export default class PlayerEngine {
     this.position.set(this.duration.get());
     this.syncLocation(this.duration.get());
     this.pause();
-    if (this.currentSegue.get()?.enabled) {
+    this.segueIfCrossed(from, this.duration.get());
+    return true;
+  }
+
+  /** The end of the last measure. A recording can sound on after it, like a reverb tail, which the segue cuts. */
+  private getSegueTick(): Tick {
+    const lastMeasureEnd = this.timeline.get().at(-1)?.endTick ?? this.duration.get();
+    return Math.min(lastMeasureEnd, this.duration.get());
+  }
+
+  /** Fires the segue once playback crosses the end of the last measure with no jump left. */
+  private segueIfCrossed(from: Tick, to: Tick): void {
+    const tick = this.getSegueTick();
+    if (this.currentSegue.get()?.enabled && from < tick && to >= tick && this.findNextJump(to) === undefined) {
       this.emitters.segue.fire(undefined);
     }
-
-    return true;
   }
 
   private handleStep(deltaTime: number): void {
@@ -649,7 +660,8 @@ export default class PlayerEngine {
       return;
     }
 
-    let pos = this.position.get();
+    const from = this.position.get();
+    let pos = from;
     let remaining = deltaTime;
     let jumps = 0;
 
@@ -674,14 +686,14 @@ export default class PlayerEngine {
       const jumpsNext = plan.jump !== undefined && pos >= plan.jump.at && jumps < MAX_JUMPS_PER_STEP;
 
       // A section ending with the song jumps back at the song's end, so the jump wins over finishing.
-      if (!jumpsNext && this.finishIfEnded(pos)) {
+      if (!jumpsNext && this.finishIfEnded(from, pos)) {
         return;
       }
 
       if (plan.jump && jumpsNext) {
         pos = this.jump(plan.jump);
         jumps++;
-        if (this.finishIfEnded(pos)) {
+        if (this.finishIfEnded(from, pos)) {
           return;
         }
 
@@ -699,6 +711,7 @@ export default class PlayerEngine {
     this.syncSection();
     this.backend.prepareJump(this.findNextJump(pos));
     this.backend.prefetch(this.getJumpTargets(pos));
+    this.segueIfCrossed(from, pos);
   }
 
   private syncLocation(pos: Tick): void {

@@ -4,6 +4,7 @@ import type { RecordModel } from "pocketbase";
 import { MINIMAL } from "../generators/score/presets";
 import type { ScoreSpec } from "../generators/score/types";
 import { buildSongBundle, locationAt, measureId, recordedBarTimes } from "../generators/song";
+import type { Factory, TestUser } from "../harness/factories";
 import { expect, test } from "../harness/fixtures";
 import { collectPageErrors } from "../harness/page";
 import { type PlaybackSample, recordPlayback, sequenceOf, waitForPlayer } from "../harness/playback";
@@ -11,7 +12,20 @@ import { type PlaybackSample, recordPlayback, sequenceOf, waitForPlayer } from "
 /** Four one-second bars without a committed PDF, so playback tests stay short. */
 const FAST: ScoreSpec = { ...MINIMAL, id: "minimal-fast", title: "Fast Test Song", seed: 101, tempo: 240 };
 
+/** The song after `FAST` in a show, for segues. */
+const FAST_NEXT: ScoreSpec = { ...FAST, id: "minimal-fast-next", title: "Next Test Song", number: "2", seed: 102 };
+
 const MS_PER_SECOND = 1000;
+
+/** A show of `FAST` with a segue into `FAST_NEXT`. */
+async function createSegueShow(factory: Factory, owner: TestUser): Promise<{ show: RecordModel; first: RecordModel; next: RecordModel }> {
+  const show = await factory.createShow(owner);
+  const bundle = await buildSongBundle(FAST, { mode: "audio", withPdf: false });
+  bundle.fields.arrangement.segue = true;
+  const first = await factory.createSong(owner, show, bundle);
+  const next = await factory.createSong(owner, show, await buildSongBundle(FAST_NEXT, { mode: "audio", withPdf: false }));
+  return { show, first, next };
+}
 
 async function play(page: Page, show: RecordModel, song: RecordModel): Promise<void> {
   await page.goto(`/show/${show.id}/song/${song.id}`);
@@ -113,6 +127,36 @@ test.describe("playback", () => {
 
     expect(sequenceOf(samples, "measure")).toEqual(["1", "4"]);
     expect(samples.filter(sample => isInside(sample, times[1]!, times[3]!))).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test("a segue starts the next song", async ({ page, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const { show, first, next } = await createSegueShow(factory, owner);
+    const errors = collectPageErrors(page);
+    await loginAs(owner);
+
+    await play(page, show, first);
+
+    await expect(page).toHaveURL(new RegExp(`/song/${next.id}$`), { timeout: 15_000 });
+    const position = page.getByRole("slider", { name: "Position" });
+    await expect.poll(async () => Number(await position.getAttribute("aria-valuenow")), { timeout: 15_000 }).toBeGreaterThan(0);
+    expect(errors).toEqual([]);
+  });
+
+  test("an editor stays on the song and is told about the skipped segue", async ({ page, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const { show, first } = await createSegueShow(factory, owner);
+    const errors = collectPageErrors(page);
+    await loginAs(owner);
+
+    await page.goto(`/show/${show.id}/song/${first.id}/edit`);
+    await waitForPlayer(page);
+    await page.getByRole("button", { name: "Play / Pause" }).click();
+
+    await expect(page.getByText("Segue skipped while editing").first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Outside the editor, #2 Next Test Song would start now.")).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`/song/${first.id}/edit$`));
     expect(errors).toEqual([]);
   });
 });

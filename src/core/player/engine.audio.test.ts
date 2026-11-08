@@ -14,6 +14,7 @@ import {
   makeAudioSongWithBakedVamp,
   makeAudioSongWithCut,
   makeAudioSongWithRepeat,
+  makeAudioSongWithTail,
   makeAudioSongWithVamp,
   makeAudioSongWithVampOut,
   makeAudioSongWithVocalVamp,
@@ -275,6 +276,40 @@ describe("PlayerEngine – audio mode", () => {
 
     expect(segueEmitted).toHaveBeenCalledOnce();
   });
+
+  it("segues at the end of the last measure, not at the end of the recording's tail", async () => {
+    const song = makeAudioSongWithTail();
+    vi.spyOn(song, "hasSegue").mockReturnValue(true);
+    await reload(song);
+    const segueEmitted = vi.fn();
+    player.onSegue(segueEmitted);
+
+    player.play();
+    stepAt(0.9);
+    expect(segueEmitted).not.toHaveBeenCalled();
+
+    stepAt(1.05);
+    expect(segueEmitted).toHaveBeenCalledOnce();
+    expect(player.isPlaying()).toBe(true);
+
+    stepAt(1.5);
+    stepAt(BUFFER_SECONDS + 0.1);
+    expect(segueEmitted).toHaveBeenCalledOnce();
+  });
+
+  it("does not segue when playback starts in the tail", async () => {
+    const song = makeAudioSongWithTail();
+    vi.spyOn(song, "hasSegue").mockReturnValue(true);
+    await reload(song);
+    const segueEmitted = vi.fn();
+    player.onSegue(segueEmitted);
+
+    player.seek(1200);
+    player.play();
+    stepAt(BUFFER_SECONDS + 0.1);
+    expect(segueEmitted).not.toHaveBeenCalled();
+  });
+
   it("waits where the recording is not loaded and resumes once it is", async () => {
     player.play();
     ap.getMissingPosition.mockReturnValue(0.3);

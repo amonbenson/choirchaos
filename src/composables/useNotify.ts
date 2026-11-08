@@ -17,6 +17,7 @@ export function getErrorMessage(error: unknown): string {
 export function useNotify(): {
   notifyError: (summary: string, error: unknown) => void;
   notifySuccess: (summary: string, detail?: string) => void;
+  notifyInfo: (summary: string, detail?: string) => void;
 } {
   const toast = useToast();
 
@@ -29,5 +30,9 @@ export function useNotify(): {
     toast.add({ severity: "success", summary, detail, life: TOAST_LIFETIME_MS });
   }
 
-  return { notifyError, notifySuccess };
+  function notifyInfo(summary: string, detail?: string): void {
+    toast.add({ severity: "info", summary, detail, life: TOAST_LIFETIME_MS });
+  }
+
+  return { notifyError, notifySuccess, notifyInfo };
 }

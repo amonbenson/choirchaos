@@ -19,6 +19,7 @@ import MeasureGrid from "@/components/score/MeasureGrid.vue";
 import ScoreViewer from "@/components/score/ScoreViewer.vue";
 import SongDetailsDialog from "@/components/song/SongDetailsDialog.vue";
 import { type ShortcutAction, useGlobalShortcuts } from "@/composables/useGlobalShortcuts";
+import { useNotify } from "@/composables/useNotify";
 import { usePlayerSync } from "@/composables/usePlayerSync";
 import { provideSongEditor } from "@/composables/useSongEditor";
 import { useSongHistory } from "@/composables/useSongHistory";
@@ -80,6 +81,7 @@ const scoreCoveredBottom = computed(() => editMode.value && isSheetLayout.value 
 
 const songs = computed(() => show.value?.songs ?? []);
 const songIndex = computed(() => songs.value.findIndex(s => s.id === props.songId));
+const nextSong = computed(() => songs.value[songIndex.value + 1]);
 
 // Once the current song is deleted it has no index, so its successor is found by where it was.
 const lastSongIndex = ref(0);
@@ -95,7 +97,7 @@ const vampCardType = computed(() => {
   if (player.playing) {
     if (player.currentSection?.kind === "vamp" && !player.currentSection.released) {
       return "vamp";
-    } else if (player.currentSegue?.enabled && player.currentSegue.due) {
+    } else if (player.currentSegue?.enabled && player.currentSegue.due && nextSong.value) {
       return "segue";
     }
   }
@@ -167,14 +169,21 @@ function toggleSegue(): void {
   player.toggleSegue();
 }
 
+const { notifyInfo } = useNotify();
+
+// Editors stay on the song they edit, so they only learn where the segue would go.
 player.onSegue(() => {
-  // Select the next song
-  const nextSong = show.value?.songs[songIndex.value + 1];
-  if (!nextSong) {
+  const next = nextSong.value;
+  if (!next) {
     return;
   }
 
-  selectSong(nextSong.id, true);
+  if (editMode.value) {
+    notifyInfo("Segue skipped while editing", `Outside the editor, #${next.number} ${next.title} would start now.`);
+    return;
+  }
+
+  selectSong(next.id, true);
 });
 
 // Leave pages the user lost access to, e.g. after signing out
@@ -451,6 +460,13 @@ const pdfLoading = ref(false);
           >
             <span class="touch:hidden">Press <KbdShortcut action="playPause" /> to exit</span>
             <span class="hidden touch:inline">Click here to exit</span>
+          </VampCard>
+          <VampCard
+            v-else-if="vampCardType === 'segue' && editMode"
+            class="size-full"
+            title="Segue skipped while editing"
+          >
+            Rehearsers move on to #{{ nextSong?.number }} {{ nextSong?.title }} here
           </VampCard>
           <VampCard
             v-else-if="vampCardType === 'segue'"
