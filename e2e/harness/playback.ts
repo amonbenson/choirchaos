@@ -5,8 +5,10 @@ export type PlaybackSample = {
   measure: string | undefined;
   /** The header's section button, e.g. "Vamp 2" or "Repeat 1/3". Plain "Vamp" while no section plays. */
   section: string;
-  /** Recording milliseconds in audio mode, MIDI ticks in MIDI mode. */
+  /** Recording milliseconds in audio mode, MIDI ticks in MIDI mode, rounded by the slider (see `positionTolerance()`). */
   position: number;
+  /** The slider's maximum, in the unit of `position`. */
+  duration: number;
   /** Label of the box marked as the current location, if the song has a score. */
   box: string | undefined;
 };
@@ -14,6 +16,7 @@ export type PlaybackSample = {
 const CURRENT_MEASURE = /^Current measure/;
 const SECTION_BUTTON = /^(Vamp|Repeat|Exiting)( \d+(\/\d+)?)?$/;
 const SAMPLE_INTERVAL_MS = 50;
+const SLIDER_STEPS = 1000;
 
 export async function waitForPlayer(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: "Play / Pause" })).toBeEnabled({ timeout: 30_000 });
@@ -29,10 +32,12 @@ export async function readPlayback(page: Page): Promise<PlaybackSample> {
     const buttons = Array.from(document.querySelectorAll("button"));
     const measure = buttons.find(button => new RegExp(currentMeasure).test(button.getAttribute("aria-label") ?? ""));
     const section = buttons.find(button => new RegExp(sectionButton).test(button.textContent?.trim() ?? ""));
+    const slider = document.querySelector("[role='slider'][aria-label='Position']");
     return {
       measure: measure?.getAttribute("aria-label") ?? undefined,
       section: section?.textContent?.trim() ?? "",
-      position: document.querySelector("[role='slider'][aria-label='Position']")?.getAttribute("aria-valuenow"),
+      position: slider?.getAttribute("aria-valuenow"),
+      duration: slider?.getAttribute("aria-valuemax"),
       box: document.querySelector("[aria-current='location'][aria-label^='Measure ']")?.getAttribute("aria-label") ?? undefined,
     };
   }, { currentMeasure: CURRENT_MEASURE.source, sectionButton: SECTION_BUTTON.source });
@@ -41,8 +46,17 @@ export async function readPlayback(page: Page): Promise<PlaybackSample> {
     measure: raw.measure?.replace(CURRENT_MEASURE, "").trim() || undefined,
     section: raw.section,
     position: Number(raw.position),
+    duration: Number(raw.duration),
     box: raw.box?.replace(/^Measure /, ""),
   };
+}
+
+/**
+ * How far a sample's position may be from the player's: the slider rounds it to a thousandth of the song, so
+ * e.g. a jump to the start of a bar can read as slightly before it.
+ */
+export function positionTolerance(sample: PlaybackSample): number {
+  return sample.duration / SLIDER_STEPS / 2;
 }
 
 /**

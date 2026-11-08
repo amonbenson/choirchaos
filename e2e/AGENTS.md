@@ -27,7 +27,7 @@ Needs Docker and, once, `npx playwright install chromium`.
 - Find elements by role and name, never test ids or CSS; an element without a usable name gets one in the app. Scope to regions ("Editor panel", "Score", "Timeline") where names repeat, e.g. inspector section buttons share names with the header's section button. Timeline lanes only hold items in view.
 - Upload with `chooseFiles()`: the app has no permanent `<input type=file>`.
 - Vue reports render errors via `console.error`, not page errors: use `collectPageErrors()`.
-- The "Position" slider's `aria-valuenow` is rounded to a thousandth of the song: compare exact times against stored data.
+- The "Position" slider's `aria-valuenow` is rounded to a thousandth of the song: compare exact times against stored data, and widen or shrink time ranges by `positionTolerance()` (a jump to a bar start can read as just before it).
 
 ### Playback
 
