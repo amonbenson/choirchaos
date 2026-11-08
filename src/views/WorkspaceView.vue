@@ -95,7 +95,7 @@ const vampCardType = computed(() => {
   if (player.playing) {
     if (player.currentSection?.kind === "vamp" && !player.currentSection.released) {
       return "vamp";
-    } else if (player.currentSegue?.enabled && player.currentTimelinePosition?.position === player.finalLocation?.position) {
+    } else if (player.currentSegue?.enabled && player.currentSegue.due) {
       return "segue";
     }
   }
@@ -246,8 +246,8 @@ onMounted(() => {
 watch(() => player.playbackSpeed, value => settings.update({ playback: { speed: value } }));
 watch(() => player.playbackTransposition, value => settings.update({ playback: { transposition: value } }));
 
-// Apply the global segue setting whenever the current song changes or the setting is toggled.
-watch(() => [song.value, settings.current.playback.segueEnabled], () => {
+// Apply the global segue setting whenever the current song changes, gets a segue in the editor, or the setting is toggled.
+watch(() => [song.value, player.currentSegue !== undefined, settings.current.playback.segueEnabled], () => {
   if (player.currentSegue !== undefined) {
     player.setSegueEnabled(settings.current.playback.segueEnabled);
   }

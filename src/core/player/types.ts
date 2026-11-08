@@ -25,6 +25,8 @@ export type PlayerSectionState = {
 
 export type PlayerSegueState = {
   enabled: boolean;
+  /** Playback is in the last measure and ends without another jump, so the segue comes next. */
+  due: boolean;
 };
 
 export type SystemEvents = {

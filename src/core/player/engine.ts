@@ -459,9 +459,6 @@ export default class PlayerEngine {
     this.route = this.createRoute();
     this.status.set("ready");
 
-    // Setup segue only once at the start of the song
-    this.currentSegue.set(song.hasSegue() ? { enabled: true } : undefined);
-
     // This will set the position and perform an initial sync for the current section, location, tempo, etc.
     this.seek(startPosition);
   }
@@ -666,11 +663,14 @@ export default class PlayerEngine {
       }
 
       this.applyTransitions(plan.transitions, pos);
-      if (this.finishIfEnded(pos)) {
+      const jumpsNext = plan.jump !== undefined && pos >= plan.jump.at && jumps < MAX_JUMPS_PER_STEP;
+
+      // A section ending with the song jumps back at the song's end, so the jump wins over finishing.
+      if (!jumpsNext && this.finishIfEnded(pos)) {
         return;
       }
 
-      if (plan.jump && pos >= plan.jump.at && jumps < MAX_JUMPS_PER_STEP) {
+      if (plan.jump && jumpsNext) {
         pos = this.jump(plan.jump);
         jumps++;
         if (this.finishIfEnded(pos)) {
@@ -704,6 +704,27 @@ export default class PlayerEngine {
     const section = this.route.getSectionState(this.routeState) ?? this.route.getCutStateAt(this.position.get());
     if (!isSameSectionState(section, this.currentSection.get())) {
       this.currentSection.set(section);
+    }
+
+    this.syncSegue();
+  }
+
+  /** Follows the song's segue setting, keeping a toggled `enabled`, and whether playback ends without another jump. */
+  private syncSegue(): void {
+    const segue = this.currentSegue.get();
+    if (!this.currentSong?.hasSegue()) {
+      if (segue) {
+        this.currentSegue.set(undefined);
+      }
+
+      return;
+    }
+
+    const position = this.position.get();
+    const isFinalMeasure = this.currentLocation.get()?.position === this.finalLocation.get()?.position;
+    const due = isFinalMeasure && this.findNextJump(position) === undefined;
+    if (segue?.due !== due) {
+      this.currentSegue.set({ enabled: segue?.enabled ?? true, due });
     }
   }
 
