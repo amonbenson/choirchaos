@@ -95,7 +95,7 @@ async function loadShow(): Promise<void> {
   }
 }
 
-watch(() => [props.showId, auth.user?.id], loadShow, { immediate: true });
+watch([() => props.showId, () => auth.user?.id], loadShow, { immediate: true });
 
 async function saveTitle(): Promise<void> {
   const trimmed = title.value.trim();

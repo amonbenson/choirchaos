@@ -132,7 +132,7 @@ async function buildPeaks(): Promise<void> {
 // Not an immediate watcher: that would run during setup, before the container exists.
 onMounted(buildPeaks);
 watch(() => props.waveform, buildPeaks);
-watch(() => [props.scale, props.offset], applyView);
+watch([() => props.scale, () => props.offset], applyView);
 
 useResizeObserver(zoomviewContainer, () => {
   if (!peaks && props.waveform && hasSize()) {

@@ -25,6 +25,8 @@ Extends the root `AGENTS.md`.
 - A section on the last measure jumps back exactly at the song's end, so a due jump wins over finishing. The segue is `due` only when no jump is left; the "Segueing" card waits for it.
 - In `syncStateAt`, `backend.seek()` must come before `backend.onTempoRestored()`.
 - `unload()` aborts loading and resets all state; never rely on `load()` to clear it. `syncWarp()` re-times audio and re-resolves sections without seeking.
+- Set a state object only when its content changed: every set reaches Vue as a change, and a watcher reacting with a set of its own would loop.
+- Engine options (vamps enabled, segue default) outlive songs and apply to each new one, so the UI passes a setting on once instead of reapplying it per song.
 
 ## Audio
 
@@ -41,4 +43,4 @@ Recordings stream: the backend stores each as mono Ogg Opus plus a seek index pe
 
 - `src/test/fixtures.ts` documents its tick layout; `src/test/route.ts` builds timelines and sections for route tests; `src/test/updater.ts` steps the engine (`stepPast()` adds the extra step end of song and segues need).
 - `engine.audio.test.ts` mocks `AudioDriver`. Where muting changes inside a step the engine stops there, costing an extra step.
-- `setSegueEnabled()` does nothing before `load()`. `setGain(i, 0)` on the vocals track is how muting shows; clear the spy before the asserted step.
+- `setSegueEnabled()` does nothing before `load()`; `setSegueDefault()` does. `setGain(i, 0)` on the vocals track is how muting shows; clear the spy before the asserted step.

@@ -518,6 +518,24 @@ describe("PlayerEngine – MIDI mode", () => {
     expect(player.getCurrentSegue()).toBeUndefined();
   });
 
+  it("starts every song's segue with the default and announces only real changes", async () => {
+    player.setSegueDefault(false);
+    const song = makeMidiSong();
+    vi.spyOn(song, "hasSegue").mockReturnValue(true);
+    await reload(song);
+    expect(player.getCurrentSegue()).toEqual({ enabled: false, due: false });
+
+    const changes = vi.fn();
+    player.onCurrentSegueChange(changes);
+    player.setSegueEnabled(false);
+    player.setSegueDefault(false);
+    player.syncWarp();
+    expect(changes).not.toHaveBeenCalled();
+
+    player.setSegueDefault(true);
+    expect(changes).toHaveBeenCalledExactlyOnceWith({ enabled: true, due: false });
+  });
+
   describe("section on the last measure", () => {
     async function loadWithSegue(song: Song): Promise<ReturnType<typeof vi.fn>> {
       vi.spyOn(song, "hasSegue").mockReturnValue(true);

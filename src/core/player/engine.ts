@@ -110,6 +110,7 @@ export default class PlayerEngine {
 
   private currentSong?: Song;
   private vampsEnabled = true;
+  private segueDefault = true;
   private route = new Route([], [], { vampsEnabled: true });
   private routeState: RouteState | undefined = undefined;
 
@@ -386,9 +387,16 @@ export default class PlayerEngine {
     this.rebuildRoute();
   }
 
+  /** Whether a song's segue starts enabled. It also applies to the song being played. */
+  setSegueDefault(enabled: boolean): void {
+    this.segueDefault = enabled;
+    this.setSegueEnabled(enabled);
+  }
+
+  /** Enables or disables the segue of the song being played only. */
   setSegueEnabled(enabled: boolean): void {
     const segue = this.currentSegue.get();
-    if (segue) {
+    if (segue && segue.enabled !== enabled) {
       this.currentSegue.set({ ...segue, enabled });
     }
   }
@@ -724,7 +732,7 @@ export default class PlayerEngine {
     const isFinalMeasure = this.currentLocation.get()?.position === this.finalLocation.get()?.position;
     const due = isFinalMeasure && this.findNextJump(position) === undefined;
     if (segue?.due !== due) {
-      this.currentSegue.set({ enabled: segue?.enabled ?? true, due });
+      this.currentSegue.set({ enabled: segue?.enabled ?? this.segueDefault, due });
     }
   }
 

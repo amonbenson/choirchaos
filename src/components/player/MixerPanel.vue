@@ -105,8 +105,10 @@ function setTrackGain(track: Track | MergedTrack, value: number): void {
   }
 }
 
-// Tracks are replaced when the song details are saved, so the stored mixer settings are applied again.
-watch(() => [props.showId, props.song, ...(props.song?.tracks ?? [])], () => {
+// Saving the song details replaces the tracks in place, so the stored mixer settings are applied again.
+const songTracks = computed(() => [...(props.song?.tracks ?? [])]);
+
+watch([() => props.showId, () => props.song, songTracks], () => {
   const song = props.song;
   if (!song) {
     return;

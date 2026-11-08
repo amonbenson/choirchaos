@@ -239,19 +239,13 @@ onMounted(() => {
   // Apply initial playback modifiers from settings store
   player.playbackSpeed = settings.current.playback.speed;
   player.playbackTransposition = settings.current.playback.transposition;
-  player.setSegueEnabled(settings.current.playback.segueEnabled);
   player.setVampsEnabled(settings.current.playback.vampsEnabled);
 });
 
 watch(() => player.playbackSpeed, value => settings.update({ playback: { speed: value } }));
 watch(() => player.playbackTransposition, value => settings.update({ playback: { transposition: value } }));
 
-// Apply the global segue setting whenever the current song changes, gets a segue in the editor, or the setting is toggled.
-watch(() => [song.value, player.currentSegue !== undefined, settings.current.playback.segueEnabled], () => {
-  if (player.currentSegue !== undefined) {
-    player.setSegueEnabled(settings.current.playback.segueEnabled);
-  }
-});
+watch(() => settings.current.playback.segueEnabled, value => player.setSegueDefault(value), { immediate: true });
 
 watch(() => settings.current.playback.vampsEnabled, value => player.setVampsEnabled(value));
 
@@ -305,7 +299,6 @@ watch(() => props.songId, async (songId) => {
 
     // Load the selected song
     await player.load(song.value);
-    player.setSegueEnabled(settings.current.playback.segueEnabled);
 
     // Start playing immediately if autoplay was enabled
     if (route.query.autoplay) {

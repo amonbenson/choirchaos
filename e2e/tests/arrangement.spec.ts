@@ -1,4 +1,4 @@
-import { CONDUCTOR } from "../generators/score/presets";
+import { CONDUCTOR, MINIMAL } from "../generators/score/presets";
 import { buildSongBundle, locationAt, type SongBundle } from "../generators/song";
 import { expect, test } from "../harness/fixtures";
 import { collectPageErrors } from "../harness/page";
@@ -72,6 +72,39 @@ test.describe("visible arrangement", () => {
 
     await expect(panel.getByRole("heading", { name: "Marker C" })).toBeVisible();
     await expect(score.getByRole("button", { name: "Vamp 19 to 20" })).toHaveAttribute("aria-pressed", "false");
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe("segue", () => {
+  // A watcher that wrote the segue state it watched once looped forever as soon as a song had a segue.
+  test("an editor turns the segue on, and the song still loads with it", async ({ page, admin, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "audio" }));
+    const errors = collectPageErrors(page);
+    await loginAs(owner);
+
+    await page.goto(`/show/${show.id}/song/${song.id}/edit`);
+    await waitForPlayer(page);
+    const segueSwitch = page.getByRole("region", { name: "Editor panel" }).getByRole("switch", { name: "Segue into the next song" });
+    const segueButton = page.getByRole("button", { name: "Segue", exact: true });
+    await expect(segueButton).toBeDisabled();
+
+    await segueSwitch.click();
+
+    await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).arrangement.segue).toBe(true);
+    await expect(segueButton).toHaveAttribute("aria-pressed", "true");
+
+    await page.reload();
+    await waitForPlayer(page);
+    await expect(segueSwitch).toBeChecked();
+    await expect(segueButton).toHaveAttribute("aria-pressed", "true");
+
+    await segueSwitch.click();
+
+    await expect.poll(async () => (await admin.collection("songs").getOne(song.id)).arrangement.segue).toBe(false);
+    await expect(segueButton).toBeDisabled();
     expect(errors).toEqual([]);
   });
 });

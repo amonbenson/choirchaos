@@ -40,7 +40,7 @@ const holder = computed(() => {
 });
 const holderName = computed(() => holder.value && formatSectionName(measures.value, holder.value));
 
-watch(() => [props.run.first, props.run.last], () => {
+watch([() => props.run.first, () => props.run.last], () => {
   error.value = undefined;
 });
 
