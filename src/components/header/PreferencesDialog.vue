@@ -363,7 +363,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                 <!-- Spacer to keep row height consistent when there's no button -->
                 <div
                   v-else
-                  class="size-8"
+                  class="size-8 shrink-0"
                 />
               </div>
             </div>

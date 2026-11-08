@@ -14,13 +14,18 @@ import { createPreset, DEFAULT_PALETTES } from "./theme/preset";
 
 // PrimeVue renders icon font glyphs without hiding them, so screen readers would announce them next to the label.
 const HIDDEN = { "aria-hidden": "true" };
-const DECORATIVE_ICONS_PT = {
-  avatar: { icon: HIDDEN },
+// These controls have a fixed size but no in-flow content, so a flex row with wrapping text would squeeze them.
+const FIXED_SIZE = { class: "shrink-0" };
+const PASS_THROUGH = {
+  avatar: { root: FIXED_SIZE, icon: HIDDEN },
   button: { icon: HIDDEN },
+  checkbox: { root: FIXED_SIZE },
   contextmenu: { itemIcon: HIDDEN },
   menu: { itemIcon: HIDDEN },
   message: { icon: HIDDEN },
+  radiobutton: { root: FIXED_SIZE },
   tag: { icon: HIDDEN },
+  toggleswitch: { root: FIXED_SIZE },
 };
 
 // Load WebAudioFont as a global script (the library uses top-level var declarations,
@@ -37,7 +42,7 @@ async function init(): Promise<void> {
   const app = createApp(App);
   app.use(createPinia());
   app.use(PrimeVue, {
-    pt: DECORATIVE_ICONS_PT,
+    pt: PASS_THROUGH,
     theme: {
       preset: createPreset(DEFAULT_PALETTES),
       options: {
