@@ -6,7 +6,7 @@ import type Song from "../models/song";
 import { Emitter, type Emitters, Property } from "../utils/events";
 import { SetIntervalUpdater, type UpdateCallback, type Updater } from "../utils/updater";
 import AudioBackend from "./audio/backend";
-import type { AudioChunk } from "./audio/chunkDetector";
+import type { RecordingWaveform } from "./audio/waveformData";
 import AudioClock from "./audioClock";
 import { PlayerBackend } from "./backend";
 import MidiBackend from "./midi/backend";
@@ -64,6 +64,7 @@ export default class PlayerEngine {
   private readonly mode = new Property<PlayerMode>("none");
 
   private readonly playing = new Property(false);
+  private readonly buffering = new Property(false);
   private readonly duration = new Property<Tick>(0);
   private readonly timeline = new Property<ResolvedTimeline>([]);
   private readonly finalLocation = new Property<PlayerLocation | undefined>(undefined);
@@ -81,6 +82,7 @@ export default class PlayerEngine {
   readonly onModeChange = this.mode.onChange;
 
   readonly onPlayingChange = this.playing.onChange;
+  readonly onBufferingChange = this.buffering.onChange;
   readonly onDurationChange = this.duration.onChange;
   readonly onTimelineChange = this.timeline.onChange;
   readonly onFinalLocationChange = this.finalLocation.onChange;
@@ -146,6 +148,11 @@ export default class PlayerEngine {
     return this.playing.get();
   }
 
+  /** Whether playback waits for the recording to load. */
+  isBuffering(): boolean {
+    return this.buffering.get();
+  }
+
   getPosition(): Tick {
     return this.position.get();
   }
@@ -197,8 +204,9 @@ export default class PlayerEngine {
     return getPositionTick(this.timeline.get(), position, beat);
   }
 
-  getTrackChunks(): AudioChunk[][] {
-    return this.backend instanceof AudioBackend ? this.backend.getTrackChunks() : [];
+  /** The mixdown of an audio song's recordings, which downloads all of them. Undefined for other songs. */
+  loadWaveform(): Promise<RecordingWaveform> | undefined {
+    return this.backend instanceof AudioBackend ? this.backend.loadWaveform() : undefined;
   }
 
   getPlaybackSpeed(): number {
@@ -332,6 +340,7 @@ export default class PlayerEngine {
     // A seek is a fresh visit, so the section state follows from the position alone.
     this.routeState = this.route.stateAt(this.position.get());
     this.syncSection();
+    this.backend?.prefetch(this.getJumpTargets(this.position.get()));
 
     if (wasPlaying) {
       this.play();
@@ -414,6 +423,7 @@ export default class PlayerEngine {
       onTimeSignatureChanged: (sig: TimeSignature) => this.currentTimeSignature.set(sig),
       onNote: (e: NoteEvent) => this.emitters.note.fire(e),
       onAmplitudes: (a: number[]) => this.emitters.trackAmplitudesChange.fire(a),
+      onBufferingChanged: (b: boolean) => this.buffering.set(b),
     };
 
     // Setup the backend (either midi or audio mode)
@@ -470,6 +480,7 @@ export default class PlayerEngine {
     this.backend = undefined;
 
     this.mode.set("none");
+    this.buffering.set(false);
     this.currentSong = undefined;
     this.route = new Route([], [], { vampsEnabled: this.vampsEnabled });
     this.routeState = undefined;
@@ -530,13 +541,9 @@ export default class PlayerEngine {
     }
   }
 
-  /**
-   * Collects the state changes up to the next real jump. The backend stops at the jump, and also where
-   * muting vocals changes, so notes on a pass boundary get the new pass's vocals.
-   */
   /** The next jump that moves the position, passing the state changes before it. */
-  private findNextJump(position: Tick): RouteJump | undefined {
-    let state = this.routeState;
+  private findNextJump(position: Tick, from: RouteState | undefined = this.routeState): RouteJump | undefined {
+    let state = from;
     let tick = position;
     for (let i = 0; i < MAX_TRANSITIONS_PER_PLAN; i++) {
       const next = this.route.nextJump(state, tick);
@@ -551,6 +558,21 @@ export default class PlayerEngine {
     return undefined;
   }
 
+  /** Where playback may jump next: the next jump, and for a vamp also where its release leads. */
+  private getJumpTargets(position: Tick): Tick[] {
+    const targets = [this.findNextJump(position)?.to];
+    const state = this.routeState;
+    if (state && !state.released && this.route.getSectionState(state)?.kind === "vamp") {
+      targets.push(this.findNextJump(position, { ...state, released: true })?.to);
+    }
+
+    return targets.filter(target => target !== undefined);
+  }
+
+  /**
+   * Collects the state changes up to the next real jump. The backend stops at the jump, and also where
+   * muting vocals changes, so notes on a pass boundary get the new pass's vocals.
+   */
   private planStep(position: Tick): StepPlan {
     const transitions: RouteJump[] = [];
     let state = this.routeState;
@@ -668,6 +690,7 @@ export default class PlayerEngine {
     this.syncLocation(pos);
     this.syncSection();
     this.backend.prepareJump(this.findNextJump(pos));
+    this.backend.prefetch(this.getJumpTargets(pos));
   }
 
   private syncLocation(pos: Tick): void {

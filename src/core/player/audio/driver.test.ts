@@ -1,194 +1,67 @@
-/// <reference types="node" />
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { computeRms } from "@/test/fixtures";
 
 import AudioClock from "../audioClock";
-import { type AudioChunk, detectChunks } from "./chunkDetector";
+import { type Block, BLOCK_OVERLAP_SECONDS, BLOCK_SECONDS, type BlockSource } from "./blockStore";
 import AudioDriver from "./driver";
+import { OPUS_SAMPLE_RATE } from "./oggOpus";
 
-const SAMPLE_RATE = 44100;
-const DATA_DIR = resolve(process.cwd(), "src/test/data");
+const SAMPLE_RATE = OPUS_SAMPLE_RATE;
 
-function makeBuffer(
-  ctx: BaseAudioContext,
-  sections: Array<{ silent: boolean; durationSec: number }>,
-): AudioBuffer {
-  const sr = ctx.sampleRate;
-  const totalSamples = sections.reduce((acc, s) => acc + Math.floor(sr * s.durationSec), 0);
-  const buf = ctx.createBuffer(2, totalSamples, sr);
-  const ch0 = buf.getChannelData(0);
-  const ch1 = buf.getChannelData(1);
-  let offset = 0;
-  for (const s of sections) {
-    const len = Math.floor(sr * s.durationSec);
-    if (!s.silent) {
-      for (let i = 0; i < len; i++) {
-        ch0[offset + i] = 0.5;
-        ch1[offset + i] = 0.5;
-      }
+/** Splits whole recordings into blocks like `BlockStore`; `missing` blocks stay unloaded. */
+function makeBlockSource(ctx: BaseAudioContext, recordings: Float32Array[], missing: number[] = []): BlockSource {
+  const blockSamples = BLOCK_SECONDS * SAMPLE_RATE;
+  const overlap = BLOCK_OVERLAP_SECONDS * SAMPLE_RATE;
+  const length = Math.min(...recordings.map(recording => recording.length));
+  const count = Math.ceil(length / blockSamples);
+  const blocks = recordings.map(recording => Array.from({ length: count }, (_, index): Block | undefined => {
+    if (missing.includes(index)) {
+      return undefined;
     }
 
-    offset += len;
-  }
-
-  return buf;
-}
-
-function makeMonoChunk(ctx: BaseAudioContext, sampleOffset: number, durationSec: number): AudioChunk {
-  const sr = ctx.sampleRate;
-  const length = Math.floor(sr * durationSec);
-  const buf = ctx.createBuffer(1, length, sr);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < length; i++) {
-    data[i] = 0.5 * Math.sin((2 * Math.PI * 440 * i) / sr);
-  }
-
-  return { sampleOffset, audioBuffer: buf };
-}
-
-async function decodeMp3(filename: string): Promise<{ buffer: AudioBuffer; ctx: AudioContext }> {
-  const raw = readFileSync(`${DATA_DIR}/${filename}`);
-  const arrayBuf = new ArrayBuffer(raw.byteLength);
-  new Uint8Array(arrayBuf).set(raw);
-  const ctx = new AudioContext();
-  const buffer = await ctx.decodeAudioData(arrayBuf);
-  return { buffer, ctx };
-}
-
-describe("detectChunks", () => {
-  let ctx: AudioContext;
-
-  beforeEach(() => {
-    ctx = new AudioContext();
-  });
-
-  afterEach(async () => {
-    await ctx.close();
-    vi.clearAllMocks();
-  });
-
-  it("returns empty array for a fully silent buffer", () => {
-    const buf = ctx.createBuffer(2, SAMPLE_RATE, SAMPLE_RATE);
-    expect(detectChunks(buf, ctx)).toHaveLength(0);
-  });
-
-  it("returns one chunk for a fully non-silent buffer", () => {
-    const buf = makeBuffer(ctx, [{ silent: false, durationSec: 2 }]);
-    const chunks = detectChunks(buf, ctx);
-    expect(chunks).toHaveLength(1);
-    expect(chunks[0]!.sampleOffset).toBe(0);
-    expect(chunks[0]!.audioBuffer.numberOfChannels).toBe(1);
-  });
-
-  it("splits a buffer with a long gap into two chunks", () => {
-    const buf = makeBuffer(ctx, [
-      { silent: false, durationSec: 1 },
-      { silent: true, durationSec: 2 },
-      { silent: false, durationSec: 1 },
-    ]);
-    const chunks = detectChunks(buf, ctx);
-    expect(chunks).toHaveLength(2);
-    expect(chunks[0]!.sampleOffset).toBe(0);
-    expect(chunks[1]!.sampleOffset).toBeGreaterThan(SAMPLE_RATE * 0.9);
-  });
-
-  it("merges two non-silent regions separated by a gap shorter than minSilenceSeconds", () => {
-    const buf = makeBuffer(ctx, [
-      { silent: false, durationSec: 1 },
-      { silent: true, durationSec: 0.1 },
-      { silent: false, durationSec: 1 },
-    ]);
-    const chunks = detectChunks(buf, ctx);
-    expect(chunks).toHaveLength(1);
-  });
-
-  it("handles leading silence by starting the first chunk after the gap", () => {
-    const buf = makeBuffer(ctx, [
-      { silent: true, durationSec: 1 },
-      { silent: false, durationSec: 1 },
-    ]);
-    const chunks = detectChunks(buf, ctx);
-    expect(chunks).toHaveLength(1);
-    expect(chunks[0]!.sampleOffset).toBeGreaterThan(SAMPLE_RATE * 0.9);
-  });
-
-  it("handles trailing silence by ending the last chunk before it", () => {
-    const buf = makeBuffer(ctx, [
-      { silent: false, durationSec: 1 },
-      { silent: true, durationSec: 1 },
-    ]);
-    const chunks = detectChunks(buf, ctx);
-    expect(chunks).toHaveLength(1);
-    const chunkEnd = chunks[0]!.sampleOffset + chunks[0]!.audioBuffer.length;
-    expect(chunkEnd).toBeLessThan(buf.length * 0.9);
-  });
-
-  it("detects three chunks from a buffer with two long gaps", () => {
-    const buf = makeBuffer(ctx, [
-      { silent: false, durationSec: 0.5 },
-      { silent: true, durationSec: 1 },
-      { silent: false, durationSec: 0.5 },
-      { silent: true, durationSec: 1 },
-      { silent: false, durationSec: 0.5 },
-    ]);
-    expect(detectChunks(buf, ctx)).toHaveLength(3);
-  });
-
-  it("produces mono output buffers regardless of source channel count", () => {
-    const buf = makeBuffer(ctx, [{ silent: false, durationSec: 1 }]);
-    expect(buf.numberOfChannels).toBe(2);
-    const chunks = detectChunks(buf, ctx);
-    expect(chunks[0]!.audioBuffer.numberOfChannels).toBe(1);
-  });
-
-  it("chunk sampleOffsets and durations are consistent with original buffer", () => {
-    const buf = makeBuffer(ctx, [
-      { silent: false, durationSec: 1 },
-      { silent: true, durationSec: 2 },
-      { silent: false, durationSec: 1 },
-    ]);
-    const chunks = detectChunks(buf, ctx);
-    for (const chunk of chunks) {
-      const end = chunk.sampleOffset + chunk.audioBuffer.length;
-      expect(end).toBeLessThanOrEqual(buf.length);
+    const samples = recording.slice(index * blockSamples, Math.min(length, (index + 1) * blockSamples + overlap));
+    if (samples.every(sample => sample === 0)) {
+      return null;
     }
-  });
-  it(
-    "vocal track: produces multiple chunks covering substantially less than the full duration",
-    async () => {
-      const { buffer, ctx: mp3Ctx } = await decodeMp3("vocal_example.mp3");
-      const chunks = detectChunks(buffer, mp3Ctx);
-      await mp3Ctx.close();
 
-      expect(chunks.length).toBeGreaterThanOrEqual(5);
-      expect(chunks.every(c => c.audioBuffer.numberOfChannels === 1)).toBe(true);
+    const buffer = ctx.createBuffer(1, samples.length, SAMPLE_RATE);
+    buffer.copyToChannel(samples, 0);
+    return buffer;
+  }));
 
-      const totalChunkSamples = chunks.reduce((sum, c) => sum + c.audioBuffer.length, 0);
-      expect(totalChunkSamples / buffer.length).toBeLessThan(0.65);
-    },
-    60_000,
+  return {
+    getTrackCount: () => recordings.length,
+    getBlockCount: () => count,
+    getBlock: (track, index) => blocks[track]?.[index],
+  };
+}
+
+function makeSine(seconds: number): Float32Array {
+  return Float32Array.from({ length: seconds * SAMPLE_RATE }, (_, i) => 0.5 * Math.sin((2 * Math.PI * 440 * i) / SAMPLE_RATE));
+}
+
+/** Each sample holds its own time in the recording, so the output tells which time plays when. */
+function makeTimed(seconds: number): Float32Array {
+  return Float32Array.from({ length: seconds * SAMPLE_RATE }, (_, i) => i / SAMPLE_RATE / 100);
+}
+
+function playedAt(output: Float32Array, seconds: number): number {
+  return output[Math.round(seconds * SAMPLE_RATE)]! * 100;
+}
+
+async function makeOfflinePlayer(seconds: number, recordings: Float32Array[], missing: number[] = []): Promise<{ player: AudioDriver; render: () => Promise<Float32Array> }> {
+  const offlineCtx = new OfflineAudioContext(2, Math.round(seconds * SAMPLE_RATE), SAMPLE_RATE);
+  const player = await AudioDriver.create(
+    offlineCtx as unknown as AudioContext,
+    new AudioClock(offlineCtx),
+    makeBlockSource(offlineCtx, recordings, missing),
+    { tracks: recordings.map(() => ({})), onAmplitudes: () => {} },
   );
+  player.connect(offlineCtx.destination);
+  return { player, render: async () => (await offlineCtx.startRendering()).getChannelData(0) };
+}
 
-  it(
-    "accomp track: produces at most two chunks covering nearly all of the duration",
-    async () => {
-      const { buffer, ctx: mp3Ctx } = await decodeMp3("accomp_example.mp3");
-      const chunks = detectChunks(buffer, mp3Ctx);
-      await mp3Ctx.close();
-
-      expect(chunks.length).toBeLessThanOrEqual(2);
-      expect(chunks.every(c => c.audioBuffer.numberOfChannels === 1)).toBe(true);
-
-      const totalChunkSamples = chunks.reduce((sum, c) => sum + c.audioBuffer.length, 0);
-      expect(totalChunkSamples / buffer.length).toBeGreaterThan(0.95);
-    },
-    60_000,
-  );
-});
 describe("AudioDriver", () => {
   let ctx: AudioContext;
 
@@ -201,22 +74,13 @@ describe("AudioDriver", () => {
     vi.clearAllMocks();
   });
 
-  function makeChunks(offsets: number[] = [0]): AudioChunk[] {
-    return offsets.map(o => makeMonoChunk(ctx, o, 1));
-  }
-
-  async function makePlayer(chunks: AudioChunk[][] = [makeChunks()]): Promise<AudioDriver> {
-    return AudioDriver.create(ctx, new AudioClock(ctx), chunks, {
-      tracks: chunks.map(() => ({})),
+  async function makePlayer(recordings: Float32Array[] = [makeSine(1)]): Promise<AudioDriver> {
+    return AudioDriver.create(ctx, new AudioClock(ctx), makeBlockSource(ctx, recordings), {
+      tracks: recordings.map(() => ({})),
       onAmplitudes: () => {},
     });
   }
 
-  it("create() resolves to an AudioDriver instance", async () => {
-    const player = await makePlayer();
-    expect(player).toBeDefined();
-    player.dispose();
-  });
   it("getPosition() starts at 0 before play", async () => {
     const player = await makePlayer();
     expect(player.getPosition()).toBe(0);
@@ -247,22 +111,12 @@ describe("AudioDriver", () => {
     expect(player.getPosition()).toBeCloseTo(0.4, 1);
     player.dispose();
   });
-  it("setGain accepts values in [0, 1] without throwing", async () => {
-    const player = await makePlayer();
-    expect(() => player.setGain(0, 0)).not.toThrow();
-    expect(() => player.setGain(0, 0.5)).not.toThrow();
-    expect(() => player.setGain(0, 1)).not.toThrow();
-    player.dispose();
-  });
-  it("setTempo does not throw", async () => {
-    const player = await makePlayer();
-    expect(() => player.setTempo(1.2)).not.toThrow();
-    player.dispose();
-  });
 
-  it("setPitch does not throw", async () => {
+  it("pauses at a given position", async () => {
     const player = await makePlayer();
-    expect(() => player.setPitch(2)).not.toThrow();
+    player.play();
+    player.pause(0.8);
+    expect(player.getPosition()).toBe(0.8);
     player.dispose();
   });
 
@@ -270,9 +124,11 @@ describe("AudioDriver", () => {
     const player = await makePlayer();
     player.play();
     expect(() => player.setTempo(1.5)).not.toThrow();
+    expect(() => player.setPitch(2)).not.toThrow();
     player.pause();
     player.dispose();
   });
+
   it("jump while not playing moves the position", async () => {
     const player = await makePlayer();
     player.jump(0, 0.7);
@@ -280,111 +136,87 @@ describe("AudioDriver", () => {
     player.dispose();
   });
 
-  it("jump into a silent gap between chunks does not throw", async () => {
-    // Two chunks: 0–1s and 3–4s, with a 2s gap in between.
-    const chunks: AudioChunk[][] = [[
-      makeMonoChunk(ctx, 0, 1),
-      makeMonoChunk(ctx, SAMPLE_RATE * 3, 1),
-    ]];
-    const player = await AudioDriver.create(ctx, new AudioClock(ctx), chunks, {
-      tracks: [{}],
-      onAmplitudes: () => {},
-    });
+  it("dispose while playing stops without throwing", async () => {
+    const player = await makePlayer();
     player.play();
-    expect(() => player.jump(0, 1.5)).not.toThrow();
-    player.pause();
-    player.dispose();
+    expect(() => player.dispose()).not.toThrow();
   });
-  it("passes a mono chunk signal through to the output", async () => {
-    const offlineCtx = new OfflineAudioContext(2, SAMPLE_RATE, SAMPLE_RATE);
-    const chunkBuf = offlineCtx.createBuffer(1, SAMPLE_RATE, SAMPLE_RATE);
-    const data = chunkBuf.getChannelData(0);
-    for (let i = 0; i < SAMPLE_RATE; i++) {
-      data[i] = 0.5 * Math.sin((2 * Math.PI * 440 * i) / SAMPLE_RATE);
-    }
 
-    const player = await AudioDriver.create(
-      offlineCtx as unknown as AudioContext,
-      new AudioClock(offlineCtx),
-      [[{ sampleOffset: 0, audioBuffer: chunkBuf }]],
-      { tracks: [{}], onAmplitudes: () => {} },
-    );
-    player.connect(offlineCtx.destination);
+  it("passes a block's signal through to the output", async () => {
+    const { player, render } = await makeOfflinePlayer(1, [makeSine(2)]);
     player.play();
 
-    const rendered = await offlineCtx.startRendering();
-    expect(computeRms(rendered.getChannelData(0))).toBeGreaterThan(0.1);
+    expect(computeRms(await render())).toBeGreaterThan(0.1);
     player.dispose();
   });
 
   it("muted track produces near-silent output", async () => {
-    const offlineCtx = new OfflineAudioContext(2, SAMPLE_RATE, SAMPLE_RATE);
-    const chunkBuf = offlineCtx.createBuffer(1, SAMPLE_RATE, SAMPLE_RATE);
-    const data = chunkBuf.getChannelData(0);
-    for (let i = 0; i < SAMPLE_RATE; i++) {
-      data[i] = 0.5 * Math.sin((2 * Math.PI * 440 * i) / SAMPLE_RATE);
-    }
-
-    const player = await AudioDriver.create(
-      offlineCtx as unknown as AudioContext,
-      new AudioClock(offlineCtx),
-      [[{ sampleOffset: 0, audioBuffer: chunkBuf }]],
-      { tracks: [{}], onAmplitudes: () => {} },
-    );
+    const { player, render } = await makeOfflinePlayer(1, [makeSine(2)]);
     player.setGain(0, 0);
-    player.connect(offlineCtx.destination);
     player.play();
 
-    const rendered = await offlineCtx.startRendering();
-    expect(computeRms(rendered.getChannelData(0))).toBeLessThan(0.05);
+    expect(computeRms(await render())).toBeLessThan(0.05);
     player.dispose();
   });
 
-  it("a chunk starting after position zero is silent until it begins", async () => {
-    const sr = SAMPLE_RATE;
-    const offlineCtx = new OfflineAudioContext(2, sr, sr);
+  it("plays nothing for a silent block", async () => {
+    const recording = makeSine(BLOCK_SECONDS * 2);
+    recording.fill(0, 0, BLOCK_SECONDS * SAMPLE_RATE);
+    const { player, render } = await makeOfflinePlayer(0.5, [recording]);
+    player.seek(BLOCK_SECONDS - 0.25);
+    player.play();
 
-    // Chunk starts at 0.5s into the recording, duration 0.5s.
-    // Rendering 1s total: first 0.5s should be silent.
-    const chunkBuf = offlineCtx.createBuffer(1, Math.floor(sr * 0.5), sr);
-    const data = chunkBuf.getChannelData(0);
-    for (let i = 0; i < data.length; i++) {
-      data[i] = 0.5;
+    const output = await render();
+
+    expect(computeRms(output.subarray(0, SAMPLE_RATE * 0.2))).toBe(0);
+    expect(computeRms(output.subarray(SAMPLE_RATE * 0.3))).toBeGreaterThan(0.1);
+    player.dispose();
+  });
+
+  it.each([1, 0.85, 1.13])("joins blocks seamlessly at tempo %s", async (tempo) => {
+    const { player, render } = await makeOfflinePlayer(0.5, [makeTimed(BLOCK_SECONDS * 2)]);
+    player.setTempo(tempo);
+    player.seek(BLOCK_SECONDS - 0.2);
+    player.play();
+
+    const output = await render();
+
+    // A gap, a doubled overlap or a shifted block would leave the ramp by far more than this.
+    const join = Math.round((0.2 / tempo) * SAMPLE_RATE);
+    for (let i = join - 480; i < join + 480; i++) {
+      const ideal = (BLOCK_SECONDS - 0.2 + (i / SAMPLE_RATE) * tempo) / 100;
+      expect(Math.abs(output[i]! - ideal)).toBeLessThan(1e-4);
     }
 
-    const player = await AudioDriver.create(
-      offlineCtx as unknown as AudioContext,
-      new AudioClock(offlineCtx),
-      [[{ sampleOffset: Math.floor(sr * 0.5), audioBuffer: chunkBuf }]],
-      { tracks: [{}], onAmplitudes: () => {} },
-    );
-    player.connect(offlineCtx.destination);
-    player.play();
-
-    const rendered = await offlineCtx.startRendering();
-    const firstHalf = rendered.getChannelData(0).subarray(0, Math.floor(sr * 0.4));
-    expect(computeRms(firstHalf)).toBeLessThan(0.01);
     player.dispose();
   });
+
+  it("reports where the playing segment reaches a block that is not loaded", async () => {
+    const { player } = await makeOfflinePlayer(1, [makeSine(BLOCK_SECONDS * 2)], [1]);
+    player.seek(BLOCK_SECONDS - 0.5);
+    player.play();
+    player.update();
+
+    expect(player.getMissingPosition()).toBe(BLOCK_SECONDS);
+    player.pause();
+    expect(player.getMissingPosition()).toBeUndefined();
+    player.dispose();
+  });
+
+  it("reports nothing missing while the missing block is beyond the schedule", async () => {
+    const { player } = await makeOfflinePlayer(1, [makeSine(BLOCK_SECONDS * 2)], [1]);
+    player.play();
+    player.update();
+
+    expect(player.getMissingPosition()).toBeUndefined();
+    player.dispose();
+  });
+
   describe("jumps", () => {
-    // Each sample holds its own time in the recording, so the output tells which time plays when.
     async function makeTimedPlayer(): Promise<{ player: AudioDriver; render: () => Promise<Float32Array> }> {
-      const offlineCtx = new OfflineAudioContext(2, SAMPLE_RATE / 2, SAMPLE_RATE);
-      const buffer = offlineCtx.createBuffer(1, SAMPLE_RATE, SAMPLE_RATE);
-      buffer.getChannelData(0).forEach((_, i, data) => data[i] = i / SAMPLE_RATE);
-      const player = await AudioDriver.create(
-        offlineCtx as unknown as AudioContext,
-        new AudioClock(offlineCtx),
-        [[{ sampleOffset: 0, audioBuffer: buffer }]],
-        { tracks: [{}], onAmplitudes: () => {} },
-      );
-      player.connect(offlineCtx.destination);
-      player.play();
-      return { player, render: async () => (await offlineCtx.startRendering()).getChannelData(0) };
-    }
-
-    function playedAt(output: Float32Array, seconds: number): number {
-      return output[Math.round(seconds * SAMPLE_RATE)]!;
+      const timed = await makeOfflinePlayer(0.5, [makeTimed(2)]);
+      timed.player.play();
+      return timed;
     }
 
     it("lands a prepared jump exactly where the recording reaches it", async () => {
@@ -442,16 +274,16 @@ describe("AudioDriver", () => {
       expect(playedAt(output, 0.48)).toBeCloseTo(0.48, 2);
       player.dispose();
     });
-  });
 
-  it("dispose does not throw", async () => {
-    const player = await makePlayer();
-    expect(() => player.dispose()).not.toThrow();
-  });
+    it("jumps into another block", async () => {
+      const { player, render } = await makeOfflinePlayer(0.5, [makeTimed(BLOCK_SECONDS * 2)]);
+      player.play();
+      player.prepareJump(0.25, BLOCK_SECONDS + 1);
 
-  it("dispose while playing stops without throwing", async () => {
-    const player = await makePlayer();
-    player.play();
-    expect(() => player.dispose()).not.toThrow();
+      const output = await render();
+
+      expect(playedAt(output, 0.35)).toBeCloseTo(BLOCK_SECONDS + 1.1, 2);
+      player.dispose();
+    });
   });
 });

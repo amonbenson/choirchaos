@@ -93,6 +93,8 @@ export default class Song {
   private segue: boolean;
   /** The record's `updated` timestamp as of our last save, to notice changes made elsewhere. */
   private updated?: string;
+  /** The stored seek index of the recordings, written by the backend with every recording change. */
+  private audioIndexFile?: string;
   private timelineRevision = 0;
   // Vue does not proxy non-extensible objects, so filling the cache inside a computed triggers nothing.
   private readonly timelineCache: { revision: number; timeline?: Timeline } = Object.preventExtensions({ revision: -1, timeline: undefined });
@@ -208,6 +210,10 @@ export default class Song {
     return this.sections;
   }
 
+  public getAudioIndexFile(): string | undefined {
+    return this.audioIndexFile;
+  }
+
   public hasSegue(): boolean {
     return this.segue;
   }
@@ -224,6 +230,10 @@ export default class Song {
 
   private rememberUpdated(record: PbRecord): PbRecord {
     this.updated = record.updated ?? this.updated;
+    if ("audioIndex" in record) {
+      this.audioIndexFile = record.audioIndex || undefined;
+    }
+
     return record;
   }
 
@@ -603,7 +613,7 @@ export default class Song {
     };
   }
 
-  public static deserialize({ id, number, title, midiFile, jsonFile, pdfFile, audioFiles, tracks, score, recording, arrangement, updated }: PbRecord, showPermissions?: Permissions): Song {
+  public static deserialize({ id, number, title, midiFile, jsonFile, pdfFile, audioFiles, audioIndex, tracks, score, recording, arrangement, updated }: PbRecord, showPermissions?: Permissions): Song {
     const song = new Song(
       id,
       number,
@@ -617,6 +627,7 @@ export default class Song {
       showPermissions ?? NoPermissions,
     );
     song.updated = updated;
+    song.audioIndexFile = audioIndex || undefined;
     return song;
   }
 

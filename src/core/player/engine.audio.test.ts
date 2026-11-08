@@ -20,14 +20,23 @@ import {
 } from "@/test/fixtures";
 import { ManualUpdater } from "@/test/updater";
 
+import AudioBackend from "./audio/backend";
 import AudioDriver from "./audio/driver";
 import PlayerEngine from "./engine";
 
 vi.mock("axios");
 vi.mock("./audio/driver", () => ({ default: { create: vi.fn() } }));
+vi.mock("./audio/opusDecoding", () => ({
+  WorkerOpusDecoding: class {
+    decode = vi.fn(async ({ from, to }: { from: number; to: number }) => new Float32Array(to - from));
+    buildWaveform = vi.fn();
+    dispose = vi.fn();
+  },
+}));
 
-// The repeat and baked vamp fixtures place 8 and 7 positions 0.25 s apart, so the buffer must last 2 s.
+// The repeat and baked vamp fixtures place 8 and 7 positions 0.25 s apart, so the recording must last 2 s.
 const BUFFER_SECONDS = 2;
+const INDEX_FILE = "audio_index.json";
 const STEP = 0.02;
 
 type MockFn = Mock<(...args: any[]) => any>;
@@ -43,6 +52,8 @@ type MockAudioDriver = {
   setGain: MockFn;
   setTempo: MockFn;
   setPitch: MockFn;
+  update: MockFn;
+  getMissingPosition: MockFn;
   connect: MockFn;
   dispose: MockFn;
 };
@@ -64,6 +75,8 @@ function makeMockAP(): MockAudioDriver {
     setGain: vi.fn(),
     setTempo: vi.fn(),
     setPitch: vi.fn(),
+    update: vi.fn(),
+    getMissingPosition: vi.fn(),
     connect: vi.fn(),
     dispose: vi.fn(),
   };
@@ -82,9 +95,13 @@ function makePlayer(): { player: PlayerEngine; updater: ManualUpdater; ctx: Audi
 }
 
 async function loadSong(player: PlayerEngine, ctx: AudioContext, ap: MockAudioDriver, song: Song): Promise<void> {
-  const buf = ctx.createBuffer(2, 44100 * BUFFER_SECONDS, 44100);
-  vi.spyOn(ctx, "decodeAudioData").mockResolvedValue(buf);
-  vi.mocked(axios.get).mockResolvedValue({ data: new ArrayBuffer(8) });
+  // One page per recording that lasts the whole buffer; the blocks decode to silence.
+  const entry = { preSkip: 0, headerBytes: 0, pageBytes: [8], pageSamples: [48000 * BUFFER_SECONDS] };
+  const index = Object.fromEntries(song.tracks.map(track => [track.audioFile, entry]));
+  vi.spyOn(song, "getAudioIndexFile").mockReturnValue(INDEX_FILE);
+  vi.mocked(axios.get).mockImplementation(async (url: string) => (
+    url.endsWith(INDEX_FILE) ? { status: 200, data: index } : { status: 206, data: new ArrayBuffer(8) }
+  ));
   vi.mocked(AudioDriver.create).mockResolvedValue(ap as unknown as AudioDriver);
   await player.load(song);
 
@@ -258,6 +275,33 @@ describe("PlayerEngine – audio mode", () => {
 
     expect(segueEmitted).toHaveBeenCalledOnce();
   });
+  it("waits where the recording is not loaded and resumes once it is", async () => {
+    player.play();
+    ap.getMissingPosition.mockReturnValue(0.3);
+    stepAt(0.3);
+
+    expect(ap.pause).toHaveBeenCalledWith(0.3);
+    expect(player.isBuffering()).toBe(true);
+    expect(player.isPlaying()).toBe(true);
+
+    ap.getMissingPosition.mockReturnValue(undefined);
+    ap.play.mockClear();
+    await vi.waitFor(() => {
+      stepAt(0.3);
+      expect(ap.play).toHaveBeenCalled();
+    });
+    expect(player.isBuffering()).toBe(false);
+  });
+
+  it("stops waiting when paused", () => {
+    player.play();
+    ap.getMissingPosition.mockReturnValue(0.3);
+    stepAt(0.3);
+    player.pause();
+
+    expect(player.isBuffering()).toBe(false);
+  });
+
   // Vamp on measure "2" from 250 ms to 500 ms.
 
   describe("vamp recorded once", () => {
@@ -332,6 +376,15 @@ describe("PlayerEngine – audio mode", () => {
       // The first recorded pass is one measure, so no barline is left. Its next beat at 312.5 ms maps to the last pass.
       expect(ap.jump).toHaveBeenCalledWith(expect.any(Number), 1.0625);
       expect(player.getCurrentSection()).toEqual({ section: 0, kind: "vamp", pass: 1, passes: 1, recordedPasses: 4, released: true });
+    });
+
+    it("loads where a release would lead before the vamp is released", async () => {
+      const prefetch = vi.spyOn(AudioBackend.prototype, "prefetch");
+      await reload(makeAudioSongWithBakedVamp());
+      player.play();
+      stepAt(0.3);
+
+      expect(prefetch).toHaveBeenLastCalledWith(expect.arrayContaining([1062.5]));
     });
   });
 

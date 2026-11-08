@@ -22,10 +22,9 @@ async function buildWavStem(partId: string, name: string): Promise<UploadFile> {
   return { name, mimeType: "audio/wav", buffer: Buffer.from(encodeWav(await renderStem(partId))) };
 }
 
-function isMpegAudio(bytes: Uint8Array): boolean {
-  const startsWithId3 = String.fromCharCode(...bytes.slice(0, 3)) === "ID3";
-  const startsWithFrameSync = bytes[0] === 0xff && (bytes[1]! & 0xe0) === 0xe0;
-  return startsWithId3 || startsWithFrameSync;
+function isOggOpus(bytes: Uint8Array): boolean {
+  const text = String.fromCharCode(...bytes.slice(0, 64));
+  return text.startsWith("OggS") && text.includes("OpusHead");
 }
 
 async function openSongDetails(page: Page, show: RecordModel, song: RecordModel): Promise<Locator> {
@@ -52,7 +51,7 @@ async function waitForTracks(admin: PocketBase, songId: string, count: number): 
 }
 
 function trackFileStems(song: RecordModel): Record<string, string> {
-  return Object.fromEntries(song.tracks.map((track: SongTrack) => [track.title, track.audioFile.replace(/_[a-z0-9]+\.mp3$/i, "")]));
+  return Object.fromEntries(song.tracks.map((track: SongTrack) => [track.title, track.audioFile.replace(/_[a-z0-9]+\.opus$/i, "")]));
 }
 
 test.describe("audio upload", () => {
@@ -113,7 +112,7 @@ test.describe("audio upload", () => {
     expect(errors).toEqual([]);
   });
 
-  test("a WAV recording is stored as MP3 and plays", async ({ page, admin, factory, loginAs }) => {
+  test("a WAV recording is stored as Opus with its seek index and plays", async ({ page, admin, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const song = await factory.createSong(owner, show, await buildSongBundle(MINIMAL, { mode: "none" }));
@@ -124,11 +123,14 @@ test.describe("audio upload", () => {
     await addRecordings(panel, [await buildWavStem("solo", "solo.wav")]);
 
     const stored = await waitForTracks(admin, song.id, 1);
-    expect(stored.audioFiles).toEqual([expect.stringMatching(/^solo_[a-z0-9]+\.mp3$/)]);
+    expect(stored.audioFiles).toEqual([expect.stringMatching(/^solo_[a-z0-9]+\.opus$/)]);
     expect(stored.tracks[0]).toMatchObject({ title: "Solo", audioFile: stored.audioFiles[0] });
 
     const response = await fetch(admin.files.getURL(stored, stored.audioFiles[0]));
-    expect(isMpegAudio(new Uint8Array(await response.arrayBuffer()))).toBe(true);
+    expect(isOggOpus(new Uint8Array(await response.arrayBuffer()))).toBe(true);
+
+    const index = await (await fetch(admin.files.getURL(stored, stored.audioIndex))).json();
+    expect(Object.keys(index)).toEqual(stored.audioFiles);
 
     await expect(page.locator("[data-zoom-scale]")).not.toHaveAttribute("data-zoom-scale", "0");
     expect(errors).toEqual([]);
