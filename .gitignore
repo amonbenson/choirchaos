@@ -41,3 +41,6 @@ coverage
 
 # e2e build output, test results and reports
 /e2e/.cache/
+
+# local Claude Code configuration
+/.claude/
