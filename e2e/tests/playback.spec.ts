@@ -7,7 +7,7 @@ import { buildSongBundle, locationAt, measureId, recordedBarTimes } from "../gen
 import type { Factory, TestUser } from "../harness/factories";
 import { expect, test } from "../harness/fixtures";
 import { collectPageErrors } from "../harness/page";
-import { type PlaybackSample, recordPlayback, sequenceOf, waitForPlayer } from "../harness/playback";
+import { type PlaybackSample, positionTolerance, recordPlayback, sequenceOf, waitForPlayer } from "../harness/playback";
 
 /** Four one-second bars without a committed PDF, so playback tests stay short. */
 const FAST: ScoreSpec = { ...MINIMAL, id: "minimal-fast", title: "Fast Test Song", seed: 101, tempo: 240 };
@@ -33,8 +33,16 @@ async function play(page: Page, show: RecordModel, song: RecordModel): Promise<v
   await page.getByRole("button", { name: "Play / Pause" }).click();
 }
 
-function isInside(sample: PlaybackSample, from: number, to: number): boolean {
-  return sample.position >= from && sample.position < to;
+/** Whether the player may have been in `[from, to)` when the slider showed this sample. */
+function mayBeInside(sample: PlaybackSample, from: number, to: number): boolean {
+  const tolerance = positionTolerance(sample);
+  return sample.position >= from - tolerance && sample.position < to + tolerance;
+}
+
+/** Whether the player was surely in `[from, to)` when the slider showed this sample. */
+function isSurelyInside(sample: PlaybackSample, from: number, to: number): boolean {
+  const tolerance = positionTolerance(sample);
+  return sample.position >= from + tolerance && sample.position < to - tolerance;
 }
 
 test.describe("playback", () => {
@@ -106,8 +114,8 @@ test.describe("playback", () => {
     expect(sequenceOf(samples, "section")).toEqual(["Vamp", "Vamp 1", "Vamp 2", "Exiting", "Vamp"]);
     // The release lands in the second recorded pass, which then finishes or jumps into the last one.
     const exiting = samples.filter(sample => sample.section === "Exiting");
-    expect(exiting.every(sample => isInside(sample, times[3]!, times[5]!) || isInside(sample, times[7]!, times[9]!))).toBe(true);
-    expect(samples.filter(sample => isInside(sample, times[5]!, times[7]!))).toEqual([]);
+    expect(exiting.every(sample => mayBeInside(sample, times[3]!, times[5]!) || mayBeInside(sample, times[7]!, times[9]!))).toBe(true);
+    expect(samples.filter(sample => isSurelyInside(sample, times[5]!, times[7]!))).toEqual([]);
     expect(errors).toEqual([]);
   });
 
@@ -126,7 +134,7 @@ test.describe("playback", () => {
     const samples = await recordPlayback(page, sample => sample.measure === "4");
 
     expect(sequenceOf(samples, "measure")).toEqual(["1", "4"]);
-    expect(samples.filter(sample => isInside(sample, times[1]!, times[3]!))).toEqual([]);
+    expect(samples.filter(sample => isSurelyInside(sample, times[1]!, times[3]!))).toEqual([]);
     expect(errors).toEqual([]);
   });
 
