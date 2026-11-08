@@ -209,6 +209,21 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                 @update:model-value="settings.update({ appearance: { mergeAccompaniment: $event } })"
               />
             </div>
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <div class="font-medium">
+                  Head-bobbing logo
+                </div>
+                <div class="text-sm text-muted-color">
+                  Baby-Svenja nods along while a song plays.
+                </div>
+              </div>
+              <ToggleSwitch
+                :model-value="settings.current.appearance.logoHeadBob"
+                aria-label="Head-bobbing logo"
+                @update:model-value="settings.update({ appearance: { logoHeadBob: $event } })"
+              />
+            </div>
             <div class="@container flex flex-col gap-2">
               <div>
                 <div class="font-medium">

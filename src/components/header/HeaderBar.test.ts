@@ -19,6 +19,7 @@ const player = vi.hoisted(() => ({
   duration: 1000,
   currentTempo: 120,
   currentTimeSignature: [4, 2],
+  currentPulse: { noteValue: "quarter", bpm: 120, beatsPerPulse: 1 },
   playbackSpeed: 1,
   playbackTransposition: 0,
   currentSegue: undefined,
