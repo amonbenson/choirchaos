@@ -1,10 +1,54 @@
 import stylistic from "@stylistic/eslint-plugin";
 import pluginVitest from "@vitest/eslint-plugin";
 import { defineConfigWithVueTs, vueTsConfigs } from "@vue/eslint-config-typescript";
+import type { Rule } from "eslint";
 import { globalIgnores } from "eslint/config";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
 import pluginVue from "eslint-plugin-vue";
+
+/** The few fields the rule reads, loose enough for TypeScript nodes, which ESLint's own types do not list. */
+type Node = { type: string; expression?: Node; body?: Node | Node[]; argument?: Node };
+
+function unwrap(node: Node | undefined): Node | undefined {
+  return node?.type === "TSAsExpression" || node?.type === "TSSatisfiesExpression" ? unwrap(node.expression) : node;
+}
+
+function isFresh(node: Node | undefined): boolean {
+  const type = unwrap(node)?.type;
+  return type === "ArrayExpression" || type === "ObjectExpression";
+}
+
+function returnsFreshValue(getter: Node): boolean {
+  if (getter.type !== "ArrowFunctionExpression" && getter.type !== "FunctionExpression") {
+    return false;
+  }
+
+  const body = getter.body as Node;
+  if (body.type !== "BlockStatement") {
+    return isFresh(body);
+  }
+
+  return (body.body as Node[]).some(statement => statement.type === "ReturnStatement" && isFresh(statement.argument));
+}
+
+// Vue compares a getter's result by identity, so a getter building a new array or object fires the callback on every
+// re-run. A callback that writes something the getter reads then triggers itself without end.
+const noFreshWatchGetter: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    messages: { freshGetter: "Pass the watched values as an array of getters, watch([() => a, () => b], ...), not a getter returning a new array or object." },
+    schema: [],
+  },
+  create: context => ({
+    CallExpression(node) {
+      const [source] = node.arguments;
+      if (node.callee.type === "Identifier" && node.callee.name === "watch" && source && returnsFreshValue(source as unknown as Node)) {
+        context.report({ node: source, messageId: "freshGetter" });
+      }
+    },
+  }),
+};
 
 export default defineConfigWithVueTs(
   {
@@ -81,6 +125,16 @@ export default defineConfigWithVueTs(
       "better-tailwindcss/enforce-consistent-class-order": "error",
       "better-tailwindcss/no-unnecessary-whitespace": "error",
       "better-tailwindcss/no-duplicate-classes": "error",
+    },
+  },
+
+  {
+    name: "app/vue-reactivity",
+    plugins: {
+      app: { rules: { "no-fresh-watch-getter": noFreshWatchGetter } },
+    },
+    rules: {
+      "app/no-fresh-watch-getter": "error",
     },
   },
 

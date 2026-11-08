@@ -22,8 +22,11 @@ Extends the root `AGENTS.md`.
 - Time comes from the engine's one `AudioClock`, never `context.currentTime`: Firefox on Android advances it only every ~0.1 s and Firefox rounds it, which would make steps leap and notes land late. Test changes in Chrome, Firefox and Safari, desktop and mobile.
 - The engine plans each step up to the next jump or muting change and passes it as `limit`; a backend never steps past it. `MidiBackend` holds back notes within `AUDIO_CLOCK_OFFSET` of the limit. After every step the engine announces the next jump through `prepareJump()`, so audio can schedule its crossfade in advance.
 - MIDI consumes step time exactly, so the loop keeps stepping after a stop (dropping it would shrink the lookahead). End of song fires in the step that overshoots.
+- A section on the last measure jumps back exactly at the song's end, so a due jump wins over finishing. The segue is `due` only when no jump is left; the "Segueing" card waits for it. It fires once, when playback crosses the end of the last measure, so a recording's tail (reverb) is cut; editors are only told (`WorkspaceView`).
 - In `syncStateAt`, `backend.seek()` must come before `backend.onTempoRestored()`.
 - `unload()` aborts loading and resets all state; never rely on `load()` to clear it. `syncWarp()` re-times audio and re-resolves sections without seeking.
+- Set a state object only when its content changed: every set reaches Vue as a change, and a watcher reacting with a set of its own would loop.
+- Engine options (vamps enabled, segue default) outlive songs and apply to each new one, so the UI passes a setting on once instead of reapplying it per song.
 
 ## Audio
 
@@ -40,4 +43,4 @@ Recordings stream: the backend stores each as mono Ogg Opus plus a seek index pe
 
 - `src/test/fixtures.ts` documents its tick layout; `src/test/route.ts` builds timelines and sections for route tests; `src/test/updater.ts` steps the engine (`stepPast()` adds the extra step end of song and segues need).
 - `engine.audio.test.ts` mocks `AudioDriver`. Where muting changes inside a step the engine stops there, costing an extra step.
-- `setSegueEnabled()` does nothing before `load()`. `setGain(i, 0)` on the vocals track is how muting shows; clear the spy before the asserted step.
+- `setSegueEnabled()` does nothing before `load()`; `setSegueDefault()` does. `setGain(i, 0)` on the vocals track is how muting shows; clear the spy before the asserted step.

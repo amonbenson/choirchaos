@@ -3,6 +3,7 @@ import Button from "primevue/button";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Popover from "primevue/popover";
+import ToggleSwitch from "primevue/toggleswitch";
 import { computed, ref, useId } from "vue";
 
 import FieldRow from "@/components/base/FieldRow.vue";
@@ -91,6 +92,14 @@ async function addMeasures(): Promise<void> {
     await editor.apply(planAddMeasures(measures.value, labels, newMeasureBeats.value));
   } catch (error) {
     notifyError("Could not add the measures", error);
+  }
+}
+
+async function setSegue(segue: boolean): Promise<void> {
+  try {
+    await props.song.editLayers({ segue });
+  } catch (error) {
+    notifyError("Could not save the segue", error);
   }
 }
 </script>
@@ -222,6 +231,23 @@ async function addMeasures(): Promise<void> {
           />
         </li>
       </ul>
+    </div>
+
+    <div
+      v-if="song.getTimeline().length > 0"
+      class="flex flex-col gap-1"
+    >
+      <FieldRow
+        v-slot="{ id }"
+        label="Segue into the next song"
+      >
+        <ToggleSwitch
+          :input-id="id"
+          :model-value="song.hasSegue()"
+          @update:model-value="setSegue"
+        />
+      </FieldRow>
+      <span class="text-xs text-muted-color">When this song ends, the next song of the show starts playing.</span>
     </div>
 
     <SyncStatus

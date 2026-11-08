@@ -30,6 +30,7 @@ Before finishing: `lint:fix`, `typecheck`, `vitest run`, plus `test:e2e` when ba
 ## Architecture
 
 - `src/core/` is framework-free: no Vue, UI helpers, sizes or styling. State is a `Property<T>`, one-off events an `Emitter<T>` (both return a `Disposable`); Vue reads them through `useEvent()`, which needs an effect scope.
+- A `watch` source never builds a new array or object (lint rule `app/no-fresh-watch-getter`): Vue compares it by identity, so the callback fires on every re-run and loops once it writes what it reads. Use `watch([() => a, () => b], ...)`.
 - `src/theme/preset.ts` is the only place for accent and surface palettes; every other color is a token in `src/main.css`.
 
 ## Song Model

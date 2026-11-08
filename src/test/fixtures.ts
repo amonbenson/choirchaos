@@ -198,6 +198,14 @@ export function makeMidiSongWithRepeat(passes = 3): Song {
   });
 }
 
+/** Repeats or vamps the last measure "4", which the plain layout recorded once, so the section ends where the song ends. */
+export function makeMidiSongWithFinalSection(section: { kind: "repeat"; passes: number } | { kind: "vamp" }): Song {
+  return makeMidiFixture("test-midi-song-final-section", "Test MIDI Song with Final Section", {
+    spans: MIDI_PLAIN,
+    sections: [{ ...section, from: ["4", 0], to: ["4", 3] }],
+  });
+}
+
 /** Cuts measures "2" and "3" from the plain layout. */
 export function makeMidiSongWithCut(): Song {
   return makeMidiFixture("test-midi-song-cut", "Test MIDI Song with Cut", {
@@ -255,6 +263,14 @@ function makeAudioFixture(id: string, title: string, { spans, sections = [], tra
 /** Plays measures "1" to "4" straight through, without warp markers. */
 export function makeAudioSong(): Song {
   return makeAudioFixture("test-audio-song", "Audio Test Song", { spans: AUDIO_PLAIN });
+}
+
+/** Plays measures "1" to "4" (0 ms to 1000 ms), so a recording that lasts longer has a tail after the last measure. */
+export function makeAudioSongWithTail(): Song {
+  return makeAudioFixture("test-audio-song-tail", "Audio Test Song with Tail", {
+    spans: AUDIO_PLAIN,
+    warpMarkers: QUARTER_SECOND_POSITIONS,
+  });
 }
 
 /** Vamps measure "2" (250 ms to 500 ms) on the plain layout. */

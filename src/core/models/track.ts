@@ -2,7 +2,7 @@ import type { TrackEvents } from "../player/types";
 
 export type TrackClassification = "Accompaniment" | "Percussion" | "Vocal";
 
-export const DEFAULT_TRACK_GAIN = 0.8;
+export const DEFAULT_TRACK_GAIN = 0.6;
 
 export default class Track {
   constructor(

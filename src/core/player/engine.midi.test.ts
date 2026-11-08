@@ -10,6 +10,7 @@ import {
   makeMidiSong,
   makeMidiSongWithBakedVamp,
   makeMidiSongWithCut,
+  makeMidiSongWithFinalSection,
   makeMidiSongWithRepeat,
   makeMidiSongWithVamp,
   makeMtiJson,
@@ -496,5 +497,92 @@ describe("PlayerEngine – MIDI mode", () => {
     stepPast(updater, player, TICKS.duration);
 
     expect(segueEmitted).toHaveBeenCalledOnce();
+  });
+
+  it("follows a segue toggled on the song and keeps a disabled segue disabled", async () => {
+    const song = makeMidiSong();
+    const hasSegue = vi.spyOn(song, "hasSegue").mockReturnValue(false);
+    await reload(song);
+    expect(player.getCurrentSegue()).toBeUndefined();
+
+    hasSegue.mockReturnValue(true);
+    player.syncWarp();
+    expect(player.getCurrentSegue()).toEqual({ enabled: true, due: false });
+
+    player.setSegueEnabled(false);
+    player.seek(TICKS.measure4);
+    expect(player.getCurrentSegue()).toEqual({ enabled: false, due: true });
+
+    hasSegue.mockReturnValue(false);
+    player.syncWarp();
+    expect(player.getCurrentSegue()).toBeUndefined();
+  });
+
+  it("starts every song's segue with the default and announces only real changes", async () => {
+    player.setSegueDefault(false);
+    const song = makeMidiSong();
+    vi.spyOn(song, "hasSegue").mockReturnValue(true);
+    await reload(song);
+    expect(player.getCurrentSegue()).toEqual({ enabled: false, due: false });
+
+    const changes = vi.fn();
+    player.onCurrentSegueChange(changes);
+    player.setSegueEnabled(false);
+    player.setSegueDefault(false);
+    player.syncWarp();
+    expect(changes).not.toHaveBeenCalled();
+
+    player.setSegueDefault(true);
+    expect(changes).toHaveBeenCalledExactlyOnceWith({ enabled: true, due: false });
+  });
+
+  describe("section on the last measure", () => {
+    async function loadWithSegue(song: Song): Promise<ReturnType<typeof vi.fn>> {
+      vi.spyOn(song, "hasSegue").mockReturnValue(true);
+      await reload(song);
+      const segueEmitted = vi.fn();
+      player.onSegue(segueEmitted);
+      return segueEmitted;
+    }
+
+    it("plays every pass of a final repeat before it segues", async () => {
+      const segueEmitted = await loadWithSegue(makeMidiSongWithFinalSection({ kind: "repeat", passes: 3 }));
+      const passes: number[] = [];
+      player.onCurrentSectionChange(section => section && passes.push(section.pass));
+
+      player.play();
+      stepUntil(updater, () => (player.getCurrentSection()?.pass ?? 0) >= 3);
+      expect(segueEmitted).not.toHaveBeenCalled();
+      expect(player.isPlaying()).toBe(true);
+
+      stepPast(updater, player, TICKS.duration);
+      expect(passes).toEqual([1, 2, 3]);
+      expect(segueEmitted).toHaveBeenCalledOnce();
+    });
+
+    it("marks the segue due only in the last pass of a final repeat", async () => {
+      await loadWithSegue(makeMidiSongWithFinalSection({ kind: "repeat", passes: 2 }));
+
+      player.play();
+      stepPast(updater, player, TICKS.measure4 + 10);
+      expect(player.getCurrentSegue()).toEqual({ enabled: true, due: false });
+
+      stepUntil(updater, () => player.getCurrentSection()?.pass === 2);
+      expect(player.getCurrentSegue()).toEqual({ enabled: true, due: true });
+    });
+
+    it("keeps vamping the last measure until released, then segues", async () => {
+      const segueEmitted = await loadWithSegue(makeMidiSongWithFinalSection({ kind: "vamp" }));
+
+      player.play();
+      stepUntil(updater, () => (player.getCurrentSection()?.pass ?? 0) >= 3);
+      expect(segueEmitted).not.toHaveBeenCalled();
+      expect(player.getCurrentSegue()?.due).toBe(false);
+
+      player.releaseVamp();
+      expect(player.getCurrentSegue()?.due).toBe(true);
+      stepPast(updater, player, TICKS.duration);
+      expect(segueEmitted).toHaveBeenCalledOnce();
+    });
   });
 });

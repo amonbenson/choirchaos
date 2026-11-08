@@ -146,7 +146,7 @@ async function showWaveform(loading: Promise<RecordingWaveform>, isCurrent: () =
 }
 
 // A reload after a timing edit keeps the waveform, which only changes with the recordings.
-watch(() => [player.status, props.song] as const, ([status, song], _, onCleanup) => {
+watch([() => player.status, () => props.song], ([status, song], _, onCleanup) => {
   axis.fit();
   if (status !== "ready") {
     return;
