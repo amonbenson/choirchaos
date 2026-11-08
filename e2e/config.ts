@@ -9,7 +9,7 @@ export const MUSESCORE_STYLE_FILE = fileURLToPath(new URL("./assets/conductor.ms
 
 // Bump this together with frontend changes that depend on a newer backend schema.
 export const BACKEND_REPOSITORY = "https://github.com/amonbenson/choirchaos-pb.git";
-export const BACKEND_COMMIT = "460a8772822c364211744d90f5479bd997c0e77b";
+export const BACKEND_COMMIT = "5491cb98924310b7cd63a17cbc9081f0e3eb42ca";
 
 export const BACKEND_CONTAINER_PORT = 8090;
 
