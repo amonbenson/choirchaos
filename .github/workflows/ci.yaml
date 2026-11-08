@@ -109,4 +109,5 @@ jobs:
       - name: Push to dokku server
         run: |
           git remote add dokku dokku@${{ vars.DOKKU_HOST }}:${{ vars.DOKKU_APP }}
-          git push dokku HEAD:main
+          # GitHub's main is the source of truth: a rewritten main would otherwise be rejected as non-fast-forward.
+          git push --force dokku HEAD:main
