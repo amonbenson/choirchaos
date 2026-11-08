@@ -6,7 +6,7 @@ Extends the root `AGENTS.md`.
 - **MIDI** (`midi/backend.ts`): MIDI ticks, timed by the MTI beat map; notes play through `webaudiofont`.
 - **Audio** (`audio/`): recording milliseconds, placed by the `WarpMap` built from sync points; stretched by `rubberband-web`.
 
-`timeline.ts` turns `song.getTimeline()` into `TimelinePosition`s, the only timing source. MIDI: beat map bar k is position k (`readBeatMapBars()`, shared with the import), and a count mismatch fails the load. Audio: beats are spread evenly between sync points; unresolvable warp markers are dropped. Audio has no time signature.
+`timeline.ts` turns `song.getTimeline()` into `TimelinePosition`s, the only timing source. MIDI: beat map bar k is position k (`readBeatMapBars()`, shared with the import), and a count mismatch fails the load. Audio: the `WarpMap` counts beats, not measures, so between two sync points every beat lasts equally long and a 6/8 bar takes half the time of a 12/8 bar; beyond the outer sync points beats go on at their rate. A steady recording therefore lines up from two sync points, whatever its meter changes. Unresolvable warp markers are dropped. Audio has no time signature.
 
 ## Sections and Route
 

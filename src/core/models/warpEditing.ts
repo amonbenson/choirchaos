@@ -1,5 +1,4 @@
 import type { SongLayers } from "./layers";
-import type Measure from "./measure";
 import { findPosition, type Occurrence, type StoredWarpMarker, type Timeline, type TimelineEntry } from "./recording";
 
 // Keeps neighbouring markers apart, so the warp map never contains two markers at the same time.
@@ -195,39 +194,6 @@ export function getReassignCandidates(
   // The end sync point never limits them, since the marker already sits before it.
   const others = { warpMarkers: warpMarkers.filter(other => other !== stored), endSyncTime: undefined };
   return timeline.filter(entry => !findWarpMarker(warpMarkers, entry) && canPlaceWarpMarker(timeline, others, entry, stored.time, duration));
-}
-
-/**
- * The warp map gives every measure between two sync points the same time, and goes on at the rate of
- * the first and last two beyond them. Recordings with a steady click therefore line up from two sync
- * points, except where measures timed at one rate differ in beats. For each such stretch this returns
- * the position to sync next: its first meter change without a sync point, else the end it extrapolates to.
- */
-export function findMeterChangesToSync(timeline: Timeline, measures: readonly Measure[], sync: SyncPoints): number[] {
-  const positions = getPositionedSyncPoints(timeline, sync).map(point => point.position);
-  if (positions.length < MIN_SYNC_POINTS) {
-    return [];
-  }
-
-  const beats = new Map(measures.map(measure => [measure.id, measure.beats]));
-  const changes = timeline.slice(1)
-    .filter(entry => beats.get(entry.measure) !== beats.get(timeline[entry.position - 1]!.measure))
-    .map(entry => entry.position);
-  const synced = new Set(positions);
-  const bounds = [0, ...positions.slice(1, -1), timeline.length];
-
-  return bounds.slice(0, -1).flatMap((first, i) => {
-    const end = bounds[i + 1]!;
-    const inside = changes.filter(position => position > first && position < end);
-    if (inside.length === 0) {
-      return [];
-    }
-
-    const extrapolatesEnd = end === timeline.length && !synced.has(end);
-    const ends = [...i === 0 ? [0] : [], ...extrapolatesEnd ? [timeline.length - 1] : []];
-    const target = [...inside, ...ends].find(position => !synced.has(position));
-    return target === undefined ? [] : [target];
-  });
 }
 
 const SECONDS_PER_MINUTE = 60;

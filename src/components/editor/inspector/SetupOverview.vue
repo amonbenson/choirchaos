@@ -138,17 +138,7 @@ async function setSegue(segue: boolean): Promise<void> {
           class="pi pi-info-circle mt-0.5 text-muted-color"
           aria-hidden="true"
         />
-        <span class="flex flex-col items-start">
-          {{ hint.label }}
-          <Button
-            v-if="hint.target"
-            :label="hint.target.action"
-            size="small"
-            text
-            class="-ml-2"
-            @click="selection.selectPosition(hint.target.position)"
-          />
-        </span>
+        <span>{{ hint.label }}</span>
       </li>
     </ul>
 

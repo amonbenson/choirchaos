@@ -10,7 +10,7 @@ import { getPositionedSyncPoints, type SyncPoints } from "../models/warpEditing"
 import type { PlayerLocation } from "./types";
 
 const MILLISECONDS_PER_SECOND = 1000;
-const MILLISECONDS_PER_MINUTE = 60 * MILLISECONDS_PER_SECOND;
+const SECONDS_PER_MINUTE = 60;
 
 /** A timeline position with its timing. `beatTicks` holds the start of every beat, `endTick` where the next position starts. */
 export type TimelinePosition = TimelineEntry & {
@@ -37,54 +37,49 @@ export function resolveMidiTimeline(timeline: Timeline, beatMap: MTIMidiJson): T
   });
 }
 
-/**
- * Resolves sync points to warp map positions, the end sync point to the position after the last.
- * Markers whose occurrence the recording no longer plays are dropped.
- */
-export function resolveWarpMarkers(timeline: Timeline, sync: SyncPoints): WarpMarker[] {
-  return getPositionedSyncPoints(timeline, sync).map(({ position, time }) => ({ position, time }));
+/** The beat each timeline position starts on, counted from the start of the timeline, followed by the total. */
+function getFirstBeats(beats: readonly number[]): number[] {
+  let total = 0;
+  return [0, ...beats.map(count => total += count)];
 }
 
-/** Times an audio song's timeline in milliseconds of the recording, with beats evenly spread over each position. */
-export function resolveAudioTimeline(timeline: Timeline, measures: readonly Measure[], sync: SyncPoints, warpMap: WarpMap): TimelinePosition[] {
-  warpMap.setMarkers(resolveWarpMarkers(timeline, sync));
-  const beatsById = new Map(measures.map(measure => [measure.id, measure.beats]));
+/**
+ * Resolves sync points to the beats they anchor, the end sync point to the beat after the last.
+ * Markers whose occurrence the recording no longer plays are dropped.
+ */
+function resolveWarpMarkers(timeline: Timeline, sync: SyncPoints, firstBeats: readonly number[]): WarpMarker[] {
+  return getPositionedSyncPoints(timeline, sync).map(({ position, time }) => ({ beat: firstBeats[position]!, time }));
+}
 
-  return timeline.map((entry) => {
-    const start = warpMap.positionToTime(entry.position) * MILLISECONDS_PER_SECOND;
-    const end = warpMap.positionToTime(entry.position + 1) * MILLISECONDS_PER_SECOND;
-    const beats = beatsById.get(entry.measure) ?? 1;
-    const beatLength = (end - start) / beats;
-    return {
-      ...entry,
-      beats,
-      beatTicks: Array.from({ length: beats }, (_, beat) => start + beat * beatLength),
-      endTick: end,
-    };
+/**
+ * Times an audio song's timeline in milliseconds of the recording. Between two sync points every beat lasts
+ * equally long, so a measure takes time in proportion to its beats; beyond them beats go on at the nearest rate.
+ */
+export function resolveAudioTimeline(timeline: Timeline, measures: readonly Measure[], sync: SyncPoints, warpMap: WarpMap): TimelinePosition[] {
+  const beatsById = new Map(measures.map(measure => [measure.id, measure.beats]));
+  const beatCounts = timeline.map(entry => beatsById.get(entry.measure) ?? 1);
+  const firstBeats = getFirstBeats(beatCounts);
+  warpMap.setMarkers(resolveWarpMarkers(timeline, sync, firstBeats));
+
+  return timeline.map((entry, position) => {
+    const beats = beatCounts[position]!;
+    const toTick = (beat: number): Tick => warpMap.beatToTime(firstBeats[position]! + beat) * MILLISECONDS_PER_SECOND;
+    return { ...entry, beats, beatTicks: Array.from({ length: beats }, (_, beat) => toTick(beat)), endTick: toTick(beats) };
   });
 }
 
-/**
- * The tempo of an audio song. Between two sync points, and before the first and after the last, a beat lasts
- * the time they span divided by the beats they span. Only changes of tempo get an event.
- */
-export function buildAudioTempoEvents(timeline: ResolvedTimeline, warpMarkers: readonly WarpMarker[]): MidiEventList<TempoEvent> {
-  const inner = warpMarkers.map(marker => marker.position).filter(position => position > 0 && position < timeline.length);
-  const starts = [0, ...inner];
+/** The tempo of an audio song: every sync point starts the rate of the beats up to the next. Only changes of tempo get an event. */
+export function buildAudioTempoEvents(warpMap: WarpMap): MidiEventList<TempoEvent> {
   const events = new MidiEventList<TempoEvent>();
   let previous: number | undefined;
 
-  starts.forEach((start, i) => {
-    const end = starts[i + 1] ?? timeline.length;
-    const stretch = timeline.slice(start, end);
-    const beats = stretch.reduce((sum, position) => sum + position.beats, 0);
-    const duration = stretch.at(-1)!.endTick - getStartTick(stretch[0]!);
-    const bpm = duration > 0 ? beats * MILLISECONDS_PER_MINUTE / duration : undefined;
-    if (bpm !== undefined && bpm !== previous) {
-      events.insert(new TempoEvent(getStartTick(stretch[0]!), bpm));
+  for (const beat of [0, ...warpMap.getMarkers().map(marker => marker.beat)]) {
+    const bpm = SECONDS_PER_MINUTE / warpMap.getSecondsPerBeat(beat);
+    if (bpm !== previous) {
+      events.insert(new TempoEvent(warpMap.beatToTime(beat) * MILLISECONDS_PER_SECOND, bpm));
       previous = bpm;
     }
-  });
+  }
 
   return events;
 }
