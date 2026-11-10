@@ -1,5 +1,5 @@
 import type { Location, Timeline } from "@/core/models/recording";
-import type { Section, VampOut, VampVocals } from "@/core/models/sections";
+import type { RangeSection, VampOut, VampVocals } from "@/core/models/sections";
 import type Route from "@/core/player/route";
 import type { TimelinePosition } from "@/core/player/timeline";
 
@@ -40,16 +40,16 @@ export function at(measure: string, beat = 0, occurrence = 1): Location {
 type VampOptions = { occurrence?: number; out?: VampOut; vocals?: VampVocals };
 
 /** Sections over whole 4-beat measures, from the first beat of `from` to the last beat of `to` in one pass. */
-export function vamp(from: string, to: string, { occurrence = 1, out = "onEnd", vocals = "all" }: VampOptions = {}): Section {
+export function vamp(from: string, to: string, { occurrence = 1, out = "onEnd", vocals = "all" }: VampOptions = {}): RangeSection {
   return { kind: "vamp", from: at(from, 0, occurrence), to: at(to, BEATS - 1, occurrence), out, vocals };
 }
 
-export function repeat(from: string, to: string, passes: number, occurrence = 1): Section {
+export function repeat(from: string, to: string, passes: number, occurrence = 1): RangeSection {
   return { kind: "repeat", from: at(from, 0, occurrence), to: at(to, BEATS - 1, occurrence), passes };
 }
 
 /** A cut from `from` in pass `occurrence` to `to` in pass `toOccurrence`, so it may span several passes. */
-export function cut(from: string, to: string, occurrence = 1, toOccurrence = occurrence): Section {
+export function cut(from: string, to: string, occurrence = 1, toOccurrence = occurrence): RangeSection {
   return { kind: "cut", from: at(from, 0, occurrence), to: at(to, BEATS - 1, toOccurrence) };
 }
 

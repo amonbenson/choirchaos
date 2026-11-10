@@ -28,6 +28,7 @@
   --color-section-repeat: var(--color-sky-400);
   --color-section-vamp: var(--color-violet-400);
   --color-section-cut: var(--color-slate-300);
+  --color-section-caesura: var(--color-pink-400);
   --color-section-contrast: var(--color-slate-950);
 
   /* Orange, so sync points never look like the primary colored playhead. */

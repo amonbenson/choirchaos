@@ -100,6 +100,8 @@ const vampCardType = computed(() => {
     } else if (player.currentSegue?.enabled && player.currentSegue.due && nextSong.value) {
       return "segue";
     }
+  } else if (player.waitingAtCaesura) {
+    return "caesura";
   }
 
   // default action
@@ -249,6 +251,7 @@ onMounted(() => {
   player.playbackSpeed = settings.current.playback.speed;
   player.playbackTransposition = settings.current.playback.transposition;
   player.setVampsEnabled(settings.current.playback.vampsEnabled);
+  player.setCaesurasEnabled(settings.current.playback.caesurasEnabled);
 });
 
 watch(() => player.playbackSpeed, value => settings.update({ playback: { speed: value } }));
@@ -257,6 +260,7 @@ watch(() => player.playbackTransposition, value => settings.update({ playback: {
 watch(() => settings.current.playback.segueEnabled, value => player.setSegueDefault(value), { immediate: true });
 
 watch(() => settings.current.playback.vampsEnabled, value => player.setVampsEnabled(value));
+watch(() => settings.current.playback.caesurasEnabled, value => player.setCaesurasEnabled(value));
 
 // DATA LOADING PROCEDURE
 
@@ -460,6 +464,15 @@ const pdfLoading = ref(false);
           >
             <span class="touch:hidden">Press <KbdShortcut action="playPause" /> to exit</span>
             <span class="hidden touch:inline">Click here to exit</span>
+          </VampCard>
+          <VampCard
+            v-else-if="vampCardType === 'caesura'"
+            class="size-full cursor-pointer"
+            title="Caesura"
+            @click="player.play()"
+          >
+            <span class="touch:hidden">Press <KbdShortcut action="playPause" /> to continue</span>
+            <span class="hidden touch:inline">Click here to continue</span>
           </VampCard>
           <VampCard
             v-else-if="vampCardType === 'segue' && editMode"

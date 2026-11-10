@@ -9,6 +9,7 @@ import { useNotify } from "@/composables/useNotify";
 import type { Marker } from "@/core/models/markers";
 import Measure, { type MeasureId, type MeasureLayout, needsReview } from "@/core/models/measure";
 import { type BoxEdge, planLayouts, resizeBox } from "@/core/models/measureEditing";
+import type { Location } from "@/core/models/recording";
 import {
   type BoxOverlays,
   findRecordingJumps,
@@ -16,7 +17,7 @@ import {
   getSectionBars,
   getSectionOverlays,
 } from "@/core/models/scoreOverlays";
-import { getSectionRun, type Section } from "@/core/models/sections";
+import { type CaesuraSection, getCaesuras, getSectionRun, type RangeSection } from "@/core/models/sections";
 import {
   getSelectableMeasures,
   isBoxSelected,
@@ -184,6 +185,7 @@ const boxOverlays = computed(() => {
     timeline,
     sections: sectionOverlays.value,
     markers: isArrangementVisible("marker") ? song.getMarkers() : [],
+    caesuras: isArrangementVisible("caesura") ? getCaesuras(song.getSections()) : [],
     jumps: props.editMode ? findRecordingJumps(song.getMeasures(), timeline) : [],
   });
 });
@@ -196,15 +198,30 @@ const rangeTarget = computed(() => {
   return section && props.song && getSectionRun(props.song.getTimeline(), section) ? { section, lane } : undefined;
 });
 
-/** A click on a section or marker badge selects it in the editor. While rehearsing it only moves the playhead there. */
-function selectObject(object: { section: Section } | { marker: Marker }): void {
-  const next = "section" in object
-    ? { kind: "section" as const, from: object.section.from }
-    : { kind: "marker" as const, marker: object.marker };
+type ScoreObject = { section: RangeSection } | { caesura: CaesuraSection } | { marker: Marker };
+
+function toSelection(object: ScoreObject): Selection {
+  if ("section" in object) {
+    return { kind: "section", from: object.section.from };
+  }
+
+  return "caesura" in object ? { kind: "caesura", at: object.caesura.at } : { kind: "marker", marker: object.marker };
+}
+
+function getObjectLocation(object: ScoreObject): Location {
+  if ("section" in object) {
+    return object.section.from;
+  }
+
+  return "caesura" in object ? object.caesura.at : object.marker.at;
+}
+
+/** A click on a section, caesura or marker badge selects it in the editor. While rehearsing it only moves the playhead there. */
+function selectObject(object: ScoreObject): void {
   if (props.editMode) {
-    editorSelection.selectAndSeek(next);
+    editorSelection.selectAndSeek(toSelection(object));
   } else {
-    player.seekLocation("section" in object ? object.section.from : object.marker.at);
+    player.seekLocation(getObjectLocation(object));
   }
 }
 
@@ -559,6 +576,7 @@ async function onResizeEnd(measure: Measure): Promise<void> {
             @click.stop="onBoxClick($event, measure)"
             @contextmenu.stop.prevent
             @select-marker="marker => selectObject({ marker })"
+            @select-caesura="caesura => selectObject({ caesura })"
             @resize="(edge, delta) => onResize(measure, edge, delta)"
             @resize-end="onResizeEnd(measure)"
           />

@@ -8,13 +8,17 @@ import { expandRecording, type Location } from "./recording";
 import {
   createSection,
   deserializeSection,
+  findCaesura,
   findNearestPosition,
   findSection,
   findSectionsAt,
+  getCaesuraAfter,
+  getRangeSections,
   getSectionExtent,
   getSectionPasses,
   getSectionRun,
   holdsRun,
+  type RangeSection,
   type Section,
   serializeSection,
   toMeasureRange,
@@ -36,11 +40,11 @@ function at(measure: string, beat = 0, occurrence = 1): Location {
   return { measure, beat, occurrence };
 }
 
-function cut(from: Location, to: Location): Section {
+function cut(from: Location, to: Location): RangeSection {
   return { kind: "cut", from, to };
 }
 
-function repeat(from: Location, to: Location, passes = 2): Section {
+function repeat(from: Location, to: Location, passes = 2): RangeSection {
   return { kind: "repeat", from, to, passes };
 }
 
@@ -160,7 +164,7 @@ describe("sections over runs of the recording", () => {
   it("finds the sections that share a played measure with a run and whether one holds it", () => {
     const song = makeMidiSongWithRepeat();
     const timeline = song.getTimeline();
-    const [repeat] = song.getSections();
+    const [repeat] = getRangeSections(song.getSections());
 
     expect(findSectionsAt(timeline, song.getSections(), { first: 5, last: 5 })).toEqual([repeat]);
     expect(holdsRun(timeline, song.getSections(), repeat!, { first: 5, last: 5 })).toBe(true);
@@ -171,7 +175,7 @@ describe("sections over runs of the recording", () => {
   it("counts the recorded passes of a section as part of it", () => {
     const song = makeMidiSongWithBakedVamp();
 
-    expect(holdsRun(song.getTimeline(), song.getSections(), song.getSections()[0]!, { first: 4, last: 4 })).toBe(true);
+    expect(holdsRun(song.getTimeline(), song.getSections(), getRangeSections(song.getSections())[0]!, { first: 4, last: 4 })).toBe(true);
   });
 
   it("finds a section by its start", () => {
@@ -207,5 +211,52 @@ describe("sections over runs of the recording", () => {
     expect(findNearestPosition(timeline, idOf(song, "3"), 5, 0, 8)).toBe(5);
     expect(findNearestPosition(timeline, idOf(song, "3"), 8, 0, 8)).toBe(7);
     expect(findNearestPosition(timeline, idOf(song, "3"), 0, 0, 2)).toBeUndefined();
+  });
+});
+
+describe("caesuras", () => {
+  const caesura = (location: Location): Section => ({ kind: "caesura", at: location });
+
+  it("round-trips a caesura and stores its location like a marker's", () => {
+    const section = caesura(at("2", 1, 2));
+
+    const stored = serializeSection(section);
+
+    expect(stored).toEqual({ kind: "caesura", at: { measure: "2", beat: 1, occurrence: 2 } });
+    expect(serializeSection(caesura(at("4")))).toEqual({ kind: "caesura", at: { measure: "4", beat: 0 } });
+    expect(deserializeSection(stored)).toEqual(section);
+  });
+
+  it("lies anywhere in a range section, at its start, inside it and right after it", () => {
+    const sections = [repeat(at("2"), at("3", 3)), caesura(at("2")), caesura(at("3", 2)), caesura(at("4")), cut(at("5"), at("5", 3)), caesura(at("5"))];
+
+    expect(validateSections(SCORE, TIMELINE, sections)).toEqual([]);
+  });
+
+  it("allows only one caesura at a location and needs a location the recording plays", () => {
+    expect(validateSections(SCORE, TIMELINE, [caesura(at("2", 1)), caesura(at("2", 1))])).toEqual([{ index: 1, reason: "There already is a caesura here." }]);
+    expect(validateSection(SCORE, TIMELINE, caesura(at("4", 0, 2)))).toMatch(/not played 2 times/);
+    expect(validateSection(SCORE, TIMELINE, caesura(at("4", 4)))).toMatch(/no beat 5/);
+  });
+
+  it("bounds no recorded passes of the repeat it lies in", () => {
+    const section = repeat(at("2"), at("3", 3));
+
+    expect(getSectionPasses(TIMELINE, [section, caesura(at("2", 0, 2))], section)).toHaveLength(3);
+  });
+
+  it("is found by its location, while a range section starting there is found by its start", () => {
+    const section = repeat(at("2"), at("3", 3));
+    const sections = [section, caesura(at("2"))];
+
+    expect(findSection(sections, at("2"))).toBe(section);
+    expect(findCaesura(sections, at("2"))).toBe(sections[1]);
+    expect(findCaesura(sections, at("2", 1))).toBeUndefined();
+    expect(findSectionsAt(TIMELINE, sections, { first: 1, last: 1 })).toEqual([section]);
+  });
+
+  it("goes after a run before the first beat the recording plays next", () => {
+    expect(getCaesuraAfter(TIMELINE, { first: 1, last: 2 })).toEqual(at("2", 0, 2));
+    expect(getCaesuraAfter(TIMELINE, { first: 7, last: 8 })).toBeUndefined();
   });
 });

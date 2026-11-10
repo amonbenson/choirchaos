@@ -12,6 +12,7 @@ export const SECTION_COLORS: Record<SectionKind, SectionColor> = {
   repeat: { background: "bg-section-repeat", variable: "--color-section-repeat" },
   vamp: { background: "bg-section-vamp", variable: "--color-section-vamp" },
   cut: { background: "bg-section-cut", variable: "--color-section-cut" },
+  caesura: { background: "bg-section-caesura", variable: "--color-section-caesura" },
 };
 
 /** Text and icons drawn on a section color. */

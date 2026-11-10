@@ -32,6 +32,7 @@ Score and timeline are the canvases; the inspector (`SongEditorPanel`, `componen
 - `usePanZoom` stays hand-written: the score is a canvas transform, not a scrolled element, and vueuse has no pinch. A drag pans (even from a box), a click selects; `usePanZoom` swallows the click ending a drag. Handles and drawing use `usePointerSwipe` and stop the event so the score does not pan.
 - Shift-drag draws a marquee (`useMarqueeSelection`); the pointer is captured only once it moves, so shift-click still selects a range.
 - All box work happens in the inspector; the score only selects and draws.
+- A caesura on a first beat is drawn on the barline ending the measure before it, on the previous system or page if need be, as long as that measure is both played and written right before it (`placeCaesura()`); otherwise at the start of its own box.
 
 ### Cursors
 

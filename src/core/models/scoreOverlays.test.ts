@@ -16,9 +16,10 @@ import {
   getRecordedRepeatPass,
   getSectionBars,
   getSectionOverlays,
+  placeCaesura,
   splitIntoRuns,
 } from "./scoreOverlays";
-import { createSection, type Section } from "./sections";
+import { type CaesuraSection, createSection, type Section } from "./sections";
 
 const ROW_HEIGHT = 0.1;
 const BOX_WIDTH = 0.2;
@@ -245,5 +246,54 @@ describe("getBoxOverlays", () => {
 
     expect(overlays.get("m7")?.description).toBe("After 7, 2nd time, the recording continues at 9.");
     expect(overlays.get("m7")?.jumps.map(jump => jump.text)).toEqual(["to 9"]);
+  });
+});
+
+describe("caesuras on the score", () => {
+  const plain = expandRecording(measures, [span(1, 16)]);
+  const caesura = (location: Location): CaesuraSection => ({ kind: "caesura", at: location });
+
+  it("draws a caesura on a later beat inside its own box", () => {
+    expect(placeCaesura(measures, plain, caesura(at(3, 2)))).toEqual({ measure: "m3", x: 0.5 });
+  });
+
+  it("draws a caesura before a first beat on the barline ending the measure before, even across a system or page", () => {
+    expect(placeCaesura(measures, plain, caesura(at(3)))).toEqual({ measure: "m2", x: 1 });
+    expect(placeCaesura(measures, plain, caesura(at(5)))).toEqual({ measure: "m4", x: 1 });
+    expect(placeCaesura(measures, plain, caesura(at(9)))).toEqual({ measure: "m8", x: 1 });
+  });
+
+  it("draws a caesura after a recorded repeat at the end of its last measure", () => {
+    const timeline = expandRecording(measures, [span(1, 11), span(10, 11), span(10, 11), span(12, 16)]);
+
+    expect(placeCaesura(measures, timeline, caesura(at(12)))).toEqual({ measure: "m11", x: 1 });
+  });
+
+  it("draws a caesura at the start of its own box where the measure before it on the score is not the one played before", () => {
+    const withEndings = expandRecording(measures, [span(1, 8), span(1, 7), span(9, 16)]);
+
+    expect(placeCaesura(measures, withEndings, caesura(at(9)))).toEqual({ measure: "m9", x: 0 });
+    expect(placeCaesura(measures, withEndings, caesura(at(1, 0, 2)))).toEqual({ measure: "m1", x: 0 });
+    expect(placeCaesura(measures, plain, caesura(at(1)))).toEqual({ measure: "m1", x: 0 });
+  });
+
+  it("names a caesura by the beat it comes before", () => {
+    expect(formatSectionName(measures, caesura(at(12)))).toBe("Caesura before 12");
+    expect(formatSectionName(measures, caesura(at(3, 2)))).toBe("Caesura before 3, 3rd beat");
+    expect(formatSectionName(measures, caesura(at(10, 0, 2)))).toBe("Caesura before 10, 2nd time");
+    expect(formatSectionChip(caesura(at(12)))).toBe("Caesura");
+  });
+
+  it("adds caesuras to the boxes they are drawn on", () => {
+    const overlays = getBoxOverlays({ measures, timeline: plain, sections: [], markers: [], caesuras: [caesura(at(5)), caesura(at(6, 1))] });
+
+    expect(overlays.get("m4")?.caesuras.map(mark => mark.x)).toEqual([1]);
+    expect(overlays.get("m4")?.description).toBe("Caesura before 5.");
+    expect(overlays.get("m6")?.caesuras.map(mark => mark.name)).toEqual(["Caesura before 6, 2nd beat"]);
+    expect(overlays.has("m5")).toBe(false);
+  });
+
+  it("leaves caesuras out of the section bars", () => {
+    expect(getSectionOverlays(measures, plain, [caesura(at(5)), createSection("repeat", at(5), at(6, 3))]).map(overlay => overlay.index)).toEqual([1]);
   });
 });

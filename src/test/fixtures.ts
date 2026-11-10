@@ -126,10 +126,11 @@ export function locationOf(song: Song, label: string, beat = 0, occurrence = 1):
 type LabelSpan = [from: string, to: string];
 type LabelBeat = [label: string, beat: number];
 
-type LabelSection
+export type LabelSection
   = | { kind: "cut"; from: LabelBeat; to: LabelBeat }
     | { kind: "repeat"; from: LabelBeat; to: LabelBeat; passes: number }
-    | { kind: "vamp"; from: LabelBeat; to: LabelBeat; out?: VampOut; vocals?: VampVocals };
+    | { kind: "vamp"; from: LabelBeat; to: LabelBeat; out?: VampOut; vocals?: VampVocals }
+    | { kind: "caesura"; at: LabelBeat; occurrence?: number };
 
 type FixtureLayout = {
   spans: LabelSpan[];
@@ -145,7 +146,11 @@ function toSpans(measures: readonly Measure[], spans: LabelSpan[]): RecordingSpa
 }
 
 function toSection(measures: readonly Measure[], section: LabelSection): Section {
-  const at = ([label, beat]: LabelBeat): Location => ({ measure: findId(measures, label), beat, occurrence: 1 });
+  const at = ([label, beat]: LabelBeat, occurrence = 1): Location => ({ measure: findId(measures, label), beat, occurrence });
+  if (section.kind === "caesura") {
+    return { kind: "caesura", at: at(section.at, section.occurrence) };
+  }
+
   const range = { from: at(section.from), to: at(section.to) };
 
   switch (section.kind) {
@@ -175,6 +180,13 @@ function makeMidiFixture(id: string, title: string, { spans, sections = [] }: Fi
     spans: toSpans(measures, spans),
     sections: sections.map(section => toSection(measures, section)),
   });
+}
+
+const MIDI_LAYOUTS = { plain: MIDI_PLAIN, repeat: MIDI_REPEAT, bakedVamp: MIDI_BAKED_VAMP } as const;
+
+/** A song recorded like `BEAT_MAP_LABELS[layout]` with any sections, caesuras included. */
+export function makeMidiSongWithSections(layout: keyof typeof MIDI_LAYOUTS, sections: LabelSection[]): Song {
+  return makeMidiFixture(`test-midi-song-${layout}-sections`, "Test MIDI Song with Sections", { spans: MIDI_LAYOUTS[layout], sections });
 }
 
 /** Plays measures "0" to "4" straight through, with the tick layout of `TICKS`. */

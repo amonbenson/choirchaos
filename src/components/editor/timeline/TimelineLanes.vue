@@ -8,9 +8,9 @@ import type { Tick } from "@/core/midi/types";
 import { formatLocation, formatOccurrence, formatOrdinal, formatTimes } from "@/core/models/locationFormat";
 import type { MeasureId } from "@/core/models/measure";
 import { getRecordingStretches, type RecordingStretch } from "@/core/models/recording";
-import { describeSection, formatSectionChip } from "@/core/models/scoreOverlays";
-import { getSectionPasses, type Section } from "@/core/models/sections";
-import { isMarkerSelected, isPassSelected, isSectionSelected } from "@/core/models/selection";
+import { describeSection, formatSectionChip, formatSectionName } from "@/core/models/scoreOverlays";
+import { getCaesuras, getSectionPasses, isRangeSection, type RangeSection, type Section } from "@/core/models/sections";
+import { isCaesuraSelected, isMarkerSelected, isPassSelected, isSectionSelected } from "@/core/models/selection";
 import type Song from "@/core/models/song";
 import { getSectionTicks } from "@/core/player/route";
 import { getBeatTick, getStartTick } from "@/core/player/timeline";
@@ -61,7 +61,7 @@ const markers = computed(() => {
 });
 
 /** A vamp loops its own pass, so it is drawn there; the recorded passes it extends over only get an outline. */
-function getOwnPassTicks(section: Section, all: readonly Section[]): { start: Tick; end: Tick } | undefined {
+function getOwnPassTicks(section: RangeSection, all: readonly Section[]): { start: Tick; end: Tick } | undefined {
   if (section.kind !== "vamp") {
     return getSectionTicks(timeline.value, all, section);
   }
@@ -73,8 +73,12 @@ function getOwnPassTicks(section: Section, all: readonly Section[]): { start: Ti
 }
 
 const sections = computed(() => props.song.getSections().flatMap((section, index, all) => {
-  const ticks = getOwnPassTicks(section, all);
-  const block = ticks && props.axis.toBlock(ticks.start, ticks.end);
+  const ticks = isRangeSection(section) ? getOwnPassTicks(section, all) : undefined;
+  if (!ticks || !isRangeSection(section)) {
+    return [];
+  }
+
+  const block = props.axis.toBlock(ticks.start, ticks.end);
   if (!block) {
     return [];
   }
@@ -87,6 +91,21 @@ const sections = computed(() => props.song.getSections().flatMap((section, index
     name: describeSection(props.song.getMeasures(), section),
     colors: [SECTION_COLORS[section.kind].background, SECTION_CONTRAST_TEXT],
     selected: isSectionSelected(selection.value, section),
+  }];
+}));
+
+/** A caesura sits before its beat, drawn on top of the range sections it may lie in. */
+const caesuras = computed(() => getCaesuras(props.song.getSections()).flatMap((section) => {
+  const tick = player.getLocationTick(section.at);
+  if (tick === undefined || !props.axis.isVisible(tick)) {
+    return [];
+  }
+
+  return [{
+    section,
+    block: { left: props.axis.toX(tick) },
+    name: formatSectionName(props.song.getMeasures(), section),
+    selected: isCaesuraSelected(selection.value, section),
   }];
 }));
 
@@ -187,6 +206,18 @@ function formatStretch(stretch: RecordingStretch, long: boolean): string {
         @click="selectAndSeek({ kind: 'section', from: item.section.from })"
       >
         <span class="truncate">{{ item.text }}</span>
+      </TimelineLaneItem>
+      <TimelineLaneItem
+        v-for="item in caesuras"
+        :key="`caesura-${item.section.at.measure}-${item.section.at.occurrence}-${item.section.at.beat}`"
+        :block="item.block"
+        :name="item.name"
+        :pressed="item.selected"
+        class="font-semibold"
+        :class="[SECTION_COLORS.caesura.background, SECTION_CONTRAST_TEXT]"
+        @click="selectAndSeek({ kind: 'caesura', at: item.section.at })"
+      >
+        <span aria-hidden="true">//</span>
       </TimelineLaneItem>
     </ul>
     <TimelineSectionRange

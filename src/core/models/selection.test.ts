@@ -4,10 +4,12 @@ import { idOf, locationOf, makeAudioSong, makeAudioSongWithRepeat, makeMidiSong,
 
 import { addMarker } from "./markers";
 import { createEmptyMeasureEdit } from "./measure";
+import { type CaesuraSection, getRangeSections } from "./sections";
 import {
   findMeasureRuns,
   getSelectableMeasures,
   isBoxSelected,
+  isCaesuraSelected,
   isSectionSelected,
   NO_SELECTION,
   pickRun,
@@ -101,7 +103,7 @@ describe("resolveSelection", () => {
     const song = makeAudioSongWithRepeat();
     const marker = { at: locationOf(song, "2", 1, 2), text: "A" };
     await song.editLayers({ markers: addMarker(song.getMarkers(), marker) });
-    const [section] = song.getSections();
+    const [section] = getRangeSections(song.getSections());
     const [warpMarker] = song.getWarpMarkers();
 
     expect(resolveSelection(song, { kind: "section", from: { ...section!.from } })).toEqual({ kind: "section", section });
@@ -111,6 +113,19 @@ describe("resolveSelection", () => {
     expect(resolveSelection(song, { kind: "syncPoint", place: { measure: warpMarker!.measure, occurrence: warpMarker!.occurrence } }))
       .toEqual({ kind: "syncPoint", place: { measure: warpMarker!.measure, occurrence: warpMarker!.occurrence }, time: warpMarker!.time });
     expect(resolveSelection(song, { kind: "pass", index: 1 })).toMatchObject({ kind: "pass", index: 1, stretch: { occurrence: 2 } });
+  });
+
+  it("tells a caesura from the section starting at its location", async () => {
+    const song = makeAudioSongWithRepeat();
+    const [section] = getRangeSections(song.getSections());
+    const caesura: CaesuraSection = { kind: "caesura", at: { ...section!.from } };
+    await song.editLayers({ sections: [...song.getSections(), caesura] });
+
+    expect(resolveSelection(song, { kind: "section", from: { ...section!.from } })).toEqual({ kind: "section", section });
+    expect(resolveSelection(song, { kind: "caesura", at: { ...section!.from } })).toEqual({ kind: "caesura", section: caesura });
+    expect(isCaesuraSelected({ kind: "caesura", at: { ...caesura.at } }, caesura)).toBe(true);
+    expect(isCaesuraSelected({ kind: "section", from: { ...caesura.at } }, caesura)).toBe(false);
+    expect(resolveSelection(song, { kind: "caesura", at: locationOf(song, "4") })).toEqual(NO_SELECTION);
   });
 });
 

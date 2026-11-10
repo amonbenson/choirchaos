@@ -1,7 +1,7 @@
 import type { Tick } from "../midi/types";
 import type { RecordedPass } from "../models/recording";
-import { getSectionPasses, type Section, type VampOut } from "../models/sections";
-import { findBeatAt, findPositionAt, getBeatTick, getStartTick, type ResolvedTimeline, type TimelinePosition } from "./timeline";
+import { getCaesuras, getSectionPasses, isRangeSection, type RangeSection, type Section, type VampOut } from "../models/sections";
+import { findBeatAt, findPositionAt, getBeatTick, getLocationTick, getStartTick, type ResolvedTimeline, type TimelinePosition } from "./timeline";
 import type { PlayerSectionState } from "./types";
 
 /** A recorded pass with the ticks it plays, `end` exclusive. */
@@ -10,7 +10,7 @@ export type PassRange = RecordedPass & { start: Tick; end: Tick };
 export type RouteSection = {
   /** Index into `song.getSections()`. */
   index: number;
-  section: Section;
+  section: RangeSection;
   passes: readonly PassRange[];
 };
 
@@ -22,14 +22,14 @@ export type RouteJump = { at: Tick; to: Tick; next: RouteState | undefined };
 
 export type VocalRole = "entering" | "repeating" | "exiting";
 
-export type RouteOptions = { vampsEnabled: boolean };
+export type RouteOptions = { vampsEnabled: boolean; caesurasEnabled?: boolean };
 
 type LineKind = "bar" | "beat";
 
 const EARLY_EXIT_LINES: Record<VampOut, LineKind | undefined> = { onEnd: undefined, anyBar: "bar", anyBeat: "beat" };
 
 /** The ticks a section covers with all the recorded passes it plays, `end` exclusive, as its overlays draw it. */
-export function getSectionTicks(timeline: ResolvedTimeline, sections: readonly Section[], section: Section): { start: Tick; end: Tick } | undefined {
+export function getSectionTicks(timeline: ResolvedTimeline, sections: readonly Section[], section: RangeSection): { start: Tick; end: Tick } | undefined {
   const passes = getSectionPasses(timeline, sections, section);
   const first = passes[0] && timeline[passes[0].first];
   const last = passes.at(-1) && timeline[passes.at(-1)!.last];
@@ -42,21 +42,44 @@ export function getSectionTicks(timeline: ResolvedTimeline, sections: readonly S
  */
 export default class Route {
   private readonly sections: RouteSection[];
+  /** Where playback stops at a caesura, in tick order. */
+  private readonly caesuras: Tick[];
 
   constructor(private readonly timeline: ResolvedTimeline, sections: readonly Section[], options: RouteOptions) {
     // A disabled vamp plays as recorded, which is the same as having no section there.
     this.sections = sections.flatMap((section, index) => {
-      if (section.kind === "vamp" && !options.vampsEnabled) {
+      if (!isRangeSection(section) || (section.kind === "vamp" && !options.vampsEnabled)) {
         return [];
       }
 
       const passes = getSectionPasses(timeline, sections, section).map(pass => this.toPassRange(section, pass));
       return passes.length > 0 ? [{ index, section, passes }] : [];
     });
+
+    const caesuras = options.caesurasEnabled === false ? [] : getCaesuras(sections);
+    this.caesuras = caesuras.flatMap(({ at }) => getLocationTick(timeline, at) ?? []).sort((a, b) => a - b);
   }
 
   getSections(): readonly RouteSection[] {
     return this.sections;
+  }
+
+  /**
+   * The first caesura that playback reaches by playing on from `tick`, if it comes before `before`. A jump
+   * leaving at a caesura's tick wins, since playback then never plays the beat after it.
+   */
+  findCaesura(tick: Tick, before = Infinity): Tick | undefined {
+    return this.caesuras.find(caesura => caesura > tick && caesura < before);
+  }
+
+  isCaesuraAt(tick: Tick): boolean {
+    return this.caesuras.includes(tick);
+  }
+
+  /** Whether playback stops at a caesura where the jump lands. Going round a repeat or vamp again passes none. */
+  stopsAfterJump(state: RouteState | undefined, jump: RouteJump): boolean {
+    const goesRound = !!state && jump.next?.section === state.section && jump.next.pass === state.pass + 1;
+    return !goesRound && this.isCaesuraAt(jump.to);
   }
 
   /**
@@ -189,7 +212,7 @@ export default class Route {
     return end > start ? (tick - start) / (end - start) : 0;
   }
 
-  private toPassRange(section: Section, pass: RecordedPass): PassRange {
+  private toPassRange(section: RangeSection, pass: RecordedPass): PassRange {
     return {
       ...pass,
       start: getBeatTick(this.timeline[pass.first]!, section.from.beat),

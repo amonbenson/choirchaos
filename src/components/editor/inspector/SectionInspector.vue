@@ -12,8 +12,8 @@ import { useNotify } from "@/composables/useNotify";
 import { formatSectionName } from "@/core/models/scoreOverlays";
 import {
   getSectionRun,
+  type RangeSection,
   replaceSections,
-  type Section,
   validateSections,
   type VampOut,
   type VampVocals,
@@ -42,7 +42,7 @@ const PASSES_SAVE_DELAY_MS = 400;
 
 const props = defineProps<{
   song: Song;
-  section: Section;
+  section: RangeSection;
 }>();
 
 const selection = injectEditorSelection();
@@ -63,7 +63,7 @@ watch(() => props.section, (section) => {
 }, { immediate: true });
 
 /** The new section list is checked as a whole, so an invalid change is explained instead of saved. */
-async function replace(next: Section | undefined): Promise<void> {
+async function replace(next: RangeSection | undefined): Promise<void> {
   const sections = replaceSections(props.song.getSections(), [props.section], next);
   const [issue] = validateSections(measures.value, timeline.value, sections);
   error.value = issue?.reason;
@@ -80,13 +80,13 @@ async function replace(next: Section | undefined): Promise<void> {
 }
 
 /** A section always covers whole measures, so a stored one that starts or ends mid-measure snaps when edited. */
-function snapped(next: Section): Section {
+function snapped(next: RangeSection): RangeSection {
   const run = getSectionRun(timeline.value, props.section);
   return run ? withRun(measures.value, timeline.value, next, run) : next;
 }
 
-function update(change: Partial<Section>): void {
-  replace(snapped({ ...props.section, ...change } as Section));
+function update(change: Partial<RangeSection>): void {
+  replace(snapped({ ...props.section, ...change } as RangeSection));
 }
 
 const savePasses = useDebounceFn((value: number) => update({ passes: value }), PASSES_SAVE_DELAY_MS);

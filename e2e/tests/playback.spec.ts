@@ -7,7 +7,7 @@ import { buildSongBundle, locationAt, measureId, recordedBarTimes } from "../gen
 import type { Factory, TestUser } from "../harness/factories";
 import { expect, test } from "../harness/fixtures";
 import { collectPageErrors } from "../harness/page";
-import { type PlaybackSample, positionTolerance, recordPlayback, sequenceOf, waitForPlayer } from "../harness/playback";
+import { type PlaybackSample, positionTolerance, readPlayback, recordPlayback, sequenceOf, waitForPlayer } from "../harness/playback";
 
 /** Four one-second bars without a committed PDF, so playback tests stay short. */
 const FAST: ScoreSpec = { ...MINIMAL, id: "minimal-fast", title: "Fast Test Song", seed: 101, tempo: 240 };
@@ -135,6 +135,37 @@ test.describe("playback", () => {
 
     expect(sequenceOf(samples, "measure")).toEqual(["1", "4"]);
     expect(samples.filter(sample => isSurelyInside(sample, times[1]!, times[3]!))).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test("a caesura after a repeat pauses once until played again", async ({ page, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const bundle = await buildSongBundle(FAST, { mode: "audio", withPdf: false });
+    const { score } = bundle.fields;
+    bundle.fields.arrangement.sections = [
+      { kind: "repeat", from: locationAt(score, "2"), to: locationAt(score, "3", 3), passes: 2 },
+      { kind: "caesura", at: locationAt(score, "4") },
+    ];
+    const song = await factory.createSong(owner, show, bundle);
+    const errors = collectPageErrors(page);
+    await loginAs(owner);
+
+    await play(page, show, song);
+    const samples = await recordPlayback(page, sample => sample.measure === "4");
+    const banner = page.getByText("Caesura", { exact: true });
+    await expect(banner).toBeVisible();
+
+    const waiting = await readPlayback(page);
+    const times = recordedBarTimes(bundle).map(seconds => seconds * MS_PER_SECOND);
+    expect(Math.abs(waiting.position - times[3]!)).toBeLessThanOrEqual(positionTolerance(waiting));
+    await page.waitForTimeout(MS_PER_SECOND / 2);
+    expect((await readPlayback(page)).position).toBe(waiting.position);
+
+    await page.keyboard.press("Space");
+    await expect(banner).toBeHidden();
+    await expect.poll(async () => (await readPlayback(page)).position).toBeGreaterThan(waiting.position);
+    expect(sequenceOf(samples, "measure")).toEqual(["1", "2", "3", "2", "3", "4"]);
     expect(errors).toEqual([]);
   });
 

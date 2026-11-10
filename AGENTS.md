@@ -38,7 +38,7 @@ Before finishing: `lint:fix`, `typecheck`, `vitest run`, plus `test:e2e` when ba
 Three layers, each a PocketBase JSON field read and written whole through its serializer in `core/models/layers.ts` (no handling for older formats), each referencing the one below only by measure ID:
 - **Score:** printed measures in written order with their boxes on the PDF. Measures have a stable `id` (`m1`, ...); `label` is free display text, so relabeling never touches references.
 - **Recording:** inclusive measure ID spans in the order the backing track plays them, plus sync points: warp markers on measure occurrences and an optional `endSyncTime` where the last measure ends.
-- **Arrangement:** markers, cut/repeat/vamp sections, segue.
+- **Arrangement:** markers, cut/repeat/vamp sections, caesuras, segue. A caesura is a section at one location (`at`), the beat it comes before; code about ranges, passes and overlaps takes `RangeSection`.
 
 `Song.getTimeline()` has one entry per measure played; its index is the timeline position. A location `{ measure, beat, occurrence }` is a 0-based beat of a measure's `occurrence`-th play.
 

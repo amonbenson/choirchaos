@@ -32,6 +32,7 @@ const ARRANGEMENT_LABELS: Record<ArrangementKey, string> = {
   repeat: "Repeats",
   cut: "Cuts",
   marker: "Markers",
+  caesura: "Caesuras",
 };
 
 const THEME_OPTIONS: { label: string; value: AppearanceSettings["theme"] }[] = [
@@ -283,6 +284,21 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
                 :model-value="settings.current.playback.vampsEnabled"
                 aria-label="Play vamps"
                 @update:model-value="settings.update({ playback: { vampsEnabled: $event } })"
+              />
+            </div>
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <div class="font-medium">
+                  Stop at Caesuras
+                </div>
+                <div class="text-sm text-muted-color">
+                  When disabled, playback runs through caesuras without pausing.
+                </div>
+              </div>
+              <ToggleSwitch
+                :model-value="settings.current.playback.caesurasEnabled"
+                aria-label="Stop at caesuras"
+                @update:model-value="settings.update({ playback: { caesurasEnabled: $event } })"
               />
             </div>
             <div class="flex items-center justify-between gap-4">

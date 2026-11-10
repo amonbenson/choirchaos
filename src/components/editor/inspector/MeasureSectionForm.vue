@@ -8,13 +8,24 @@ import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { useNotify } from "@/composables/useNotify";
 import type { RecordedPass } from "@/core/models/recording";
 import { formatSectionName } from "@/core/models/scoreOverlays";
-import { createSection, findSectionsAt, holdsRun, replaceSections, type Section, type SectionKind, toMeasureRange, validateSections } from "@/core/models/sections";
+import {
+  createSection,
+  findCaesura,
+  findSectionsAt,
+  getCaesuraAfter,
+  holdsRun,
+  type RangeSection,
+  replaceSections,
+  type Section,
+  toMeasureRange,
+  validateSections,
+} from "@/core/models/sections";
 import type Song from "@/core/models/song";
 import { lowerFirst } from "@/core/utils/text";
 
 import InspectorSection from "./InspectorSection.vue";
 
-const KINDS: { value: SectionKind; label: string }[] = [
+const KINDS: { value: RangeSection["kind"]; label: string }[] = [
   { value: "repeat", label: "Add repeat" },
   { value: "vamp", label: "Add vamp" },
   { value: "cut", label: "Add cut" },
@@ -40,6 +51,11 @@ const holder = computed(() => {
 });
 const holderName = computed(() => holder.value && formatSectionName(measures.value, holder.value));
 
+/** A caesura after these measures stops playback before the measure the recording plays next. */
+const caesuraAt = computed(() => getCaesuraAfter(timeline.value, props.run));
+const caesura = computed(() => caesuraAt.value && findCaesura(props.song.getSections(), caesuraAt.value));
+const lastLabel = computed(() => props.song.findMeasure(timeline.value[props.run.last]!.measure)?.label ?? "?");
+
 watch([() => props.run.first, () => props.run.last], () => {
   error.value = undefined;
 });
@@ -55,13 +71,20 @@ async function save(replaced: readonly Section[], created: Section): Promise<voi
 
   try {
     await props.song.editLayers({ sections });
-    selection.select({ kind: "section", from: created.from });
+    selection.select(created.kind === "caesura" ? { kind: "caesura", at: created.at } : { kind: "section", from: created.from });
   } catch (failure) {
     notifyError("Could not save the section", failure);
   }
 }
 
-async function create(kind: SectionKind): Promise<void> {
+function addCaesura(): void {
+  const at = caesuraAt.value;
+  if (at) {
+    save([], { kind: "caesura", at });
+  }
+}
+
+async function create(kind: RangeSection["kind"]): Promise<void> {
   const { from, to } = toMeasureRange(measures.value, timeline.value, props.run);
   const created = createSection(kind, from, to);
   const replaced = matches.value;
@@ -108,6 +131,29 @@ async function create(kind: SectionKind): Promise<void> {
         @click="create(kind.value)"
       />
     </div>
+
+    <template v-if="caesuraAt">
+      <Button
+        v-if="caesura"
+        label="Select caesura"
+        severity="secondary"
+        size="small"
+        class="self-start"
+        text
+        :aria-label="`Select caesura after ${lastLabel}`"
+        @click="selection.select({ kind: 'caesura', at: caesura.at })"
+      />
+      <Button
+        v-else
+        :label="`Add caesura after ${lastLabel}`"
+        icon="pi pi-plus"
+        severity="secondary"
+        size="small"
+        class="self-start"
+        text
+        @click="addCaesura"
+      />
+    </template>
 
     <Message
       v-if="error"

@@ -94,6 +94,9 @@ export function useEditorSelection(song: Ref<Song | undefined>, editMode: Ref<bo
       case "section":
         player.seekLocation(next.section.from);
         break;
+      case "caesura":
+        player.seekLocation(next.section.at);
+        break;
       case "marker":
         player.seekLocation(next.marker.at);
         break;

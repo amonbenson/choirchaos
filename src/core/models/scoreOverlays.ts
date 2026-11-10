@@ -1,9 +1,9 @@
-import { formatOccurrence, formatTimes } from "./locationFormat";
+import { formatOccurrence, formatOrdinal, formatTimes } from "./locationFormat";
 import type { Marker } from "./markers";
 import type Measure from "./measure";
 import type { MeasureId, MeasureLayout } from "./measure";
-import { countOccurrences, type Occurrence, type Timeline } from "./recording";
-import { getSectionRun, type Section } from "./sections";
+import { countOccurrences, findPosition, type Location, type Occurrence, type Timeline } from "./recording";
+import { type CaesuraSection, getSectionRun, isCaesura, isRangeSection, type RangeSection, type Section } from "./sections";
 
 /**
  * One line of boxes that an overlay covers, in page fractions: from the left edge of its first box to the
@@ -20,7 +20,7 @@ export type OverlayRun = {
 export type SectionOverlay = {
   /** Index into the song's sections. */
   index: number;
-  section: Section;
+  section: RangeSection;
   /** The measures of the section's first pass in playing order, each once. */
   measures: MeasureId[];
   /** One run per score row the first pass touches, in playing order. */
@@ -42,7 +42,7 @@ export type PlayingSection = { section: number; pass: number; passes?: number; r
 
 type Placed = { measure: MeasureId; layout: MeasureLayout };
 
-const KIND_NAMES: Record<Section["kind"], string> = { cut: "Cut", repeat: "Repeat", vamp: "Vamp" };
+const KIND_NAMES: Record<Section["kind"], string> = { cut: "Cut", repeat: "Repeat", vamp: "Vamp", caesura: "Caesura" };
 
 function centerY(layout: MeasureLayout): number {
   return layout.y + layout.height / 2;
@@ -121,8 +121,8 @@ export function getSectionOverlays(
 ): SectionOverlay[] {
   const overlays: SectionOverlay[] = [];
   sections.forEach((section, index) => {
-    const pass = getSectionRun(timeline, section);
-    if (!pass) {
+    const pass = isRangeSection(section) ? getSectionRun(timeline, section) : undefined;
+    if (!pass || !isRangeSection(section)) {
       return;
     }
 
@@ -252,8 +252,14 @@ function formatCount(times: number): string {
   return times === 1 ? "once" : `${times} times`;
 }
 
+/** "before 13", "before 13, 3rd beat" or "before 13, 2nd time": the beat a caesura comes before. */
+function formatCaesuraPlace(measures: readonly Measure[], at: Location): string {
+  const beat = at.beat > 0 ? `, ${formatOrdinal(at.beat + 1)} beat` : "";
+  return `before ${formatOccurrence(labelOf(measures, at.measure), at.occurrence)}${beat}`;
+}
+
 /** "14 to 15", "14 to 15, 2nd time", or "14, 1st time to 15, 2nd time" for a range across passes. */
-function formatRange(measures: readonly Measure[], { from, to }: Section): string {
+function formatRange(measures: readonly Measure[], { from, to }: RangeSection): string {
   if (from.occurrence !== to.occurrence) {
     return `${labelOf(measures, from.measure)}, ${formatTimes(from.occurrence)} to ${labelOf(measures, to.measure)}, ${formatTimes(to.occurrence)}`;
   }
@@ -288,7 +294,8 @@ export function formatSectionPass(kind: Section["kind"], { pass, passes }: Pick<
 
 /** "Vamp 19 to 20", "Repeat 12" or "Cut 10 to 11, 2nd time": the section by its kind and measures. */
 export function formatSectionName(measures: readonly Measure[], section: Section): string {
-  return `${KIND_NAMES[section.kind]} ${formatRange(measures, section)}`;
+  const place = isCaesura(section) ? formatCaesuraPlace(measures, section.at) : formatRange(measures, section);
+  return `${KIND_NAMES[section.kind]} ${place}`;
 }
 
 /** The section and what it plays, e.g. "Repeat 14 to 15, 3 times". */
@@ -301,6 +308,10 @@ export function describeSection(measures: readonly Measure[], section: Section):
 /** The short text of a section chip, e.g. "Repeat 3×" or "Vamp". */
 export function formatSectionChip(section: Section): string {
   const kind = KIND_NAMES[section.kind];
+  if (isCaesura(section)) {
+    return kind;
+  }
+
   const occurrence = section.from.occurrence > 1 ? `, ${formatTimes(section.from.occurrence)}` : "";
   const passes = section.kind === "repeat" ? ` ${section.passes}×` : "";
   return `${kind}${passes}${occurrence}`;
@@ -313,7 +324,7 @@ function formatMarker(timeline: Timeline, { at, text }: Marker): string {
 /** One bar per score row of each section. Only the first bar's chip is named, the others repeat it. */
 export type SectionBar = {
   key: string;
-  section: Section;
+  section: RangeSection;
   run: OverlayRun;
   lane: number;
   chip: string;
@@ -337,6 +348,30 @@ export type BoxBadge = { key: string; text: string; name: string };
 
 export type MarkerBadge = { marker: Marker; name: string };
 
+/** A caesura's line on a box, `x` a fraction of the box's width. */
+export type CaesuraMark = { section: CaesuraSection; x: number; name: string };
+
+/**
+ * Where a caesura is drawn: before its beat, and before a first beat on the barline that ends the measure
+ * played before it, as long as that measure also comes before it on the score. That barline may end
+ * a system or page. Otherwise, as after a repeat ending, it is drawn at the start of its own measure.
+ */
+export function placeCaesura(measures: readonly Measure[], timeline: Timeline, { at }: CaesuraSection): { measure: MeasureId; x: number } | undefined {
+  const index = measures.findIndex(measure => measure.id === at.measure);
+  const position = findPosition(timeline, at);
+  if (index === -1 || position === undefined) {
+    return undefined;
+  }
+
+  if (at.beat > 0) {
+    return { measure: at.measure, x: at.beat / measures[index]!.beats };
+  }
+
+  const previous = measures[index - 1];
+  const played = timeline[position - 1];
+  return previous?.layout && played?.measure === previous.id ? { measure: previous.id, x: 1 } : { measure: at.measure, x: 0 };
+}
+
 /** Everything the arrangement draws on and around one box. */
 export type BoxOverlays = {
   /** What all overlays on the box say, for its `aria-describedby`: "Vamp 19 to 20. Marker D." */
@@ -346,6 +381,7 @@ export type BoxOverlays = {
   markers: MarkerBadge[];
   /** The lane of the marker badges, above every section chip on the box. */
   markerLane: number;
+  caesuras: CaesuraMark[];
 };
 
 export type BoxOverlayInput = {
@@ -353,6 +389,7 @@ export type BoxOverlayInput = {
   timeline: Timeline;
   sections: readonly SectionOverlay[];
   markers: readonly Marker[];
+  caesuras?: readonly CaesuraSection[];
   jumps?: readonly RecordingJump[];
 };
 
@@ -360,7 +397,7 @@ type BoxOverlayDraft = Omit<BoxOverlays, "description"> & { texts: string[] };
 
 /** The overlays of every box that has any, keyed by measure. */
 export function getBoxOverlays(input: BoxOverlayInput): Map<MeasureId, BoxOverlays> {
-  const { measures, timeline, sections, markers, jumps = [] } = input;
+  const { measures, timeline, sections, markers, caesuras = [], jumps = [] } = input;
   const drafts = new Map<MeasureId, BoxOverlayDraft>();
   const draftOf = (measure: MeasureId): BoxOverlayDraft => {
     const existing = drafts.get(measure);
@@ -368,7 +405,7 @@ export function getBoxOverlays(input: BoxOverlayInput): Map<MeasureId, BoxOverla
       return existing;
     }
 
-    const draft: BoxOverlayDraft = { texts: [], jumps: [], markers: [], markerLane: 0 };
+    const draft: BoxOverlayDraft = { texts: [], jumps: [], markers: [], markerLane: 0, caesuras: [] };
     drafts.set(measure, draft);
     return draft;
   };
@@ -387,6 +424,18 @@ export function getBoxOverlays(input: BoxOverlayInput): Map<MeasureId, BoxOverla
     const name = formatMarker(timeline, marker);
     draft.texts.push(name);
     draft.markers.push({ marker, name });
+  }
+
+  for (const section of caesuras) {
+    const place = placeCaesura(measures, timeline, section);
+    if (!place) {
+      continue;
+    }
+
+    const draft = draftOf(place.measure);
+    const name = formatSectionName(measures, section);
+    draft.texts.push(name);
+    draft.caesuras.push({ section, x: place.x, name });
   }
 
   for (const jump of jumps) {
