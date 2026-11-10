@@ -1,9 +1,8 @@
-import { formatLocation } from "./locationFormat";
 import type Measure from "./measure";
 import { countReviewItems } from "./measureReview";
 import { findUnplayedMeasures } from "./recording";
 import type Song from "./song";
-import { countSyncPoints, findMeterChangesToSync, MIN_SYNC_POINTS } from "./warpEditing";
+import { countSyncPoints, MIN_SYNC_POINTS } from "./warpEditing";
 
 export type SetupStepId = "score" | "playback" | "measures" | "review" | "sync";
 
@@ -15,10 +14,8 @@ export type SetupStep = {
 
 /** Something worth a look that does not keep the song from being ready. */
 export type SetupHint = {
-  id: "unplayed" | "meterChanges";
+  id: "unplayed";
   label: string;
-  /** Where the hint's control goes, a timeline position, with the control's label. */
-  target?: { position: number; action: string };
 };
 
 export type SongSetup = {
@@ -113,25 +110,9 @@ function getUnplayedHint(song: Song): SetupHint | undefined {
   return { id: "unplayed", label: `The recording never plays ${noun} ${formatMeasureRuns(song.getMeasures(), unplayed)}` };
 }
 
-function getMeterChangesHint(song: Song): SetupHint | undefined {
-  if (song.playerMode !== "audio") {
-    return undefined;
-  }
-
-  const timeline = song.getTimeline();
-  const [first, ...rest] = findMeterChangesToSync(timeline, song.getMeasures(), song.getSyncPoints());
-  if (first === undefined) {
-    return undefined;
-  }
-
-  const label = rest.length === 0
-    ? "A meter change between sync points mistimes the measures around it"
-    : `${rest.length + 1} meter changes between sync points mistime the measures around them`;
-  return { id: "meterChanges", label, target: { position: first, action: `Go to ${formatLocation(song, timeline[first]!)}` } };
-}
-
 function getHints(song: Song): SetupHint[] {
-  return [getUnplayedHint(song), getMeterChangesHint(song)].filter(hint => hint !== undefined);
+  const unplayed = getUnplayedHint(song);
+  return unplayed ? [unplayed] : [];
 }
 
 export function isFileStep(id: SetupStepId): boolean {

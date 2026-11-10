@@ -1,17 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { idOf, makeAudioSong, makeAudioSongWithBakedVamp, makeAudioSongWithRepeat } from "@/test/fixtures";
+import { idOf, makeAudioSong, makeAudioSongWithBakedVamp } from "@/test/fixtures";
 
 import { formatOccurrenceShort } from "./locationFormat";
-import Measure from "./measure";
-import { type Occurrence, type StoredWarpMarker, type TimelineEntry } from "./recording";
+import { type Occurrence, type StoredWarpMarker } from "./recording";
 import type Song from "./song";
 import {
   addSyncPoint,
   canPlaceWarpMarker,
   constrainWarpMarkerTime,
   countSyncPoints,
-  findMeterChangesToSync,
   formatSyncTime,
   getOccurrenceKey,
   getPositionedSyncPoints,
@@ -214,61 +212,6 @@ describe("placing and reassigning", () => {
   });
 });
 
-describe("sync status", () => {
-  // Positions 0 to 7 play "1 2 3 2 3 2 3 4" in the spans 1 to 3, 2 to 3, 2 to 4.
-  const song = makeAudioSongWithRepeat();
-  const timeline = song.getTimeline();
-
-  function withBeats(...beats: number[]): { timeline: TimelineEntry[]; measures: Measure[] } {
-    return {
-      timeline: beats.map((_, position) => ({ position, measure: `m${position + 1}`, occurrence: 1 })),
-      measures: beats.map((count, i) => new Measure(`m${i + 1}`, `${i + 1}`, count)),
-    };
-  }
-
-  function syncAt(...positions: number[]): StoredWarpMarker[] {
-    return positions.map(position => ({ measure: `m${position + 1}`, occurrence: 1, time: position }));
-  }
-
-  it("needs nothing beyond two sync points in a steady meter, repeats included", () => {
-    expect(findMeterChangesToSync(timeline, song.getMeasures(), points([marker(song, "1", 1, 0), marker(song, "4", 1, 7)]))).toEqual([]);
-  });
-
-  it("names nothing before the song is synced", () => {
-    const { timeline: changing, measures } = withBeats(4, 3, 4);
-
-    expect(findMeterChangesToSync(changing, measures, points(syncAt(0)))).toEqual([]);
-  });
-
-  it("asks for a sync point at each meter change between sync points, one at a time", () => {
-    const { timeline: changing, measures } = withBeats(4, 4, 3, 3, 4, 4);
-
-    expect(findMeterChangesToSync(changing, measures, points(syncAt(0, 5)))).toEqual([2]);
-    expect(findMeterChangesToSync(changing, measures, points(syncAt(0, 2, 5)))).toEqual([4]);
-    expect(findMeterChangesToSync(changing, measures, points(syncAt(0, 2, 4, 5)))).toEqual([]);
-  });
-
-  it("names every stretch whose meter changes", () => {
-    const { timeline: changing, measures } = withBeats(4, 3, 4, 4, 2, 4);
-
-    expect(findMeterChangesToSync(changing, measures, points(syncAt(0, 3, 5)))).toEqual([1, 4]);
-  });
-
-  it("asks for the start once a pickup is synced but extrapolated", () => {
-    const { timeline: pickup, measures } = withBeats(1, 4, 4, 4);
-
-    expect(findMeterChangesToSync(pickup, measures, points(syncAt(1, 3)))).toEqual([0]);
-    expect(findMeterChangesToSync(pickup, measures, points(syncAt(0, 1, 3)))).toEqual([]);
-  });
-
-  it("asks for the last measure when the meter changes at the last sync point", () => {
-    const { timeline: ending, measures } = withBeats(4, 4, 2, 2);
-
-    expect(findMeterChangesToSync(ending, measures, points(syncAt(0, 2)))).toEqual([3]);
-    expect(findMeterChangesToSync(ending, measures, points(syncAt(0, 2, 3)))).toEqual([]);
-  });
-});
-
 describe("end sync point", () => {
   // Positions 0 to 3 play measures "1" to "4".
   const song = makeAudioSong();
@@ -309,16 +252,5 @@ describe("end sync point", () => {
     expect(() => addSyncPoint([], points([]), RECORDING_END, 9)).toThrow("no measures");
     expect(moveSyncPoint(added, RECORDING_END, 9)).toEqual(points(markers, 9));
     expect(removeSyncPoint(added, RECORDING_END)).toEqual(points(markers));
-  });
-
-  it("ends the stretch it closes, so the last measure needs no sync point of its own", () => {
-    const changing = [4, 4, 2, 2].map((_, position) => ({ position, measure: `m${position + 1}`, occurrence: 1 }));
-    const measures = [4, 4, 2, 2].map((beats, i) => new Measure(`m${i + 1}`, `${i + 1}`, beats));
-    const start = { measure: "m1", occurrence: 1, time: 0 };
-    const change = { measure: "m3", occurrence: 1, time: 2 };
-
-    expect(findMeterChangesToSync(changing, measures, points([start, change]))).toEqual([3]);
-    expect(findMeterChangesToSync(changing, measures, points([start, change], 3))).toEqual([]);
-    expect(findMeterChangesToSync(changing, measures, points([start], 3))).toEqual([2]);
   });
 });

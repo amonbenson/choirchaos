@@ -1,52 +1,52 @@
-export const DEFAULT_SECONDS_PER_POSITION = 2;
+export const DEFAULT_SECONDS_PER_BEAT = 0.5;
 
-/** Anchors a timeline position to a time in the recording, in seconds. */
+/** Anchors a beat, counted from the start of the timeline, to a time in the recording, in seconds. */
 export type WarpMarker = {
-  position: number;
+  beat: number;
   time: number;
 };
 
 export type WarpSegment = {
-  positionStart: number;
-  positionEnd: number;
+  beatStart: number;
+  beatEnd: number;
   timeStart: number;
   timeEnd: number;
-  secondsPerPosition: number;
+  secondsPerBeat: number;
 };
 
 function createDefaultSegment(anchor: WarpMarker): WarpSegment {
   return {
-    positionStart: anchor.position,
-    positionEnd: anchor.position,
+    beatStart: anchor.beat,
+    beatEnd: anchor.beat,
     timeStart: anchor.time,
     timeEnd: anchor.time,
-    secondsPerPosition: DEFAULT_SECONDS_PER_POSITION,
+    secondsPerBeat: DEFAULT_SECONDS_PER_BEAT,
   };
 }
 
-/** Maps timeline positions to recording times, linear between markers and extrapolated beyond them. */
+/** Maps beats to recording times, linear between markers and extrapolated beyond them. */
 export default class WarpMap {
   private markers: WarpMarker[] = [];
-  private segments: WarpSegment[] = [createDefaultSegment({ position: 0, time: 0 })];
+  private segments: WarpSegment[] = [createDefaultSegment({ beat: 0, time: 0 })];
 
   getMarkers(): readonly WarpMarker[] {
     return this.markers;
   }
 
   addMarker(marker: WarpMarker): void {
-    if (!Number.isInteger(marker.position)) {
-      throw new Error("Marker position must be an integer");
+    if (!Number.isInteger(marker.beat)) {
+      throw new Error("Marker beat must be an integer");
     }
 
-    const i = this.markers.findIndex(m => m.position >= marker.position);
+    const i = this.markers.findIndex(m => m.beat >= marker.beat);
     if (i === -1) {
       this.markers.push(marker);
       this.buildSegments();
       return;
     }
 
-    if (this.markers[i]!.position === marker.position) {
-      throw new Error("Duplicate position");
+    if (this.markers[i]!.beat === marker.beat) {
+      throw new Error("Duplicate beat");
     }
 
     const prev = this.markers[i - 1];
@@ -64,18 +64,18 @@ export default class WarpMap {
   }
 
   setMarkers(markers: WarpMarker[]): void {
-    const sorted = [...markers].sort((a, b) => a.position - b.position);
+    const sorted = [...markers].sort((a, b) => a.beat - b.beat);
     for (let i = 0; i < sorted.length; i++) {
-      if (!Number.isInteger(sorted[i]!.position)) {
-        throw new Error("Marker position must be an integer");
+      if (!Number.isInteger(sorted[i]!.beat)) {
+        throw new Error("Marker beat must be an integer");
       }
 
       if (i === 0) {
         continue;
       }
 
-      if (sorted[i]!.position === sorted[i - 1]!.position) {
-        throw new Error("Duplicate position");
+      if (sorted[i]!.beat === sorted[i - 1]!.beat) {
+        throw new Error("Duplicate beat");
       }
 
       if (sorted[i]!.time <= sorted[i - 1]!.time) {
@@ -87,8 +87,8 @@ export default class WarpMap {
     this.buildSegments();
   }
 
-  removeMarker(position: number): void {
-    const i = this.markers.findIndex(m => m.position === position);
+  removeMarker(beat: number): void {
+    const i = this.markers.findIndex(m => m.beat === beat);
     if (i === -1) {
       throw new Error("Marker not found");
     }
@@ -97,31 +97,36 @@ export default class WarpMap {
     this.buildSegments();
   }
 
-  positionToTime(position: number): number {
-    const seg = this.findSegmentByPosition(position);
-    return seg.timeStart + (position - seg.positionStart) * seg.secondsPerPosition;
+  beatToTime(beat: number): number {
+    const seg = this.findSegmentByBeat(beat);
+    return seg.timeStart + (beat - seg.beatStart) * seg.secondsPerBeat;
   }
 
-  timeToPosition(time: number): number {
+  /** The length of a beat from `beat` on, up to the next marker. */
+  getSecondsPerBeat(beat: number): number {
+    return this.findSegmentByBeat(beat).secondsPerBeat;
+  }
+
+  timeToBeat(time: number): number {
     const seg = this.findSegmentByTime(time);
-    return seg.positionStart + (time - seg.timeStart) / seg.secondsPerPosition;
+    return seg.beatStart + (time - seg.timeStart) / seg.secondsPerBeat;
   }
 
   private buildSegments(): void {
     const ms = this.markers;
     if (ms.length < 2) {
-      this.segments = [createDefaultSegment(ms[0] ?? { position: 0, time: 0 })];
+      this.segments = [createDefaultSegment(ms[0] ?? { beat: 0, time: 0 })];
       return;
     }
 
     this.segments = ms.slice(0, -1).map((start, i) => {
       const end = ms[i + 1]!;
       return {
-        positionStart: start.position,
-        positionEnd: end.position,
+        beatStart: start.beat,
+        beatEnd: end.beat,
         timeStart: start.time,
         timeEnd: end.time,
-        secondsPerPosition: (end.time - start.time) / (end.position - start.position),
+        secondsPerBeat: (end.time - start.time) / (end.beat - start.beat),
       };
     });
   }
@@ -142,8 +147,8 @@ export default class WarpMap {
     return segs[lo]!;
   }
 
-  private findSegmentByPosition(position: number): WarpSegment {
-    return this.findLastSegment(segment => segment.positionStart <= position);
+  private findSegmentByBeat(beat: number): WarpSegment {
+    return this.findLastSegment(segment => segment.beatStart <= beat);
   }
 
   private findSegmentByTime(time: number): WarpSegment {

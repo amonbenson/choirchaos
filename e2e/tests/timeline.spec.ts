@@ -268,7 +268,7 @@ test.describe("timeline and audio sync", () => {
     expect(await stored()).toEqual([{ ...vamp, to: locationAt(score, "1", 3, 2) }, cut]);
   });
 
-  test("two sync points sync recorded repeats, and a meter change between them leads to a hint", async ({ page, admin, factory, loginAs }) => {
+  test("two sync points sync recorded repeats", async ({ page, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);
     const bundle = await buildSongBundle(MINIMAL, { mode: "audio", repeats: [{ from: "1", to: "2", passes: 3 }] });
@@ -281,19 +281,7 @@ test.describe("timeline and audio sync", () => {
     await page.goto(`/show/${show.id}/song/${song.id}/edit`);
     await waitForPlayer(page);
     const panel = page.getByRole("region", { name: "Editor panel" });
-    const checklist = panel.getByRole("list", { name: "Setup checklist" });
     await expect(panel.getByRole("region", { name: "Audio sync" })).toContainText("Synced with 2 sync points");
-    await expect(checklist).not.toContainText("meter change");
-
-    await admin.collection("songs").update(song.id, {
-      score: { ...bundle.fields.score, measures: bundle.fields.score.measures.map(measure => measure.id === "m3" ? { ...measure, beats: 2 } : measure) },
-    });
-    await page.reload();
-    await waitForPlayer(page);
-    await expect(checklist).toContainText("A meter change between sync points mistimes the measures around it");
-    await checklist.getByRole("button", { name: "Go to 3" }).click();
-    await expect(page.getByRole("slider", { name: "Position" })).toHaveAttribute("aria-valuetext", /^3/);
-    await expect(panel.getByRole("heading", { name: "Measure 3" })).toBeVisible();
     expect(errors).toEqual([]);
   });
 

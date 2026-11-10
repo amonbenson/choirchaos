@@ -113,25 +113,6 @@ describe("setup hints", () => {
     expect(getSongSetup(song).next).toBeUndefined();
   });
 
-  it("names meter changes between the sync points of an audio song", () => {
-    const changing = [new Measure("m1", "1", 4), new Measure("m2", "2", 3), new Measure("m3", "3", 4), new Measure("m4", "4", 2), new Measure("m5", "5", 4)];
-    const synced = (...ids: string[]): Song => makeSong({
-      audio: true,
-      measures: changing,
-      spans: [{ from: "m1", to: "m5" }],
-      warpMarkers: ids.map((measure, time) => ({ measure, occurrence: 1, time })),
-    });
-
-    expect(getSongSetup(synced("m1", "m2", "m3", "m5")).hints).toEqual([{
-      id: "meterChanges",
-      label: "A meter change between sync points mistimes the measures around it",
-      target: { position: 3, action: "Go to 4" },
-    }]);
-    expect(getSongSetup(synced("m1", "m5")).hints.map(hint => hint.label)).toEqual(["A meter change between sync points mistimes the measures around it"]);
-    expect(getSongSetup(synced("m1", "m3", "m5")).hints.map(hint => hint.label)).toEqual(["2 meter changes between sync points mistime the measures around them"]);
-    expect(getSongSetup(synced("m1", "m2", "m3", "m4", "m5")).hints).toEqual([]);
-  });
-
   it("needs no more than two sync points for repeats in a steady meter", () => {
     const song = makeSong({
       audio: true,

@@ -73,6 +73,15 @@ describe("resolveMidiTimeline", () => {
   });
 });
 
+/** Measures "1", "2", ... with the given beats, played once each and synced at `[position, seconds]`. */
+function audioTimelineOf(beats: number[], sync: [position: number, time: number][], endSyncTime?: number): { timeline: TimelinePosition[]; warpMap: WarpMap } {
+  const measures = beats.map((count, i) => new Measure(`m${i + 1}`, `${i + 1}`, count));
+  const played = expandRecording(measures, [{ from: "m1", to: `m${beats.length}` }]);
+  const warpMarkers = sync.map(([position, time]) => ({ measure: `m${position + 1}`, occurrence: 1, time }));
+  const warpMap = new WarpMap();
+  return { timeline: resolveAudioTimeline(played, measures, { warpMarkers, endSyncTime }, warpMap), warpMap };
+}
+
 describe("resolveAudioTimeline", () => {
   it("places positions between warp markers on measure occurrences", () => {
     const song = makeAudioSongWithBakedVamp();
@@ -89,7 +98,7 @@ describe("resolveAudioTimeline", () => {
     const warpMap = new WarpMap();
     resolveAudioTimeline(song.getTimeline(), song.getMeasures(), { warpMarkers: markers, endSyncTime: undefined }, warpMap);
 
-    expect(warpMap.getMarkers()).toEqual([{ position: 0, time: 0 }, { position: 2, time: 0.5 }]);
+    expect(warpMap.getMarkers()).toEqual([{ beat: 0, time: 0 }, { beat: 8, time: 0.5 }]);
   });
 
   it("ends the last measure at the end sync point instead of extrapolating", () => {
@@ -99,31 +108,43 @@ describe("resolveAudioTimeline", () => {
     expect(timeline.map(p => p.beatTicks[0])).toEqual([0, 250, 500, 1100, 1700, 2300, 2900]);
     expect(timeline.at(-1)!.endTick).toBe(3500);
   });
+
+  it("gives every measure between sync points time in proportion to its beats", () => {
+    const { timeline } = audioTimelineOf([12, 6, 12], [[0, 0]], 15);
+
+    expect(timeline.map(p => [p.beatTicks[0], p.endTick])).toEqual([[0, 6000], [6000, 9000], [9000, 15000]]);
+    expect(timeline[1]!.beatTicks).toEqual([6000, 6500, 7000, 7500, 8000, 8500]);
+  });
+
+  it("goes on at the beat rate of the nearest sync points beyond them", () => {
+    const { timeline } = audioTimelineOf([2, 4, 4, 3], [[1, 1], [2, 3]]);
+
+    expect(timeline.map(p => [p.beatTicks[0], p.endTick])).toEqual([[0, 1000], [1000, 3000], [3000, 5000], [5000, 6500]]);
+  });
+
+  it("plays half a second per beat until two sync points set the rate", () => {
+    expect(audioTimelineOf([4, 3], []).timeline.map(p => p.endTick)).toEqual([2000, 3500]);
+    expect(audioTimelineOf([4, 3], [[1, 5]]).timeline.map(p => p.endTick)).toEqual([5000, 6500]);
+  });
 });
 
 describe("buildAudioTempoEvents", () => {
-  /** Positions that start where the previous one ends, each with its beats and length in milliseconds. */
-  function timelineOf(positions: [beats: number, length: number][]): TimelinePosition[] {
-    let start = 0;
-    return positions.map(([beats, length], position) => {
-      const beatTicks = Array.from({ length: beats }, (_, beat) => start + beat * length / beats);
-      start += length;
-      return { position, measure: `m${position + 1}`, occurrence: 1, beats, beatTicks, endTick: start };
-    });
-  }
+  it("plays the beats between two sync points at one tempo, whatever their measures", () => {
+    const { warpMap } = audioTimelineOf([4, 2, 4, 4], [[0, 0], [2, 2]], 4);
 
-  it("spreads the time between sync points over the beats between them", () => {
-    const timeline = timelineOf([[4, 1000], [2, 1000], [4, 500], [4, 500]]);
-    const events = buildAudioTempoEvents(timeline, [{ position: 0, time: 0 }, { position: 2, time: 2 }]);
-
-    expect(events.items().map(e => [e.tick, e.bpm])).toEqual([[0, 180], [2000, 480]]);
+    expect(buildAudioTempoEvents(warpMap).items().map(e => [e.tick, e.bpm])).toEqual([[0, 180], [2000, 240]]);
   });
 
   it("adds no event where the tempo stays the same", () => {
-    const timeline = timelineOf([[4, 1000], [4, 1000], [4, 1000]]);
-    const events = buildAudioTempoEvents(timeline, [{ position: 1, time: 1 }, { position: 2, time: 2 }]);
+    const { warpMap } = audioTimelineOf([4, 4, 4], [[1, 1], [2, 2]]);
 
-    expect(events.items().map(e => [e.tick, e.bpm])).toEqual([[0, 240]]);
+    expect(buildAudioTempoEvents(warpMap).items().map(e => [e.tick, e.bpm])).toEqual([[0, 240]]);
+  });
+
+  it("starts at the default tempo without sync points", () => {
+    const { warpMap } = audioTimelineOf([4], []);
+
+    expect(buildAudioTempoEvents(warpMap).items().map(e => [e.tick, e.bpm])).toEqual([[0, 120]]);
   });
 });
 
