@@ -143,6 +143,7 @@ const SECTION_KEYS: Record<string, string[]> = {
   cut: ["kind", "from", "to"],
   repeat: ["kind", "from", "to", "passes"],
   vamp: ["kind", "from", "to", "out", "vocals"],
+  caesura: ["kind", "at"],
 };
 
 const VAMP_OUTS = ["onEnd", "anyBar", "anyBeat"];
@@ -378,6 +379,7 @@ function lastRecordedPosition(timeline: TimelineEntry[], from: Point, to: Point)
 function arrangementViolations(layers: Layers, timeline: TimelineEntry[]): string[] {
   const violations: string[] = [];
   const extents: { from: Point; to: Point }[] = [];
+  const caesuras: Point[] = [];
 
   for (const marker of layers.markers) {
     if (!hasKeys(marker, ["at", "text"]) || typeof marker.text !== "string") {
@@ -393,6 +395,16 @@ function arrangementViolations(layers: Layers, timeline: TimelineEntry[]): strin
     const fieldViolation = sectionFieldViolation(section);
     if (fieldViolation) {
       violations.push(`${name} ${fieldViolation}`);
+      continue;
+    }
+
+    if (section.kind === "caesura") {
+      const at = resolveLocation(layers, timeline, section.at, `${name} at`, violations);
+      if (at && caesuras.some(other => other.position === at.position && other.beat === at.beat)) {
+        violations.push(`${name} shares its location with another caesura`);
+      }
+
+      caesuras.push(...at ? [at] : []);
       continue;
     }
 

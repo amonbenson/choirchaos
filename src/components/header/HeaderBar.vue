@@ -13,6 +13,7 @@ import QuarterNoteIcon from "@/components/icons/QuarterNoteIcon.vue";
 import { SECTION_COLORS, SECTION_CONTRAST_TEXT } from "@/components/score/sectionColors";
 import { formatLocation } from "@/core/models/locationFormat";
 import { findRecordedRepeats, formatPlayingSection, formatSectionPass, getRecordedRepeatPass } from "@/core/models/scoreOverlays";
+import { getCaesuras, isRangeSection } from "@/core/models/sections";
 import type Show from "@/core/models/show";
 import type { NoteValue } from "@/core/player/pulse";
 import { getSectionTicks } from "@/core/player/route";
@@ -126,8 +127,22 @@ const sectionRanges = computed(() => {
 
   const sections = song.getSections();
   return sections.flatMap((section, index) => {
-    const ticks = getSectionTicks(timeline, sections, section);
+    const ticks = isRangeSection(section) ? getSectionTicks(timeline, sections, section) : undefined;
     return ticks ? [{ key: index, kind: section.kind, left: ticks.start / duration, width: (ticks.end - ticks.start) / duration }] : [];
+  });
+});
+
+/** Where playback stops at caesuras, as fractions of the song. */
+const caesuraMarks = computed(() => {
+  const song = currentSong.value;
+  const { duration } = player;
+  if (!player.ready || !song || duration <= 0) {
+    return [];
+  }
+
+  return getCaesuras(song.getSections()).flatMap((section) => {
+    const tick = player.getLocationTick(section.at);
+    return tick === undefined ? [] : [{ key: `${section.at.measure}-${section.at.occurrence}-${section.at.beat}`, left: tick / duration }];
   });
 });
 
@@ -375,6 +390,13 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
           class="absolute inset-y-0"
           :class="SECTION_COLORS[range.kind].background"
           :style="{ left: `${range.left * 100}%`, width: `${range.width * 100}%` }"
+        />
+        <div
+          v-for="mark of caesuraMarks"
+          :key="mark.key"
+          class="absolute -inset-y-0.5 w-0.5 -translate-x-1/2 rounded-full"
+          :class="SECTION_COLORS.caesura.background"
+          :style="{ left: `${mark.left * 100}%` }"
         />
       </div>
     </div>

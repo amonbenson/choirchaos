@@ -12,6 +12,7 @@ import {
   validateLayers,
 } from "./layers";
 import Measure, { createEmptyMeasureEdit, type MeasureEdit } from "./measure";
+import type { Section } from "./sections";
 
 const LAYOUT = { page: 0, x: 0.1, y: 0.2, width: 0.1, height: 0.1 };
 
@@ -177,5 +178,35 @@ describe("end sync point", () => {
     expect(validateLayers({ ...synced, endSyncTime: 2 }, new Set(["endSyncTime"]))).toContain("after every other sync point");
     expect(validateLayers({ ...synced, endSyncTime: 0 }, new Set(["endSyncTime"]))).toContain("after its start");
     expect(validateLayers({ ...synced, spans: [], warpMarkers: [], markers: [], sections: [] }, new Set(["spans"]))).toContain("no measures");
+  });
+});
+
+describe("caesuras", () => {
+  const caesura = (measure: string, occurrence = 1): Section => ({ kind: "caesura", at: { measure, beat: 0, occurrence } });
+
+  it("are stored with the sections and sorted among them by location", () => {
+    const layers = { ...makeLayers(), sections: [caesura("m4"), ...makeLayers().sections, caesura("m2")] };
+
+    expect(deserializeLayers(serializeLayers(layers)).sections).toEqual(layers.sections);
+    expect(sortReferences(layers).sections.map(section => section.kind)).toEqual(["caesura", "cut", "caesura"]);
+  });
+
+  it("move with their occurrence when the recording changes, and are dropped with it", () => {
+    const layers = { ...makeLayers(), sections: [caesura("m2"), caesura("m4")] };
+    const measures = layers.measures;
+
+    const repeated = planRecordingChange(layers, measures, [{ from: "m1", to: "m4" }, { from: "m2", to: "m4" }]);
+    const shortened = planRecordingChange(layers, measures, [{ from: "m1", to: "m3" }]);
+
+    expect(repeated.layers.sections).toEqual(layers.sections);
+    expect(shortened.layers.sections).toEqual([caesura("m2")]);
+    expect(shortened.dropped.sections).toEqual([caesura("m4")]);
+  });
+
+  it("go with a removed measure and are validated like other sections", () => {
+    const layers = { ...makeLayers(), sections: [caesura("m2"), caesura("m4")] };
+
+    expect(planMeasureEdit(layers, edit({ removals: ["m4"] })).layers.sections).toEqual([caesura("m2")]);
+    expect(validateLayers({ ...layers, sections: [caesura("m2"), caesura("m2")] }, new Set(["sections"]))).toBe("There already is a caesura here.");
   });
 });

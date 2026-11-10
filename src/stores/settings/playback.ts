@@ -6,6 +6,7 @@ export class PlaybackSettings extends SettingsBase {
     public readonly transposition: number = 0,
     public readonly segueEnabled: boolean = true,
     public readonly vampsEnabled: boolean = true,
+    public readonly caesurasEnabled: boolean = true,
   ) {
     super();
   }

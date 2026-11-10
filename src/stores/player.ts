@@ -52,6 +52,7 @@ export const usePlayerStore = defineStore("player", () => {
     globalPlayer.onCurrentSegueChange,
     globalPlayer.getCurrentSegue(),
   );
+  const waitingAtCaesura = useEvent(globalPlayer.onWaitingAtCaesuraChange, globalPlayer.isWaitingAtCaesura());
 
   const playbackSpeed = useEvent(
     globalPlayer.onPlaybackSpeedChange,
@@ -126,6 +127,7 @@ export const usePlayerStore = defineStore("player", () => {
     resetVamp: () => globalPlayer.resetVamp(),
     toggleVamp: () => globalPlayer.toggleVamp(),
     setVampsEnabled: (enabled: boolean) => globalPlayer.setVampsEnabled(enabled),
+    setCaesurasEnabled: (enabled: boolean) => globalPlayer.setCaesurasEnabled(enabled),
     setSegueDefault: (enabled: boolean) => globalPlayer.setSegueDefault(enabled),
     toggleSegue: () => globalPlayer.toggleSegue(),
     seek,
@@ -152,6 +154,7 @@ export const usePlayerStore = defineStore("player", () => {
     finalLocation,
     currentSection,
     currentSegue,
+    waitingAtCaesura,
     events,
     mode,
     playbackSpeed,

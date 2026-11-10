@@ -6,6 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { h, reactive, type Ref, ref, type SetupContext } from "vue";
 
 import { provideSongEditor, type SongEditor } from "@/composables/useSongEditor";
+import { getRangeSections } from "@/core/models/sections";
 import { selectMeasures } from "@/core/models/selection";
 import Song from "@/core/models/song";
 import type { TimelinePosition } from "@/core/player/timeline";
@@ -224,7 +225,7 @@ describe("ScoreViewer", () => {
       const { wrapper, selection } = mountViewer(song);
 
       click(wrapper.find("button[aria-label='Repeat 2 to 3, 3 times']").element);
-      expect(fakePlayer().seekLocation).toHaveBeenLastCalledWith(song.getSections()[0]!.from);
+      expect(fakePlayer().seekLocation).toHaveBeenLastCalledWith(getRangeSections(song.getSections())[0]!.from);
 
       click(wrapper.find("button[aria-label='Marker A, 1st time']").element);
       expect(fakePlayer().seekLocation).toHaveBeenLastCalledWith(locationOf(song, "3"));
@@ -281,7 +282,7 @@ describe("ScoreViewer", () => {
 
       click(wrapper.find("button[aria-label='Repeat 2 to 3, 3 times']").element);
       await flushPromises();
-      expect(selection.selection.value).toEqual({ kind: "section", from: song.getSections()[0]!.from });
+      expect(selection.selection.value).toEqual({ kind: "section", from: getRangeSections(song.getSections())[0]!.from });
       expect(wrapper.find("button[aria-label='Repeat 2 to 3, 3 times']").attributes("aria-pressed")).toBe("true");
 
       click(wrapper.find("button[aria-label='Marker A, 1st time']").element);
@@ -417,7 +418,7 @@ describe("ScoreViewer", () => {
     it("selects one kind at a time", async () => {
       const song = makeMidiSongWithVamp();
       const context = mountViewer(song, true);
-      context.selection.select({ kind: "section", from: song.getSections()[0]!.from });
+      context.selection.select({ kind: "section", from: getRangeSections(song.getSections())[0]!.from });
       await flushPromises();
 
       click(box(context.wrapper, "2"), { ctrlKey: true });
@@ -471,7 +472,7 @@ describe("ScoreViewer", () => {
       it("appear on the selected section and name its ends", async () => {
         const song = makeMidiSongWithRepeat();
         const { wrapper, selection } = mountViewer(song, true);
-        selection.select({ kind: "section", from: song.getSections()[0]!.from });
+        selection.select({ kind: "section", from: getRangeSections(song.getSections())[0]!.from });
         await flushPromises();
 
         const last = handle(wrapper, "Last measure of repeat 2 to 3");
@@ -483,7 +484,7 @@ describe("ScoreViewer", () => {
       it("move the section by one measure with the arrow keys", async () => {
         const song = makeMidiSongWithVamp();
         const { wrapper, selection } = mountViewer(song, true);
-        selection.select({ kind: "section", from: song.getSections()[0]!.from });
+        selection.select({ kind: "section", from: getRangeSections(song.getSections())[0]!.from });
         await flushPromises();
 
         handle(wrapper, "Last measure of vamp 2").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));

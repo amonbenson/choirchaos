@@ -16,11 +16,13 @@ Extends the root `AGENTS.md`.
 - When the last pass is decided mid-pass (a vamp release), the route jumps at the next barline or beat to the same offset in the last recorded pass (`mapTick()`).
 - `stateAt(tick)` derives the state from the position alone, so seeking, stopping and resetting need no bookkeeping. A cut has no state: it only plays after a seek into it.
 - Vocal roles (entering, repeating, exiting) decide muting; only vamps mute.
+- A caesura stops playback before its beat when playback plays on into it or a jump lands there, except a jump going round a repeat or vamp again (`stopsAfterJump()`). A jump leaving at its tick wins, so one right after a repeat stops only on the way out and one on a cut's first beat is cut.
 
 ## Stepping
 
 - Time comes from the engine's one `AudioClock`, never `context.currentTime`: Firefox on Android advances it only every ~0.1 s and Firefox rounds it, which would make steps leap and notes land late. Test changes in Chrome, Firefox and Safari, desktop and mobile.
 - The engine plans each step up to the next jump or muting change and passes it as `limit`; a backend never steps past it. `MidiBackend` holds back notes within `AUDIO_CLOCK_OFFSET` of the limit. After every step the engine announces the next jump through `prepareJump()`, so audio can schedule its crossfade in advance.
+- The next caesura is a step `limit` too, so no note after it sounds early. The engine pauses there and sets `waitingAtCaesura`; playing on starts at the caesura's tick, which only a later tick stops at, so it never stops twice.
 - MIDI consumes step time exactly, so the loop keeps stepping after a stop (dropping it would shrink the lookahead). End of song fires in the step that overshoots.
 - A section on the last measure jumps back exactly at the song's end, so a due jump wins over finishing. The segue is `due` only when no jump is left; the "Segueing" card waits for it. It fires once, when playback crosses the end of the last measure, so a recording's tail (reverb) is cut; editors are only told (`WorkspaceView`).
 - In `syncStateAt`, `backend.seek()` must come before `backend.onTempoRestored()`.

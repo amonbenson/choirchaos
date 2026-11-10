@@ -22,6 +22,7 @@ export class ArrangementVisibleSettings extends SettingsBase {
     public readonly repeat: boolean = true,
     public readonly cut: boolean = true,
     public readonly marker: boolean = true,
+    public readonly caesura: boolean = true,
   ) {
     super();
   }

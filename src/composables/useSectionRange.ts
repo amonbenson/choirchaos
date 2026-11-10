@@ -3,7 +3,7 @@ import { computed, type ComputedRef, type MaybeRefOrGetter, nextTick, type Shall
 import { formatLocation } from "@/core/models/locationFormat";
 import type { RecordedPass } from "@/core/models/recording";
 import { formatSectionName } from "@/core/models/scoreOverlays";
-import { getSectionRun, replaceSections, type Section, validateSections, withRun } from "@/core/models/sections";
+import { getSectionRun, type RangeSection, replaceSections, validateSections, withRun } from "@/core/models/sections";
 import type Song from "@/core/models/song";
 import { lowerFirst } from "@/core/utils/text";
 
@@ -28,7 +28,7 @@ export type SectionRange = {
   /** The section's own range, or where a handle is being dragged to. */
   shownRun: ComputedRef<RecordedPass | undefined>;
   /** The section as it would be saved after the drag, for the preview. */
-  shownSection: ComputedRef<Section>;
+  shownSection: ComputedRef<RangeSection>;
   dragged: Readonly<ShallowRef<{ end: RangeEnd; run: RecordedPass } | undefined>>;
   handles: ComputedRef<RangeHandle[]>;
   /** The positions a handle can move to: the first up to the last measure, the last from the first on. */
@@ -64,7 +64,7 @@ function getKeyTarget(key: string, current: number, min: number, max: number): n
  * section's first or last measure to any position of the recording, previews the move while dragged and
  * saves it once, over whole measures. A move that `validateSections()` rejects is explained, not saved.
  */
-export function useSectionRange(song: MaybeRefOrGetter<Song>, section: MaybeRefOrGetter<Section>): SectionRange {
+export function useSectionRange(song: MaybeRefOrGetter<Song>, section: MaybeRefOrGetter<RangeSection>): SectionRange {
   const { notifyError } = useNotify();
   const editorSelection = injectEditorSelection();
   const dragged = shallowRef<{ end: RangeEnd; run: RecordedPass }>();

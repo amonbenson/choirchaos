@@ -77,6 +77,7 @@ export default class PlayerEngine {
   private readonly currentTimeSignature = new Property<TimeSignature>(DEFAULT_TIME_SIGNATURE);
   private readonly currentSection = new Property<PlayerSectionState | undefined>(undefined);
   private readonly currentSegue = new Property<PlayerSegueState | undefined>(undefined);
+  private readonly waitingAtCaesura = new Property(false);
 
   readonly onStatusChange = this.status.onChange;
   readonly onModeChange = this.mode.onChange;
@@ -95,6 +96,7 @@ export default class PlayerEngine {
   readonly onCurrentTimeSignatureChange = this.currentTimeSignature.onChange;
   readonly onCurrentSectionChange = this.currentSection.onChange;
   readonly onCurrentSegueChange = this.currentSegue.onChange;
+  readonly onWaitingAtCaesuraChange = this.waitingAtCaesura.onChange;
 
   private readonly emitters = {
     note: new Emitter<NoteEvent>(),
@@ -110,6 +112,7 @@ export default class PlayerEngine {
 
   private currentSong?: Song;
   private vampsEnabled = true;
+  private caesurasEnabled = true;
   private segueDefault = true;
   private route = new Route([], [], { vampsEnabled: true });
   private routeState: RouteState | undefined = undefined;
@@ -189,6 +192,11 @@ export default class PlayerEngine {
 
   getCurrentSegue(): PlayerSegueState | undefined {
     return this.currentSegue.get();
+  }
+
+  /** Whether playback stopped at a caesura and waits to be continued. */
+  isWaitingAtCaesura(): boolean {
+    return this.waitingAtCaesura.get();
   }
 
   getCurrentSong(): Song | undefined {
@@ -306,6 +314,7 @@ export default class PlayerEngine {
     }
 
     this.resumeAudioContext();
+    this.waitingAtCaesura.set(false);
     this.playing.set(true);
     this.backend?.play(this.position.get());
     this.updater.start();
@@ -334,6 +343,7 @@ export default class PlayerEngine {
     // Pause the player while seeking, then resume if it was playing before
     const wasPlaying = this.playing.get();
     this.pause();
+    this.waitingAtCaesura.set(false);
 
     this.position.set(Math.max(0, Math.min(this.duration.get(), position)));
     this.syncStateAt(this.position.get());
@@ -384,6 +394,16 @@ export default class PlayerEngine {
     }
 
     this.vampsEnabled = enabled;
+    this.rebuildRoute();
+  }
+
+  /** Disabled caesuras play through without stopping. */
+  setCaesurasEnabled(enabled: boolean): void {
+    if (this.caesurasEnabled === enabled) {
+      return;
+    }
+
+    this.caesurasEnabled = enabled;
     this.rebuildRoute();
   }
 
@@ -489,6 +509,7 @@ export default class PlayerEngine {
     this.currentSong = undefined;
     this.route = new Route([], [], { vampsEnabled: this.vampsEnabled });
     this.routeState = undefined;
+    this.waitingAtCaesura.set(false);
     this.duration.set(0);
     this.timeline.set([]);
     this.finalLocation.set(undefined);
@@ -521,12 +542,15 @@ export default class PlayerEngine {
   }
 
   private createRoute(): Route {
-    return new Route(this.timeline.get(), this.currentSong?.getSections() ?? [], { vampsEnabled: this.vampsEnabled });
+    return new Route(this.timeline.get(), this.currentSong?.getSections() ?? [], { vampsEnabled: this.vampsEnabled, caesurasEnabled: this.caesurasEnabled });
   }
 
   private rebuildRoute(): void {
     const previous = this.routeState;
     this.route = this.createRoute();
+    if (!this.route.isCaesuraAt(this.position.get())) {
+      this.waitingAtCaesura.set(false);
+    }
 
     const fresh = this.route.stateAt(this.position.get());
     const isSameSection = previous && fresh && previous.section === fresh.section
@@ -670,19 +694,26 @@ export default class PlayerEngine {
     for (let round = 0; round < MAX_ROUNDS_PER_STEP; round++) {
       const plan = this.planStep(pos);
       const jumpsNow = plan.jump !== undefined && plan.jump.at <= pos;
+      const caesura = jumpsNow ? undefined : this.route.findCaesura(pos, plan.jump?.at);
 
       if (!jumpsNow) {
         if (round > 0 && remaining <= 0) {
           break;
         }
 
+        const limit = caesura !== undefined && (plan.limit === undefined || caesura < plan.limit) ? caesura : plan.limit;
         const muteVocals = this.route.muteVocals(this.routeState, pos);
-        const { p1, deltaTimeConsumed } = this.backend.step(pos, remaining, plan.limit, muteVocals);
+        const { p1, deltaTimeConsumed } = this.backend.step(pos, remaining, limit, muteVocals);
         remaining -= deltaTimeConsumed;
         pos = p1;
       }
 
       this.applyTransitions(plan.transitions, pos);
+      if (caesura !== undefined && pos >= caesura) {
+        this.stopAtCaesura(caesura);
+        return;
+      }
+
       const jumpsNext = plan.jump !== undefined && pos >= plan.jump.at && jumps < MAX_JUMPS_PER_STEP;
 
       // A section ending with the song jumps back at the song's end, so the jump wins over finishing.
@@ -691,8 +722,14 @@ export default class PlayerEngine {
       }
 
       if (plan.jump && jumpsNext) {
+        const state = this.routeState;
         pos = this.jump(plan.jump);
         jumps++;
+        if (this.route.stopsAfterJump(state, plan.jump)) {
+          this.stopAtCaesura(pos);
+          return;
+        }
+
         if (this.finishIfEnded(from, pos)) {
           return;
         }
@@ -712,6 +749,15 @@ export default class PlayerEngine {
     this.backend.prepareJump(this.findNextJump(pos));
     this.backend.prefetch(this.getJumpTargets(pos));
     this.segueIfCrossed(from, pos);
+  }
+
+  /** Pauses before the beat after a caesura. Playing on starts there, so the same caesura does not stop it again. */
+  private stopAtCaesura(pos: Tick): void {
+    this.position.set(pos);
+    this.syncLocation(pos);
+    this.syncSection();
+    this.pause();
+    this.waitingAtCaesura.set(true);
   }
 
   private syncLocation(pos: Tick): void {

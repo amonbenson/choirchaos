@@ -89,6 +89,41 @@ test.describe("sections", () => {
     expect(errors).toEqual([]);
   });
 
+  test("an editor adds a caesura after selected measures, sees it on the score and removes it", async ({ page, admin, factory, loginAs }) => {
+    const owner = await factory.createUser();
+    const show = await factory.createShow(owner);
+    const bundle = await buildSongBundle(MINIMAL, { mode: "audio" });
+    const song = await factory.createSong(owner, show, bundle);
+    const errors = collectPageErrors(page);
+    await loginAs(owner);
+
+    await page.goto(`/show/${show.id}/song/${song.id}/edit`);
+    await waitForPlayer(page);
+    const panel = page.getByRole("region", { name: "Editor panel" });
+    const create = panel.getByRole("region", { name: "Section" });
+
+    await select(page, "1", "2");
+    await create.getByRole("button", { name: "Add repeat" }).click();
+    await select(page, "1", "2");
+    await create.getByRole("button", { name: "Add caesura after 2" }).click();
+    const repeat: SongSection = { kind: "repeat", from: locationAt(bundle.fields.score, "1"), to: locationAt(bundle.fields.score, "2", 3), passes: 2 };
+    const caesura: SongSection = { kind: "caesura", at: locationAt(bundle.fields.score, "3") };
+    await expect.poll(() => storedSections(admin, song.id)).toEqual([repeat, caesura]);
+    await expect(panel.getByRole("heading", { name: "Caesura before 3" })).toBeVisible();
+
+    await select(page, "2");
+    await create.getByRole("button", { name: "Select caesura after 2" }).click();
+    await expect(panel.getByRole("heading", { name: "Caesura before 3" })).toBeVisible();
+    const badge = page.getByRole("region", { name: "Score" }).getByRole("button", { name: "Caesura before 3" });
+    await expect(badge).toHaveAttribute("aria-pressed", "true");
+
+    await panel.getByRole("button", { name: "Remove caesura" }).click();
+    await page.getByRole("alertdialog", { name: "Remove caesura" }).getByRole("button", { name: "Remove" }).click();
+    await expect.poll(() => storedSections(admin, song.id)).toEqual([repeat]);
+    await expect(badge).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
   test("a song without a score lists its measures, which select like boxes", async ({ page, admin, factory, loginAs }) => {
     const owner = await factory.createUser();
     const show = await factory.createShow(owner);

@@ -22,7 +22,7 @@ import {
   type Timeline,
   validateLocation,
 } from "./recording";
-import { compareSections, deserializeSection, type Section, serializeSection, type StoredSection, validateSections } from "./sections";
+import { compareSections, deserializeSection, isCaesura, type Section, serializeSection, type StoredSection, validateSections } from "./sections";
 import { getOccurrenceKey } from "./warpEditing";
 
 export type StoredScore = {
@@ -369,12 +369,22 @@ export type RecordingChange = {
   dropped: DroppedReferences;
 };
 
-/** Sections whose ends both move and that still validate, for example without overlapping, in timeline order. */
+function remapSection(section: Section, map: OccurrenceMap): Section | undefined {
+  if (isCaesura(section)) {
+    const at = remapLocation(map, section.at);
+    return at && { ...section, at };
+  }
+
+  const from = remapLocation(map, section.from);
+  const to = remapLocation(map, section.to);
+  return from && to ? { ...section, from, to } : undefined;
+}
+
+/** Sections whose locations all move and that still validate, for example without overlapping, in timeline order. */
 function remapSections(sections: readonly Section[], map: OccurrenceMap, measures: readonly Measure[], timeline: Timeline, dropped: DroppedReferences): Section[] {
   const moved = sections.flatMap((original) => {
-    const from = remapLocation(map, original.from);
-    const to = remapLocation(map, original.to);
-    return from && to ? [{ original, section: { ...original, from, to } }] : [];
+    const section = remapSection(original, map);
+    return section ? [{ original, section }] : [];
   });
   moved.sort((a, b) => compareSections(timeline, a.section, b.section));
 

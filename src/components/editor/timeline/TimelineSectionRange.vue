@@ -5,7 +5,7 @@ import { SECTION_COLORS } from "@/components/score/sectionColors";
 import SectionRangeHandle from "@/components/score/SectionRangeHandle.vue";
 import { type RangeEnd, type RangeHandle, useSectionRange } from "@/composables/useSectionRange";
 import type { TimelineAxis } from "@/composables/useTimelineAxis";
-import { replaceSections, type Section } from "@/core/models/sections";
+import { type RangeSection, replaceSections } from "@/core/models/sections";
 import type Song from "@/core/models/song";
 import { getSectionTicks } from "@/core/player/route";
 import { findPositionAt, getBeatTick, getStartTick } from "@/core/player/timeline";
@@ -13,7 +13,7 @@ import { usePlayerStore } from "@/stores/player";
 
 const props = defineProps<{
   song: Song;
-  section: Section;
+  section: RangeSection;
   axis: TimelineAxis;
 }>();
 

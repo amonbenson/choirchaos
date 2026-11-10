@@ -27,7 +27,8 @@ export type SongVampVocals = "all" | "first" | "last" | "split";
 export type SongSection
   = | { kind: "cut"; from: SongLocation; to: SongLocation }
     | { kind: "repeat"; from: SongLocation; to: SongLocation; passes: number }
-    | { kind: "vamp"; from: SongLocation; to: SongLocation; out: SongVampOut; vocals: SongVampVocals };
+    | { kind: "vamp"; from: SongLocation; to: SongLocation; out: SongVampOut; vocals: SongVampVocals }
+    | { kind: "caesura"; at: SongLocation };
 
 export type SongScore = { measures: SongMeasure[]; unnumberedBoxes: MeasureLayout[] };
 export type SongRecording = { spans: SongSpan[]; warpMarkers: SongWarpMarker[] };

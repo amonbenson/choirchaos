@@ -1,6 +1,6 @@
 import type { BeatEvent, MidiEventList, NoteEvent, TempoEvent, TimeSignatureEvent } from "../midi/events";
 import type { MeasureId } from "../models/measure";
-import type { SectionKind, VampOut, VampVocals } from "../models/sections";
+import type { RangeSection, VampOut, VampVocals } from "../models/sections";
 
 export type { VampOut, VampVocals };
 
@@ -14,7 +14,7 @@ export type PlayerLocation = { position: number; measure: MeasureId; occurrence:
 export type PlayerSectionState = {
   /** Index into `song.getSections()`. */
   section: number;
-  kind: SectionKind;
+  kind: RangeSection["kind"];
   /** The 1-based pass being played. */
   pass: number;
   /** Total passes, undefined for a vamp until it is released. */

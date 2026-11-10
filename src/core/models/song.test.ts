@@ -8,7 +8,7 @@ import { EMPTY_LAYERS, type SongLayers, type StoredArrangement, type StoredScore
 import { addMarker, type Marker, removeMarker, replaceMarker } from "./markers";
 import Measure, { createEmptyMeasureEdit, type MeasureEdit } from "./measure";
 import { type Location, setRecordedCount, type StoredRecording, type StoredWarpMarker } from "./recording";
-import { getSectionPasses, replaceSections, type Section } from "./sections";
+import { getRangeSections, getSectionPasses, replaceSections, type Section } from "./sections";
 import Song, { type LayersChange } from "./song";
 import Track from "./track";
 import { addWarpMarker, moveWarpMarker, reassignWarpMarker, removeWarpMarker } from "./warpEditing";
@@ -622,7 +622,7 @@ describe("Song recording", () => {
 
     await song.setRecordingSpans(setRecordedCount(song.getMeasures(), song.getRecording(), { from: locationOf(song, "2"), to: locationOf(song, "3") }, 4));
 
-    const [cut, vamp] = song.getSections();
+    const [cut, vamp] = getRangeSections(song.getSections());
     expect(cut).toMatchObject(range(1));
     expect(vamp).toMatchObject(range(3));
     expect(getSectionPasses(song.getTimeline(), song.getSections(), vamp!)).toHaveLength(2);

@@ -9,7 +9,7 @@ import {
   type RecordingStretch,
   type Timeline,
 } from "./recording";
-import { findSection, type Section } from "./sections";
+import { type CaesuraSection, findCaesura, findSection, isSameStart, type RangeSection } from "./sections";
 import type Song from "./song";
 import { getSyncTime, type SyncPlace } from "./warpEditing";
 
@@ -17,7 +17,7 @@ import { getSyncTime, type SyncPlace } from "./warpEditing";
  * What the song editor works on. Exactly one kind is selected at a time, so the inspector shows one
  * panel and a section is never selected together with its measures. Each object is kept by what
  * identifies it across saves: measures by ID, boxes without a number by position, a section by its
- * start (sections never overlap), a marker by its location and name, a sync point by its place
+ * start (sections never overlap), a caesura by its location, a marker by its location and name, a sync point by its place
  * and a recording pass by its index in the recording.
  */
 export type Selection
@@ -25,6 +25,7 @@ export type Selection
     | { kind: "measures"; ids: readonly MeasureId[]; anchor: MeasureId }
     | { kind: "boxes"; boxes: readonly MeasureLayout[] }
     | { kind: "section"; from: Location }
+    | { kind: "caesura"; at: Location }
     | { kind: "marker"; marker: Marker }
     | { kind: "syncPoint"; place: SyncPlace }
     | { kind: "pass"; index: number };
@@ -34,7 +35,8 @@ export type SelectedObjects
   = | { kind: "none" }
     | { kind: "measures"; measures: Measure[] }
     | { kind: "boxes"; boxes: MeasureLayout[] }
-    | { kind: "section"; section: Section }
+    | { kind: "section"; section: RangeSection }
+    | { kind: "caesura"; section: CaesuraSection }
     | { kind: "marker"; marker: Marker }
     | { kind: "syncPoint"; place: SyncPlace; time: number }
     | { kind: "pass"; index: number; stretch: RecordingStretch };
@@ -57,8 +59,12 @@ export function isMarkerSelected(selection: Selection, marker: Marker): boolean 
   return selection.kind === "marker" && isSameMarker(selection.marker, marker);
 }
 
-export function isSectionSelected(selection: Selection, section: Section): boolean {
+export function isSectionSelected(selection: Selection, section: RangeSection): boolean {
   return selection.kind === "section" && findSection([section], selection.from) !== undefined;
+}
+
+export function isCaesuraSelected(selection: Selection, section: CaesuraSection): boolean {
+  return selection.kind === "caesura" && isSameStart(selection.at, section.at);
 }
 
 export function isPassSelected(selection: Selection, index: number): boolean {
@@ -138,6 +144,8 @@ export function resolveSelection(song: Song, selection: Selection): SelectedObje
       return resolveBoxes(song, selection.boxes);
     case "section":
       return found(findSection(song.getSections(), selection.from), section => ({ kind: "section", section }));
+    case "caesura":
+      return found(findCaesura(song.getSections(), selection.at), section => ({ kind: "caesura", section }));
     case "marker":
       return found(song.getMarkers().find(marker => isSameMarker(marker, selection.marker)), marker => ({ kind: "marker", marker }));
     case "syncPoint":

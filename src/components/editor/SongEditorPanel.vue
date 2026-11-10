@@ -18,6 +18,7 @@ import type Song from "@/core/models/song";
 import { formatSyncTime, isRecordingEnd } from "@/core/models/warpEditing";
 
 import BoxesInspector from "./inspector/BoxesInspector.vue";
+import CaesuraInspector from "./inspector/CaesuraInspector.vue";
 import MarkerInspector from "./inspector/MarkerInspector.vue";
 import MeasuresInspector from "./inspector/MeasuresInspector.vue";
 import PassInspector from "./inspector/PassInspector.vue";
@@ -106,6 +107,8 @@ function getHeading(): Heading {
       return { title: current.boxes.length === 1 ? "Box without a number" : `${current.boxes.length} boxes without a number` };
     case "section":
       return { title: formatSectionName(song.getMeasures(), current.section), subtitle: "Section" };
+    case "caesura":
+      return { title: formatSectionName(song.getMeasures(), current.section), subtitle: "Playback waits here to be continued" };
     case "marker":
       return { title: `Marker ${current.marker.text}`, subtitle: `At ${formatLocation(song, current.marker.at)}` };
     case "syncPoint":
@@ -294,6 +297,12 @@ useEventListener("keydown", (event: KeyboardEvent) => {
           />
           <SectionInspector
             v-else-if="selected.kind === 'section'"
+            ref="inspector"
+            :song="song"
+            :section="selected.section"
+          />
+          <CaesuraInspector
+            v-else-if="selected.kind === 'caesura'"
             ref="inspector"
             :song="song"
             :section="selected.section"

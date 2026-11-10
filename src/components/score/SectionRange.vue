@@ -3,7 +3,7 @@ import { computed } from "vue";
 
 import { type RangeEnd, type RangeHandle, useSectionRange } from "@/composables/useSectionRange";
 import type { MeasureId, MeasureLayout } from "@/core/models/measure";
-import { findNearestPosition, type Section } from "@/core/models/sections";
+import { findNearestPosition, type RangeSection } from "@/core/models/sections";
 import type Song from "@/core/models/song";
 
 import type { VisiblePage } from "./PdfViewer.vue";
@@ -15,7 +15,7 @@ import SectionRangeHandle from "./SectionRangeHandle.vue";
 
 const props = defineProps<{
   song: Song;
-  section: Section;
+  section: RangeSection;
   /** The lane of the section's bar, where the handles sit. */
   lane: number;
   pages: readonly VisiblePage[];
