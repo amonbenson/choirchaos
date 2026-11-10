@@ -153,8 +153,10 @@ test.describe("playback", () => {
 
     await play(page, show, song);
     const samples = await recordPlayback(page, sample => sample.measure === "4");
-    const banner = page.getByText("Caesura", { exact: true });
+    const banner = page.getByRole("status", { name: "Caesura" });
+    const sectionButton = page.getByRole("button", { name: "Caesura", exact: true });
     await expect(banner).toBeVisible();
+    await expect(sectionButton).toBeEnabled();
 
     const waiting = await readPlayback(page);
     const times = recordedBarTimes(bundle).map(seconds => seconds * MS_PER_SECOND);
@@ -164,6 +166,7 @@ test.describe("playback", () => {
 
     await page.keyboard.press("Space");
     await expect(banner).toBeHidden();
+    await expect(sectionButton).toBeHidden();
     await expect.poll(async () => (await readPlayback(page)).position).toBeGreaterThan(waiting.position);
     expect(sequenceOf(samples, "measure")).toEqual(["1", "2", "3", "2", "3", "4"]);
     expect(errors).toEqual([]);

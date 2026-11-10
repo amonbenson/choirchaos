@@ -13,7 +13,7 @@ import QuarterNoteIcon from "@/components/icons/QuarterNoteIcon.vue";
 import { SECTION_COLORS, SECTION_CONTRAST_TEXT } from "@/components/score/sectionColors";
 import { formatLocation } from "@/core/models/locationFormat";
 import { findRecordedRepeats, formatPlayingSection, formatSectionPass, getRecordedRepeatPass } from "@/core/models/scoreOverlays";
-import { getCaesuras, isRangeSection } from "@/core/models/sections";
+import { getCaesuras, isRangeSection, type SectionKind } from "@/core/models/sections";
 import type Show from "@/core/models/show";
 import type { NoteValue } from "@/core/player/pulse";
 import { getSectionTicks } from "@/core/player/route";
@@ -92,8 +92,15 @@ const shownSection = computed(() => {
   return pass ? { kind: "repeat" as const, ...pass, released: false } : undefined;
 });
 
+/** Playback waits at a caesura, which the section button then continues, whatever section is playing. */
+const waitingAtCaesura = computed(() => player.ready && player.waitingAtCaesura);
+
 const sectionLabel = computed(() => {
   const current = shownSection.value;
+  if (waitingAtCaesura.value) {
+    return "Caesura";
+  }
+
   if (!current) {
     return "Vamp";
   }
@@ -105,14 +112,24 @@ const sectionLabel = computed(() => {
   return current.kind === "vamp" && current.released ? "Exiting" : formatSectionPass(current.kind, current);
 });
 
+function getSectionColorClass(kind: SectionKind): string[] {
+  return [SECTION_COLORS[kind].background, SECTION_CONTRAST_TEXT, "border-transparent"];
+}
+
 /** A released vamp drops its color, so the button shows it will exit. */
 const sectionButtonClass = computed(() => {
   const current = shownSection.value;
-  return current && !current.released ? [SECTION_COLORS[current.kind].background, SECTION_CONTRAST_TEXT, "border-transparent"] : [];
+  if (waitingAtCaesura.value) {
+    return getSectionColorClass("caesura");
+  }
+
+  return current && !current.released ? getSectionColorClass(current.kind) : [];
 });
 
-function toggleVamp(): void {
-  if (section.value?.kind === "vamp") {
+function onSectionClick(): void {
+  if (waitingAtCaesura.value) {
+    emit("playPause");
+  } else if (section.value?.kind === "vamp") {
     emit("toggleVamp");
   }
 }
@@ -329,15 +346,15 @@ const timeSignatureLabel = computed(() => player.mode === "midi"
               :aria-label="timeSignatureLabel"
             />
 
-            <!-- Section: releases or resets a vamp, and shows the pass of a repeat section or a written repeat -->
+            <!-- Section: continues after a caesura, releases or resets a vamp, and shows the pass of a repeat section or a written repeat -->
             <Button
               v-if="visibleButtons.vamp"
               class="w-28 whitespace-nowrap"
               :class="sectionButtonClass"
-              :disabled="!shownSection"
+              :disabled="!shownSection && !waitingAtCaesura"
               :label="sectionLabel"
               severity="secondary"
-              @click="toggleVamp"
+              @click="onSectionClick"
             />
 
             <!-- Segue -->

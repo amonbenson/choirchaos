@@ -3,6 +3,7 @@ import Button from "primevue/button";
 import Message from "primevue/message";
 import { computed, ref, watch } from "vue";
 
+import { SECTION_COLORS } from "@/components/score/sectionColors";
 import { useConfirmDestructive } from "@/composables/useConfirmDestructive";
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { useNotify } from "@/composables/useNotify";
@@ -17,6 +18,7 @@ import {
   type RangeSection,
   replaceSections,
   type Section,
+  type SectionKind,
   toMeasureRange,
   validateSections,
 } from "@/core/models/sections";
@@ -26,10 +28,15 @@ import { lowerFirst } from "@/core/utils/text";
 import InspectorSection from "./InspectorSection.vue";
 
 const KINDS: { value: RangeSection["kind"]; label: string }[] = [
-  { value: "repeat", label: "Add repeat" },
-  { value: "vamp", label: "Add vamp" },
-  { value: "cut", label: "Add cut" },
+  { value: "repeat", label: "Repeat" },
+  { value: "vamp", label: "Vamp" },
+  { value: "cut", label: "Cut" },
 ];
+
+/** A button adding a section is outlined and labeled in that section's color. */
+function kindClass(kind: SectionKind): string[] {
+  return [SECTION_COLORS[kind].border, SECTION_COLORS[kind].text];
+}
 
 const props = defineProps<{
   song: Song;
@@ -117,43 +124,42 @@ async function create(kind: RangeSection["kind"]): Promise<void> {
       />
     </div>
 
-    <div
-      v-else
-      class="flex flex-wrap gap-2"
-    >
+    <div class="flex flex-wrap gap-2">
+      <template v-if="!holder">
+        <Button
+          v-for="kind in KINDS"
+          :key="kind.value"
+          :label="kind.label"
+          :aria-label="`Add ${lowerFirst(kind.label)}`"
+          icon="pi pi-plus"
+          severity="secondary"
+          variant="outlined"
+          size="small"
+          :class="kindClass(kind.value)"
+          @click="create(kind.value)"
+        />
+      </template>
       <Button
-        v-for="kind in KINDS"
-        :key="kind.value"
-        :label="kind.label"
+        v-if="caesuraAt && !caesura"
+        label="Caesura"
+        :aria-label="`Add caesura after ${lastLabel}`"
         icon="pi pi-plus"
         severity="secondary"
+        variant="outlined"
         size="small"
-        @click="create(kind.value)"
+        :class="kindClass('caesura')"
+        @click="addCaesura"
       />
-    </div>
-
-    <template v-if="caesuraAt">
       <Button
-        v-if="caesura"
+        v-else-if="caesura"
         label="Select caesura"
         severity="secondary"
         size="small"
-        class="self-start"
         text
         :aria-label="`Select caesura after ${lastLabel}`"
         @click="selection.select({ kind: 'caesura', at: caesura.at })"
       />
-      <Button
-        v-else
-        :label="`Add caesura after ${lastLabel}`"
-        icon="pi pi-plus"
-        severity="secondary"
-        size="small"
-        class="self-start"
-        text
-        @click="addCaesura"
-      />
-    </template>
+    </div>
 
     <Message
       v-if="error"

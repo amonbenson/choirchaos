@@ -30,6 +30,10 @@
   --color-section-cut: var(--color-slate-300);
   --color-section-caesura: var(--color-pink-400);
   --color-section-contrast: var(--color-slate-950);
+  --color-section-repeat-text: var(--color-sky-600);
+  --color-section-vamp-text: var(--color-violet-600);
+  --color-section-cut-text: var(--color-slate-500);
+  --color-section-caesura-text: var(--color-pink-600);
 
   /* Orange, so sync points never look like the primary colored playhead. */
   --color-sync: var(--color-orange-400);
@@ -52,6 +56,7 @@
 
   --color-marker: var(--color-primary);
   --color-marker-contrast: var(--color-primary-contrast);
+  --color-marker-text: var(--color-primary-text);
 
   --color-info: var(--color-sky-400);
   --color-info-contrast: var(--color-slate-950);
@@ -77,6 +82,10 @@
 
   .dark {
     --color-sync-text: var(--color-orange-400);
+    --color-section-repeat-text: var(--color-sky-400);
+    --color-section-vamp-text: var(--color-violet-400);
+    --color-section-cut-text: var(--color-slate-300);
+    --color-section-caesura-text: var(--color-pink-400);
 
     --color-primary-text: var(--color-primary-400);
     --color-info-text: var(--color-sky-400);
