@@ -2,6 +2,7 @@
 import Button from "primevue/button";
 import { computed, nextTick } from "vue";
 
+import { MARKER_COLORS } from "@/components/score/sectionColors";
 import { injectEditorSelection } from "@/composables/useEditorSelection";
 import { useNotify } from "@/composables/useNotify";
 import { formatLocation } from "@/core/models/locationFormat";
@@ -77,12 +78,14 @@ async function add(): Promise<void> {
       </li>
     </ul>
     <Button
-      :label="`Add marker at ${place}`"
-      icon="pi pi-bookmark"
+      label="Marker"
+      :aria-label="`Add marker at ${place}`"
+      icon="pi pi-plus"
       severity="secondary"
+      variant="outlined"
       size="small"
       class="self-start"
-      text
+      :class="[MARKER_COLORS.border, MARKER_COLORS.text]"
       @click="add"
     />
   </InspectorSection>
